@@ -1,0 +1,63 @@
+[workspace]
+resolver = "2"
+default-members = [
+  "quilt",
+  "quilt-lsp",
+  "quilt-python",
+]
+members = [
+  "quilt",
+  "quilt-lsp",
+  "quilt-python",
+  "tree-sitter-quilt",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.dependencies]
+# Internal crates
+quilt = {version = "0.1.0", path = "quilt", default-features = false}
+tree-sitter-quilt = {path = "tree-sitter-quilt"}
+# Grammar crates pulled from their QuiltLang forks (previously git submodules).
+tree-sitter-bash = {git = "https://github.com/QuiltLang/tree-sitter-bash.git"}
+tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git"}
+tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git"}
+tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git"}
+tree-sitter-wgsl = {git = "https://github.com/QuiltLang/tree-sitter-wgsl.git"}
+tree-sitter-zsh = {git = "https://github.com/QuiltLang/tree-sitter-zsh.git"}
+
+# External crates (versions only; features are selected per-crate)
+anyhow = "1"
+clap = "4.6"
+dashmap = "6"
+indoc = "2.0"
+miette = "7.4"
+postcard = "1.1"
+pretty_assertions = "1.4"
+pyo3 = "0.28"
+regex = "1.12"
+serde = "1.0"
+serde_json = "1.0"
+tempfile = "3.27"
+tokio = "1"
+tower-lsp = "0.20"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tree-sitter = "0.25"
+
+[workspace.lints.clippy]
+pedantic = "warn"
+
+default_trait_access = {level = "allow", priority = 1}
+items_after_statements = {level = "allow", priority = 1}
+missing_errors_doc = {level = "allow", priority = 1}
+missing_panics_doc = {level = "allow", priority = 1}
+module_name_repetitions = {level = "allow", priority = 1}
+must_use_candidate = {level = "allow", priority = 1}
+needless-raw-string-hashes = {level = "allow", priority = 1}
+redundant_closure_for_method_calls = {level = "allow", priority = 1}
+return_self_not_must_use = {level = "allow", priority = 1}
+similar_names = {level = "allow", priority = 1}
+too_many_lines = {level = "allow", priority = 1}

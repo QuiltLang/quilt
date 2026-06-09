@@ -1,0 +1,61 @@
+[package]
+edition.workspace = true
+name = "quilt"
+version.workspace = true
+
+[dependencies]
+clap = {workspace = true, features = ["derive"]}
+indoc = {workspace = true}
+miette = {workspace = true, features = ["fancy"]}
+postcard = {workspace = true, features = ["alloc"]}
+regex = {workspace = true}
+serde = {workspace = true, features = ["derive", "rc"]}
+tempfile = {workspace = true}
+tracing = {workspace = true}
+tracing-subscriber = {workspace = true, features = ["env-filter"]}
+# Tree-sitter parsing is only needed to *parse* Quilt sources (the `parse`
+# feature). The runtime that expanded code targets (the `QTerm` builders,
+# `qlift`, `coparse`) is tree-sitter-free, so consumers like nanobots-codegen
+# can depend on quilt with `default-features = false, features = ["rust"]` and
+# build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
+tree-sitter = {workspace = true, optional = true}
+tree-sitter-bash = {workspace = true, optional = true}
+tree-sitter-html = {workspace = true, optional = true}
+tree-sitter-python = {workspace = true, optional = true}
+tree-sitter-quilt = {workspace = true, optional = true}
+tree-sitter-rust = {workspace = true, optional = true}
+tree-sitter-wgsl = {workspace = true, optional = true}
+tree-sitter-zsh = {workspace = true, optional = true}
+
+[dev-dependencies]
+indoc = {workspace = true}
+pretty_assertions = {workspace = true}
+
+[lints]
+workspace = true
+
+[features]
+bootstrap = ["parse"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash"]
+# `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
+# the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
+# the runtime-only consumers (e.g. nanobots-codegen on wasm).
+parse = [
+  "dep:tree-sitter",
+  "dep:tree-sitter-quilt",
+  "dep:tree-sitter-rust",
+  "dep:tree-sitter-python",
+]
+bash = ["dep:tree-sitter-bash", "parse"]
+html = ["dep:tree-sitter-html", "parse"]
+python = []
+rust = []
+text = []
+wgsl = ["dep:tree-sitter-wgsl", "parse"]
+zsh = ["dep:tree-sitter-zsh", "parse"]
+
+[[bin]]
+name = "quilt"
+path = "src/bin.rs"
+# The CLI parses Quilt sources, so it needs tree-sitter.
+required-features = ["parse"]

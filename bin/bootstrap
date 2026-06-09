@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Two-stage bootstrap: regenerate meta.rs with the bootstrap meta-language
+# (bootstrap0), then regenerate it again with the freshly-generated
+# RustMetaLanguage (bootstrap1). A clean run leaves meta.rs unchanged.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+"$DIR/bootstrap0" "$@"
+"$DIR/bootstrap1" "$@"

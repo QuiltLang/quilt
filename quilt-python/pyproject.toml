@@ -1,0 +1,21 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+# Python import name is `quilt`; the Cargo crate stays `quilt_python`.
+name = "quilt"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+
+[tool.maturin]
+# Native extension `_quilt` lives inside the `quilt/` package (mixed layout);
+# quilt/__init__.py re-exports it. `extension-module` is enabled here (not in
+# Cargo.toml) so plain `cargo build` can still link libpython.
+module-name = "quilt._quilt"
+features = ["pyo3/extension-module"]

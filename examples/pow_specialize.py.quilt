@@ -1,0 +1,53 @@
+#!/usr/bin/env quilt run
+from quilt import *
+
+# Partial evaluation of pow(b, p) by exponentiation by squaring.
+# The loop runs at *generation* time; the emitted lambda has no loop or
+# branches — just multiplications.
+#
+# Python has no let-bindings in expressions, so we encode them as nested
+# lambda applications: (lambda t0: (lambda t1: result)(rhs1))(rhs0).
+
+def pow_squaring(p):
+    """Return (bindings, result) where bindings is [(var, rhs), ...] QTerm pairs."""
+    bindings = []
+    sq  = ↖b↗      # current b^(2^k)
+    acc = None      # accumulated product (None = identity, not yet started)
+    n   = 0
+    exp = p
+    while exp > 0:
+        if exp & 1:
+            if acc is None:
+                acc = sq
+            else:
+                var = name(f"t{n}"); n += 1
+                bindings.append((var, ↖↙acc↘ * ↙sq↘↗))
+                acc = var
+        exp >>= 1
+        if exp > 0:
+            var = name(f"t{n}"); n += 1
+            bindings.append((var, ↖↙sq↘ * ↙sq↘↗))
+            sq = var
+    return bindings, acc
+
+def make_pow_lambda(p):
+    if p == 0:
+        return ↖lambda b: 1↗
+    if p == 1:
+        return ↖lambda b: b↗
+    bindings, result = pow_squaring(p)
+    # Encode bindings inside-out as nested lambda applications.
+    for var, rhs in reversed(bindings):
+        result = ↖(lambda ↙var↘: ↙result↘)(↙rhs↘)↗
+    return ↖lambda b: ↙result↘↗
+
+p = 10
+lam = make_pow_lambda(p)
+
+print(f"=== Specialized pow(b, {p}) by binary squaring ===")
+print("source:", lam.coparse())
+print()
+
+f = lam.↓
+for b in [2, 3, 5, 7, 11]:
+    print(f"{b}^{p} = {f(b)}")

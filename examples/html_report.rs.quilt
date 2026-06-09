@@ -1,0 +1,63 @@
+#!/usr/bin/env quilt run
+use quilt::prelude::*;
+
+/// Inject a Rust value as raw HTML text (no escaping — keep values safe for HTML).
+fn raw(s: impl std::fmt::Display) -> Arc<QTerm> {
+    leaf("raw_text", &s.to_string())
+}
+
+fn main() -> Result<()> {
+    let title = "Score Report";
+    let scores: &[(&str, u32)] = &[
+        ("Alice",   95),
+        ("Bob",     87),
+        ("Charlie", 92),
+        ("Diana",   98),
+        ("Eve",     78),
+    ];
+
+    // Build the table rows at *generation* time as a plain HTML string.
+    let rows: String = scores
+        .iter()
+        .map(|(name, score)| {
+            let cls = if *score >= 90 { "good" } else { "ok" };
+            format!("\n      <tr class=\"{cls}\"><td>{name}</td><td>{score}</td></tr>")
+        })
+        .collect();
+
+    let avg: u32 = scores.iter().map(|(_, s)| s).sum::<u32>() / scores.len() as u32;
+
+    // html[...] quotes an HTML document fragment inside Rust source.
+    // Unquoting with raw(...) splices a Rust value as raw text content.
+    // .coparse() serializes the QTerm back to an HTML string.
+    let page = html↖
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <title>↙raw(title)↘</title>
+          <style>
+            body { font-family: sans-serif; padding: 1rem; max-width: 480px; }
+            h1   { font-size: 1.2rem; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ccc; padding: 4px 1rem; text-align: left; }
+            th { background: #eee; }
+            .good { background: #dfd; }
+            .ok   { background: #ffd; }
+            tfoot td { font-weight: bold; background: #f5f5f5; }
+          </style>
+        </head>
+        <body>
+          <h1>↙raw(title)↘</h1>
+          <table>
+            <thead><tr><th>Name</th><th>Score</th></tr></thead>
+            <tbody>↙raw(&rows)↘</tbody>
+            <tfoot><tr><td>Average</td><td>↙raw(avg)↘</td></tr></tfoot>
+          </table>
+        </body>
+        </html>
+    ↗;
+
+    println!("{}", page.coparse());
+    Ok(())
+}

@@ -1,0 +1,39 @@
+[package]
+edition.workspace = true
+name = "quilt-lsp"
+version.workspace = true
+description = "Language Server for Quilt (.quilt) files: a multiplexing host that proxies to per-language servers."
+
+[dependencies]
+tower-lsp.workspace = true
+tokio = {workspace = true, features = ["full"]}
+dashmap.workspace = true
+anyhow.workspace = true
+serde = {workspace = true, features = ["derive"]}
+serde_json.workspace = true
+tracing = {workspace = true}
+tracing-subscriber = {workspace = true, features = ["env-filter"]}
+tree-sitter = {workspace = true}
+tree-sitter-quilt = {workspace = true}
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[features]
+# Mirror quilt's own feature flags: each enables wiring for one downstream
+# language. v1 ships only `rust`. Others are reserved extension points.
+default = ["rust", "python", "wgsl"]
+rust = []
+python = []
+wgsl = []
+
+[lints]
+workspace = true
+
+[lib]
+name = "quilt_lsp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "quilt-lsp"
+path = "src/main.rs"

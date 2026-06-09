@@ -1,0 +1,263 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
+  "name": "quilt",
+  "rules": {
+    "source_file": {
+      "type": "REPEAT",
+      "content": {
+        "type": "SYMBOL",
+        "name": "_node"
+      }
+    },
+    "_node": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "content"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "escape"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "newline"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "quote"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "unquote"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "lift"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "reduce"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "emit"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_comment"
+        }
+      ]
+    },
+    "content": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_char"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_non_escape"
+            }
+          ]
+        }
+      }
+    },
+    "_char": {
+      "type": "PATTERN",
+      "value": "[^\\\\↖↗↙↘↑↓⟨⟩\\n]"
+    },
+    "_non_escape": {
+      "type": "PATTERN",
+      "value": "\\\\[^↖↗↙↘↑↓⟨⟩]"
+    },
+    "escape": {
+      "type": "PATTERN",
+      "value": "\\\\[↖↗↙↘↑↓⟨⟩]"
+    },
+    "newline": {
+      "type": "PATTERN",
+      "value": "\\n"
+    },
+    "left_quote": {
+      "type": "PATTERN",
+      "value": "[a-z]*↖"
+    },
+    "right_quote": {
+      "type": "STRING",
+      "value": "↗"
+    },
+    "left_unquote": {
+      "type": "PATTERN",
+      "value": "[a-z]*↙"
+    },
+    "right_unquote": {
+      "type": "STRING",
+      "value": "↘"
+    },
+    "lift": {
+      "type": "STRING",
+      "value": "↑"
+    },
+    "reduce": {
+      "type": "STRING",
+      "value": "↓"
+    },
+    "emit": {
+      "type": "STRING",
+      "value": "←"
+    },
+    "type": {
+      "type": "STRING",
+      "value": "⟨T⟩"
+    },
+    "name": {
+      "type": "STRING",
+      "value": "⟨N⟩"
+    },
+    "quote": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "left_quote"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_node"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "right_quote"
+        }
+      ]
+    },
+    "unquote": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "left_unquote"
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_node"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "right_unquote"
+        }
+      ]
+    },
+    "_comment": {
+      "type": "TOKEN",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "PATTERN",
+                    "value": "\\n\\s*"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "STRING",
+                "value": "⟨//⟩"
+              },
+              {
+                "type": "PATTERN",
+                "value": ".*"
+              }
+            ]
+          },
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "PATTERN",
+                    "value": "\\n\\s*"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "STRING",
+                "value": "⟨/*⟩"
+              },
+              {
+                "type": "REPEAT",
+                "content": {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "PATTERN",
+                      "value": "[^⟨]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "⟨[^*]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "⟨\\*[^/]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "⟨\\*\\/[^⟩]"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "STRING",
+                "value": "⟨*/⟩"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "extras": [],
+  "conflicts": [],
+  "precedences": [],
+  "externals": [],
+  "inline": [],
+  "supertypes": [],
+  "reserved": {}
+}

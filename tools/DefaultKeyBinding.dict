@@ -1,0 +1,81 @@
+// Mac Keybindings
+// Docs: https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/EventOverview/TextDefaultsBindings/TextDefaultsBindings.html
+// “^” for Control
+// “~” for Option
+// “$” for Shift
+// “#” for numeric keypad
+// “@” for Command
+
+{
+  "@1" = {
+    // Hold Modifier
+
+    "@\UF700" = (insertText:, "↑");
+    "@\UF701" = (insertText:, "↓");
+    "@\UF702" = (insertText:, "←");
+    "@\UF703" = (insertText:, "→");
+
+    // No Hold Modifier
+
+    // "\UF700" = (insertText:, "↑");
+    // "\UF701" = (insertText:, "↓");
+    // "\UF702" = (insertText:, "←");
+    // "\UF703" = (insertText:, "→");
+  };
+
+  "@2" = {
+    // Hold Modifier
+
+    "@\UF700" = {
+      "@\UF700" = (insertText:, "↑");
+      "@\UF701" = (insertText:, "↕");
+      "@\UF702" = (insertText:, "↖");
+      "@\UF703" = (insertText:, "↗");
+    };
+    "@\UF701" = {
+      "@\UF700" = (insertText:, "↕");
+      "@\UF701" = (insertText:, "↓");
+      "@\UF702" = (insertText:, "↙");
+      "@\UF703" = (insertText:, "↘");
+    };
+    "@\UF702" = {
+      "@\UF700" = (insertText:, "↖");
+      "@\UF701" = (insertText:, "↙");
+      "@\UF702" = (insertText:, "←");
+      "@\UF703" = (insertText:, "↔");
+    };
+    "@\UF703" = {
+      "@\UF700" = (insertText:, "↗");
+      "@\UF701" = (insertText:, "↘");
+      "@\UF702" = (insertText:, "↔");
+      "@\UF703" = (insertText:, "→");      
+    };
+
+    // No Hold Modifier
+
+    // "\UF700" = {
+    //   "\UF700" = (insertText:, "↑");
+    //   "\UF701" = (insertText:, "↕");
+    //   "\UF702" = (insertText:, "↖");
+    //   "\UF703" = (insertText:, "↗");
+    // };
+    // "\UF701" = {
+    //   "\UF700" = (insertText:, "↕");
+    //   "\UF701" = (insertText:, "↓");
+    //   "\UF702" = (insertText:, "↙");
+    //   "\UF703" = (insertText:, "↘");
+    // };
+    // "\UF702" = {
+    //   "\UF700" = (insertText:, "↖");
+    //   "\UF701" = (insertText:, "↙");
+    //   "\UF702" = (insertText:, "←");
+    //   "\UF703" = (insertText:, "↔");
+    // };
+    // "\UF703" = {
+    //   "\UF700" = (insertText:, "↗");
+    //   "\UF701" = (insertText:, "↘");
+    //   "\UF702" = (insertText:, "↔");
+    //   "\UF703" = (insertText:, "→");      
+    // };
+  };
+}

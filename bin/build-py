@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Build the quilt_python extension module (PyO3 bindings to quilt's core IR)
+# and install the abi3 .so into the package dir, where `quilt run` finds it via
+# the PYTHONPATH it sets for python runs. The module is abi3 (cp38+), so one
+# build works for any CPython >= 3.8. Required before running .py.quilt files.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/quilt-python"
+
+maturin build --release "$@"
+
+# Extract the freshly built abi3 module into the `quilt/` package dir.
+wheel="$(ls -t "$ROOT"/target/wheels/quilt-*-abi3-*.whl | head -1)"
+echo "extracting from $wheel"
+unzip -o -j "$wheel" 'quilt/_quilt.abi3.so' -d quilt/
+echo "installed quilt/_quilt.abi3.so"

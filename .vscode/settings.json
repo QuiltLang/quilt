@@ -1,0 +1,57 @@
+{
+    "files.associations": {
+        "iterator": "c",
+        "chrono": "c",
+        "__hash_table": "c",
+        "__split_buffer": "c",
+        "array": "c",
+        "bitset": "c",
+        "deque": "c",
+        "initializer_list": "c",
+        "queue": "c",
+        "string": "c",
+        "string_view": "c",
+        "unordered_map": "c",
+        "utility": "c",
+        "vector": "c",
+        "__locale": "c",
+        "__string": "c"
+    },
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+    ],
+    "editor.language.colorizedBracketPairs": [
+        [
+            "[",
+            "]"
+        ],
+        [
+            "(",
+            ")"
+        ],
+        [
+            "{",
+            "}"
+        ],
+        [
+            "↖",
+            "↗"
+        ],
+        [
+            "↙",
+            "↘"
+        ],
+    ],
+    "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?↖↗↙↘",
+    // "rust-analyzer.inlayHints.lifetimeElisionHints.enable": "always",
+    // "rust-analyzer.inlayHints.reborrowHints.enable": "always",
+    "rust-analyzer.inlayHints.closureCaptureHints.enable": true,
+    "rust-analyzer.inlayHints.closureReturnTypeHints.enable": "always",
+    "rust-analyzer.check.command": "clippy",
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+    },
+    "cmake.ignoreCMakeListsMissing": true
+}

@@ -1,0 +1,33 @@
+#!/usr/bin/env quilt run
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    let size: i32 = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
+
+    // Both loops run at *generation* time.
+    // Every product is pre-computed; the output code has no loops, no variables,
+    // and no multiply instructions — just baked-in string literals.
+    let program = ↖{
+        ↙{
+            for a in 1..=size {
+                for b in 1..=size {
+                    let r = a * b;
+                    let line = format!("{a:2} x {b:2} = {r:3}");
+                    ↖println!(↙line.↑↘);↗.←;
+                    NL.←;
+                }
+                ↖println!();↗.←;
+                NL.←;
+            }
+        }↘
+    }↗;
+
+    let total_lines = size * (size + 1);
+    println!("=== Generated {total_lines} lines ===\n");
+    println!("{}", program.coparse());
+    println!("=== Output ===");
+    program.↓
+}

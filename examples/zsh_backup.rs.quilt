@@ -1,0 +1,55 @@
+#!/usr/bin/env quilt run
+//! Generate a zsh backup script from a declarative job table.
+//!
+//! Zsh is a *target* language in Quilt: it only appears inside zsh quote
+//! brackets embedded in a host language (here, Rust). Quilt parses each
+//! fragment into a QTerm, the Rust host splices values in, and .coparse()
+//! serializes the tree back to a plain zsh script.
+//!
+//! Computed Rust values cross into the quoted zsh through the lift operator --
+//! a postfix written between the unquote brackets. It turns a Rust String into
+//! a double-quoted zsh string literal, so the example never builds terms by
+//! hand. Everything interesting -- the job table and the loop over it -- runs
+//! at *generation* time; the emitted script is a flat, unrolled sequence of
+//! commands, one grouped block per job.
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    // The backup jobs, fixed at generation time: (label, source directory).
+    let jobs = [
+        ("home", "/home/alice"),
+        ("etc", "/etc"),
+        ("logs", "/var/log"),
+    ];
+    let dest = "/backups";
+
+    // Each job becomes a grouped block of three zsh statements. The Rust `.map`
+    // runs now; lifting a value (`↑`) crosses it into the quoted zsh as a
+    // string literal.
+    let blocks: Vec<Arc<QTerm>> = jobs
+        .iter()
+        .map(|&(label, src)| {
+            let archive = format!("{dest}/{label}.tar.gz");
+            let msg = format!("==> backing up {label}");
+            zsh↖{
+                echo ↙msg.↑↘
+                tar -czf ↙archive.↑↘ ↙src.↑↘
+                du -h ↙archive.↑↘
+            }↗
+        })
+        .collect();
+
+    // Splice the per-job blocks into a script skeleton. The inner Rust block
+    // loops at generation time and emits each block, with a separating newline
+    // between them. `set -e` aborts on the first failure, so the trailing
+    // "complete" line runs only if every job did.
+    let script = zsh↖
+        set -e
+        mkdir -p ↙dest.↑↘
+        ↙{ for (i, b) in blocks.into_iter().enumerate() { if i > 0 { NL.←; } b.←; } }↘
+        echo "all backups complete"
+    ↗;
+
+    println!("{}", script.coparse());
+    Ok(())
+}

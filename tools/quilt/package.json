@@ -1,0 +1,165 @@
+{
+  "name": "quilt",
+  "displayName": "Quilt",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [{
+      "id": "quilt",
+      "aliases": ["Quilt", "quilt"],
+      "extensions": [".quilt"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "quilt",
+      "scopeName": "source.quilt",
+      "path": "./syntaxes/quilt.tmLanguage.json"
+    }],
+    "configuration": {
+      "title": "Quilt LSP",
+      "properties": {
+        "quilt-lsp.serverPath": {
+          "type": "string",
+          "default": "quilt-lsp",
+          "description": "Path to the quilt-lsp language server binary."
+        },
+        "quilt-lsp.rustAnalyzerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override the downstream rust-analyzer command (whitespace-separated). Sets QUILT_LSP_RUST_ANALYZER for the server."
+        },
+        "quilt-lsp.pythonServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override the downstream Python language server command for .py.quilt files (whitespace-separated, e.g. an absolute path to pyright-langserver --stdio). Sets QUILT_LSP_PYTHON_SERVER for the server."
+        },
+        "quilt-lsp.wgslServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override the downstream WGSL language server command for wgsl↖…↗ quotes (whitespace-separated, e.g. an absolute path to wgsl-analyzer). Sets QUILT_LSP_WGSL_SERVER for the server."
+        },
+        "quilt-lsp.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace the communication between VS Code and the quilt-lsp server."
+        }
+      }
+    },
+    "keybindings": [
+      {"key": "cmd+1  cmd+left",      "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+1  cmd+right",     "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+1  cmd+up",        "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+1  cmd+down",      "command": "type", "args": {"text": "↓"}},
+      {"key": "cmd+1  cmd+,",         "command": "type", "args": {"text": "⟨"}},
+      {"key": "cmd+1  cmd+.",         "command": "type", "args": {"text": "⟩"}},
+      {"key": "cmd+1  cmd+t",         "command": "type", "args": {"text": "⟨T⟩"}},
+      {"key": "cmd+1  cmd+n",         "command": "type", "args": {"text": "⟨N⟩"}},
+
+      {"key": "cmd+2  cmd+left    cmd+left",      "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+2  cmd+left    cmd+right",     "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  cmd+left    cmd+up",        "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  cmd+left    cmd+down",      "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  cmd+right   cmd+left",      "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  cmd+right   cmd+right",     "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+2  cmd+right   cmd+up",        "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  cmd+right   cmd+down",      "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  cmd+up      cmd+left",      "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  cmd+up      cmd+right",     "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  cmd+up      cmd+up",        "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+2  cmd+up      cmd+down",      "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  cmd+down    cmd+left",      "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  cmd+down    cmd+right",     "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  cmd+down    cmd+up",        "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  cmd+down    cmd+down",      "command": "type", "args": {"text": "↓"}},
+
+      {"key": "cmd+1  left",      "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+1  right",     "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+1  up",        "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+1  down",      "command": "type", "args": {"text": "↓"}},
+      {"key": "cmd+1  ,",         "command": "type", "args": {"text": "⟨"}},
+      {"key": "cmd+1  .",         "command": "type", "args": {"text": "⟩"}},
+      {"key": "cmd+1  t",         "command": "type", "args": {"text": "⟨T⟩"}},
+      {"key": "cmd+1  n",         "command": "type", "args": {"text": "⟨N⟩"}},
+
+      {"key": "cmd+2  left    left",      "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+2  left    right",     "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  left    up",        "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  left    down",      "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  right   left",      "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  right   right",     "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+2  right   up",        "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  right   down",      "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  up      left",      "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  up      right",     "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  up      up",        "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+2  up      down",      "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  down    left",      "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  down    right",     "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  down    up",        "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  down    down",      "command": "type", "args": {"text": "↓"}},
+
+      {"key": "cmd+1  cmd+h", "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+1  cmd+l", "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+1  cmd+k", "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+1  cmd+j", "command": "type", "args": {"text": "↓"}},
+      {"key": "cmd+1  cmd+,", "command": "type", "args": {"text": "⟨"}},
+      {"key": "cmd+1  cmd+.", "command": "type", "args": {"text": "⟩"}},
+      {"key": "cmd+1  cmd+t", "command": "type", "args": {"text": "⟨T⟩"}},
+      {"key": "cmd+1  cmd+n", "command": "type", "args": {"text": "⟨N⟩"}},
+
+      {"key": "cmd+2  cmd+h  cmd+h", "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+2  cmd+h  cmd+l", "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  cmd+h  cmd+k", "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  cmd+h  cmd+j", "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  cmd+l  cmd+h", "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  cmd+l  cmd+l", "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+2  cmd+l  cmd+k", "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  cmd+l  cmd+j", "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  cmd+k  cmd+h", "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  cmd+k  cmd+l", "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  cmd+k  cmd+k", "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+2  cmd+k  cmd+j", "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  cmd+j  cmd+h", "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  cmd+j  cmd+l", "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  cmd+j  cmd+k", "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  cmd+j  cmd+j", "command": "type", "args": {"text": "↓"}},
+
+      {"key": "cmd+1  h", "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+1  l", "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+1  k", "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+1  j", "command": "type", "args": {"text": "↓"}},
+      {"key": "cmd+1  ,", "command": "type", "args": {"text": "⟨"}},
+      {"key": "cmd+1  .", "command": "type", "args": {"text": "⟩"}},
+      {"key": "cmd+1  t", "command": "type", "args": {"text": "⟨T⟩"}},
+      {"key": "cmd+1  n", "command": "type", "args": {"text": "⟨N⟩"}},
+
+      {"key": "cmd+2  h  h", "command": "type", "args": {"text": "←"}},
+      {"key": "cmd+2  h  l", "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  h  k", "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  h  j", "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  l  h", "command": "type", "args": {"text": "↔"}},
+      {"key": "cmd+2  l  l", "command": "type", "args": {"text": "→"}},
+      {"key": "cmd+2  l  k", "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  l  j", "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  k  h", "command": "type", "args": {"text": "↖"}},
+      {"key": "cmd+2  k  l", "command": "type", "args": {"text": "↗"}},
+      {"key": "cmd+2  k  k", "command": "type", "args": {"text": "↑"}},
+      {"key": "cmd+2  k  j", "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  j  h", "command": "type", "args": {"text": "↙"}},
+      {"key": "cmd+2  j  l", "command": "type", "args": {"text": "↘"}},
+      {"key": "cmd+2  j  k", "command": "type", "args": {"text": "↕"}},
+      {"key": "cmd+2  j  j", "command": "type", "args": {"text": "↓"}}
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

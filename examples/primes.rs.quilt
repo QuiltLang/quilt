@@ -1,0 +1,54 @@
+#!/usr/bin/env quilt run
+use quilt::prelude::*;
+
+fn sieve(limit: u64) -> Vec<u64> {
+    let mut composite = vec![false; (limit + 1) as usize];
+    let mut primes = Vec::new();
+    for n in 2..=limit {
+        if !composite[n as usize] {
+            primes.push(n);
+            let mut m = n.saturating_mul(n);
+            while m <= limit {
+                composite[m as usize] = true;
+                m += n;
+            }
+        }
+    }
+    primes
+}
+
+fn main() -> Result<()> {
+    let limit: u64 = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
+
+    // Run the Sieve of Eratosthenes at *generation* time.
+    // The generated program has the results baked in as string constants —
+    // no sieve, no arithmetic, no heap allocation at runtime.
+    let primes = sieve(limit);
+    let count = primes.len();
+    let sum: u64 = primes.iter().sum();
+
+    let program = ↖{
+        ↙{
+            let title = format!("Primes up to {limit}: {count} found, sum = {sum}");
+            ↖println!(↙title.↑↘);↗.←;
+            NL.←;
+            for chunk in primes.chunks(10) {
+                let row: String = chunk
+                    .iter()
+                    .map(|p| format!("{p:5}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                ↖println!(↙row.↑↘);↗.←;
+                NL.←;
+            }
+        }↘
+    }↗;
+
+    println!("=== Generated source ===");
+    println!("{}", program.coparse());
+    println!("\n=== Output ===");
+    program.↓
+}

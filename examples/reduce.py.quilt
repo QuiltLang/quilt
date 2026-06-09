@@ -1,0 +1,32 @@
+#!/usr/bin/env quilt run
+from quilt import *
+
+# ↓ (reduce) eval-s a QTerm's source back to a live Python value.
+# Write `expr.↓` to call .reduce() on any QTerm.
+
+print("=== Literal lambda ===")
+double = ↖lambda x: x * 2↗
+print("source :", double.coparse())
+fn = double.↓
+print("fn(5)  =", fn(5))    # 10
+print("fn(21) =", fn(21))   # 42
+
+print("\n=== Lambda composed from quoted sub-expressions ===")
+factor = ↖7↗
+scaled = ↖lambda x: x * ↙factor↘↗
+print("source    :", scaled.coparse())
+times7 = scaled.↓
+print("times7(6) =", times7(6))    # 42
+
+print("\n=== Power lambda with a composed exponent ===")
+n = ↖3↗
+power_of_n = ↖lambda x: x ** ↙n↘↗
+print("source      :", power_of_n.coparse())
+cube = power_of_n.↓
+print("cube(4)     =", cube(4))    # 64
+print("cube(10)    =", cube(10))   # 1000
+
+print("\n=== Generate a family of threshold filters ===")
+for threshold in [↖2↗, ↖5↗, ↖8↗]:
+    above = (↖lambda xs: [x for x in xs if x > ↙threshold↘]↗).↓
+    print(f"  threshold={threshold.coparse()}: {above(list(range(10)))}")

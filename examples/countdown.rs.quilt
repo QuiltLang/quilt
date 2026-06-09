@@ -1,0 +1,32 @@
+#!/usr/bin/env quilt run
+use quilt::prelude::*;
+
+fn main() -> Result<()>{
+    // Countdown start: the first CLI argument, or 10 by default.
+    let n: i32 = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+
+    // Build a block expression that counts down from `n`, then greets the new
+    // year. The splice runs an ordinary loop at *generation* time, emitting one
+    // `println!` statement per number into the quoted block. Each number is
+    // lifted into the printed string literal.
+    //
+    // It's a block (an expression), not a `fn main` (an item), because the
+    // reduce operator below evaluates it as `let output = <program>;` — and an
+    // item can't go in expression position.
+    let program = ↖{
+        ↙{
+            for c in (1..=n).rev() {
+                ↖println!(↙c.to_string().↑↘);↗.←;
+                NL.←;
+            }
+            ↖println!("Happy New Year!");↗.←;
+        }↘
+    }↗;
+
+    // Print the generated source, then run it (the block evaluates to `()`).
+    println!("{}", program.coparse());
+    program.↓
+}

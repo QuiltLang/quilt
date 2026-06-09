@@ -1,0 +1,64 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Quilt",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [{
+				"name": "keyword.special.quilt",
+				"comment": "Special symbols/keywords",
+				"match": "[←↑↓→]|⟨\\w*⟩"
+			}]
+		},
+		"strings": {
+			"patterns": [{
+				"name": "string.quilt",
+				"comment": "Double-quoted string",
+				"begin": "\"",
+				"end": "\"",
+				"patterns": [{
+					"name": "constant.character.escape.quilt",
+					"match": "\\\\."
+				}]
+			}]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.quilt",
+					"comment": "Line comment",
+					"begin": "⟨//⟩",
+					"beginCaptures": {
+						"0": { "name": "punctuation.definition.comment.quilt" }
+					},
+					"end": "\n|$",
+					"patterns": []
+				},
+				{
+					"name": "comment.block.quilt",
+					"comment": "Block comment",
+					"begin": "⟨/\\*⟩",
+					"beginCaptures": {
+						"0": { "name": "punctuation.definition.comment.begin.quilt" }
+					},
+					"end": "⟨\\*/⟩",
+					"endCaptures": {
+						"0": { "name": "punctuation.definition.comment.end.quilt" }
+					},
+					"patterns": []
+				}
+			]
+		}
+	},
+	"scopeName": "source.quilt"
+}

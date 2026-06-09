@@ -1,0 +1,102 @@
+#!/usr/bin/env quilt run
+// Partial evaluation of lam p: lam b: b^p specialized to a given p.
+// The binary squaring loop runs at *generation* time; the emitted closure has
+// no exponent, no loop, no branches — just let-bindings and multiplications.
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    let p: u32 = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+
+    let body = pow_body(p)?;
+    let p_lit = p.qlift();
+
+    // Wrap the specialized body in a test harness that exercises it on a few
+    // base values so we can verify the output immediately.
+    let program = ↖{
+        let f = |b: u64| -> u64 ↙body↘;
+        for b in [2u64, 3, 5, 7, 11] {
+            println!("{}^{} = {}", b, ↙p_lit↘, f(b));
+        }
+    }↗;
+
+    println!("=== Specialized pow(b, {p}) by exponentiation by squaring ===");
+    println!("{}", program.coparse());
+    println!("\n=== Output ===");
+    program.↓
+}
+
+/// Return a block QTerm `{ let t0 = ...; ...; t_n }` that computes `b^p`
+/// using only multiplications.  `b` is a free variable that the caller's
+/// closure binds as its parameter.
+fn pow_body(p: u32) -> Result<Arc<QTerm>> {
+    if p == 0 {
+        return Ok(↖{ 1u64 }↗);
+    }
+    if p == 1 {
+        return Ok(↖{ b }↗);
+    }
+    let (stmts, result) = pow_squaring(p)?;
+    Ok(↖{
+        ↙{
+            for stmt in stmts {
+                stmt.←;
+                NL.←;
+            }
+            result.←;
+        }↘
+    }↗)
+}
+
+/// Run the binary squaring algorithm at generation time.
+///
+/// Returns the sequence of `let` statement QTerms and the final result
+/// expression QTerm.  Together they compute `b^p` using only multiplications.
+///
+/// Algorithm (right-to-left binary method):
+///   acc   = 1 (identity; represented as None until first factor is absorbed)
+///   sq    = b (the running b^(2^k), squaring on each loop step)
+///   while exp > 0:
+///     if exp & 1:  acc *= sq  (emit a new let-binding)
+///     sq  *= sq               (emit a new let-binding; skip on last step)
+///     exp >>= 1
+fn pow_squaring(p: u32) -> Result<(Vec<Arc<QTerm>>, Arc<QTerm>)> {
+    let mut stmts: Vec<Arc<QTerm>> = Vec::new();
+    let mut sq: Arc<QTerm> = ↖b↗;          // current b^(2^k)
+    let mut acc: Option<Arc<QTerm>> = None;  // accumulated product (None = 1)
+    let mut exp = p;
+    let mut n = 0usize; // counter for fresh temporary names t0, t1, ...
+
+    while exp > 0 {
+        // If the current bit is set, fold sq into the accumulator.
+        if exp & 1 == 1 {
+            acc = Some(match acc {
+                None => sq.clone(), // first factor: just record sq, no binding needed
+                Some(prev) => {
+                    let var = name(&format!("t{n}"));
+                    let var_expr = var.clone();
+                    n += 1;
+                    let sq2 = sq.clone();
+                    stmts.push(↖let ↙var↘ = ↙prev↘ * ↙sq2↘;↗);
+                    var_expr
+                }
+            });
+        }
+        exp >>= 1;
+        // Square the base for the next bit — skip on the final iteration.
+        if exp > 0 {
+            let var = name(&format!("t{n}"));
+            let var_expr = var.clone();
+            n += 1;
+            let sq2 = sq.clone();
+            let sq3 = sq.clone();
+            stmts.push(↖let ↙var↘ = ↙sq2↘ * ↙sq3↘;↗);
+            sq = var_expr;
+        }
+    }
+
+    let result = acc.expect("p >= 2 guarantees at least one bit is set");
+    Ok((stmts, result))
+}
