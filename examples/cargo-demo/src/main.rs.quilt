@@ -3,13 +3,13 @@ fn main() {
     println!("{greeting}");
 
     // A quoted Rust expression — highlighted as Rust inside the ↖↗ brackets.
-    let expr = ↖1 + 2 * 3↗;
+    let expr = rs↖1 + 2 * 3↗;
     println!("{}", expr.coparse());
 
     // A *ground* splice inside a quote: `tag` is stage-0 Rust, reabsorbed into
     // the ground projection, so F12 on `tag` (inside the ↙…↘) jumps to `fn tag`
     // below, and hover shows its signature.
-    let spliced = ↖n = ↙tag()↘↗;
+    let spliced = rs↖n = ↙tag()↘↗;
     println!("{}", spliced.coparse());
 }
 

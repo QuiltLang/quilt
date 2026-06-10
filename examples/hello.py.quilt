@@ -3,10 +3,10 @@ from quilt import *
 
 # A quoted Python expression expands to builder code that rebuilds the term;
 # coparse() serializes a term back to source.
-expr = ↖1 + 2↗
+expr = py↖1 + 2↗
 print("expr   =", expr.coparse())
 
 # An unquote splices an existing term into a quote.
-ten = ↖10↗
-scaled = ↖↙ten↘ * 100↗
+ten = py↖10↗
+scaled = py↖↙ten↘ * 100↗
 print("scaled =", scaled.coparse())

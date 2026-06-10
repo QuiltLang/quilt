@@ -16,13 +16,13 @@ fn main() -> Result<()>{
     // It's a block (an expression), not a `fn main` (an item), because the
     // reduce operator below evaluates it as `let output = <program>;` — and an
     // item can't go in expression position.
-    let program = ↖{
+    let program = rs↖{
         ↙{
             for c in (1..=n).rev() {
-                ↖println!(↙c.to_string().↑↘);↗.←;
+                rs↖println!(↙c.to_string().↑↘);↗.←;
                 NL.←;
             }
-            ↖println!("Happy New Year!");↗.←;
+            rs↖println!("Happy New Year!");↗.←;
         }↘
     }↗;
 

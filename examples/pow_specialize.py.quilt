@@ -11,7 +11,7 @@ from quilt import *
 def pow_squaring(p):
     """Return (bindings, result) where bindings is [(var, rhs), ...] QTerm pairs."""
     bindings = []
-    sq  = ↖b↗      # current b^(2^k)
+    sq  = py↖b↗      # current b^(2^k)
     acc = None      # accumulated product (None = identity, not yet started)
     n   = 0
     exp = p
@@ -21,25 +21,25 @@ def pow_squaring(p):
                 acc = sq
             else:
                 var = name(f"t{n}"); n += 1
-                bindings.append((var, ↖↙acc↘ * ↙sq↘↗))
+                bindings.append((var, py↖↙acc↘ * ↙sq↘↗))
                 acc = var
         exp >>= 1
         if exp > 0:
             var = name(f"t{n}"); n += 1
-            bindings.append((var, ↖↙sq↘ * ↙sq↘↗))
+            bindings.append((var, py↖↙sq↘ * ↙sq↘↗))
             sq = var
     return bindings, acc
 
 def make_pow_lambda(p):
     if p == 0:
-        return ↖lambda b: 1↗
+        return py↖lambda b: 1↗
     if p == 1:
-        return ↖lambda b: b↗
+        return py↖lambda b: b↗
     bindings, result = pow_squaring(p)
     # Encode bindings inside-out as nested lambda applications.
     for var, rhs in reversed(bindings):
-        result = ↖(lambda ↙var↘: ↙result↘)(↙rhs↘)↗
-    return ↖lambda b: ↙result↘↗
+        result = py↖(lambda ↙var↘: ↙result↘)(↙rhs↘)↗
+    return py↖lambda b: ↙result↘↗
 
 p = 10
 lam = make_pow_lambda(p)

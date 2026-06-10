@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     // The FizzBuzz decision (branching) runs at *generation* time.
     // The produced program is a flat sequence of straight-line println! calls —
     // no if/match at runtime, no numbers, no modular arithmetic.
-    let program = ↖{
+    let program = rs↖{
         ↙{
             for i in 1..=n {
                 let label = if i % 15 == 0 {
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
                 } else {
                     i.to_string()
                 };
-                ↖println!(↙label.↑↘);↗.←;
+                rs↖println!(↙label.↑↘);↗.←;
                 NL.←;
             }
         }↘
