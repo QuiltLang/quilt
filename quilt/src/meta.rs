@@ -123,7 +123,27 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
         (**self).expand_tuple(lang1, tag, qterms, cmds, arity)
     }
 
+    fn wrap_child(&self, qterm: Arc<QTerm>, okind: OuterKind) -> Result<Arc<QTerm>> {
+        (**self).wrap_child(qterm, okind)
+    }
+
     fn lift_str(&self, target: &str) -> Result<&'static str> {
         (**self).lift_str(target)
+    }
+
+    fn reduce_str(&self) -> &'static str {
+        (**self).reduce_str()
+    }
+
+    fn emit_str(&self) -> &'static str {
+        (**self).emit_str()
+    }
+
+    fn type_str(&self) -> &'static str {
+        (**self).type_str()
+    }
+
+    fn name_str(&self) -> &'static str {
+        (**self).name_str()
     }
 }

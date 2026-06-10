@@ -65,7 +65,9 @@ The `itag` field was stubbed and then commented out. It was meant to carry the e
 
 ---
 
-### 🔲 5. Macro-generate `OmniLanguages` boilerplate
+### ✅ 5. Macro-generate `OmniLanguages` boilerplate
+
+**Done:** `define_omni!` in `langs/omni.rs` generates `OmniLanguages`, `OmniMetaLanguages`, `OmniLanguage`, `OmniLanguagePost`, `OmniMetaLanguage`, both `DynOmni*` structs, and `dict_omni_language()` from a single table. Adding a language is now one line in the `languages` section (plus one in `metas` if it can host).
 
 **File:** `langs/omni.rs`
 
@@ -75,7 +77,9 @@ A declarative macro like `define_omni! { rust => (RustLanguage, RustMetaLanguage
 
 ---
 
-### 🔲 6. Dedup `DictMulti` language alias registration
+### ✅ 6. Dedup `DictMulti` language alias registration
+
+**Done:** `DictLanguages`/`DictMetaLanguages` now carry an alias → canonical-key map; `DictMulti::add_alias` registers an alias in both, and `dict_omni_language()` registers each language once under its canonical name. Also fixed `impl MetaLanguage for Box<dyn MetaLanguage>` to forward `wrap_child`/`reduce_str`/`emit_str`/`type_str`/`name_str`, which previously fell back to trait defaults in `DictMulti`.
 
 **File:** `langs/omni.rs:491-527`
 
