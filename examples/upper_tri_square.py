@@ -21,13 +21,15 @@ def idx(n, i, j):
     return i * n - i * (i - 1) // 2 + (j - i)
 
 
-def join(terms, sep):
-    """Join QTerms into one splice-able fragment: the variadic-emit pattern,
-    one .e() child after another, separated by `sep` text."""
+# Join QTerms into one splice-able fragment: the variadic-emit pattern, one
+# .e() child after another, separated by `sep` text (or newlines by default).
+# Unlike HTML fragments, comma-separated Python can't be folded through a
+# quote of two holes: a bare tuple quote has no single wrapping node.
+def nodes(terms, sep=None):
     b = tb("document")
     for i, t in enumerate(terms):
         if i:
-            b = b.w(sep)
+            b = b.n() if sep is None else b.w(sep)
         b = b.e(t)
     return b.b()
 
@@ -38,6 +40,9 @@ def entry(n, i, j):
     zeros below the diagonal are never touched."""
     total = None
     for k in range(i, j + 1):
+        # qlift turns the computed index into an integer term. (The postfix
+        # lift glyph spells a .qlift() method call, which QTerms have but
+        # plain ints don't — ground Python lifts values with the function.)
         prod = tb("binary_operator").c(tb("subscript").c(leaf("identifier", "a")).c(sym("[")).c(qlift(idx(n, i, k))).c(sym("]")).b()).w(" ").c(sym("*")).w(" ").c(tb("subscript").c(leaf("identifier", "a")).c(sym("[")).c(qlift(idx(n, k, j))).c(sym("]")).b()).b()
         total = prod if total is None else tb("binary_operator").c(total).w(" ").c(sym("+")).w(" ").c(prod).b()
     return total
@@ -46,7 +51,7 @@ def entry(n, i, j):
 def make_squarer(n):
     """Return a QTerm for a lambda that squares a flat upper-triangular
     matrix, one unrolled sum of products per output entry."""
-    entries = join([entry(n, i, j) for i in range(n) for j in range(i, n)], ", ")
+    entries = nodes((entry(n, i, j) for i in range(n) for j in range(i, n)), sep=", ")
     return tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "a")).b()).c(sym(":")).w(" ").c(tb("list").c(sym("[")).c(entries).c(sym("]")).b()).b()
 
 
