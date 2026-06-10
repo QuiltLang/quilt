@@ -26,7 +26,7 @@ if ! command -v rust-analyzer >/dev/null; then
   echo "         (rustup component add rust-analyzer)" >&2
 fi
 if ! command -v rust-script >/dev/null; then
-  echo "warning: rust-script not on PATH — 'quilt run' needs it for .rs.quilt files" >&2
+  echo "warning: rust-script not on PATH — 'quilt' needs it for .rs.quilt files" >&2
   echo "         (cargo install rust-script)" >&2
 fi
 

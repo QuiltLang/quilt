@@ -102,7 +102,7 @@ pub fn project(
     }
 
     let (mut vtext, map) = b.finish();
-    // A shebang (`#!/…`) on the first line is valid for `quilt run` scripts but
+    // A shebang (`#!/…`) on the first line is valid for `quilt` scripts but
     // not for Rust parsers: `#!` starts an inner attribute, and `/usr/bin/…` is
     // not valid attribute syntax. Replace `#!` → `//` (same byte length,
     // preserves all positions) so the downstream server treats it as a comment.
