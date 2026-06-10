@@ -1,3 +1,8 @@
+# Standalone crate: the empty [workspace] table keeps cargo (and rust-analyzer,
+# which the LSP integration tests spawn here) from treating this as a stray
+# member of the enclosing quilt workspace, which would fail to load.
+[workspace]
+
 [package]
 name = "quilt-lsp-demo"
 version = "0.0.0"
