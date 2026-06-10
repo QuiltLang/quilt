@@ -15,15 +15,28 @@ from pathlib import Path
 # a standalone HTML triage report grouped by `priority: *` label. The ground
 # language is Python; un-annotated quotes are HTML (from the .html.py chain).
 #
-# HTML splices must sit in *node position* — right after a tag or whitespace.
-# A text run that starts before a splice swallows it (the grammar's text token
-# is maximal), so `<h1>count: ↙n↘</h1>` won't parse as a hole. (The arrows
-# here are backslash-escaped so this comment is plain content to quilt.)
+# Everything composes as QTerms: quoted HTML fragments splice child terms into
+# holes, and only the finished page is serialized (coparse) once, at the end.
+# Holes work in text, in node position, and in double-quoted attribute values
+# — but in an attribute value a hole must not follow literal text (the value's
+# maximal token swallows the marker), so dynamic attribute values are computed
+# first and spliced whole.
 
 
 # Inject a Python value as raw HTML text (no escaping — escape() values first).
 def raw(s):
     return leaf("raw_text", str(s))
+
+
+# Join QTerms into one splice-able fragment: the variadic-emit pattern, one
+# .e() child after another, separated by `sep` text (or newlines by default).
+def nodes(terms, sep=None):
+    b = tb("document")
+    for i, t in enumerate(terms):
+        if i:
+            b = b.n() if sep is None else b.w(sep)
+        b = b.e(t)
+    return b.b()
 
 
 def gh(*args):
@@ -56,32 +69,33 @@ for issue in issues:
 
 
 def chip(label):
-    """A colored label chip as a plain HTML string (generation-time)."""
+    """A colored label chip as a quoted HTML element."""
     color = label.get("color") or "888888"
-    return (f'<span class="label" style="border-color:#{color};background:#{color}22">'
-            f'{escape(label["name"])}</span>')
+    style = f"border-color:#{color};background:#{color}22"
+    return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "span")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "label")).e(sym("\"")).b()).b()).w(" ").e(tb("attribute").c(leaf("attribute_name", "style")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(raw(style)).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(escape(label["name"]))).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "span")).c(sym(">")).b()).b()
 
 
 def item(issue, tier_key):
-    chips = " ".join(chip(l) for l in issue["labels"] if l["name"] != tier_key)
-    return (f'\n        <li><a href="{escape(issue["url"], quote=True)}">'
-            f'#{issue["number"]}</a> {escape(issue["title"])} {chips}</li>')
+    chips = nodes((chip(l) for l in issue["labels"] if l["name"] != tier_key), sep=" ")
+    url = escape(issue["url"], quote=True)
+    return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "li")).e(sym(">")).b()).e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "a")).w(" ").e(tb("attribute").c(leaf("attribute_name", "href")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(raw(url)).e(sym("\"")).b()).b()).e(sym(">")).b()).e(leaf("text", "#")).e(raw(issue["number"])).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "a")).c(sym(">")).b()).b()).w(" ").e(raw(escape(issue["title"]))).w(" ").e(chips).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "li")).c(sym(">")).b()).b()
 
 
 def section(tier_key, heading):
-    """Render one priority tier by splicing into a quoted HTML fragment."""
+    """Render one priority tier by splicing items into a quoted HTML fragment."""
     tier = buckets[tier_key]
     if not tier:
-        return ""
-    items = "".join(item(issue, tier_key) for issue in tier)
-    frag = tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "section")).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "h2")).e(sym(">")).b()).e(raw(escape(heading))).w(" ").e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "span")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "count")).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(len(tier))).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "span")).c(sym(">")).b()).b()).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "p")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "desc")).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(escape(descs[tier_key]))).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "p")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "ul")).e(sym(">")).b()).e(raw(items)).n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "ul")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "section")).c(sym(">")).b()).b()
-    return frag.coparse()
+        return None
+    items = nodes(item(issue, tier_key) for issue in tier)
+    return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "section")).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "h2")).e(sym(">")).b()).e(raw(escape(heading))).w(" ").e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "span")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "count")).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(len(tier))).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "span")).c(sym(">")).b()).b()).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "p")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "desc")).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(escape(descs[tier_key]))).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "p")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "ul")).e(sym(">")).b()).p("  ").n().e(items).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "ul")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "section")).c(sym(">")).b()).b()
 
 
-sections = "".join(section(key, heading) for key, heading in TIERS)
+sections = nodes(
+    s for s in (section(key, heading) for key, heading in TIERS) if s is not None
+)
 stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-page = tb("document").w("  ").e(tb("doctype").c(sym("<!")).c(leaf("doctype", "DOCTYPE")).w(" html").c(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "html")).w(" ").e(tb("attribute").c(leaf("attribute_name", "lang")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "en")).e(sym("\"")).b()).b()).e(sym(">")).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "head")).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "meta")).w(" ").e(tb("attribute").c(leaf("attribute_name", "charset")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "utf-8")).e(sym("\"")).b()).b()).e(sym(">")).b()).n().b()).e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "title")).e(sym(">")).b()).e(raw(escape(repo))).w(" ").e(leaf("text", "— open issues by priority")).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "title")).c(sym(">")).b()).b()).n().e(tb("style_element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "style")).e(sym(">")).b()).e(tb("raw_text").n().w("  body  { font-family: sans-serif; padding: 1rem; max-width: 720px; margin: auto; }").n().w("  h1    { font-size: 1.3rem; }").n().w("  h2    { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; }").n().w("  ul    { list-style: none; padding-left: 0; }").n().w("  li    { padding: 5px 0; }").n().w("  a     { color: #0969da; text-decoration: none; }").n().w("  .count { color: #666; font-weight: normal; font-size: 0.9rem; }").n().w("  .desc  { color: #666; font-size: 0.85rem; margin-top: -6px; }").n().w("  .label { border: 1px solid; border-radius: 9px; padding: 1px 7px; font-size: 0.75rem; }").n().w("  footer { color: #888; font-size: 0.8rem; margin-top: 2rem; }").n().b()).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "style")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "head")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "body")).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "h1")).e(sym(">")).b()).e(raw(escape(repo))).w(" ").e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "span")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "count")).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(len(issues))).w(" ").e(leaf("text", "open issues")).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "span")).c(sym(">")).b()).b()).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h1")).c(sym(">")).b()).b()).n().e(raw(sections)).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "footer")).e(sym(">")).b()).e(raw(stamp)).w(" ").e(leaf("text", "— generated by issue_triage.html.py.quilt")).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "footer")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "body")).c(sym(">")).b()).b()).n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "html")).c(sym(">")).b()).b()).x().b()
+page = tb("document").w("  ").e(tb("doctype").c(sym("<!")).c(leaf("doctype", "DOCTYPE")).w(" html").c(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "html")).w(" ").e(tb("attribute").c(leaf("attribute_name", "lang")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "en")).e(sym("\"")).b()).b()).e(sym(">")).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "head")).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "meta")).w(" ").e(tb("attribute").c(leaf("attribute_name", "charset")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "utf-8")).e(sym("\"")).b()).b()).e(sym(">")).b()).n().b()).e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "title")).e(sym(">")).b()).e(raw(escape(repo))).w(" ").e(leaf("text", "— open issues by priority")).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "title")).c(sym(">")).b()).b()).n().e(tb("style_element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "style")).e(sym(">")).b()).e(tb("raw_text").n().w("  body  { font-family: sans-serif; padding: 1rem; max-width: 720px; margin: auto; }").n().w("  h1    { font-size: 1.3rem; }").n().w("  h2    { font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; }").n().w("  ul    { list-style: none; padding-left: 0; }").n().w("  li    { padding: 5px 0; }").n().w("  a     { color: #0969da; text-decoration: none; }").n().w("  .count { color: #666; font-weight: normal; font-size: 0.9rem; }").n().w("  .desc  { color: #666; font-size: 0.85rem; margin-top: -6px; }").n().w("  .label { border: 1px solid; border-radius: 9px; padding: 1px 7px; font-size: 0.75rem; }").n().w("  footer { color: #888; font-size: 0.8rem; margin-top: 2rem; }").n().b()).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "style")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "head")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "body")).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "h1")).e(sym(">")).b()).e(raw(escape(repo))).w(" ").e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "span")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "count")).e(sym("\"")).b()).b()).e(sym(">")).b()).e(raw(len(issues))).w(" ").e(leaf("text", "open issues")).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "span")).c(sym(">")).b()).b()).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h1")).c(sym(">")).b()).b()).n().e(sections).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "footer")).e(sym(">")).b()).e(raw(stamp)).w(" ").e(leaf("text", "— generated by issue_triage.html.py.quilt")).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "footer")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "body")).c(sym(">")).b()).b()).n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "html")).c(sym(">")).b()).b()).x().b()
 
 out = Path(tempfile.gettempdir()) / "issue_triage.html"
 out.write_text(page.coparse(), encoding="utf-8")
