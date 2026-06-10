@@ -71,7 +71,9 @@ term.qlift()        # lift to builder code (like Rust's QLift trait)
 ### Other functions
 
 ```python
-name("ident")   # identifier node (⟨N⟩ operator)
+name("ident")       # identifier node (⟨N⟩ operator)
+qlift(value)        # lift int/str/QTerm to a Python term (↑ into a py quote)
+qlift_html(value)   # lift int/str/QTerm to HTML text, entity-escaped (↑ into an html quote)
 ```
 
 ## How expanded `.py.quilt` code looks

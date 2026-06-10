@@ -50,10 +50,16 @@ impl MetaLanguage for PythonMetaLanguage {
         })
     }
 
-    // No heterogeneous lifting from Python yet: `target` is ignored and `↑`
-    // always lifts into Python.
-    fn lift_str(&self, _target: &str) -> Result<&'static str> {
-        Ok("qlift()")
+    // `↑` is target-directed: into Python it spells the postfix `.qlift()`
+    // method on a term; into HTML it spells the prefix `qlift_html` function
+    // (written `↑(value)`), which entity-escapes lifted strings at runtime.
+    // Both live in the `quilt_python` runtime.
+    fn lift_str(&self, target: &str) -> Result<&'static str> {
+        match target {
+            "python" | "py" => Ok("qlift()"),
+            "html" => Ok("qlift_html"),
+            _ => miette::bail!("python can't lift into {target:?}: no spelling registered"),
+        }
     }
 
     fn reduce_str(&self) -> &'static str {
