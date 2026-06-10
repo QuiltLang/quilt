@@ -24,15 +24,14 @@ from pathlib import Path
 # first and spliced whole.
 
 
-# Join QTerms into one splice-able fragment: the variadic-emit pattern, one
-# .e() child after another, separated by `sep` text (or newlines by default).
-def nodes(terms, sep=None):
-    b = tb("document")
-    for i, t in enumerate(terms):
-        if i:
-            b = b.n() if sep is None else b.w(sep)
-        b = b.e(t)
-    return b.b()
+# Join QTerms into one splice-able fragment by folding them through a quote
+# of two holes on separate lines, one term per line (between inline elements
+# like the label chips, the newline renders as a space).
+def nodes(terms):
+    out = None
+    for t in terms:
+        out = t if out is None else tb("document").e(out).n().e(t).b()
+    return out if out is not None else tb("document").b()
 
 
 def gh(*args):
@@ -72,7 +71,7 @@ def chip(label):
 
 
 def item(issue, tier_key):
-    chips = nodes((chip(l) for l in issue["labels"] if l["name"] != tier_key), sep=" ")
+    chips = nodes(chip(l) for l in issue["labels"] if l["name"] != tier_key)
     return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "li")).e(sym(">")).b()).e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "a")).w(" ").e(tb("attribute").c(leaf("attribute_name", "href")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(qlift_html(issue["url"])).e(sym("\"")).b()).b()).e(sym(">")).b()).e(leaf("text", "#")).e(qlift_html(issue["number"])).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "a")).c(sym(">")).b()).b()).w(" ").e(qlift_html(issue["title"])).w(" ").e(chips).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "li")).c(sym(">")).b()).b()
 
 
