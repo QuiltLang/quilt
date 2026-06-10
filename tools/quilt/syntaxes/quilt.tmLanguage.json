@@ -3,21 +3,196 @@
 	"name": "Quilt",
 	"patterns": [
 		{
+			"include": "#quotes"
+		},
+		{
+			"include": "#unquote"
+		},
+		{
+			"include": "#comments"
+		},
+		{
 			"include": "#keywords"
 		},
 		{
 			"include": "#strings"
-		},
-		{
-			"include": "#comments"
 		}
 	],
 	"repository": {
+		"quotes": {
+			"comment": "Annotated quotes first: at a `lang↖` the annotated rule matches earlier in the line than the bare `↖` rule, so it wins.",
+			"patterns": [
+				{ "include": "#quote-rust" },
+				{ "include": "#quote-python" },
+				{ "include": "#quote-wgsl" },
+				{ "include": "#quote-html" },
+				{ "include": "#quote-shell" },
+				{ "include": "#quote-annotated" },
+				{ "include": "#quote-plain" }
+			]
+		},
+		"quote-rust": {
+			"name": "meta.quote.rust.quilt",
+			"begin": "\\b(rust|rs)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"contentName": "meta.embedded.block.rust",
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "source.rust" }
+			]
+		},
+		"quote-python": {
+			"name": "meta.quote.python.quilt",
+			"begin": "\\b(python|py)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"contentName": "meta.embedded.block.python",
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "source.python" }
+			]
+		},
+		"quote-wgsl": {
+			"name": "meta.quote.wgsl.quilt",
+			"begin": "\\b(wgsl)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"contentName": "meta.embedded.block.wgsl",
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "source.wgsl" }
+			]
+		},
+		"quote-html": {
+			"name": "meta.quote.html.quilt",
+			"begin": "\\b(html)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"contentName": "meta.embedded.block.html",
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "text.html.basic" }
+			]
+		},
+		"quote-shell": {
+			"name": "meta.quote.shellscript.quilt",
+			"begin": "\\b(bash|zsh|sh)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"contentName": "meta.embedded.block.shellscript",
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "source.shell" }
+			]
+		},
+		"quote-annotated": {
+			"comment": "Quote with an annotation we have no grammar for (e.g. text↖…↗).",
+			"name": "meta.quote.quilt",
+			"begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "#strings" }
+			]
+		},
+		"quote-plain": {
+			"comment": "Un-annotated quote: language depends on the filename chain, which a TextMate grammar can't see. The downstream server's semantic tokens cover ground-language quotes.",
+			"name": "meta.quote.quilt",
+			"begin": "↖",
+			"end": "↗",
+			"beginCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "#strings" }
+			]
+		},
+		"unquote": {
+			"comment": "Unquote splice back to the (unknown) outer language; semantic tokens cover its ground content.",
+			"name": "meta.unquote.quilt",
+			"begin": "↙",
+			"end": "↘",
+			"beginCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.unquote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.unquote.end.quilt" }
+			},
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "#strings" }
+			]
+		},
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.special.quilt",
-				"comment": "Special symbols/keywords",
-				"match": "[←↑↓→]|⟨\\w*⟩"
+				"comment": "Operator glyphs (lift/reduce/emit, stray brackets mid-edit) and ⟨T⟩/⟨N⟩ placeholders",
+				"match": "[←→↑↓↔↕↖↗↙↘]|⟨\\w*⟩"
 			}]
 		},
 		"strings": {
