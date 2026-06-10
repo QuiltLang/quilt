@@ -20,12 +20,12 @@ def pow_squaring(p):
             if acc is None:
                 acc = sq
             else:
-                var = name(f"t{n}"); n += 1
+                var = ⟨N⟩(f"t{n}"); n += 1
                 bindings.append((var, py↖↙acc↘ * ↙sq↘↗))
                 acc = var
         exp >>= 1
         if exp > 0:
-            var = name(f"t{n}"); n += 1
+            var = ⟨N⟩(f"t{n}"); n += 1
             bindings.append((var, py↖↙sq↘ * ↙sq↘↗))
             sq = var
     return bindings, acc

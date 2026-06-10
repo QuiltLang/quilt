@@ -75,7 +75,7 @@ fn pow_squaring(p: u32) -> Result<(Vec<Arc<QTerm>>, Arc<QTerm>)> {
             acc = Some(match acc {
                 None => sq.clone(), // first factor: just record sq, no binding needed
                 Some(prev) => {
-                    let var = name(&format!("t{n}"));
+                    let var = ⟨N⟩(&format!("t{n}"));
                     let var_expr = var.clone();
                     n += 1;
                     let sq2 = sq.clone();
@@ -87,7 +87,7 @@ fn pow_squaring(p: u32) -> Result<(Vec<Arc<QTerm>>, Arc<QTerm>)> {
         exp >>= 1;
         // Square the base for the next bit — skip on the final iteration.
         if exp > 0 {
-            let var = name(&format!("t{n}"));
+            let var = ⟨N⟩(&format!("t{n}"));
             let var_expr = var.clone();
             n += 1;
             let sq2 = sq.clone();
