@@ -2,7 +2,7 @@
 
 **Crate:** `quilt-lsp/`
 
-`quilt-lsp` is a multiplexing Language Server for `.quilt` files. It sits between the editor and the language-specific downstream servers (currently `rust-analyzer`), handling:
+`quilt-lsp` is a multiplexing Language Server for `.quilt` files. It sits between the editor and the language-specific downstream servers (`rust-analyzer` for Rust, pyright for Python, wgsl-analyzer for WGSL), handling:
 
 1. Quilt-level syntax diagnostics (bracket errors, structure problems).
 2. Ground-language features (hover, go-to-definition, completion, diagnostics) by projecting the `.quilt` file into a virtual plain-language document and proxying to the downstream server.
@@ -68,6 +68,13 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
 - **Rust ground language** via rust-analyzer:
   - Hover, go-to-definition, completion, diagnostics.
   - Positions mapped between `.quilt` and the projected `.rs`.
+- **Python ground language** via pyright (`pyright-langserver --stdio` by
+  default; override with `QUILT_LSP_PYTHON_SERVER`):
+  - Hover, go-to-definition, completion for `.py.quilt` files.
+  - Downstream diagnostics are suppressed: the projection replaces each quote
+    with a `()` placeholder expression, which mistypes any ground line that
+    consumes a quoted value, so pyright's errors would be spurious
+    (`PythonAdapter::publishes_diagnostics` is `false`).
 - **Semantic tokens** — including inside `↖…↗` quotes. Embedded-language
   quotes (e.g. `wgsl↖…↗`) are highlighted by the server itself with tree-sitter
   highlight queries (`tshl.rs`), since their downstream servers may provide no
@@ -113,7 +120,7 @@ Constraints learned while building the token pipeline (June 2026):
 
 - Hover/definition for ground code spliced into quotes via `↙…↘`.
 - `↙name↘` → go-to-definition in the ground language.
-- Downstream servers for Python and WGSL (adapter extension points exist).
+- Python ground diagnostics (needs a type-aware quote placeholder; see above).
 
 ## Configuration
 
@@ -122,6 +129,8 @@ Constraints learned while building the token pipeline (June 2026):
 | Variable                  | Description                                                                                             |
 |---------------------------|---------------------------------------------------------------------------------------------------------|
 | `QUILT_LSP_RUST_ANALYZER` | Override the downstream Rust server command (whitespace-separated). Default: `rust-analyzer` on `PATH`. |
+| `QUILT_LSP_PYTHON_SERVER` | Override the downstream Python server command. Default: `pyright-langserver --stdio` on `PATH`.         |
+| `QUILT_LSP_WGSL_SERVER`   | Override the downstream WGSL server command. Default: `wgsl-analyzer` on `PATH`.                        |
 | `RUST_LOG`                | `tracing` log filter; logs go to stderr.                                                                |
 
 ### VS Code settings
@@ -151,6 +160,7 @@ python3 quilt-lsp/tests/integration_ra.py   target/debug/quilt-lsp
 # Integration tests for specific features:
 python3 quilt-lsp/tests/integration_gotodef.py target/debug/quilt-lsp
 python3 quilt-lsp/tests/integration_semtok.py  target/debug/quilt-lsp
+python3 quilt-lsp/tests/integration_python.py  target/debug/quilt-lsp  # .py.quilt ground (mock + pyright)
 ```
 
 ## Installing
