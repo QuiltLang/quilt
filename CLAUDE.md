@@ -19,10 +19,12 @@ quilt expand path/to/file.rs.quilt
 quilt expand path/to/file.py.quilt
 quilt expand path/to/shaders.wgsl.rs.quilt   # language chain, see below
 
-# Run a .quilt file directly (also usable as a shebang: #!/usr/bin/env quilt run).
+# Run a .quilt file directly. `run` is the default subcommand, so it can be
+# omitted (which is what makes the `#!/usr/bin/env quilt` shebang work).
 # Defaults to the Omni (production) multi; pass `-m bootstrap` for the bootstrap one.
 quilt run path/to/script.rs.quilt   # rust-script runner
 quilt run path/to/script.py.quilt   # python3 runner (needs `bin/build-py` first)
+quilt path/to/script.rs.quilt       # same as `quilt run ...`
 
 # Build the quilt_python PyO3 module (the runtime .py.quilt files target).
 # Required once before running .py.quilt files; rebuild after editing the bindings.

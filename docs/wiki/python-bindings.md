@@ -95,7 +95,7 @@ And an unquote `↙x↘` becomes a `.c(x)` splice at the corresponding hole posi
 ## Example: `hello.py.quilt`
 
 ```python
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 from quilt import *
 
 expr = ↖1 + 2↗

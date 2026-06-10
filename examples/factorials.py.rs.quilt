@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 use quilt::prelude::*;
 
 // Rust generating Python. The .py.rs chain (extensions read right-to-left)

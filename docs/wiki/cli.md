@@ -4,7 +4,7 @@
 
 **File:** `quilt/src/bin.rs`
 
-The `quilt` binary has two subcommands.
+The `quilt` binary has two subcommands; `run` is the default, so `quilt <file> [args…]` is shorthand for `quilt run <file> [args…]`.
 
 ### `quilt expand <file.rs.quilt>`
 
@@ -36,8 +36,10 @@ Trailing arguments after the filename are forwarded to the script.
 
 For Rust scripts, `quilt run` injects a `//! [dependencies]` cargo manifest block in the generated file pointing at the local quilt crate with the correct feature set.
 
+Since `run` is the default subcommand, the `run` keyword can be omitted:
+
 ```sh
-quilt run examples/hello.rs.quilt World
+quilt examples/hello.rs.quilt World        # same as `quilt run examples/hello.rs.quilt World`
 quilt run examples/hello.py.quilt
 quilt run examples/countdown.rs.quilt 5
 ```
@@ -47,10 +49,10 @@ quilt run examples/countdown.rs.quilt 5
 `.quilt` files can be used directly as executables with:
 
 ```sh
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 ```
 
-as their first line. `quilt run` strips the shebang before expansion so the language parser doesn't see `#!`.
+as their first line (`#!/usr/bin/env quilt run` also works, but the bare form is portable: Linux passes everything after the interpreter as a single argument, so `env` would look for a program literally named `quilt run`). `quilt run` strips the shebang before expansion so the language parser doesn't see `#!`.
 
 ---
 

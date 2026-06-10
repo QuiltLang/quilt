@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 //! Generate a zsh backup script from a declarative job table.
 //!
 //! Zsh is a *target* language in Quilt: it only appears inside zsh quote

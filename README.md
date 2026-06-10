@@ -9,7 +9,7 @@ Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file i
 A Rust program that generates Python. `python↖…↗` quotes Python source and `↙…↘` splices Rust back in; inside a splice, a postfix `↑` lifts a Rust value into a term of the quoted language. The squares are computed at generation time, in Rust; the emitted Python contains only the results:
 
 ```rust
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 use quilt::prelude::*;
 
 fn main() -> Result<()> {

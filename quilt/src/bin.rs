@@ -16,9 +16,15 @@ use std::fs;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
+#[command(args_conflicts_with_subcommands = true)]
+#[command(arg_required_else_help = true)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
+    /// `run` is the default subcommand, so a `#!/usr/bin/env quilt` shebang
+    /// (which invokes `quilt <script> <args>...`) runs the script.
+    #[command(flatten)]
+    run: Option<RunArgs>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -70,9 +76,14 @@ fn main() -> Result<()> {
 
     let args = Cli::parse();
 
-    match &args.command {
-        Commands::Expand(args) => expand(args),
-        Commands::Run(args) => run(args),
+    match (&args.command, &args.run) {
+        (Some(Commands::Expand(args)), _) => expand(args),
+        (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
+        (None, None) => {
+            use clap::CommandFactory;
+            Cli::command().print_help().into_diagnostic()?;
+            std::process::exit(2);
+        }
     }
 }
 
