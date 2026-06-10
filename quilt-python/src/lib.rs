@@ -43,9 +43,12 @@ impl PyQTerm {
     /// Eval this term's source and return the resulting Python value (the `↓` operator).
     fn reduce<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let code = self.0.coparse();
-        py.eval(&std::ffi::CString::new(code).map_err(|e| {
-            pyo3::exceptions::PyValueError::new_err(e.to_string())
-        })?, None, None)
+        py.eval(
+            &std::ffi::CString::new(code)
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
+            None,
+            None,
+        )
     }
 }
 

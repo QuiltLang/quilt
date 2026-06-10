@@ -15,6 +15,8 @@ tracing = {workspace = true}
 tracing-subscriber = {workspace = true, features = ["env-filter"]}
 tree-sitter = {workspace = true}
 tree-sitter-quilt = {workspace = true}
+tree-sitter-wgsl = {workspace = true, optional = true}
+streaming-iterator = {workspace = true}
 
 [dev-dependencies]
 tempfile.workspace = true
@@ -25,7 +27,7 @@ tempfile.workspace = true
 default = ["rust", "python", "wgsl"]
 rust = []
 python = []
-wgsl = []
+wgsl = ["dep:tree-sitter-wgsl"]
 
 [lints]
 workspace = true

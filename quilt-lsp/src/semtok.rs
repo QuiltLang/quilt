@@ -4,32 +4,35 @@
 //! `[Δline, Δstart, length, type, modifiers]`, each relative to the previous
 //! token. We decode to absolute virtual positions, map each token's span back
 //! to quilt coordinates (dropping any that land in synthetic / masked text, or
-//! that would straddle a quilt line), sort, and re-encode. Token `type` and
-//! `modifiers` pass through unchanged because we advertise the downstream
-//! server's own legend.
+//! that would straddle a quilt line), and re-encode. Downstream token `type` /
+//! `modifiers` indices pass through unchanged because the legend we advertise
+//! starts with the downstream server's own legend (extended with appended
+//! types, never reordered — see `register_semantic_tokens`). Tokens from other
+//! sources (the tree-sitter fragment highlighter, [`crate::tshl`]) are merged
+//! in as [`Tok`]s before encoding.
 
 use crate::lineindex::{Encoding, LineIndex};
 use crate::projection::Projection;
 use tower_lsp::lsp_types::Position;
 
 /// One absolute token in quilt coordinates.
-struct Tok {
-    line: u32,
-    start: u32,
-    length: u32,
-    ty: u32,
-    modifiers: u32,
+pub struct Tok {
+    pub line: u32,
+    pub start: u32,
+    pub length: u32,
+    pub ty: u32,
+    pub modifiers: u32,
 }
 
-/// Remap a downstream `data` array (virtual coords) to a quilt-coords `data`
-/// array.
+/// Remap a downstream `data` array (virtual coords) to absolute quilt-coords
+/// tokens. Callers merge in tokens from other sources, then [`encode`].
 pub fn remap(
     data: &[u32],
     proj: &Projection,
     quilt_text: &str,
     quilt_index: &LineIndex,
     enc: Encoding,
-) -> Vec<u32> {
+) -> Vec<Tok> {
     let mut toks = Vec::new();
     let (mut line, mut ch) = (0u32, 0u32);
 
@@ -82,8 +85,13 @@ pub fn remap(
             modifiers,
         });
     }
+    toks
+}
 
-    // Remapped tokens (ground + interleaved fragments) may be out of order.
+/// Sort absolute tokens and delta-encode them into an LSP `data` array.
+/// Tokens from different sources (ground remap, interleaved fragments) arrive
+/// out of order.
+pub fn encode(mut toks: Vec<Tok>) -> Vec<u32> {
     toks.sort_by_key(|t| (t.line, t.start));
 
     let mut out = Vec::with_capacity(toks.len() * 5);
@@ -140,7 +148,7 @@ mod tests {
         let qi = LineIndex::new(src);
         // token: line 0, char 3, len 4 ("main")
         let data = vec![0, 3, 4, 7, 0];
-        let out = remap(&data, &p, src, &qi, Encoding::Utf16);
+        let out = encode(remap(&data, &p, src, &qi, Encoding::Utf16));
         assert_eq!(decode(&out), vec![(0, 3, 4)]);
     }
 
@@ -157,7 +165,7 @@ mod tests {
         let one = p.text.find("1 + 2").expect("fragment body present");
         let vpos = p.line_index.position(&p.text, one, Encoding::Utf16);
         let data = vec![vpos.line, vpos.character, 1, 5, 0];
-        let out = remap(&data, &p, src, &qi, Encoding::Utf16);
+        let out = encode(remap(&data, &p, src, &qi, Encoding::Utf16));
         let toks = decode(&out);
         assert_eq!(toks.len(), 1);
         // The `1` is on quilt line 0 at the char just after `↖` (col 9).
@@ -171,10 +179,33 @@ mod tests {
         let qi = LineIndex::new(src);
         // A token over the `()` placeholder (synthetic) at line 0 char 8.
         let data = vec![0, 8, 2, 0, 0];
-        let out = remap(&data, &p, src, &qi, Encoding::Utf16);
+        let out = encode(remap(&data, &p, src, &qi, Encoding::Utf16));
         assert!(
             out.is_empty(),
             "synthetic placeholder token should be dropped"
         );
+    }
+
+    #[test]
+    fn encode_orders_mixed_sources() {
+        // Tokens merged from two sources arrive out of order; encode sorts.
+        let toks = vec![
+            Tok {
+                line: 2,
+                start: 4,
+                length: 3,
+                ty: 1,
+                modifiers: 0,
+            },
+            Tok {
+                line: 0,
+                start: 1,
+                length: 2,
+                ty: 0,
+                modifiers: 0,
+            },
+        ];
+        let out = encode(toks);
+        assert_eq!(decode(&out), vec![(0, 1, 2), (2, 4, 3)]);
     }
 }

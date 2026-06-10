@@ -1003,6 +1003,7 @@ dependencies = [
  "dashmap 6.2.1",
  "serde",
  "serde_json",
+ "streaming-iterator",
  "tempfile",
  "tokio",
  "tower-lsp",
@@ -1010,6 +1011,7 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "tree-sitter-quilt",
+ "tree-sitter-wgsl",
 ]
 
 [[package]]
