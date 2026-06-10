@@ -14,6 +14,7 @@ from quilt import (
     write,
     name,
     qlift,
+    qlift_html,
     HOLE,
 )
 
@@ -53,6 +54,15 @@ def test_qlift():
     # qlift is idempotent on terms
     t = leaf("integer", "7")
     assert qlift(t).coparse() == "7"
+
+
+def test_qlift_html():
+    assert qlift_html(42).coparse() == "42"
+    # strings are entity-escaped, so they are inert as text or attribute value
+    assert qlift_html('a "<b>" & c').coparse() == "a &quot;&lt;b&gt;&quot; &amp; c"
+    # qlift_html is idempotent on terms
+    t = leaf("text", "x")
+    assert qlift_html(t).coparse() == "x"
 
 
 def test_str_and_repr():

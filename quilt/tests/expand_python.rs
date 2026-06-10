@@ -67,3 +67,16 @@ fn unquote() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn heterogeneous_lift_into_html() -> Result<()> {
+    // A `↑` inside an unquote in an `html↖…↗` quote lifts *into HTML*: it
+    // expands to the runtime's `qlift_html` (which entity-escapes strings),
+    // not the homogeneous `.qlift()`.
+    let out = expand_py("t = html↖<p>↙↑(title)↘</p>↗")?;
+    assert!(
+        out.contains("qlift_html(title)"),
+        "lift into an html quote should spell qlift_html; got:\n{out}"
+    );
+    Ok(())
+}

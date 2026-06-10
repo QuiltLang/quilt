@@ -212,6 +212,42 @@ fn qlift(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
     ))
 }
 
+/// Lift a Python value to an HTML term (the `↑` operator with an `html`
+/// splice target). Strings become entity-escaped `text` leaves — inert as
+/// text content or as a double-quoted attribute value — and terms pass
+/// through unchanged, so already-built fragments can be lifted too.
+#[pyfunction]
+fn qlift_html(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
+    if let Ok(q) = value.extract::<PyQTerm>() {
+        return Ok(q);
+    }
+    if let Ok(n) = value.extract::<i64>() {
+        return Ok(PyQTerm(mk_leaf("text", &n.to_string())));
+    }
+    if let Ok(s) = value.extract::<String>() {
+        return Ok(PyQTerm(mk_leaf("text", &escape_html(&s))));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "qlift_html: unsupported type (expected int, str, or QTerm)",
+    ))
+}
+
+/// Escape `& < > " '` so the result is inert HTML wherever a hole can sit.
+fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /**************************************************************/
 
 /// quilt's core IR, exposed to Python as the native `quilt._quilt` module
@@ -233,6 +269,7 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(push, m)?)?;
     m.add_function(wrap_pyfunction!(name, m)?)?;
     m.add_function(wrap_pyfunction!(qlift, m)?)?;
+    m.add_function(wrap_pyfunction!(qlift_html, m)?)?;
 
     m.add("NL", PyStrCmd(StrCmd::NewLine))?;
     m.add("POP", PyStrCmd(StrCmd::Pop))?;
