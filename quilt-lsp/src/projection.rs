@@ -790,7 +790,7 @@ mod tests {
     fn python_shebang_is_not_rewritten() {
         let meta = meta_adapter("py").unwrap();
         let lang = language_adapter("py").unwrap();
-        let src = "#!/usr/bin/env quilt run\nx = ↖1↗\n";
+        let src = "#!/usr/bin/env quilt\nx = ↖1↗\n";
         let p = project(src, meta, lang, &["py"]);
         // `#!` is already a comment in Python — it must stay, not become `//`.
         assert!(
@@ -802,10 +802,10 @@ mod tests {
 
     #[test]
     fn shebang_becomes_comment() {
-        // `#!/usr/bin/env quilt run` is valid for `quilt run` scripts but
+        // `#!/usr/bin/env quilt` is valid for `quilt` scripts but
         // a parse error in Rust (inner attribute syntax). It must become `//`
         // preserving all byte positions.
-        let src = "#!/usr/bin/env quilt run\nfn main() {}\n";
+        let src = "#!/usr/bin/env quilt\nfn main() {}\n";
         let p = proj(src);
         assert!(p.text.starts_with("//"), "shebang → comment: {:?}", p.text);
         assert_eq!(&p.text[..2], "//", "first two bytes are //");

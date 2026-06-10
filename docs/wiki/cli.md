@@ -52,7 +52,7 @@ quilt run examples/countdown.rs.quilt 5
 #!/usr/bin/env quilt
 ```
 
-as their first line (`#!/usr/bin/env quilt run` also works, but the bare form is portable: Linux passes everything after the interpreter as a single argument, so `env` would look for a program literally named `quilt run`). `quilt run` strips the shebang before expansion so the language parser doesn't see `#!`.
+as their first line (`#!/usr/bin/env quilt` also works, but the bare form is portable: Linux passes everything after the interpreter as a single argument, so `env` would look for a program literally named `quilt run`). `quilt run` strips the shebang before expansion so the language parser doesn't see `#!`.
 
 ---
 
