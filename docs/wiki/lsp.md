@@ -75,6 +75,40 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
   advertised with the tree-sitter token types appended.
 - **Folding** — quilt regions + ground server folds.
 
+### Design notes — semantic tokens
+
+Constraints learned while building the token pipeline (June 2026):
+
+- **Positional and whole-document features degrade differently.** Hover and
+  go-to-definition route one cursor position to the right server (ground
+  projection, or a per-fragment `FragmentDoc` for embedded languages), so they
+  work for embedded quotes "for free". Semantic tokens are whole-document:
+  every contributing source must merge into one stream under one legend.
+- **wgsl-analyzer provides no semantic tokens at all** (`semanticTokensProvider`
+  is `None` upstream — wgsl-analyzer/wgsl-analyzer#342; its own VS Code
+  extension highlights via a static TextMate grammar). Embedded-fragment
+  tokens therefore come from in-process tree-sitter highlighting (`tshl.rs`),
+  which also works when no WGSL server is installed.
+- **Legends merge by appending.** The editor accepts one legend per
+  registration. Advertising the downstream server's legend with our
+  tree-sitter token-type names appended — never reordered — lets downstream
+  `data` arrays pass through untouched while fragment tokens resolve by name
+  (`ts_token_index`, set together with the registered legend).
+- **Highlight-query conventions vary.** The grammar forks' `highlights.scm`
+  are nvim-flavored (`@conditional`, `@storageclass`, a catch-all
+  `(identifier) @variable` after the specific patterns). `tshl.rs` resolves
+  same-range captures to the *earliest* pattern and nested ranges to the
+  *narrowest* span, so emitted tokens never overlap. The WGSL query is
+  vendored under `quilt-lsp/queries/` because the fork's Rust binding exposes
+  no `HIGHLIGHTS_QUERY` const.
+- **Downstream capability gaps are harmless for rust-analyzer.** quilt-lsp
+  advertises no `semanticTokens` client capability to children; rust-analyzer
+  returns identical tokens and legend either way (verified empirically).
+- **TextMate stays as the base layer.** The VS Code extension injects
+  `source.wgsl` / `source.rust` / … into annotated quotes; semantic tokens
+  override where they exist, and the static grammar fills the gaps (including
+  the warm-up window before a downstream server first responds).
+
 ## Not yet implemented
 
 - Hover/definition for ground code spliced into quotes via `↙…↘`.
