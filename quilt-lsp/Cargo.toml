@@ -15,6 +15,7 @@ tracing = {workspace = true}
 tracing-subscriber = {workspace = true, features = ["env-filter"]}
 tree-sitter = {workspace = true}
 tree-sitter-quilt = {workspace = true}
+tree-sitter-python = {workspace = true, optional = true}
 tree-sitter-wgsl = {workspace = true, optional = true}
 streaming-iterator = {workspace = true}
 
@@ -26,7 +27,7 @@ tempfile.workspace = true
 # language. v1 ships only `rust`. Others are reserved extension points.
 default = ["rust", "python", "wgsl"]
 rust = []
-python = []
+python = ["dep:tree-sitter-python"]
 wgsl = ["dep:tree-sitter-wgsl"]
 
 [lints]
