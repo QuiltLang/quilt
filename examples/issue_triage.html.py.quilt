@@ -22,15 +22,17 @@ from pathlib import Path
 # first and spliced whole.
 
 
-# Join QTerms into one splice-able fragment: the variadic-emit pattern, one
-# .e() child after another, separated by `sep` text (or newlines by default).
-def nodes(terms, sep=None):
-    b = tb("document")
-    for i, t in enumerate(terms):
-        if i:
-            b = b.n() if sep is None else b.w(sep)
-        b = b.e(t)
-    return b.b()
+# Join QTerms into one splice-able fragment by folding them through a quote
+# of two holes on separate lines, one term per line (between inline elements
+# like the label chips, the newline renders as a space).
+def nodes(terms):
+    out = None
+    for t in terms:
+        out = t if out is None else html↖
+          ↙out↘
+          ↙t↘
+        ↗
+    return out if out is not None else html↖↗
 
 
 def gh(*args):
@@ -70,7 +72,7 @@ def chip(label):
 
 
 def item(issue, tier_key):
-    chips = nodes((chip(l) for l in issue["labels"] if l["name"] != tier_key), sep=" ")
+    chips = nodes(chip(l) for l in issue["labels"] if l["name"] != tier_key)
     return html↖<li><a href="↙↑(issue["url"])↘">#↙↑(issue["number"])↘</a> ↙↑(issue["title"])↘ ↙chips↘</li>↗
 
 
