@@ -24,7 +24,10 @@ Implemented:
   consume a quoted value, so pyright errors would be spurious.
 - **Semantic-token highlighting**, including inside `↖…↗` quotes: each quoted
   Rust fragment is appended to the virtual document (wrapped in `fn _quilt_qN`)
-  so rust-analyzer tokenizes it; tokens are remapped back onto the quote.
+  so rust-analyzer tokenizes it; tokens are remapped back onto the quote. When
+  the ground server provides no semantic tokens at all (pyright doesn't — a
+  Pylance-only feature) the whole ground projection is highlighted in-process
+  with tree-sitter instead, so `.py.quilt` files still get code coloring.
 - **Folding** for quilt regions plus the ground server's folds.
 
 The ground language is projected by copying its bytes verbatim and replacing

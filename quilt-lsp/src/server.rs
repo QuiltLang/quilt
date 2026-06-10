@@ -150,14 +150,10 @@ struct Inner {
     /// workspace — which wastes memory, kills two RA processes mid-initialization,
     /// and can corrupt the shared `target/.rust-analyzer/` cache.
     workspace_locks: DashMap<PathBuf, Arc<Mutex<()>>>,
-    /// The downstream semantic-token legend, captured at child init and
-    /// re-advertised to the editor so token indices line up. Extended (never
-    /// reordered) with the tree-sitter fragment highlighter's token types.
-    semantic_legend: OnceLock<Value>,
-    /// Token-type name → index into the advertised legend, for tokens the
-    /// server generates itself for embedded fragments (see [`crate::tshl`]).
-    /// Set together with `semantic_legend`.
-    ts_token_index: OnceLock<std::collections::HashMap<&'static str, u32>>,
+    /// The semantic-token registration with the editor (see
+    /// [`Inner::register_legend`]). The mutex is held across the registration
+    /// round-trip so concurrent registrations serialize.
+    semtok: Mutex<SemtokRegistration>,
 
     /* ---- embedded target languages (per-fragment, e.g. WGSL) ---- */
     /// quilt URI → its embedded-language fragments (each a standalone quote).
@@ -177,6 +173,20 @@ struct Inner {
     embedded_locks: DashMap<String, Arc<Mutex<()>>>,
 }
 
+/// State of the dynamic `textDocument/semanticTokens` registration with the
+/// editor (see [`Inner::register_legend`]).
+#[derive(Default)]
+struct SemtokRegistration {
+    /// Whether the capability is currently registered.
+    registered: bool,
+    /// The registered legend is the tree-sitter fallback ([`crate::tshl::TOKEN_TYPES`]
+    /// alone — no downstream legend had arrived yet); upgraded once one does.
+    fallback: bool,
+    /// Token-type name → index into the advertised legend, for the tokens the
+    /// server generates itself (embedded fragments, ground fallback).
+    type_index: std::collections::HashMap<&'static str, u32>,
+}
+
 impl Backend {
     pub fn new(client: Client) -> Self {
         Self {
@@ -189,8 +199,7 @@ impl Backend {
                 child_diags: DashMap::new(),
                 workspaces: DashMap::new(),
                 workspace_locks: DashMap::new(),
-                semantic_legend: OnceLock::new(),
-                ts_token_index: OnceLock::new(),
+                semtok: Mutex::new(SemtokRegistration::default()),
                 embedded_frags: DashMap::new(),
                 embedded_virt_to_quilt: DashMap::new(),
                 embedded_diags: DashMap::new(),
@@ -291,6 +300,15 @@ impl Inner {
                 let chain = crate::document::chain_refs(&doc.chain);
                 let proj = project(&doc.text, meta, lang, &chain);
                 self.projections.insert(uri.clone(), proj);
+                // A host with an in-process tree-sitter highlighter may never
+                // see a downstream legend (pyright provides no semantic tokens;
+                // the server may not even be installed), so make sure the
+                // capability is registered with the editor regardless — off the
+                // sync path, since it awaits a reply from the editor.
+                if crate::tshl::highlighter(lang.language_id()).is_some() {
+                    let this = self.clone();
+                    tokio::spawn(async move { this.register_legend(None).await });
+                }
             }
         }
         // Embedded target-language fragments (e.g. WGSL → wgsl-analyzer), each a
@@ -798,13 +816,48 @@ impl Inner {
     /// `textDocument/semanticTokens/full`.
     async fn register_semantic_tokens(&self, init: &Value) {
         let legend = &init["capabilities"]["semanticTokensProvider"]["legend"];
-        if !legend.is_object() {
+        if legend.is_object() {
+            self.register_legend(Some(legend)).await;
+        }
+        // No downstream legend (e.g. pyright provides no semantic tokens):
+        // nothing to do here — the tree-sitter fallback legend was already
+        // registered from `ingest` when the document was opened.
+    }
+
+    /// Register the `textDocument/semanticTokens` capability with the editor.
+    ///
+    /// `downstream` is the first downstream server's legend, advertised with
+    /// the tree-sitter highlighter's token types appended — never reordered —
+    /// so downstream token indices stay valid as-is while our own tokens
+    /// resolve by name. `None` registers the tree-sitter-only *fallback*
+    /// legend, for a host whose downstream server provides no semantic tokens
+    /// (pyright) or isn't installed: the editor still has to request tokens
+    /// for the in-process highlighting to show. A fallback registration is
+    /// upgraded (unregister, re-register, refresh) when the first downstream
+    /// legend arrives, so opening a `.py.quilt` first doesn't pin a legend
+    /// that mis-indexes rust-analyzer's tokens later.
+    async fn register_legend(&self, downstream: Option<&Value>) {
+        // Held across the registration round-trip: concurrent calls (several
+        // workspaces initializing, documents opening) serialize here, and the
+        // token-index read in `semantic_tokens` waits for a settled legend.
+        let mut st = self.semtok.lock().await;
+        let upgrade = st.registered && st.fallback && downstream.is_some();
+        if st.registered && !upgrade {
+            if downstream.is_some() {
+                // Already registered and another workspace finished indexing:
+                // nudge the editor to re-pull for all open files. (Also covers
+                // a downstream `workspace/semanticTokens/refresh` that arrived
+                // before our registration round-trip completed.)
+                let _ = self.client.semantic_tokens_refresh().await;
+            }
             return;
         }
-        // Extend the downstream legend with the tree-sitter fragment
-        // highlighter's token types: appended, never reordered, so downstream
-        // token indices stay valid as-is while fragment tokens resolve by name.
-        let mut legend = legend.clone();
+
+        // Build the legend: the downstream one extended with missing
+        // tree-sitter token types, or those types alone (fallback).
+        let mut legend = downstream
+            .cloned()
+            .unwrap_or_else(|| json!({"tokenTypes": [], "tokenModifiers": []}));
         let mut type_index = std::collections::HashMap::new();
         if let Some(types) = legend.get_mut("tokenTypes").and_then(Value::as_array_mut) {
             for (i, t) in types.iter().enumerate() {
@@ -823,32 +876,38 @@ impl Inner {
                 }
             }
         }
-        let is_first = self.semantic_legend.set(legend.clone()).is_ok();
-        if is_first {
-            // First workspace to initialize: register the capability with the
-            // editor. The fragment-token index must match the legend actually
-            // registered, so it is set only by the same winner.
-            let _ = self.ts_token_index.set(type_index);
-            let registration = Registration {
-                id: "quilt-semantic-tokens".to_string(),
-                method: "textDocument/semanticTokens".to_string(),
-                register_options: Some(json!({
-                    "documentSelector": [{"language": "quilt"}],
-                    "legend": legend,
-                    "full": true,
-                })),
-            };
-            if let Err(e) = self.client.register_capability(vec![registration]).await {
-                tracing::warn!("failed to register semantic tokens: {e}");
-                return;
-            }
+
+        if upgrade {
+            let _ = self
+                .client
+                .unregister_capability(vec![Unregistration {
+                    id: "quilt-semantic-tokens".to_string(),
+                    method: "textDocument/semanticTokens".to_string(),
+                }])
+                .await;
         }
-        // Always send a refresh after registering (or if already registered by an
-        // earlier workspace). This ensures VS Code re-requests for all open files
-        // even if `workspace/semanticTokens/refresh` from the downstream server
-        // arrived before our registration round-trip completed (common when RA
-        // indexes a small project faster than the editor acks the registration),
-        // or when a second workspace finishes indexing and should trigger a re-pull.
+        let registration = Registration {
+            id: "quilt-semantic-tokens".to_string(),
+            method: "textDocument/semanticTokens".to_string(),
+            register_options: Some(json!({
+                "documentSelector": [{"language": "quilt"}],
+                "legend": legend,
+                "full": true,
+            })),
+        };
+        if let Err(e) = self.client.register_capability(vec![registration]).await {
+            tracing::warn!("failed to register semantic tokens: {e}");
+            return;
+        }
+        st.registered = true;
+        st.fallback = downstream.is_none();
+        st.type_index = type_index;
+        drop(st);
+        // Refresh after registering so VS Code re-requests for all open files
+        // even if a downstream `workspace/semanticTokens/refresh` arrived
+        // before the registration round-trip completed (common when RA indexes
+        // a small project faster than the editor acks the registration), and so
+        // tokens issued under an upgraded legend's old indices are re-pulled.
         let _ = self.client.semantic_tokens_refresh().await;
     }
 
@@ -1107,16 +1166,24 @@ impl Inner {
     }
 
     /// Whole-document semantic tokens: forward to the downstream server (which
-    /// sees the ground projection *and* the appended quote fragments), remap
-    /// every token back to quilt coordinates, and merge in tree-sitter tokens
-    /// for embedded fragments (whose own servers may provide none — wgsl-analyzer
-    /// advertises no semantic tokens).
+    /// sees the ground projection *and* the appended quote fragments) and remap
+    /// every token back to quilt coordinates. When the downstream server can't
+    /// answer — pyright provides no semantic tokens, or no server is installed —
+    /// the whole ground projection is highlighted in-process with tree-sitter
+    /// instead. Either way, tree-sitter tokens for embedded fragments are merged
+    /// in (their own servers may provide none — wgsl-analyzer advertises no
+    /// semantic tokens).
     async fn semantic_tokens(self: &Arc<Self>, uri: &Url) -> Option<Vec<u32>> {
-        let (text, line_index, proj, virt, frags) = {
+        let (text, line_index, proj, virt, frags, ground_id) = {
             let doc = self.docs.get(uri)?;
             if !is_host_ground(doc.ground.as_deref()) {
                 return None;
             }
+            let ground_id = doc
+                .ground
+                .as_deref()
+                .and_then(language_adapter)?
+                .language_id();
             let virt = dequilt_uri(uri)?;
             let proj = self.projections.get(uri)?.clone();
             // Embedded fragments highlighted in-process: language + projection.
@@ -1125,39 +1192,63 @@ impl Inner {
                 .get(uri)
                 .map(|fs| fs.iter().map(|f| (f.lang, f.proj.clone())).collect())
                 .unwrap_or_default();
-            (doc.text.clone(), doc.line_index.clone(), proj, virt, frags)
+            (
+                doc.text.clone(),
+                doc.line_index.clone(),
+                proj,
+                virt,
+                frags,
+                ground_id,
+            )
         };
 
-        let child = self.ensure_workspace_child(uri).await?;
-        let result = child
-            .request(
-                "textDocument/semanticTokens/full",
-                json!({"textDocument": {"uri": virt}}),
-            )
-            .await
-            .ok()?;
-
-        let data: Vec<u32> = result
-            .get("data")?
-            .as_array()?
-            .iter()
-            .filter_map(|v| u32::try_from(v.as_u64()?).ok())
-            .collect();
+        // Ground tokens from the downstream server, when it has any to give:
+        // `None` on a failed spawn, an unsupported method (pyright), or a
+        // malformed reply — all of which fall back to tree-sitter below.
+        let downstream_data: Option<Vec<u32>> = match self.ensure_workspace_child(uri).await {
+            Some(child) => child
+                .request(
+                    "textDocument/semanticTokens/full",
+                    json!({"textDocument": {"uri": virt}}),
+                )
+                .await
+                .ok()
+                .and_then(|result| {
+                    Some(
+                        result
+                            .get("data")?
+                            .as_array()?
+                            .iter()
+                            .filter_map(|v| u32::try_from(v.as_u64()?).ok())
+                            .collect(),
+                    )
+                }),
+            None => None,
+        };
 
         let enc = self.enc();
-        let mut toks = crate::semtok::remap(&data, &proj, &text, &line_index, enc);
-        if let Some(type_index) = self.ts_token_index.get() {
-            for (lang, fproj) in &frags {
-                if let Some(hl) = crate::tshl::highlighter(lang) {
-                    toks.extend(crate::tshl::fragment_tokens(
-                        hl,
-                        fproj,
-                        &text,
-                        &line_index,
-                        enc,
-                        type_index,
-                    ));
+        let type_index = self.semtok.lock().await.type_index.clone();
+        let mut toks = match downstream_data {
+            Some(data) => crate::semtok::remap(&data, &proj, &text, &line_index, enc),
+            None => match crate::tshl::highlighter(ground_id) {
+                // In-process fallback over the whole ground projection (which
+                // includes same-language quote bodies appended as fragments).
+                Some(hl) => {
+                    crate::tshl::projection_tokens(hl, &proj, &text, &line_index, enc, &type_index)
                 }
+                None => return None,
+            },
+        };
+        for (lang, fproj) in &frags {
+            if let Some(hl) = crate::tshl::highlighter(lang) {
+                toks.extend(crate::tshl::projection_tokens(
+                    hl,
+                    fproj,
+                    &text,
+                    &line_index,
+                    enc,
+                    &type_index,
+                ));
             }
         }
         Some(crate::semtok::encode(toks))

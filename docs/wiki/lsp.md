@@ -71,6 +71,10 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
 - **Python ground language** via pyright (`pyright-langserver --stdio` by
   default; override with `QUILT_LSP_PYTHON_SERVER`):
   - Hover, go-to-definition, completion for `.py.quilt` files.
+  - Semantic highlighting from the in-process tree-sitter highlighter
+    (`tshl.rs`): pyright provides no semantic tokens (a Pylance-only
+    feature), so the whole ground projection is highlighted as a fallback —
+    which also works when pyright isn't installed at all.
   - Downstream diagnostics are suppressed: the projection replaces each quote
     with a `()` placeholder expression, which mistypes any ground line that
     consumes a quoted value, so pyright's errors would be spurious
@@ -79,7 +83,10 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
   quotes (e.g. `wgsl↖…↗`) are highlighted by the server itself with tree-sitter
   highlight queries (`tshl.rs`), since their downstream servers may provide no
   semantic tokens (wgsl-analyzer advertises none); the downstream legend is
-  advertised with the tree-sitter token types appended.
+  advertised with the tree-sitter token types appended. A *ground* server with
+  the same gap (pyright) gets the same treatment: the ground projection is
+  highlighted in-process whenever the downstream server can't answer
+  `semanticTokens/full`.
 - **Folding** — quilt regions + ground server folds.
 
 ### Design notes — semantic tokens
@@ -100,14 +107,25 @@ Constraints learned while building the token pipeline (June 2026):
   registration. Advertising the downstream server's legend with our
   tree-sitter token-type names appended — never reordered — lets downstream
   `data` arrays pass through untouched while fragment tokens resolve by name
-  (`ts_token_index`, set together with the registered legend).
-- **Highlight-query conventions vary.** The grammar forks' `highlights.scm`
-  are nvim-flavored (`@conditional`, `@storageclass`, a catch-all
-  `(identifier) @variable` after the specific patterns). `tshl.rs` resolves
-  same-range captures to the *earliest* pattern and nested ranges to the
-  *narrowest* span, so emitted tokens never overlap. The WGSL query is
-  vendored under `quilt-lsp/queries/` because the fork's Rust binding exposes
-  no `HIGHLIGHTS_QUERY` const.
+  (`SemtokRegistration::type_index`, set together with the registered legend).
+- **A legend-less ground server still needs a registration.** pyright never
+  supplies a legend, so waiting for one would leave `.py.quilt` files with no
+  semantic tokens at all (the editor only requests them after we register).
+  Opening a host document whose language has a tree-sitter highlighter
+  therefore registers a *fallback* legend (the tree-sitter token types alone),
+  which is upgraded — unregister, re-register, refresh — when the first real
+  downstream legend arrives, so opening a `.py.quilt` before a `.rs.quilt`
+  doesn't pin a legend that would mis-index rust-analyzer's pass-through
+  token data.
+- **Highlight-query conventions vary** — in two ways. Naming: the forks'
+  queries use nvim capture names (`@conditional`, `@storageclass`). Ordering:
+  the vendored WGSL query is nvim-flavored (specific patterns first, catch-all
+  `(identifier) @variable` last — first pattern wins), while the Python fork's
+  own query is upstream-flavored (catch-all first, later patterns override —
+  last wins); each `Highlighter` declares its `Order`. Nested ranges resolve
+  to the *narrowest* span either way, so emitted tokens never overlap. The
+  WGSL query is vendored under `quilt-lsp/queries/` because that fork's Rust
+  binding exposes no `HIGHLIGHTS_QUERY` const; the Python binding has one.
 - **Downstream capability gaps are harmless for rust-analyzer.** quilt-lsp
   advertises no `semanticTokens` client capability to children; rust-analyzer
   returns identical tokens and legend either way (verified empirically).

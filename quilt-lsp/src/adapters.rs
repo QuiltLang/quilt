@@ -310,9 +310,11 @@ static PYTHON: PythonAdapter = PythonAdapter;
 ///
 /// The ground projection replaces each quote with a placeholder *expression*
 /// (`()`), so Python is navigation-only for now: hover / go-to-definition /
-/// completion / semantic tokens work on the host Python, but diagnostics are
-/// suppressed (the placeholder mistypes any ground line that consumes a quoted
-/// value). See [`LanguageAdapter::publishes_diagnostics`].
+/// completion work on the host Python, but diagnostics are suppressed (the
+/// placeholder mistypes any ground line that consumes a quoted value). See
+/// [`LanguageAdapter::publishes_diagnostics`]. Semantic tokens come from the
+/// server's in-process tree-sitter highlighter ([`crate::tshl`]), since pyright
+/// provides no semantic tokens (a Pylance-only feature).
 #[cfg(feature = "python")]
 pub struct PythonAdapter;
 

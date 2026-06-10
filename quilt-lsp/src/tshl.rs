@@ -1,14 +1,23 @@
-//! Tree-sitter semantic tokens for embedded-language fragments.
+//! Tree-sitter semantic tokens for languages whose downstream server provides
+//! none.
 //!
-//! Embedded target languages may have no downstream semantic-token support at
-//! all (wgsl-analyzer advertises no `semanticTokensProvider`; see
-//! <https://github.com/wgsl-analyzer/wgsl-analyzer/issues/342>), so the server
-//! highlights their quote bodies itself, with the same tree-sitter grammars
-//! quilt uses for parsing. Each fragment's standalone projection is parsed and
-//! run through the grammar's highlight query; capture names are mapped to LSP
-//! standard token types, spans are mapped back to quilt coordinates through
-//! the fragment's source map, and the result is merged with the remapped
-//! downstream tokens (see `Inner::semantic_tokens`).
+//! Two consumers, same mechanism:
+//!
+//! * **Embedded fragments** — embedded target languages may have no downstream
+//!   semantic-token support at all (wgsl-analyzer advertises no
+//!   `semanticTokensProvider`; see
+//!   <https://github.com/wgsl-analyzer/wgsl-analyzer/issues/342>), so the
+//!   server highlights their quote bodies itself.
+//! * **The ground projection** — a *host* language's downstream server may
+//!   equally lack semantic tokens (pyright does; that feature is
+//!   Pylance-only), so the whole ground projection of a `.py.quilt` file is
+//!   highlighted the same way as a fallback (see `Inner::semantic_tokens`).
+//!
+//! Either way the projection is parsed with the same tree-sitter grammars
+//! quilt uses for parsing and run through the grammar's highlight query;
+//! capture names are mapped to LSP standard token types, spans are mapped back
+//! to quilt coordinates through the projection's source map, and the result is
+//! merged with any remapped downstream tokens.
 //!
 //! The token *type indices* come from the legend extension performed at
 //! registration: the downstream server's legend is advertised with any of
@@ -49,7 +58,7 @@ fn lsp_token_type(capture: &str) -> Option<&'static str> {
     match capture.split('.').next().unwrap_or(capture) {
         "number" | "float" => Some("number"),
         "boolean" | "keyword" | "repeat" | "conditional" | "storageclass" => Some("keyword"),
-        "type" => Some("type"),
+        "type" | "constructor" => Some("type"),
         "function" | "method" => Some("function"),
         "parameter" => Some("parameter"),
         "structure" | "struct" => Some("struct"),
@@ -65,12 +74,23 @@ fn lsp_token_type(capture: &str) -> Option<&'static str> {
     }
 }
 
-/// A compiled grammar + highlight query for one embedded language.
+/// Which pattern wins when several capture the same node. Highlight queries
+/// come in two orderings: nvim-flavored files put specific patterns before the
+/// `(identifier) @variable` catch-all (first wins); upstream tree-sitter files
+/// put the catch-all first and let later patterns override (last wins).
+#[derive(Clone, Copy, PartialEq)]
+enum Order {
+    FirstWins,
+    LastWins,
+}
+
+/// A compiled grammar + highlight query for one language.
 pub struct Highlighter {
     language: tree_sitter::Language,
     query: tree_sitter::Query,
     /// Query capture index → LSP token type (`None`: dropped capture).
     capture_types: Vec<Option<&'static str>>,
+    order: Order,
 }
 
 /// The highlighter for a downstream `languageId`, if one is compiled in.
@@ -82,19 +102,37 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
         "wgsl" => {
             static WGSL: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
             WGSL.get_or_init(|| {
+                // The vendored query is nvim-flavored (specific patterns first).
                 Highlighter::new(
                     tree_sitter_wgsl::LANGUAGE.into(),
                     include_str!("../queries/wgsl-highlights.scm"),
+                    Order::FirstWins,
                 )
             })
             .as_ref()
+        }
+        #[cfg(feature = "python")]
+        "python" => {
+            static PYTHON: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            PYTHON
+                .get_or_init(|| {
+                    // The grammar fork's own query is upstream-flavored: it opens
+                    // with the `(identifier) @variable` catch-all and overrides
+                    // with later, more specific patterns.
+                    Highlighter::new(
+                        tree_sitter_python::LANGUAGE.into(),
+                        tree_sitter_python::HIGHLIGHTS_QUERY,
+                        Order::LastWins,
+                    )
+                })
+                .as_ref()
         }
         _ => None,
     }
 }
 
 impl Highlighter {
-    fn new(language: tree_sitter::Language, query_src: &str) -> Option<Self> {
+    fn new(language: tree_sitter::Language, query_src: &str, order: Order) -> Option<Self> {
         let query = match tree_sitter::Query::new(&language, query_src) {
             Ok(q) => q,
             Err(e) => {
@@ -111,14 +149,24 @@ impl Highlighter {
             language,
             query,
             capture_types,
+            order,
         })
     }
 
+    /// Pattern-priority key: lower wins. Identity for first-wins queries,
+    /// inverted for last-wins ones.
+    fn priority(&self, pattern_index: usize) -> usize {
+        match self.order {
+            Order::FirstWins => pattern_index,
+            Order::LastWins => usize::MAX - pattern_index,
+        }
+    }
+
     /// Highlight `text`, returning non-overlapping `(byte_range, token_type)`
-    /// spans in document order. Same-range captures resolve to the *earliest*
-    /// pattern in the query file (tree-sitter convention: specific patterns
-    /// precede the `(identifier) @variable` catch-all); across nested ranges
-    /// the narrower span wins (leaf tokens shadow container captures like
+    /// spans in document order. Same-range captures resolve per the query's
+    /// [`Order`] (e.g. for first-wins, specific patterns precede the
+    /// `(identifier) @variable` catch-all); across nested ranges the narrower
+    /// span wins (leaf tokens shadow container captures like
     /// `(type_declaration) @type`).
     pub fn spans(&self, text: &str) -> Vec<(Range<usize>, &'static str)> {
         let mut parser = tree_sitter::Parser::new();
@@ -129,7 +177,7 @@ impl Highlighter {
             return Vec::new();
         };
 
-        // (start, end) → (pattern index, type): same-range, first pattern wins.
+        // (start, end) → (priority, type): same-range, lowest priority wins.
         let mut by_range: HashMap<(usize, usize), (usize, &'static str)> = HashMap::new();
         let mut cursor = tree_sitter::QueryCursor::new();
         let mut matches = cursor.matches(&self.query, tree.root_node(), text.as_bytes());
@@ -143,11 +191,10 @@ impl Highlighter {
                     continue;
                 }
                 let key = (r.start, r.end);
-                let better = by_range
-                    .get(&key)
-                    .is_none_or(|&(pi, _)| m.pattern_index < pi);
+                let prio = self.priority(m.pattern_index);
+                let better = by_range.get(&key).is_none_or(|&(p, _)| prio < p);
                 if better {
-                    by_range.insert(key, (m.pattern_index, ty));
+                    by_range.insert(key, (prio, ty));
                 }
             }
         }
@@ -176,12 +223,14 @@ impl Highlighter {
     }
 }
 
-/// Semantic tokens for one embedded fragment, in absolute quilt coordinates.
-/// Spans are split per line (LSP tokens are single-line unless the client
-/// opts into multiline support) and mapped through the fragment's source map;
-/// pieces that collapse into masked splices are dropped.
-#[allow(clippy::implicit_hasher)] // one internal call site, default hasher
-pub fn fragment_tokens(
+/// Semantic tokens for one projection — an embedded fragment's standalone
+/// document or a host's whole ground projection — in absolute quilt
+/// coordinates. Spans are split per line (LSP tokens are single-line unless
+/// the client opts into multiline support) and mapped through the projection's
+/// source map; pieces that collapse into masked splices or synthetic wrappers
+/// are dropped.
+#[allow(clippy::implicit_hasher)] // internal call sites only, default hasher
+pub fn projection_tokens(
     hl: &Highlighter,
     proj: &Projection,
     quilt_text: &str,
@@ -248,16 +297,19 @@ fn push_tok(
 }
 
 #[cfg(test)]
-#[cfg(feature = "wgsl")]
 mod tests {
     use super::*;
+    #[cfg(any(feature = "wgsl", feature = "python"))]
     use crate::adapters::language_adapter;
+    #[cfg(feature = "wgsl")]
     use crate::projection::project_fragments;
 
+    #[cfg(feature = "wgsl")]
     fn wgsl() -> &'static Highlighter {
         highlighter("wgsl").expect("wgsl highlight query compiles against the pinned grammar")
     }
 
+    #[allow(dead_code)] // used only by the feature-gated tests
     fn span_text<'t>(
         text: &'t str,
         spans: &[(Range<usize>, &'static str)],
@@ -269,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "wgsl")]
     fn highlights_basic_wgsl() {
         let src = "fn main() { let x = 3u; }";
         let got = span_text(src, &wgsl().spans(src));
@@ -282,6 +335,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "wgsl")]
     fn leaf_tokens_shadow_container_captures() {
         // `(type_declaration) @type` captures `array<u32>` wholesale, but the
         // inner `u32` builtin (and the `<`/`>` operators) are narrower captures
@@ -298,6 +352,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "wgsl")]
     fn fragment_tokens_map_to_quilt_and_skip_splices() {
         // A WGSL quote with a Rust splice: tokens land on the WGSL text in
         // quilt coordinates; nothing is emitted over the masked `↙…↘`.
@@ -312,7 +367,7 @@ mod tests {
             .map(|(i, n)| (*n, u32::try_from(i).unwrap()))
             .collect();
         let qi = LineIndex::new(src);
-        let toks = fragment_tokens(
+        let toks = projection_tokens(
             wgsl(),
             &frags[0].proj,
             src,
@@ -342,6 +397,79 @@ mod tests {
             !texts
                 .iter()
                 .any(|t| t.contains('↙') || t.contains('w') && t.len() == 1),
+            "{texts:?}"
+        );
+    }
+
+    #[cfg(feature = "python")]
+    fn python() -> &'static Highlighter {
+        highlighter("python").expect("python highlight query compiles against the pinned grammar")
+    }
+
+    #[test]
+    #[cfg(feature = "python")]
+    fn highlights_basic_python() {
+        let src = "def greet(name):\n    return MAX + len(name)\n";
+        let got = span_text(src, &python().spans(src));
+        assert!(got.contains(&("def", "keyword")), "{got:?}");
+        assert!(got.contains(&("return", "keyword")), "{got:?}");
+        // Last-pattern-wins: the query opens with the `(identifier) @variable`
+        // catch-all, so `greet` and `len` must resolve to the later, more
+        // specific function patterns, not to "variable".
+        assert!(got.contains(&("greet", "function")), "{got:?}");
+        assert!(got.contains(&("len", "function")), "{got:?}");
+        assert!(!got.contains(&("greet", "variable")), "{got:?}");
+        // `(#match? …)` predicates are honored: SCREAMING_CASE matches the
+        // @constant pattern (→ "variable"), and an ordinary lowercase name
+        // does not get promoted by it.
+        assert!(got.contains(&("MAX", "variable")), "{got:?}");
+        assert!(got.contains(&("name", "variable")), "{got:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "python")]
+    fn python_ground_projection_tokens_map_to_quilt() {
+        use crate::adapters::meta_adapter;
+        use crate::projection::project;
+
+        // A `.py.quilt` ground with one quote: tokens must cover the ground
+        // Python *and* the quote body (appended as a fragment in the same
+        // projection), all in quilt coordinates, with nothing on the glyphs.
+        let src = "def f(x):\n    return x\n\nq = ↖1 + 2↗\n";
+        let meta = meta_adapter("py").unwrap();
+        let lang = language_adapter("py").unwrap();
+        let proj = project(src, meta, lang, &["py"]);
+
+        let type_index: HashMap<&'static str, u32> = TOKEN_TYPES
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (*n, u32::try_from(i).unwrap()))
+            .collect();
+        let qi = LineIndex::new(src);
+        let toks = projection_tokens(python(), &proj, src, &qi, Encoding::Utf16, &type_index);
+
+        let lines: Vec<Vec<char>> = src.lines().map(|l| l.chars().collect()).collect();
+        let texts: Vec<(u32, String)> = toks
+            .iter()
+            .map(|t| {
+                let line = &lines[t.line as usize];
+                let s: String = line[t.start as usize..(t.start + t.length) as usize]
+                    .iter()
+                    .collect();
+                (t.line, s)
+            })
+            .collect();
+        // Ground tokens.
+        assert!(texts.contains(&(0, "def".to_string())), "{texts:?}");
+        assert!(texts.contains(&(1, "return".to_string())), "{texts:?}");
+        // Quote-body tokens land back inside `↖1 + 2↗` on line 3.
+        assert!(texts.contains(&(3, "1".to_string())), "{texts:?}");
+        assert!(texts.contains(&(3, "2".to_string())), "{texts:?}");
+        // Nothing maps onto the quote glyphs or the synthetic `()` placeholder.
+        assert!(
+            !texts
+                .iter()
+                .any(|(_, s)| s.contains('↖') || s.contains('↗')),
             "{texts:?}"
         );
     }
