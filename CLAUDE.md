@@ -22,16 +22,15 @@ quilt expand path/to/shaders.wgsl.rs.quilt   # language chain, see below
 # Run a .quilt file directly. `run` is the default subcommand, so it can be
 # omitted (which is what makes the `#!/usr/bin/env quilt` shebang work).
 # Defaults to the Omni (production) multi; pass `-m bootstrap` for the bootstrap one.
-quilt run path/to/script.rs.quilt   # rust-script runner
-quilt run path/to/script.py.quilt   # python3 runner (needs `bin/build-py` first)
-quilt path/to/script.rs.quilt       # same as `quilt run ...`
+quilt path/to/script.rs.quilt       # rust-script runner
+quilt path/to/script.py.quilt       # python3 runner (needs `bin/build-py` first)
 
 # Build the quilt_python PyO3 module (the runtime .py.quilt files target).
 # Required once before running .py.quilt files; rebuild after editing the bindings.
 build-py
 
 # Bootstrap — regenerates quilt/src/langs/rust/meta.rs from mk_meta.rs.quilt.
-# Both stages `quilt run` mk_meta.rs.quilt (which writes meta.rs): bootstrap0
+# Both stages run mk_meta.rs.quilt via quilt (which writes meta.rs): bootstrap0
 # expands it with the BootstrapMetaLanguage (`-m bootstrap`, feature `bootstrap`),
 # bootstrap1 with the freshly generated RustMetaLanguage (`-m omni`, self-hosting).
 # `bootstrap` runs both in order; a clean run leaves meta.rs unchanged.
@@ -118,7 +117,7 @@ Each language is gated behind a Cargo feature (see `quilt/Cargo.toml`); all are 
 
 ### Bootstrap (`quilt/src/langs/bootstrap/`)
 
-A two-stage self-hosting process that regenerates `quilt/src/langs/rust/meta.rs`. Both stages `quilt run` the same program, `mk_meta.rs.quilt`, which produces and writes `meta.rs` (then `cargo fmt`s it):
+A two-stage self-hosting process that regenerates `quilt/src/langs/rust/meta.rs`. Both stages run the same program via `quilt`, `mk_meta.rs.quilt`, which produces and writes `meta.rs` (then `cargo fmt`s it):
 1. **bootstrap0** — expands it with the `Bootstrap` multi (`BootstrapMetaLanguage`, which works without `meta.rs`)
 2. **bootstrap1** — expands it with the `Omni` multi, i.e. the freshly generated `RustMetaLanguage` (self-hosting); a clean run leaves `meta.rs` unchanged
 
@@ -131,7 +130,7 @@ Serialization is driven by a stack-based `StrCmd` sequence embedded in each `QTe
 ### Other crates
 
 - `quilt-lsp` — a multiplexing Language Server for `.quilt` files (tower-lsp). It parses the quilt structure, projects each language into a virtual document, proxies LSP traffic to per-language downstream servers (currently `rust-analyzer` for the ground language), and remaps positions in both directions. See `quilt-lsp/README.md` and `docs/wiki/lsp.md`.
-- `quilt-python/` (crate `quilt_python`) — PyO3 bindings exposing quilt's core IR (`QTerm`, the fluent `tb/.c/.w/.n/.p/.x/.e/.b` builder, `leaf/sym/quote/unquote/cmd/write/push/name/qlift`, `NL/POP/HOLE`, and `.coparse()`) to Python. This is the runtime that expanded `.py.quilt` files target (`PythonMetaLanguage` emits calls into it). The Python import name is **`quilt`** (`from quilt import *`): a `quilt/` package whose `__init__.py` re-exports the native `quilt._quilt` module. Built abi3 (one `.so` for CPython ≥3.8) via `bin/build-py` (maturin); `quilt run` puts it on `PYTHONPATH` for `python3` runs. See `examples/hello.py.quilt`.
+- `quilt-python/` (crate `quilt_python`) — PyO3 bindings exposing quilt's core IR (`QTerm`, the fluent `tb/.c/.w/.n/.p/.x/.e/.b` builder, `leaf/sym/quote/unquote/cmd/write/push/name/qlift`, `NL/POP/HOLE`, and `.coparse()`) to Python. This is the runtime that expanded `.py.quilt` files target (`PythonMetaLanguage` emits calls into it). The Python import name is **`quilt`** (`from quilt import *`): a `quilt/` package whose `__init__.py` re-exports the native `quilt._quilt` module. Built abi3 (one `.so` for CPython ≥3.8) via `bin/build-py` (maturin); `quilt` puts it on `PYTHONPATH` for `python3` runs. See `examples/hello.py.quilt`.
 - `tree-sitter-quilt` — the Quilt bracket language (arrow brackets and special symbols). Source in `grammar.js`; regenerate the parser with `ts-gen`.
 
 ### Clippy configuration

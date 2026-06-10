@@ -39,9 +39,9 @@ For Rust scripts, `quilt run` injects a `//! [dependencies]` cargo manifest bloc
 Since `run` is the default subcommand, the `run` keyword can be omitted:
 
 ```sh
-quilt examples/hello.rs.quilt World        # same as `quilt run examples/hello.rs.quilt World`
-quilt run examples/hello.py.quilt
-quilt run examples/countdown.rs.quilt 5
+quilt examples/hello.rs.quilt World
+quilt examples/hello.py.quilt
+quilt examples/countdown.rs.quilt 5
 ```
 
 ### Shebang scripts
@@ -52,7 +52,7 @@ quilt run examples/countdown.rs.quilt 5
 #!/usr/bin/env quilt
 ```
 
-as their first line (`#!/usr/bin/env quilt` also works, but the bare form is portable: Linux passes everything after the interpreter as a single argument, so `env` would look for a program literally named `quilt run`). `quilt run` strips the shebang before expansion so the language parser doesn't see `#!`.
+as their first line (`#!/usr/bin/env quilt` also works, but the bare form is portable: Linux passes everything after the interpreter as a single argument, so `env` would look for a program literally named `quilt run`). `quilt` strips the shebang before expansion so the language parser doesn't see `#!`.
 
 ---
 
@@ -64,14 +64,14 @@ All scripts in `bin/` expect the `direnv` environment to be active (`direnv allo
 
 ```sh
 quilt expand path/to/file.rs.quilt
-quilt run path/to/file.rs.quilt [args]
+quilt path/to/file.rs.quilt [args]
 ```
 
 A thin wrapper around `cargo run -p quilt --`. Passes all arguments to the `quilt` binary.
 
 ### `bootstrap`
 
-Runs the full two-stage bootstrap that regenerates `quilt/src/langs/rust/meta.rs`. Both stages `quilt run` the generator program `mk_meta.rs.quilt`, which writes `meta.rs`; see [Bootstrap](bootstrap.md).
+Runs the full two-stage bootstrap that regenerates `quilt/src/langs/rust/meta.rs`. Both stages run the generator program `mk_meta.rs.quilt` via `quilt`, which writes `meta.rs`; see [Bootstrap](bootstrap.md).
 
 ```sh
 bootstrap
@@ -81,7 +81,7 @@ Equivalent to running `bootstrap0` then `bootstrap1` in order.
 
 ### `bootstrap0`
 
-Stage 0 only: `quilt run -m bootstrap mk_meta.rs.quilt` — expands the generator with `BootstrapMetaLanguage` (built with `--no-default-features -F bootstrap`) and runs it.
+Stage 0 only: `quilt -m bootstrap mk_meta.rs.quilt` — expands the generator with `BootstrapMetaLanguage` (built with `--no-default-features -F bootstrap`) and runs it.
 
 ```sh
 bootstrap0
@@ -89,7 +89,7 @@ bootstrap0
 
 ### `bootstrap1`
 
-Stage 1 only: `quilt run -m omni mk_meta.rs.quilt` — expands the generator with the freshly generated `RustMetaLanguage` (self-hosted) and runs it. A clean run leaves `meta.rs` unchanged.
+Stage 1 only: `quilt -m omni mk_meta.rs.quilt` — expands the generator with the freshly generated `RustMetaLanguage` (self-hosted) and runs it. A clean run leaves `meta.rs` unchanged.
 
 ```sh
 bootstrap1
@@ -155,4 +155,4 @@ cargo test -p quilt-lsp           # run LSP tests
 |---------------------------|----------------------|-------------------------------------------------------|
 | `RUST_LOG`                | `quilt`, `quilt-lsp` | `tracing` log filter (e.g. `debug`, `info`)           |
 | `QUILT_LSP_RUST_ANALYZER` | `quilt-lsp`          | Override rust-analyzer command (whitespace-separated) |
-| `PYTHONPATH`              | `quilt run` (Python) | Extended to include the `quilt-python/` directory     |
+| `PYTHONPATH`              | `quilt` (Python)     | Extended to include the `quilt-python/` directory     |

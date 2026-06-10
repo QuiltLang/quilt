@@ -70,7 +70,7 @@ Returns the shebang line used to run the expanded file as a script, e.g.:
 - Rust: `"#!/usr/bin/env rust-script"`
 - Python: `"#!/usr/bin/env python3"`
 
-`quilt run` uses this to determine which runner to invoke.
+`quilt` uses this to determine which runner to invoke.
 
 ---
 
