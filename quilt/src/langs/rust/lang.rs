@@ -28,7 +28,7 @@ impl TSProvider for RustProvider {
         "{}"
     }
 
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
         // dbg!(&qterm);
         #[allow(clippy::single_match)]
         match &qterm {
@@ -38,15 +38,15 @@ impl TSProvider for RustProvider {
                         let q0 = &terms[0];
                         match &**q0 {
                             QTerm::Tuple { tag, .. } => {
-                                if tag.ends_with("statement")
-                                    || tag.ends_with("item")
-                                    || tag.ends_with("declaration")
-                                    || **tag == *"{}"
-                                {
-                                    (qterm.squash(), InnerKind::Stmt)
-                                } else {
-                                    (qterm.squash(), InnerKind::Expr)
-                                }
+                                // The hole's position (when known) settles
+                                // ambiguous bodies like a bare `{ }`; otherwise
+                                // guess from the tag.
+                                let kind = match ikind {
+                                    Some(k) if k != InnerKind::File => k,
+                                    _ if **tag == *"{}" => InnerKind::Stmt,
+                                    _ => self.typ(tag),
+                                };
+                                (qterm.squash(), kind)
                             }
                             _ => unimplemented!("{}", qterm.sexp()),
                         }
@@ -65,6 +65,19 @@ impl TSProvider for RustProvider {
         match tag {
             "block" | "source_file" => Arity::Variadic,
             _ => Arity::Unknown,
+        }
+    }
+
+    fn typ(&self, tag: &str) -> InnerKind {
+        if tag == "source_file" {
+            InnerKind::File
+        } else if tag.ends_with("statement")
+            || tag.ends_with("item")
+            || tag.ends_with("declaration")
+        {
+            InnerKind::Stmt
+        } else {
+            InnerKind::Expr
         }
     }
 

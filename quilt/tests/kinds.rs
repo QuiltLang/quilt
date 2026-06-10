@@ -53,6 +53,24 @@ fn rs_auto_expr() -> Result<()> {
     rs_helper(None, "1 + 2", &QTermTag::tuple("binary_expression"))
 }
 
+/// Holes record the `InnerKind` their syntactic position demands.
+#[test]
+fn rs_hole_ikinds() -> Result<()> {
+    use quilt::lang::{FlatNode, LanguagePost as _};
+    let mut lang = RustLanguage::default();
+    let code = [
+        FlatNode::Str("fn main() { "),
+        FlatNode::Hole, // statement position
+        FlatNode::Str(" let x = "),
+        FlatNode::Hole, // expression position
+        FlatNode::Str("; }"),
+    ];
+    let post = lang.parse_pre(None, &code)?;
+    let kinds = post.holes().iter().map(|h| h.ikind).collect::<Vec<_>>();
+    assert_eq!(kinds, [Some(InnerKind::Stmt), Some(InnerKind::Expr)]);
+    Ok(())
+}
+
 #[test]
 fn rs_auto_stmt() -> Result<()> {
     rs_helper(None, "let x = 1 + 2;", &QTermTag::tuple("let_declaration"))

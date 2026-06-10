@@ -31,7 +31,7 @@ fn main() -> Result<()> {
                 tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&label.qlift()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.nl();
         sym("}").emit(&mut b_);

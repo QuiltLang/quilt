@@ -76,6 +76,50 @@ fn splicing() -> Result<()> {
 }
 
 #[test]
+fn ground_stmt_quote_emits() -> Result<()> {
+    // A quoted statement in statement position of ground code would previously
+    // build a term and silently drop it; it is now emitted into the enclosing
+    // builder, same as writing `.←;` explicitly.
+    let out = expand_both(indoc! {r#"
+        let p = ↖{
+            ↙{
+                ↖println!("hi");↗
+            }↘
+        }↗;
+    "#})?;
+    assert!(out.contains(".b().emit(&mut b_);"), "{out}");
+    Ok(())
+}
+
+#[test]
+fn ground_tail_quote_stays_value() -> Result<()> {
+    // A tail-expression quote parses with the same outer tag as a
+    // statement-position one (`expression_statement`), but its body is an
+    // expression: it must remain the block's value, not get emitted.
+    let out = expand_both("fn f() -> Arc<QTerm> {\n    ↖1 + 2↗\n}")?;
+    assert!(!out.contains(".emit("), "{out}");
+    Ok(())
+}
+
+#[test]
+fn ground_unit_unquote_spliced() -> Result<()> {
+    // An unquote whose ground body is a statement-shaped block (imperative
+    // emits, unit value) is spliced as a plain statement instead of the
+    // `{...}.emit(&mut b_);` unit-emit workaround.
+    let out = expand_both(indoc! {r#"
+        let p = ↖{
+            ↙{
+                for i in 0..3 {
+                    ↖println!("hi");↗.←;
+                }
+            }↘
+        }↗;
+    "#})?;
+    assert!(!out.contains("}.emit(&mut b_);"), "{out}");
+    Ok(())
+}
+
+#[test]
 fn reduce() -> Result<()> {
     let mut omni = Omni::default();
     let code = "3..5";

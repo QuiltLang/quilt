@@ -52,6 +52,11 @@ pub trait TSProvider {
     fn arity(&self, _tag: &str) -> Arity {
         Default::default()
     }
+    /// The `InnerKind` a node with this tag denotes (used to derive
+    /// [`Hole::ikind`] from the hole's position).
+    fn typ(&self, _tag: &str) -> InnerKind {
+        Default::default()
+    }
 
     fn hashbang(&self) -> Option<&'static str> {
         None
@@ -105,7 +110,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 hole_points.next();
                 holes.push(Hole {
                     otag: node.kind().into(),
-                    // itag: None, // TODO:
+                    ikind: Some(provider.typ(node.kind())),
                     prefix: prefix.clone().into(),
                 });
                 return qsym(hole_str);
@@ -260,6 +265,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         self.provider.arity(tag)
     }
 
+    fn typ(&self, tag: &str) -> InnerKind {
+        self.provider.typ(tag)
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         self.provider.hashbang()
     }
@@ -323,6 +332,14 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
 
     fn parse_pre(&mut self, ikind: Option<InnerKind>, code: &[FlatNode]) -> Result<Self::Post> {
         Ok(bx(self.0.parse_pre(ikind, code)?) as Self::Post)
+    }
+
+    fn arity(&self, tag: &str) -> Arity {
+        self.0.arity(tag)
+    }
+
+    fn typ(&self, tag: &str) -> InnerKind {
+        self.0.typ(tag)
     }
 
     fn hashbang(&self) -> Option<&'static str> {

@@ -269,9 +269,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // dbg!(&last_nl);
 
         // parse this level and get hole types of children
-        let post = self
-            .get_lang_mut(lang)?
-            .parse_pre(/*hole.ikind*/ None, &code)?;
+        let post = self.get_lang_mut(lang)?.parse_pre(hole.ikind, &code)?;
         let mut holes = post.holes().iter();
 
         // parse children using hole types
@@ -309,7 +307,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     let quote_lang = zipper.head().unwrap();
                     let mut builder = qb(&hole.otag, 1, quote_lang);
                     builder.write(anno).write("↖");
-                    let mut builder = self.build_nodes(builder, hole, nodes, &zipper, None)?;
+                    // A quote's body is free-form (a statement-shaped term may
+                    // fill an expression hole and vice versa), so don't coerce
+                    // it to the hole's kind.
+                    let hole = Hole {
+                        ikind: None,
+                        ..hole.clone()
+                    };
+                    let mut builder = self.build_nodes(builder, &hole, nodes, &zipper, None)?;
                     builder.write("↗");
                     plugs.push(builder.b());
                 }
@@ -356,13 +361,15 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             ref mut metas,
         } = self;
         let meta = metas.get(lang)?;
-        Expander { langs, meta }.expand(&Default::default(), qterm)
+        Expander { langs, meta, lang }.expand(&Default::default(), qterm)
     }
 }
 
 pub struct Expander<'a, LS: Languages, M: MetaLanguage + ?Sized> {
     langs: &'a mut LS,
     meta: &'a M,
+    /// The ground (host) language, used to classify tags of ground tuples.
+    lang: &'a str,
 }
 
 impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
@@ -381,20 +388,37 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                 }
                 QTerm::Unquote { .. } => bail!("unquote depth too high!"),
                 QTerm::Tuple { tag, terms, cmds } => {
-                    // let arity = self.get(meta).arity(tag);
+                    let arity = self.langs.get(self.lang)?.arity(tag);
                     let terms = terms
                         .iter()
                         .map(|term| {
                             // expand each child
                             let expanded = self.expand(&Stage::Ground, term)?;
                             // then wrap the result
-                            let okind = Default::default();
-                            // TODO: only infer Emit if the outer TermKind was Stmt
-                            // if arity == Arity::Variadic {
-                            //     if let QTerm::Quote(..) = x.get() {
-                            //         okind = WrapOp::Emit;
-                            //     }
-                            // }
+                            let mut okind = OuterKind::None;
+                            // A quote in statement position of a variadic node
+                            // would otherwise build a term and silently drop
+                            // it, so infer Emit. A tail-expression quote parses
+                            // with the same outer tag (`expression_statement`),
+                            // so also require the quoted body to be a statement
+                            // — an expression body means the quote is a value.
+                            if arity == Arity::Variadic {
+                                if let QTerm::Quote {
+                                    tag: qtag,
+                                    lang: lang2,
+                                    term: body,
+                                    ..
+                                } = &**term
+                                {
+                                    if self.langs.get(self.lang)?.typ(qtag) == InnerKind::Stmt {
+                                        if let QTerm::Tuple { tag: btag, .. } = &**body {
+                                            if self.langs.get(lang2)?.typ(btag) == InnerKind::Stmt {
+                                                okind = OuterKind::Emit;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             self.meta.wrap_child(expanded, okind)
                         })
                         .collect::<Result<Vec<_>>>()?;

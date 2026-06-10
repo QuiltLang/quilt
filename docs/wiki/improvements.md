@@ -23,7 +23,7 @@ The parser wraps every source string in leading/trailing newlines to work around
 
 ---
 
-### 🔲 2. Remove the `ikind` dead path in `build_nodes`
+### ✅ 2. Remove the `ikind` dead path in `build_nodes`
 
 **File:** `multi.rs:260`
 
@@ -35,9 +35,11 @@ let post = self
 
 The hole's `InnerKind` was designed to propagate into child parses (so a hole known to be in expression position forces an expression parse). The call always passes `None`, so `parse_pre` never receives context. The commented-out parameter and the un-removed `ikind: Option<InnerKind>` signature on `Language::parse_pre` both accumulate confusion. Either wire the value through or delete the parameter.
 
+**Done** (the "wire it through" option), as part of item 4: the call is now `parse_pre(hole.ikind, &code)`.
+
 ---
 
-### 🔲 3. Fix expander Emit-inference TODO
+### ✅ 3. Fix expander Emit-inference TODO
 
 **File:** `multi.rs:373`
 
@@ -47,9 +49,11 @@ The hole's `InnerKind` was designed to propagate into child parses (so a hole kn
 
 In the `Stage::Ground` path, the expander unconditionally sets `okind = Default::default()` (i.e. `OuterKind::None`) for every child. The TODO says it should set `OuterKind::Emit` only when the hole's outer term is a statement, not an expression. Without the fix, quote splices in expression position may produce ill-typed code silently. The information to make the decision (the `tag`/`arity` of the parent tuple) is available at that point in the code.
 
+**Done.** The `Expander` now carries the ground language and infers `OuterKind::Emit` for a quote child of a variadic tuple when both the quote's outer tag *and* its body are statement-kind (`Language::typ`, newly implemented for the Rust and Python providers). The body check matters because a tail-expression quote parses with the same outer tag (`expression_statement`) as a statement-position one — an expression body means the quote is the block's value and must not be emitted. So `↖println!("hi");↗` standing alone as a statement now expands to `…b().emit(&mut b_);` instead of building a term and silently dropping it. Implementing `typ` also brought the previously dead `OuterKind::Splice` branch in the Sky path to life: an unquote whose ground body is a statement-shaped block now expands to `{ … };` instead of the `{ … }.emit(&mut b_);` unit-emit workaround (the bootstrap-generated `meta.rs` is unchanged byte-for-byte). Tests: `expand_rust::ground_stmt_quote_emits`, `ground_tail_quote_stays_value`, `ground_unit_unquote_spliced`.
+
 ---
 
-### 🔲 4. Wire up `Hole.itag` for better hole typing
+### ✅ 4. Wire up `Hole.itag` for better hole typing
 
 **File:** `lang.rs:30`
 
@@ -62,6 +66,8 @@ pub struct Hole {
 ```
 
 The `itag` field was stubbed and then commented out. It was meant to carry the expected inner kind of each hole (Expr, Stmt, Block) so nested parses could be coerced to the right shape. Implementing it would let `TSLanguage::parse_pre` pass a real `InnerKind` for each hole instead of `None`, which in turn would let the Rust parser correctly distinguish `{ }` (block) holes from expression holes, eliminating a class of parse ambiguity.
+
+**Done.** Realized as `Hole.ikind: Option<InnerKind>` rather than a raw tag: every consumer wants the kind, and a tag would force them to know which language to interpret it in. `TSLanguage::parse_pre` populates it from the hole's position via the provider's new `typ` method (`expression_statement` hole → `Stmt`, `block` hole in expression position → `Expr`), `build_nodes` threads it into the nested `parse_pre` for unquote bodies (also resolving item 2's dead `/*hole.ikind*/ None` path by wiring it through), and `RustProvider::unwrap` trusts it over the tag guess when classifying ambiguous single-statement bodies like a bare `{ }`. Quote bodies are deliberately *not* coerced — a statement-shaped term may legally fill an expression hole (`let x = ↖println!("hi");↗;`). Test: `kinds::rs_hole_ikinds`.
 
 ---
 

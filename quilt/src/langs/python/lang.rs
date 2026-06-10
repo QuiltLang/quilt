@@ -40,6 +40,16 @@ impl TSProvider for PythonProvider {
         }
     }
 
+    fn typ(&self, tag: &str) -> InnerKind {
+        if tag == "module" {
+            InnerKind::File
+        } else if tag == "assignment" || tag.ends_with("statement") || tag.ends_with("definition") {
+            InnerKind::Stmt
+        } else {
+            InnerKind::Expr
+        }
+    }
+
     fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
         if qterm.len() != 1 {
             return (qterm, InnerKind::File);

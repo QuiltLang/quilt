@@ -27,7 +27,11 @@ pub enum Arity {
 #[derive(Debug, Clone, Default)]
 pub struct Hole {
     pub otag: Box<str>, // outer tag: where this hole appears in the outer language
-    // pub itag: Option<Box<str>>, // inner tag: what kind of thing can fill this hole
+    /// Inner kind: what kind of thing can fill this hole, derived from `otag`
+    /// via the outer language's [`Language::typ`]. Threaded into the nested
+    /// `parse_pre` so an unquote body is parsed with the kind its position
+    /// demands (e.g. a `{ }` in statement position) instead of a guess.
+    pub ikind: Option<InnerKind>,
     pub prefix: Box<[Box<str>]>,
 }
 
@@ -62,13 +66,13 @@ impl std::ops::Add for &Hole {
 
     fn add(self, rhs: Self) -> Self::Output {
         let otag = rhs.otag.clone();
-        // let itag = rhs.itag.clone();
+        let ikind = rhs.ikind;
         let mut prefix = self.prefix.to_vec();
         prefix.extend_from_slice(&rhs.prefix);
         let prefix = prefix.into();
         Hole {
             otag,
-            // itag,
+            ikind,
             prefix,
         }
     }
@@ -140,6 +144,14 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn parse_pre(&mut self, ikind: Option<InnerKind>, code: &[FlatNode]) -> Result<Self::Post> {
         self.as_mut().parse_pre(ikind, code)
+    }
+
+    fn arity(&self, tag: &str) -> Arity {
+        self.as_ref().arity(tag)
+    }
+
+    fn typ(&self, tag: &str) -> InnerKind {
+        self.as_ref().typ(tag)
     }
 
     fn hashbang(&self) -> Option<&'static str> {

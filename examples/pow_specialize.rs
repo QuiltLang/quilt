@@ -85,7 +85,7 @@ fn pow_body(p: u32) -> Result<Arc<QTerm>> {
                 NL.emit(&mut b_);
             }
             result.emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.nl();
         sym("}").emit(&mut b_);
