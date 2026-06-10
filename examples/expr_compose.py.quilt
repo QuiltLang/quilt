@@ -7,30 +7,30 @@ from quilt import *
 # coparse() shows what the composed expression looks like as source.
 
 print("=== Simple quoted expressions ===")
-data = ↖[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]↗
-base = ↖2↗
-exp  = ↖10↗
+data = py↖[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]↗
+base = py↖2↗
+exp  = py↖10↗
 print("data :", data.coparse())
 print("base :", base.coparse())
 print("exp  :", exp.coparse())
 
 print("\n=== Composition by splicing ===")
 # Unquoting base and exp fills holes in the surrounding quote.
-power   = ↖↙base↘ ** ↙exp↘↗
-product = ↖↙base↘ * ↙power↘↗
+power   = py↖↙base↘ ** ↙exp↘↗
+product = py↖↙base↘ * ↙power↘↗
 print("2**10        :", power.coparse())
 print("2 * 2**10    :", product.coparse())
 
 print("\n=== Nesting: comprehensions from quoted parts ===")
 # Each step quotes an expression referencing the previous step's QTerm.
-evens   = ↖[x for x in ↙data↘ if x % 2 == 0]↗
-doubled = ↖[x * 2 for x in ↙evens↘]↗
-total   = ↖sum(↙doubled↘)↗
+evens   = py↖[x for x in ↙data↘ if x % 2 == 0]↗
+doubled = py↖[x * 2 for x in ↙evens↘]↗
+total   = py↖sum(↙doubled↘)↗
 print("evens  :", evens.coparse())
 print("doubled:", doubled.coparse())
 print("total  :", total.coparse())
 
 print("\n=== Conditional expression ===")
 # power is 2**10; the whole ternary is a new quoted expression.
-parity = ↖"even" if ↙power↘ % 2 == 0 else "odd"↗
+parity = py↖"even" if ↙power↘ % 2 == 0 else "odd"↗
 print("parity :", parity.coparse())

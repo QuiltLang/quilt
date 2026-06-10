@@ -70,7 +70,7 @@ def section(tier_key, heading):
     if not tier:
         return ""
     items = "".join(item(issue, tier_key) for issue in tier)
-    frag = ↖
+    frag = html↖
       <section>
         <h2>↙raw(escape(heading))↘ <span class="count">↙raw(len(tier))↘</span></h2>
         <p class="desc">↙raw(escape(descs[tier_key]))↘</p>
@@ -84,7 +84,7 @@ def section(tier_key, heading):
 sections = "".join(section(key, heading) for key, heading in TIERS)
 stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-page = ↖
+page = html↖
 <!DOCTYPE html>
 <html lang="en">
 <head>

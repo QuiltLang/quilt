@@ -15,7 +15,7 @@ fn main() -> Result<()> {
 
     // Wrap the specialized body in a test harness that exercises it on a few
     // base values so we can verify the output immediately.
-    let program = ↖{
+    let program = rs↖{
         let f = |b: u64| -> u64 ↙body↘;
         for b in [2u64, 3, 5, 7, 11] {
             println!("{}^{} = {}", b, ↙p_lit↘, f(b));
@@ -33,13 +33,13 @@ fn main() -> Result<()> {
 /// closure binds as its parameter.
 fn pow_body(p: u32) -> Result<Arc<QTerm>> {
     if p == 0 {
-        return Ok(↖{ 1u64 }↗);
+        return Ok(rs↖{ 1u64 }↗);
     }
     if p == 1 {
-        return Ok(↖{ b }↗);
+        return Ok(rs↖{ b }↗);
     }
     let (stmts, result) = pow_squaring(p)?;
-    Ok(↖{
+    Ok(rs↖{
         ↙{
             for stmt in stmts {
                 stmt.←;
@@ -64,7 +64,7 @@ fn pow_body(p: u32) -> Result<Arc<QTerm>> {
 ///     exp >>= 1
 fn pow_squaring(p: u32) -> Result<(Vec<Arc<QTerm>>, Arc<QTerm>)> {
     let mut stmts: Vec<Arc<QTerm>> = Vec::new();
-    let mut sq: Arc<QTerm> = ↖b↗;          // current b^(2^k)
+    let mut sq: Arc<QTerm> = rs↖b↗;          // current b^(2^k)
     let mut acc: Option<Arc<QTerm>> = None;  // accumulated product (None = 1)
     let mut exp = p;
     let mut n = 0usize; // counter for fresh temporary names t0, t1, ...
@@ -79,7 +79,7 @@ fn pow_squaring(p: u32) -> Result<(Vec<Arc<QTerm>>, Arc<QTerm>)> {
                     let var_expr = var.clone();
                     n += 1;
                     let sq2 = sq.clone();
-                    stmts.push(↖let ↙var↘ = ↙prev↘ * ↙sq2↘;↗);
+                    stmts.push(rs↖let ↙var↘ = ↙prev↘ * ↙sq2↘;↗);
                     var_expr
                 }
             });
@@ -92,7 +92,7 @@ fn pow_squaring(p: u32) -> Result<(Vec<Arc<QTerm>>, Arc<QTerm>)> {
             n += 1;
             let sq2 = sq.clone();
             let sq3 = sq.clone();
-            stmts.push(↖let ↙var↘ = ↙sq2↘ * ↙sq3↘;↗);
+            stmts.push(rs↖let ↙var↘ = ↙sq2↘ * ↙sq3↘;↗);
             sq = var_expr;
         }
     }

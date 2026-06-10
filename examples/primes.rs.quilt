@@ -30,10 +30,10 @@ fn main() -> Result<()> {
     let count = primes.len();
     let sum: u64 = primes.iter().sum();
 
-    let program = ↖{
+    let program = rs↖{
         ↙{
             let title = format!("Primes up to {limit}: {count} found, sum = {sum}");
-            ↖println!(↙title.↑↘);↗.←;
+            rs↖println!(↙title.↑↘);↗.←;
             NL.←;
             for chunk in primes.chunks(10) {
                 let row: String = chunk
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
                     .map(|p| format!("{p:5}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                ↖println!(↙row.↑↘);↗.←;
+                rs↖println!(↙row.↑↘);↗.←;
                 NL.←;
             }
         }↘
