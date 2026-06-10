@@ -56,6 +56,13 @@ impl TSProvider for PythonProvider {
         }
         let qterm = qterm.squash();
         if qterm.tag() == QTermTag::tuple("expression_statement") {
+            // A bare tuple (`a, b`) keeps its elements directly under the
+            // statement — there is no single inner node to squash to. Keep
+            // the statement whole; bare tuples render without delimiters, so
+            // the fragment splices flat into expression position.
+            if qterm.len() != 1 {
+                return (qterm, InnerKind::Expr);
+            }
             let qterm = qterm.squash();
             if qterm.tag() == QTermTag::tuple("assignment") {
                 return (qterm, InnerKind::Stmt);

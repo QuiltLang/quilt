@@ -80,3 +80,29 @@ fn heterogeneous_lift_into_html() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn homogeneous_lift_is_prefix() -> Result<()> {
+    // The python→python `↑` spells the prefix `qlift` function (a method
+    // can't hang off builtin ints), written `↑(value)`.
+    let out = expand_py("t = ↖[↙↑(n)↘]↗")?;
+    assert!(
+        out.contains("qlift(n)"),
+        "homogeneous lift should spell the prefix qlift function; got:\n{out}"
+    );
+    Ok(())
+}
+
+#[test]
+fn bare_tuple_quote() -> Result<()> {
+    // A bare tuple keeps its elements directly under the expression
+    // statement; the quote must not try to squash past it. This is the
+    // fold-through-a-quote join: `a, b` splices flat into expression
+    // position, so folding it again stays a flat comma-separated list.
+    let out = expand_py("p = ↖↙a↘, ↙b↘↗")?;
+    assert!(
+        out.contains(r#"tb("expression_statement").c(a).c(sym(",")).w(" ").c(b)"#),
+        "a bare tuple quote should keep the expression_statement whole; got:\n{out}"
+    );
+    Ok(())
+}

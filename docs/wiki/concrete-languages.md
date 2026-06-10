@@ -69,10 +69,12 @@ Python uses the forked `tree-sitter-python` (hole placeholder `__HOLE__`). Its `
 
 ### Python operators
 
-| Glyph | Expands to           |
-|-------|----------------------|
-| `↑x`  | `x.qlift()` (Python) |
-| `⟨N⟩` | `name("ident")`      |
+| Glyph  | Expands to                                                     |
+|--------|----------------------------------------------------------------|
+| `↑(x)` | `qlift(x)` into Python; `qlift_html(x)` into an HTML quote     |
+| `⟨N⟩`  | `name("ident")`                                                |
+
+Python's lift is written *prefix* (`↙↑(x)↘`), unlike Rust's postfix `x.↑`: the spelling is a free function because a `qlift` method can't hang off builtin ints and strings.
 
 Python also has a `LiftTo` marker type (`Python` in `lift.rs`), so a Rust host can lift values into quoted Python (`python↖ … ↙x.↑↘ … ↗`): integers, floats, bools, and strings lift to the corresponding literals, and slices/`Vec`s lift element-wise to `list` literals.
 
