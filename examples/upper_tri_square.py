@@ -9,7 +9,7 @@ import sys
 # matrix. The matrix is stored flat: just its n*(n+1)/2 entries on and above
 # the diagonal, row-major. Because n is known at *generation* time, the loops
 # over entries and the inner sums over k unroll completely; the emitted
-# function is straight-line code with one binding per output entry, no
+# function is a single lambda returning the result list, with no loops, no
 # branches, and no multiplications by the known zeros below the diagonal.
 # (The product of two upper-triangular matrices is upper-triangular, so the
 # result uses the same flat layout.)
@@ -21,14 +21,13 @@ def idx(n, i, j):
     return i * n - i * (i - 1) // 2 + (j - i)
 
 
-def join(terms, sep=None):
+def join(terms, sep):
     """Join QTerms into one splice-able fragment: the variadic-emit pattern,
-    one .e() child after another, separated by `sep` text (newlines by
-    default)."""
+    one .e() child after another, separated by `sep` text."""
     b = tb("document")
     for i, t in enumerate(terms):
         if i:
-            b = b.n() if sep is None else b.w(sep)
+            b = b.w(sep)
         b = b.e(t)
     return b.b()
 
@@ -45,31 +44,22 @@ def entry(n, i, j):
 
 
 def make_squarer(n):
-    """Return a QTerm for a function that squares a flat upper-triangular
-    matrix: one binding per output entry, then a flat result list."""
-    body = []
-    outs = []
-    for i in range(n):
-        for j in range(i, n):
-            var = name(f"b{idx(n, i, j)}")
-            body.append(tb("assignment").c(var).w(" ").c(sym("=")).w(" ").c(entry(n, i, j)).b())
-            outs.append(var)
-    body.append(tb("return_statement").c(sym("return")).w(" ").c(tb("list").c(sym("[")).c(join(outs, ", ")).c(sym("]")).b()).b())
-    return tb("function_definition").c(sym("def")).w(" ").c(name(f"square_upper_{n}")).c(tb("parameters").c(sym("(")).c(leaf("identifier", "a")).c(sym(")")).b()).c(sym(":")).p("    ").n().c(join(body)).x().b()
+    """Return a QTerm for a lambda that squares a flat upper-triangular
+    matrix, one unrolled sum of products per output entry."""
+    entries = join([entry(n, i, j) for i in range(n) for j in range(i, n)], ", ")
+    return tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "a")).b()).c(sym(":")).w(" ").c(tb("list").c(sym("[")).c(entries).c(sym("]")).b()).b()
 
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 4
 fn = make_squarer(n)
-src = fn.coparse()
 print(f"=== Generated upper-triangular squarer for n = {n} ===")
-print(src)
+print(fn.coparse())
 
-# Check the generated function against a naive full-matrix product. (reduce
-# eval-s a single expression, and a def is a statement, so exec the source.)
+# Reduce the term back to a live function and check it against a naive
+# full-matrix product.
+square = fn.reduce()
 flat = list(range(1, n * (n + 1) // 2 + 1))
-ns = {}
-exec(src, ns)
-got = ns[f"square_upper_{n}"](flat)
+got = square(flat)
 
 full = [[flat[idx(n, i, j)] if j >= i else 0 for j in range(n)] for i in range(n)]
 prod = [[sum(full[i][k] * full[k][j] for k in range(n)) for j in range(n)] for i in range(n)]
