@@ -1559,7 +1559,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-html"
 version = "0.23.2"
-source = "git+https://github.com/QuiltLang/tree-sitter-html.git#9f1e7d627180c19e1cdb243e60c15c2b74bf219b"
+source = "git+https://github.com/QuiltLang/tree-sitter-html.git#d81ae0f44b1e084a3383b3355c62cb6953260467"
 dependencies = [
  "cc",
  "tree-sitter-language",
