@@ -482,51 +482,72 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
 
 /**************************************************************/
 
+/// Resolve `lang` through an alias map; non-aliases pass through unchanged.
+fn canonical<'a>(aliases: &'a BTreeMap<Box<str>, Box<str>>, lang: &'a str) -> &'a str {
+    aliases.get(lang).map_or(lang, AsRef::as_ref)
+}
+
 #[derive(Default)]
-pub struct DictLanguages(BTreeMap<Box<str>, Box<dyn Language<Post = Box<dyn LanguagePost>>>>);
+pub struct DictLanguages {
+    langs: BTreeMap<Box<str>, Box<dyn Language<Post = Box<dyn LanguagePost>>>>,
+    /// alias → canonical key in `langs`, so aliases share one instance
+    aliases: BTreeMap<Box<str>, Box<str>>,
+}
 
 impl Languages for DictLanguages {
     type Language = Box<dyn Language<Post = Box<dyn LanguagePost>>>;
 
     fn get(&self, lang: &str) -> Result<&Self::Language> {
-        self.0
-            .get(lang)
+        self.langs
+            .get(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
     fn get_mut(&mut self, lang: &str) -> Result<&mut Self::Language> {
-        self.0
-            .get_mut(lang)
+        self.langs
+            .get_mut(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
 }
 
 impl DictLanguages {
     pub fn add(&mut self, lang: &str, language: <Self as Languages>::Language) {
-        self.0.insert(lang.into(), language);
+        self.langs.insert(lang.into(), language);
+    }
+
+    pub fn add_alias(&mut self, alias: &str, canonical: &str) {
+        self.aliases.insert(alias.into(), canonical.into());
     }
 }
 
 #[derive(Default)]
-pub struct DictMetaLanguages(BTreeMap<Box<str>, Box<dyn MetaLanguage>>);
+pub struct DictMetaLanguages {
+    metas: BTreeMap<Box<str>, Box<dyn MetaLanguage>>,
+    /// alias → canonical key in `metas`, so aliases share one instance
+    aliases: BTreeMap<Box<str>, Box<str>>,
+}
 
 impl MetaLanguages for DictMetaLanguages {
     type MetaLanguage = Box<dyn MetaLanguage>;
 
     fn get(&self, lang: &str) -> Result<&Self::MetaLanguage> {
-        self.0
-            .get(lang)
+        self.metas
+            .get(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
     fn get_mut(&mut self, lang: &str) -> Result<&mut Self::MetaLanguage> {
-        self.0
-            .get_mut(lang)
+        self.metas
+            .get_mut(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
 }
 
 impl DictMetaLanguages {
     pub fn add(&mut self, lang: &str, meta_language: <Self as MetaLanguages>::MetaLanguage) {
-        self.0.insert(lang.into(), meta_language);
+        self.metas.insert(lang.into(), meta_language);
+    }
+
+    pub fn add_alias(&mut self, alias: &str, canonical: &str) {
+        self.aliases.insert(alias.into(), canonical.into());
     }
 }
 
@@ -543,6 +564,14 @@ impl DictMulti {
         meta: <DictMetaLanguages as MetaLanguages>::MetaLanguage,
     ) {
         self.metas.add(lang, meta);
+    }
+
+    /// Register `alias` as an alternate name for `canonical` in both the
+    /// language and meta-language registries. Lookups under the alias resolve
+    /// to the canonical entry's instance (no entry there → "not found").
+    pub fn add_alias(&mut self, alias: &str, canonical: &str) {
+        self.langs.add_alias(alias, canonical);
+        self.metas.add_alias(alias, canonical);
     }
 }
 
