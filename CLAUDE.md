@@ -95,7 +95,7 @@ Two trait families:
 
 ### Heterogeneous lifting (`quilt/src/lift.rs`)
 
-`↑` is target-directed: `MetaLanguage::lift_str(target)` picks the spelling, where `target` defaults to the language of the enclosing quote (threaded through `build_nodes` as `splice_target`). Rust's spellings (`langs::rust::ops::lift_spelling`) are `qlift()` for rust→rust and `qlift_to::<Wgsl>()` for rust→wgsl. `lift.rs` (always compiled, no parser deps — wasm consumers use it) defines `LiftTo<L>` keyed by marker types (`Rust`, `Wgsl`, `Bash`, `Zsh`) plus the `QLiftTo` postfix helper; per-(type, language) impls own the target's tags and spellings (e.g. `LiftTo<Wgsl> for u32` → `leaf("int_literal", "3u")`).
+`↑` is target-directed: `MetaLanguage::lift_str(target)` picks the spelling, where `target` defaults to the language of the enclosing quote (threaded through `build_nodes` as `splice_target`). Rust's spellings (`langs::rust::ops::lift_spelling`) are `qlift()` for rust→rust and `qlift_to::<L>()` for the heterogeneous targets (python, wgsl, zsh, bash). `lift.rs` (always compiled, no parser deps — wasm consumers use it) defines `LiftTo<L>` keyed by marker types (`Rust`, `Python`, `Wgsl`, `Bash`, `Zsh`) plus the `QLiftTo` postfix helper; per-(type, language) impls own the target's tags and spellings (e.g. `LiftTo<Wgsl> for u32` → `leaf("int_literal", "3u")`, `LiftTo<Python> for Vec<T>` → a `list` literal).
 
 ### Concrete languages (`quilt/src/langs/`)
 

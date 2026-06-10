@@ -13,13 +13,16 @@
 //! only the `rust` feature but splices WGSL terms). The markers index lifting;
 //! they don't need the parser.
 
-use crate::qterm::{leaf, QTerm};
+use crate::qterm::{leaf, tb, QTerm};
 use std::sync::Arc;
 
 /**************************************************************/
 
 /// Marker: the Rust object language (the homogeneous case; see `QLift`).
 pub struct Rust;
+
+/// Marker: the Python object language.
+pub struct Python;
 
 /// Marker: the WGSL object language.
 pub struct Wgsl;
@@ -82,6 +85,99 @@ impl LiftTo<Wgsl> for f32 {
 impl LiftTo<Wgsl> for bool {
     fn lift_to(&self) -> Arc<QTerm> {
         leaf("bool_literal", &self.to_string())
+    }
+}
+
+/**************************************************************/
+// Python lifts. Python integers are arbitrary-precision, so every Rust
+// integer width lifts losslessly. Strings lift to double-quoted `string`
+// literals with the characters Python interprets backslash-escaped; slices
+// and `Vec`s of liftable values lift element-wise to `list` literals.
+
+macro_rules! python_lift_int {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Python> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                leaf("integer", &self.to_string())
+            }
+        }
+    )*};
+}
+
+python_lift_int!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+
+macro_rules! python_lift_float {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Python> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                // `{:?}` keeps the decimal point (`1.0`, not `1`), so the
+                // lifted literal stays a Python float.
+                leaf("float", &format!("{self:?}"))
+            }
+        }
+    )*};
+}
+
+python_lift_float!(f32, f64);
+
+impl LiftTo<Python> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        if *self {
+            leaf("true", "True")
+        } else {
+            leaf("false", "False")
+        }
+    }
+}
+
+/// Escape a string for inclusion in a Python double-quoted literal.
+fn py_dquote_escape(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => write!(out, "\\x{:02x}", c as u32).unwrap(),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+impl LiftTo<Python> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        leaf("string", &format!("\"{}\"", py_dquote_escape(self)))
+    }
+}
+
+impl LiftTo<Python> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        LiftTo::<Python>::lift_to(self.as_str())
+    }
+}
+
+impl<T: LiftTo<Python>> LiftTo<Python> for [T] {
+    fn lift_to(&self) -> Arc<QTerm> {
+        let mut b = tb("list").w("[");
+        for (i, x) in self.iter().enumerate() {
+            if i > 0 {
+                b = b.w(", ");
+            }
+            b = b.c(&x.lift_to());
+        }
+        b.w("]").b()
+    }
+}
+
+impl<T: LiftTo<Python>> LiftTo<Python> for Vec<T> {
+    fn lift_to(&self) -> Arc<QTerm> {
+        self.as_slice().lift_to()
     }
 }
 
@@ -156,6 +252,49 @@ mod tests {
             panic!("expected tuple");
         };
         assert_eq!(&**tag, "int_literal");
+    }
+
+    #[test]
+    fn python_scalars() {
+        assert_eq!(42u64.qlift_to::<Python>().coparse(), "42");
+        assert_eq!((-7i32).qlift_to::<Python>().coparse(), "-7");
+        assert_eq!(1.0f64.qlift_to::<Python>().coparse(), "1.0");
+        assert_eq!(2.5f32.qlift_to::<Python>().coparse(), "2.5");
+        assert_eq!(true.qlift_to::<Python>().coparse(), "True");
+        assert_eq!(false.qlift_to::<Python>().coparse(), "False");
+    }
+
+    #[test]
+    fn python_strings() {
+        // Characters Python interprets inside "…" are backslash-escaped.
+        let owned = String::from("hi there");
+        assert_eq!(owned.qlift_to::<Python>().coparse(), "\"hi there\"");
+        assert_eq!(
+            "say \"hi\\\"\nbye".qlift_to::<Python>().coparse(),
+            "\"say \\\"hi\\\\\\\"\\nbye\""
+        );
+    }
+
+    #[test]
+    fn python_lists() {
+        let squares: Vec<u64> = (1..=5).map(|n| n * n).collect();
+        assert_eq!(squares.qlift_to::<Python>().coparse(), "[1, 4, 9, 16, 25]");
+        let nested = vec![vec![1u8], vec![2, 3]];
+        assert_eq!(nested.qlift_to::<Python>().coparse(), "[[1], [2, 3]]");
+        let empty: Vec<u8> = Vec::new();
+        assert_eq!(empty.qlift_to::<Python>().coparse(), "[]");
+    }
+
+    #[test]
+    fn python_tags() {
+        let QTerm::Tuple { tag, .. } = &*3u32.qlift_to::<Python>() else {
+            panic!("expected tuple");
+        };
+        assert_eq!(&**tag, "integer");
+        let QTerm::Tuple { tag, .. } = &*vec![1u8].qlift_to::<Python>() else {
+            panic!("expected tuple");
+        };
+        assert_eq!(&**tag, "list");
     }
 
     #[test]

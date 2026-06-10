@@ -233,6 +233,7 @@ fn cmds_lit_term(cmds: &[CmdOrHole]) -> Arc<QTerm> {
 pub fn lift_spelling(target: &str) -> Result<&'static str> {
     match target {
         "rust" | "rs" => Ok("qlift()"),
+        "python" | "py" => Ok("qlift_to::<Python>()"),
         "wgsl" => Ok("qlift_to::<Wgsl>()"),
         "zsh" => Ok("qlift_to::<Zsh>()"),
         "bash" => Ok("qlift_to::<Bash>()"),
