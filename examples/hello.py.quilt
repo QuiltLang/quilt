@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 from quilt import *
 
 # A quoted Python expression expands to builder code that rebuilds the term;

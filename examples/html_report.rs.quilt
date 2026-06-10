@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 use quilt::prelude::*;
 
 /// Inject a Rust value as raw HTML text (no escaping — keep values safe for HTML).

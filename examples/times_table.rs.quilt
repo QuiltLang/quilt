@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 use quilt::prelude::*;
 
 fn main() -> Result<()> {

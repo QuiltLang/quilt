@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 // Partial evaluation of lam p: lam b: b^p specialized to a given p.
 // The binary squaring loop runs at *generation* time; the emitted closure has
 // no exponent, no loop, no branches — just let-bindings and multiplications.

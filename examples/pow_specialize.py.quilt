@@ -1,4 +1,4 @@
-#!/usr/bin/env quilt run
+#!/usr/bin/env quilt
 from quilt import *
 
 # Partial evaluation of pow(b, p) by exponentiation by squaring.
