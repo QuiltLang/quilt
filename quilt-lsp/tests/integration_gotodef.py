@@ -10,7 +10,8 @@ resolves. Skips (exit 0) if rust-analyzer can't be started.
 import json, os, select, shutil, subprocess, sys, time
 
 BIN = sys.argv[1] if len(sys.argv) > 1 else "target/debug/quilt-lsp"
-FILE = "/Users/avarga/Documents/Quilt2/examples/cargo-demo/src/main.rs.quilt"
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FILE = os.path.join(REPO, "examples", "cargo-demo", "src", "main.rs.quilt")
 sys.stdout.reconfigure(line_buffering=True)
 if shutil.which("rust-analyzer") is None:
     print("SKIP: rust-analyzer not on PATH"); sys.exit(0)
