@@ -139,9 +139,6 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// plain `foo.rs.quilt` case where bare quotes default to the host.
     #[cfg(feature = "parse")]
     pub fn parse_chain(&mut self, chain: &[&str], s: &str) -> Result<Arc<QTerm>> {
-        // FIXME: this is temporary
-        let s = &format!("\n{s}\n");
-
         let nodes = Node::parse(s)
             .iter()
             .map(|n| n.clone().into())
@@ -154,6 +151,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 &nodes,
                 &zipper_from_chain(chain),
                 None,
+                false,
             )?
             .first()
             .unwrap())
@@ -163,7 +161,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// fragment's value will be spliced into: `Some` only for unquote bodies
     /// (the lang of the enclosing quote), `None` otherwise. It directs `↑` —
     /// a lift inside `wgsl↖ … ↙x.↑↘ … ↗` targets WGSL; elsewhere a lift is
-    /// homogeneous (targets the fragment's own language).
+    /// homogeneous (targets the fragment's own language). `bracketed` is true
+    /// when `nodes` is the body of a `↖…↗`/`↙…↘` pair and false at the top
+    /// level: only bracketed bodies get their boundary newlines trimmed.
     #[cfg(feature = "parse")]
     pub fn build_nodes(
         &mut self,
@@ -172,6 +172,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         nodes: &[Arc<Node>],
         zipper: &Zipper<Box<str>>,
         splice_target: Option<&str>,
+        bracketed: bool,
     ) -> Result<QTermBuilder> {
         let lang = zipper.head().unwrap();
 
@@ -238,8 +239,13 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             }
             nodes = nodes_new;
         }
-        let first_nl = !nodes.is_empty() && **nodes.first().unwrap() == Node::NewLine;
-        let last_nl = !nodes.is_empty()
+        // Trim one boundary newline on each side so `↖\n…\n↗` parses the same
+        // body as `↖…↗`; the trimmed newlines are re-emitted as builder cmds
+        // below. At the top level (no enclosing brackets) the boundary
+        // newlines are real source content and must stay in `code`.
+        let first_nl = bracketed && !nodes.is_empty() && **nodes.first().unwrap() == Node::NewLine;
+        let last_nl = bracketed
+            && !nodes.is_empty()
             && **nodes.last().unwrap() == Node::NewLine
             && num_nl != usize::from(first_nl); // distinguish ↖↗ from ↖\n↗
         let nodes = &nodes[usize::from(first_nl)..nodes.len() - usize::from(last_nl)];
@@ -309,7 +315,8 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     let quote_lang = zipper.head().unwrap();
                     let mut builder = qb(&hole.otag, 1, quote_lang);
                     builder.write(anno).write("↖");
-                    let mut builder = self.build_nodes(builder, hole, nodes, &zipper, None)?;
+                    let mut builder =
+                        self.build_nodes(builder, hole, nodes, &zipper, None, true)?;
                     builder.write("↗");
                     plugs.push(builder.b());
                 }
@@ -325,8 +332,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     let splice_target = lang;
                     let zipper = zipper.clone().tail().unwrap();
                     builder.write(anno).write("↙");
-                    let mut builder =
-                        self.build_nodes(builder, &hole, nodes, &zipper, Some(splice_target))?;
+                    let mut builder = self.build_nodes(
+                        builder,
+                        &hole,
+                        nodes,
+                        &zipper,
+                        Some(splice_target),
+                        true,
+                    )?;
                     builder.write("↘");
                     plugs.push(builder.b());
                 }

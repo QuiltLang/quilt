@@ -10,7 +10,7 @@ A prioritized list of improvements to the Quilt codebase. "Bang for buck" means:
 
 ## Tier 1 — Quick wins, high payoff
 
-### 🔲 1. Fix the `parse_chain` newline-padding FIXME
+### ✅ 1. Fix the `parse_chain` newline-padding FIXME
 
 **File:** `multi.rs:143`
 
@@ -20,6 +20,8 @@ let s = &format!("\n{s}\n");
 ```
 
 The parser wraps every source string in leading/trailing newlines to work around some edge case in the tree-sitter grammar. This is a latent correctness bug: it silently offsets all parse positions by one line, which means error positions and source-map data are wrong by ±1. The right fix is to find and patch the grammar edge case that required the hack, or explicitly adjust positions at the boundary.
+
+**Resolution:** The padding wasn't working around a grammar edge case — it was protecting the source's own boundary newlines from `build_nodes`' trimming. `build_nodes` strips one leading/trailing `NewLine` (so `↖\n…\n↗` parses the same body as `↖…↗`) and re-emits them as cmds on the *enclosing* builder; but at the top level `parse_chain` discards that builder via `.first()`, so without padding the file's real trailing newline was lost — the padding supplied sacrificial newlines for the trimmer to eat. Fixed by adding a `bracketed` parameter to `build_nodes`: quote/unquote bodies trim as before, the top level doesn't trim at all. Parse positions now match the real source.
 
 ---
 
