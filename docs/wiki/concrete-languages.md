@@ -1,6 +1,6 @@
 # Concrete Languages
 
-**Directory:** `rust/quilt/src/langs/`
+**Directory:** `quilt/src/langs/`
 
 Each language lives in its own subdirectory and contributes (at minimum) a `lang.rs` implementing `Language` and optionally a `meta.rs` implementing `MetaLanguage`.
 
@@ -65,7 +65,7 @@ Python uses the forked `tree-sitter-python` (hole placeholder `__HOLE__`). Its `
 | Variadic block   | `{ let mut b_ = tb(..); b_.emit(..); b_.b() }` | fluent chain `.e(child1).e(child2).b()` |
 | Statement-splice | supported (via named `b_`)                     | **not supported**                       |
 
-Python's `quilt run` invokes `python3` and sets `PYTHONPATH` to include the `quilt_python` directory.
+Python's `quilt run` invokes `python3` and sets `PYTHONPATH` to include the `quilt-python` directory.
 
 ### Python operators
 
@@ -114,6 +114,14 @@ let shader = ↖
 
 ---
 
+## Zsh (`zsh`) and Bash (`bash`) — target only
+
+**Files:** `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
+
+Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. Both are target-only: they can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) but have no `MetaLanguage`. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
+
+---
+
 ## Text (`txt`) — target only
 
 **Files:** `langs/text/lang.rs`, `langs/text/mod.rs`, `langs/text/meta.rs`
@@ -134,17 +142,22 @@ See [Bootstrap](bootstrap.md) for details.
 
 ## Feature flags
 
-Each language is gated behind a Cargo feature with the same name:
+Each language is gated behind a Cargo feature with the same name (`quilt/Cargo.toml`):
 
 ```toml
 [features]
-default = ["rust", "python", "text", "wgsl", "html", "bootstrap"]
-rust     = ["dep:tree-sitter-rust", ...]
-python   = ["dep:tree-sitter-python", ...]
-html     = ["dep:tree-sitter-html", ...]
-wgsl     = ["dep:tree-sitter-wgsl", ...]
-text     = []
-bootstrap = ["dep:tree-sitter-rust", ...]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash"]
+parse = ["dep:tree-sitter", "dep:tree-sitter-quilt", "dep:tree-sitter-rust", "dep:tree-sitter-python"]
+bash  = ["dep:tree-sitter-bash", "parse"]
+html  = ["dep:tree-sitter-html", "parse"]
+wgsl  = ["dep:tree-sitter-wgsl", "parse"]
+zsh   = ["dep:tree-sitter-zsh", "parse"]
+python = []
+rust   = []
+text   = []
+bootstrap = ["parse"]
 ```
+
+The `parse` feature gates everything that needs tree-sitter (the Quilt-source parser, the `Language` providers, `Omni`, `Multi`'s parse path). With `default-features = false` the crate is runtime-only (the `QTerm` builders, `qlift`, `coparse`) and builds for `wasm32-unknown-unknown` — this is how `nanobots-codegen` consumes it.
 
 The `Omni` type is built only from features that are enabled, via `#[cfg(feature = "…")]` gates throughout `langs/omni.rs`.

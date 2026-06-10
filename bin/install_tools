@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Build and install the Quilt editor tooling:
+#   1. quilt-lsp    — `cargo install` into ~/.cargo/bin (the extension's
+#                     default `quilt-lsp.serverPath` finds it on PATH)
+#   2. tools/quilt  — the VS Code extension: `npm install` its dependencies,
+#                     then symlink it into ~/.vscode/extensions/quilt
+# Idempotent: safe to re-run after updating the repo.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "==> Installing quilt-lsp (cargo install --path quilt-lsp)"
+cargo install --path "$ROOT/quilt-lsp"
+
+echo "==> Installing VS Code extension dependencies (npm install)"
+(cd "$ROOT/tools/quilt" && npm install)
+
+ext_link="$HOME/.vscode/extensions/quilt"
+echo "==> Linking $ext_link -> $ROOT/tools/quilt"
+mkdir -p "$HOME/.vscode/extensions"
+# -n: don't dereference an existing link to a directory (avoids accidentally
+# creating tools/quilt/quilt inside the target on re-runs)
+ln -sfn "$ROOT/tools/quilt" "$ext_link"
+
+if ! command -v rust-analyzer >/dev/null; then
+  echo "warning: rust-analyzer not on PATH — quilt-lsp needs it for Rust support" >&2
+  echo "         (rustup component add rust-analyzer)" >&2
+fi
+if ! command -v rust-script >/dev/null; then
+  echo "warning: rust-script not on PATH — 'quilt run' needs it for .rs.quilt files" >&2
+  echo "         (cargo install rust-script)" >&2
+fi
+
+echo "Done. Reload VS Code to pick up the extension."
+echo "Optional (macOS): merge tools/DefaultKeyBinding.dict into ~/Library/KeyBindings/ for system-wide glyph input."
