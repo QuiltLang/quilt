@@ -151,8 +151,13 @@ struct Inner {
     /// and can corrupt the shared `target/.rust-analyzer/` cache.
     workspace_locks: DashMap<PathBuf, Arc<Mutex<()>>>,
     /// The downstream semantic-token legend, captured at child init and
-    /// re-advertised to the editor so token indices line up.
+    /// re-advertised to the editor so token indices line up. Extended (never
+    /// reordered) with the tree-sitter fragment highlighter's token types.
     semantic_legend: OnceLock<Value>,
+    /// Token-type name → index into the advertised legend, for tokens the
+    /// server generates itself for embedded fragments (see [`crate::tshl`]).
+    /// Set together with `semantic_legend`.
+    ts_token_index: OnceLock<std::collections::HashMap<&'static str, u32>>,
 
     /* ---- embedded target languages (per-fragment, e.g. WGSL) ---- */
     /// quilt URI → its embedded-language fragments (each a standalone quote).
@@ -185,6 +190,7 @@ impl Backend {
                 workspaces: DashMap::new(),
                 workspace_locks: DashMap::new(),
                 semantic_legend: OnceLock::new(),
+                ts_token_index: OnceLock::new(),
                 embedded_frags: DashMap::new(),
                 embedded_virt_to_quilt: DashMap::new(),
                 embedded_diags: DashMap::new(),
@@ -795,9 +801,34 @@ impl Inner {
         if !legend.is_object() {
             return;
         }
+        // Extend the downstream legend with the tree-sitter fragment
+        // highlighter's token types: appended, never reordered, so downstream
+        // token indices stay valid as-is while fragment tokens resolve by name.
+        let mut legend = legend.clone();
+        let mut type_index = std::collections::HashMap::new();
+        if let Some(types) = legend.get_mut("tokenTypes").and_then(Value::as_array_mut) {
+            for (i, t) in types.iter().enumerate() {
+                if let (Some(s), Ok(i)) = (t.as_str(), u32::try_from(i)) {
+                    if let Some(name) = crate::tshl::TOKEN_TYPES.iter().find(|n| **n == s) {
+                        type_index.insert(*name, i);
+                    }
+                }
+            }
+            for name in crate::tshl::TOKEN_TYPES {
+                if !type_index.contains_key(name) {
+                    if let Ok(i) = u32::try_from(types.len()) {
+                        type_index.insert(*name, i);
+                        types.push(json!(name));
+                    }
+                }
+            }
+        }
         let is_first = self.semantic_legend.set(legend.clone()).is_ok();
         if is_first {
-            // First workspace to initialize: register the capability with the editor.
+            // First workspace to initialize: register the capability with the
+            // editor. The fragment-token index must match the legend actually
+            // registered, so it is set only by the same winner.
+            let _ = self.ts_token_index.set(type_index);
             let registration = Registration {
                 id: "quilt-semantic-tokens".to_string(),
                 method: "textDocument/semanticTokens".to_string(),
@@ -1076,17 +1107,25 @@ impl Inner {
     }
 
     /// Whole-document semantic tokens: forward to the downstream server (which
-    /// sees the ground projection *and* the appended quote fragments) and remap
-    /// every token back to quilt coordinates.
+    /// sees the ground projection *and* the appended quote fragments), remap
+    /// every token back to quilt coordinates, and merge in tree-sitter tokens
+    /// for embedded fragments (whose own servers may provide none — wgsl-analyzer
+    /// advertises no semantic tokens).
     async fn semantic_tokens(self: &Arc<Self>, uri: &Url) -> Option<Vec<u32>> {
-        let (text, line_index, proj, virt) = {
+        let (text, line_index, proj, virt, frags) = {
             let doc = self.docs.get(uri)?;
             if !is_host_ground(doc.ground.as_deref()) {
                 return None;
             }
             let virt = dequilt_uri(uri)?;
             let proj = self.projections.get(uri)?.clone();
-            (doc.text.clone(), doc.line_index.clone(), proj, virt)
+            // Embedded fragments highlighted in-process: language + projection.
+            let frags: Vec<(&'static str, Projection)> = self
+                .embedded_frags
+                .get(uri)
+                .map(|fs| fs.iter().map(|f| (f.lang, f.proj.clone())).collect())
+                .unwrap_or_default();
+            (doc.text.clone(), doc.line_index.clone(), proj, virt, frags)
         };
 
         let child = self.ensure_workspace_child(uri).await?;
@@ -1105,13 +1144,23 @@ impl Inner {
             .filter_map(|v| u32::try_from(v.as_u64()?).ok())
             .collect();
 
-        Some(crate::semtok::remap(
-            &data,
-            &proj,
-            &text,
-            &line_index,
-            self.enc(),
-        ))
+        let enc = self.enc();
+        let mut toks = crate::semtok::remap(&data, &proj, &text, &line_index, enc);
+        if let Some(type_index) = self.ts_token_index.get() {
+            for (lang, fproj) in &frags {
+                if let Some(hl) = crate::tshl::highlighter(lang) {
+                    toks.extend(crate::tshl::fragment_tokens(
+                        hl,
+                        fproj,
+                        &text,
+                        &line_index,
+                        enc,
+                        type_index,
+                    ));
+                }
+            }
+        }
+        Some(crate::semtok::encode(toks))
     }
 
     /// Folding ranges: the quilt regions, plus the downstream server's ground

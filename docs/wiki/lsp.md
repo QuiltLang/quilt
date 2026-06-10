@@ -44,6 +44,7 @@ quilt-lsp  (server.rs)
 | `server.rs`     | The editor-facing server, LSP method handlers, merged diagnostics             |
 | `adapters.rs`   | Language-specific placeholders and comment syntax                             |
 | `semtok.rs`     | Semantic token merging and remap                                              |
+| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (e.g. WGSL)                |
 
 ## The projection
 
@@ -67,7 +68,11 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
 - **Rust ground language** via rust-analyzer:
   - Hover, go-to-definition, completion, diagnostics.
   - Positions mapped between `.quilt` and the projected `.rs`.
-- **Semantic tokens** — including inside `↖…↗` quotes.
+- **Semantic tokens** — including inside `↖…↗` quotes. Embedded-language
+  quotes (e.g. `wgsl↖…↗`) are highlighted by the server itself with tree-sitter
+  highlight queries (`tshl.rs`), since their downstream servers may provide no
+  semantic tokens (wgsl-analyzer advertises none); the downstream legend is
+  advertised with the tree-sitter token types appended.
 - **Folding** — quilt regions + ground server folds.
 
 ## Not yet implemented

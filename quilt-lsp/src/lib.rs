@@ -17,3 +17,4 @@ pub mod semtok;
 pub mod server;
 pub mod srcmap;
 pub mod translate;
+pub mod tshl;
