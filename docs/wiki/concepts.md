@@ -118,6 +118,7 @@ The unquote `↙{…}↘` runs a Rust loop at generation time; each iteration em
 
 - **Rust `↑`** — calls `qlift()` on the value, building a term whose code reconstructs it. Integers become `integer_literal` nodes; strings become `string_literal` nodes; `Arc<QTerm>` values lift themselves recursively.
 - **Python `↑`** — similar, delegated to the `quilt` Python module.
+- **Heterogeneous `↑`** — inside a quote of another language (e.g. `python↖ … ↙x.↑↘ … ↗`), Rust's `↑` expands to `qlift_to::<L>()` for that target language, producing a term in the *target's* syntax. `LiftTo` impls exist for Python, WGSL, Zsh, and Bash (see `lift.rs`); e.g. a Rust `Vec<u64>` lifts into Python as a `list` literal, and a Rust string lifts into zsh as a properly escaped double-quoted word.
 
 `↓` (reduce) evaluates a `QTerm` by compiling it (via `rust-script` for Rust) and deserializing the result using `postcard`:
 

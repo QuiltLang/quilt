@@ -6,7 +6,7 @@ Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file i
 
 ## Example
 
-A Rust program that generates Python. The squares are computed at generation time, in Rust; the emitted Python contains only the results:
+A Rust program that generates Python. `python↖…↗` quotes Python source and `↙…↘` splices Rust back in; inside a splice, a postfix `↑` lifts a Rust value into a term of the quoted language. The squares are computed at generation time, in Rust; the emitted Python contains only the results:
 
 ```rust
 #!/usr/bin/env quilt run
@@ -14,15 +14,13 @@ use quilt::prelude::*;
 
 fn main() -> Result<()> {
     // Runs at generation time, in Rust.
-    let squares: String = (1..=5)
-        .map(|n| (n * n).to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let squares: Vec<u64> = (1..=5).map(|n| n * n).collect();
 
-    // python↖…↗ quotes Python source; ↙…↘ splices a Rust value back in.
+    // Arrow brackets quote Python source and splice Rust back in; the
+    // postfix lift operator turns the Rust Vec into a Python list literal.
     let program = python↖
         def main():
-            squares = [↙leaf("expression_list", &squares)↘]
+            squares = ↙squares.↑↘
             print(squares)
 
         main()

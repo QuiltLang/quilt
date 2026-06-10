@@ -74,6 +74,8 @@ Python's `quilt run` invokes `python3` and sets `PYTHONPATH` to include the `qui
 | `↑x`  | `x.qlift()` (Python) |
 | `⟨N⟩` | `name("ident")`      |
 
+Python also has a `LiftTo` marker type (`Python` in `lift.rs`), so a Rust host can lift values into quoted Python (`python↖ … ↙x.↑↘ … ↗`): integers, floats, bools, and strings lift to the corresponding literals, and slices/`Vec`s lift element-wise to `list` literals.
+
 ---
 
 ## HTML (`html`) — target only
