@@ -2,7 +2,7 @@
   "name": "quilt",
   "displayName": "Quilt",
   "description": "",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -20,7 +20,14 @@
     "grammars": [{
       "language": "quilt",
       "scopeName": "source.quilt",
-      "path": "./syntaxes/quilt.tmLanguage.json"
+      "path": "./syntaxes/quilt.tmLanguage.json",
+      "embeddedLanguages": {
+        "meta.embedded.block.rust": "rust",
+        "meta.embedded.block.python": "python",
+        "meta.embedded.block.wgsl": "wgsl",
+        "meta.embedded.block.html": "html",
+        "meta.embedded.block.shellscript": "shellscript"
+      }
     }],
     "configuration": {
       "title": "Quilt LSP",
