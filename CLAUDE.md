@@ -39,6 +39,10 @@ bootstrap1    # RustMetaLanguage only (self-hosted)
 
 # Regenerate the tree-sitter-quilt parser after editing grammar.js
 ts-gen
+
+# Build/install the editor tooling: cargo-installs quilt-lsp, npm-installs the
+# VS Code extension, symlinks tools/quilt into ~/.vscode/extensions
+install_tools
 ```
 
 The file stem determines the **language chain**: reading the extensions right-to-left, the rightmost is the ground language and the rest are the default languages for nested un-annotated quotes — `shaders.wgsl.rs.quilt` → ground `rs`, un-annotated quotes default to `wgsl` (see `lang_chain` in `quilt/src/bin.rs`).

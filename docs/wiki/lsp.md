@@ -120,3 +120,5 @@ python3 quilt-lsp/tests/integration_semtok.py  target/debug/quilt-lsp
 cargo install --path quilt-lsp
 # puts `quilt-lsp` on your PATH
 ```
+
+Or run `bin/install_tools`, which installs the LSP and the VS Code extension together (see [Editor Setup](editor-setup.md)).

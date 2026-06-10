@@ -12,6 +12,16 @@ The VS Code extension provides:
 
 ### Installation
 
+Run the install script from the repo root (idempotent — re-run it after updates):
+
+```sh
+bin/install_tools
+```
+
+It performs the manual steps below: `cargo install --path quilt-lsp`, `npm install` in `tools/quilt`, and symlinking the extension into `~/.vscode/extensions/quilt`. It also warns if `rust-analyzer` or `rust-script` is missing from `PATH`.
+
+#### Manual steps (what the script does)
+
 1. Build and install the LSP server:
    ```sh
    cargo install --path quilt-lsp
@@ -29,9 +39,9 @@ The VS Code extension provides:
 
 3. Symlink the extension into VS Code's extensions directory:
    ```sh
-   ln -s "$(pwd)/tools/quilt" ~/.vscode/extensions/quilt
+   ln -sfn "$(pwd)/tools/quilt" ~/.vscode/extensions/quilt
    ```
-   Or open VS Code and use **Developer: Install Extension from Location…**.
+   (`-n` matters: without it, re-running with an existing link drops a recursive `quilt` symlink *inside* `tools/quilt`.) Or open VS Code and use **Developer: Install Extension from Location…**.
 
 4. Reload VS Code.
 

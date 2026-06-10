@@ -46,7 +46,7 @@ quilt/                  # This repo (the Cargo workspace root)
 ├── quilt-lsp/          # Language Server (cargo workspace member)
 ├── quilt-python/       # PyO3 bindings (cargo workspace member; crate quilt_python)
 ├── tree-sitter-quilt/  # Grammar for the quilt bracket language (workspace member)
-├── bin/                # Shell scripts: quilt, bootstrap, build-py, ts-gen, ctest, lint
+├── bin/                # Shell scripts: quilt, bootstrap, build-py, ts-gen, ctest, lint, install_tools
 ├── tools/quilt/        # VS Code extension
 ├── docs/wiki/          # This wiki
 └── examples/           # .quilt example files
