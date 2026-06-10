@@ -492,6 +492,19 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "python")]
+    fn python_is_host_and_target() {
+        assert!(language_adapter("py").is_some());
+        assert!(meta_adapter("python").is_some());
+        assert_eq!(language_adapter("py").unwrap().language_id(), "python");
+        // Python is a host: its same-language quotes ride the merged ground
+        // projection, so it is *not* a per-fragment embedded target.
+        assert!(!embedded_adapters()
+            .iter()
+            .any(|a| a.language_id() == "python"));
+    }
+
+    #[test]
     fn unknown_language_has_no_adapter() {
         assert!(language_adapter("cobol").is_none());
         assert!(meta_adapter("cobol").is_none());

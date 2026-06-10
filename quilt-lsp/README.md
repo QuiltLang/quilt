@@ -17,6 +17,11 @@ Implemented:
 - **Full Rust support for the ground language** via a downstream `rust-analyzer`:
   hover, go-to-definition, completion, and diagnostics, with positions mapped
   between the `.quilt` file and the projected `.rs` virtual document.
+- **Python as a ground language** via a downstream Python server (pyright by
+  default, overridable with `QUILT_LSP_PYTHON_SERVER`): hover, go-to-definition,
+  and completion for `.py.quilt` files. Downstream diagnostics are suppressed
+  for now — the projection's `()` quote placeholders mistype ground lines that
+  consume a quoted value, so pyright errors would be spurious.
 - **Semantic-token highlighting**, including inside `↖…↗` quotes: each quoted
   Rust fragment is appended to the virtual document (wrapped in `fn _quilt_qN`)
   so rust-analyzer tokenizes it; tokens are remapped back onto the quote.
@@ -34,7 +39,7 @@ them unreliable); their tokens are kept for highlighting.
 
 Not yet implemented (designed-for extension points): hover/definition for ground
 code *spliced into* quotes via `↙…↘`, the `↙name↘`→ground go-to-definition, and
-downstream servers for Python/WGSL.
+Python ground diagnostics (needs a type-aware quote placeholder).
 
 ## Architecture
 
@@ -58,6 +63,7 @@ cargo test  -p quilt-lsp          # unit tests (position maps, projection, trans
 python3 quilt-lsp/tests/smoke_lsp.py        target/debug/quilt-lsp   # quilt diagnostics
 python3 quilt-lsp/tests/integration_mock.py target/debug/quilt-lsp   # proxy w/ mock server
 python3 quilt-lsp/tests/integration_ra.py   target/debug/quilt-lsp   # proxy w/ real rust-analyzer
+python3 quilt-lsp/tests/integration_python.py target/debug/quilt-lsp # .py.quilt ground (mock + pyright)
 ```
 
 ## Configuration
@@ -65,10 +71,14 @@ python3 quilt-lsp/tests/integration_ra.py   target/debug/quilt-lsp   # proxy w/ 
 - `QUILT_LSP_RUST_ANALYZER` — override the downstream Rust server command
   (whitespace-separated, e.g. a custom path). Defaults to `rust-analyzer` on
   `PATH`.
+- `QUILT_LSP_PYTHON_SERVER` — override the downstream Python server command.
+  Defaults to `pyright-langserver --stdio` on `PATH`.
+- `QUILT_LSP_WGSL_SERVER` — override the downstream WGSL server command.
+  Defaults to `wgsl-analyzer` on `PATH`.
 - `RUST_LOG` — standard `tracing` filter; logs go to stderr.
 
-Cargo features mirror quilt's own (`rust` by default; `python`, `wgsl`
-reserved). v1 ships the `rust` adapter only.
+Cargo features mirror quilt's own: `rust`, `python`, and `wgsl` are all enabled
+by default.
 
 ## Editor setup
 
