@@ -30,11 +30,11 @@ Expand a `.quilt` file to a temp file and run it immediately. The file's inner e
 | `.rs`     | `rust-script`                                               |
 | `.py`     | `python3` (with `PYTHONPATH` set to include `quilt-python`) |
 
-The runner is read from `Language::hashbang()`. If the language does not return a hashbang, `quilt run` errors.
+The runner is read from `Language::hashbang()`. If the language does not return a hashbang, `quilt` errors.
 
 Trailing arguments after the filename are forwarded to the script.
 
-For Rust scripts, `quilt run` injects a `//! [dependencies]` cargo manifest block in the generated file pointing at the local quilt crate with the correct feature set.
+For Rust scripts, `quilt` injects a `//! [dependencies]` cargo manifest block in the generated file pointing at the local quilt crate with the correct feature set.
 
 Since `run` is the default subcommand, the `run` keyword can be omitted:
 

@@ -174,7 +174,7 @@ fn run(args: &RunArgs) -> Result<()> {
     tracing::debug!("expanded to: {path}");
 
     let hashbang =
-        hashbang.ok_or_else(|| miette!("language '{lang}' does not support 'quilt run'"))?;
+        hashbang.ok_or_else(|| miette!("language '{lang}' is not runnable via 'quilt'"))?;
     let runner = hashbang
         .trim_start_matches("#!")
         .split_whitespace()
@@ -183,7 +183,7 @@ fn run(args: &RunArgs) -> Result<()> {
     let mut runner_cmd = std::process::Command::new(runner);
     if runner.ends_with("rust-script") {
         // Embed a cargo manifest in the script so its operators resolve against
-        // *this* quilt crate (so `quilt run` works from any directory, not just
+        // *this* quilt crate (so `quilt` works from any directory, not just
         // `rust/quilt`) with the matching feature set: `qlift`/`name` (Omni)
         // live under `rust`, `bs_*` under `bootstrap`.
         let quilt_dir = env!("CARGO_MANIFEST_DIR");

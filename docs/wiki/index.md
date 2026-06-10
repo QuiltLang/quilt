@@ -13,7 +13,7 @@ Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file i
 | [Concrete Languages](concrete-languages.md) | Rust, Python, HTML, WGSL, Zsh, Bash, Text implementations          |
 | [Multi and Omni](multi-omni.md)             | The `Multi<LS,MS>` engine and the `Omni` production registry       |
 | [Bootstrap](bootstrap.md)                   | Self-hosting: generating `meta.rs` from `mk_meta.rs.quilt`         |
-| [CLI & Scripts](cli.md)                     | `quilt expand`, `quilt run`, and the `bin/` helper scripts         |
+| [CLI & Scripts](cli.md)                     | `quilt expand`, `quilt`, and the `bin/` helper scripts             |
 | [Python Bindings](python-bindings.md)       | `quilt_python` — the PyO3 runtime for `.py.quilt` files            |
 | [Quilt LSP](lsp.md)                         | `quilt-lsp` — the multiplexing Language Server                     |
 | [Editor Setup](editor-setup.md)             | VS Code extension, keybindings, and `tools/quilt`                  |
