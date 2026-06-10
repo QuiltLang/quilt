@@ -111,10 +111,13 @@ loop {
 
 ## Building
 
-Nanobots lives in its own repository and Cargo workspace, separate from the quilt workspace. It depends on quilt as a library (`default-features = false` for the wasm/codegen crates).
+Nanobots lives in its own repository and Cargo workspace, separate from the quilt workspace. It depends on quilt as a library (`default-features = false` for the wasm/codegen crates) and on the quilt CLI from the sibling checkout to expand its `.rs.quilt` sources (`bin/expand`, run automatically by `bin/build`).
 
 ```sh
 cd ../nanobots
+bin/expand                            # expand *.rs.quilt → *.rs (gitignored)
 cargo build
 cargo run -- interpret demos/counter.nb
 ```
+
+Nanobots has its own `bin/install_tools`, which delegates to quilt's installer for the editor tooling (quilt-lsp + the VS Code extension) and warns if `wasm-pack` is missing.
