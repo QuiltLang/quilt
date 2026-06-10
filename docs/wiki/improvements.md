@@ -2,11 +2,15 @@
 
 A prioritized list of improvements to the Quilt codebase. "Bang for buck" means: impact on correctness, usability, or maintainability relative to implementation effort. Items near the top are high-reward and achievable in a single sitting; items near the bottom are either more speculative or require broader design work.
 
+- 🔲 = Not Started
+- 🚧 = In Progress
+- ✅ = Completed
+
 ---
 
 ## Tier 1 — Quick wins, high payoff
 
-### 1. Fix the `parse_chain` newline-padding FIXME
+### 🔲 1. Fix the `parse_chain` newline-padding FIXME
 
 **File:** `multi.rs:143`
 
@@ -19,7 +23,7 @@ The parser wraps every source string in leading/trailing newlines to work around
 
 ---
 
-### 2. Remove the `ikind` dead path in `build_nodes`
+### 🔲 2. Remove the `ikind` dead path in `build_nodes`
 
 **File:** `multi.rs:260`
 
@@ -33,7 +37,7 @@ The hole's `InnerKind` was designed to propagate into child parses (so a hole kn
 
 ---
 
-### 3. Fix expander Emit-inference TODO
+### 🔲 3. Fix expander Emit-inference TODO
 
 **File:** `multi.rs:373`
 
@@ -45,7 +49,7 @@ In the `Stage::Ground` path, the expander unconditionally sets `okind = Default:
 
 ---
 
-### 4. Wire up `Hole.itag` for better hole typing
+### 🔲 4. Wire up `Hole.itag` for better hole typing
 
 **File:** `lang.rs:30`
 
@@ -61,7 +65,7 @@ The `itag` field was stubbed and then commented out. It was meant to carry the e
 
 ---
 
-### 5. Macro-generate `OmniLanguages` boilerplate
+### 🔲 5. Macro-generate `OmniLanguages` boilerplate
 
 **File:** `langs/omni.rs`
 
@@ -71,7 +75,7 @@ A declarative macro like `define_omni! { rust => (RustLanguage, RustMetaLanguage
 
 ---
 
-### 6. Dedup `DictMulti` language alias registration
+### 🔲 6. Dedup `DictMulti` language alias registration
 
 **File:** `langs/omni.rs:491-527`
 
@@ -86,7 +90,7 @@ Language aliases (`"py"`/`"python"`, `"rs"`/`"rust"`) are registered as separate
 
 ## Tier 2 — Medium effort, high value
 
-### 7. Expansion errors should carry source spans
+### 🔲 7. Expansion errors should carry source spans
 
 Currently, when the expander fails (e.g. `unquote depth too high`), the error gives no source location. The `QTerm` type has no span field; spans are lost after parsing.
 
@@ -94,7 +98,7 @@ The simplest approach: add an `Option<Range<usize>>` to `QTerm::Quote` and `QTer
 
 ---
 
-### 8. LSP: incremental document sync
+### 🔲 8. LSP: incremental document sync
 
 **File:** `quilt-lsp/src/server.rs:608`
 
@@ -108,7 +112,7 @@ The server currently requests full-text replacement on every keystroke. For larg
 
 ---
 
-### 9. LSP: add Python as a host language
+### 🔲 9. LSP: add Python as a host language
 
 **File:** `quilt-lsp/src/adapters.rs:118-133`
 
@@ -126,7 +130,7 @@ Python is a first-class quilt host (it has a `PythonMetaLanguage`), but the LSP 
 
 ---
 
-### 10. LSP: multi-server support
+### 🔲 10. LSP: multi-server support
 
 **File:** `quilt-lsp/src/server.rs:139`
 
@@ -139,7 +143,7 @@ There is one shared child server for all Rust documents. This breaks if you open
 
 ---
 
-### 11. LSP: code actions
+### 🔲 11. LSP: code actions
 
 The server advertises no `codeActionProvider`. The most useful quilt-specific code actions would be:
 
@@ -151,7 +155,7 @@ These don't require downstream server cooperation; they operate purely on the qu
 
 ---
 
-### 12. Add `quilt check` subcommand
+### 🔲 12. Add `quilt check` subcommand
 
 **File:** `bin.rs`
 
@@ -161,7 +165,7 @@ These don't require downstream server cooperation; they operate purely on the qu
 
 ## Tier 3 — Architectural improvements worth planning
 
-### 13. Extend `InnerKind` with `Block` (and language-specific kinds)
+### 🔲 13. Extend `InnerKind` with `Block` (and language-specific kinds)
 
 **File:** `lang.rs:10`
 
@@ -179,7 +183,7 @@ The TODO note is correct. Rust distinguishes expressions, statements, items, and
 
 ---
 
-### 14. Eliminate `unimplemented!` panics in language providers
+### 🔲 14. Eliminate `unimplemented!` panics in language providers
 
 **File:** `langs/rust/lang.rs`
 
@@ -191,13 +195,13 @@ The Rust `TSProvider::unwrap` and related helpers use `unimplemented!` for tree-
 
 ---
 
-### 15. Fix bootstrap self-hosting (bootstrap1 broken at HEAD)
+### 🔲 15. Fix bootstrap self-hosting (bootstrap1 broken at HEAD)
 
 From the project's own notes: `bootstrap1` (the fully self-hosted expansion of `mk_meta.rs.quilt` using the generated `RustMetaLanguage`) is broken at HEAD. This means the project is not genuinely self-hosting: edits to `mk_meta.rs.quilt` can only be validated via the slower bootstrap0 path. Fixing this unlocks the real self-hosting invariant and makes the test suite's bootstrap tests meaningful.
 
 ---
 
-### 16. Heterogeneous reduction: meta-lang A reducing lang B
+### 🔲 16. Heterogeneous reduction: meta-lang A reducing lang B
 
 **File:** `meta.rs:63`
 
@@ -209,7 +213,7 @@ Currently `↓` (reduce) always reduces to the same meta-language. Heterogeneous
 
 ---
 
-### 17. QTerm pattern matching / rewriting
+### 🔲 17. QTerm pattern matching / rewriting
 
 **File:** `qterm.rs:166`
 
@@ -221,13 +225,13 @@ pub fn rewrite_naive(&self, find: &Self, replace: &Self) -> Arc<Self> {
 
 ---
 
-### 18. Caching / incremental expansion
+### 🔲 18. Caching / incremental expansion
 
 `QTerm` already derives `Serialize`/`Deserialize` (via `postcard` in workspace deps). A file-based parse cache keyed by `(path, mtime, feature flags)` would let `quilt expand` skip re-parsing unchanged files. This matters most for the bootstrap workflow, where `mk_meta.rs.quilt` is expanded on every `bootstrap` run. The cache invalidation logic is simple since `.quilt` files have no transitive imports.
 
 ---
 
-### 19. Remove or promote `ArcSTerm`
+### 🔲 19. Remove or promote `ArcSTerm`
 
 **File:** `term.rs`
 
@@ -238,7 +242,7 @@ pub fn rewrite_naive(&self, find: &Self, replace: &Self) -> Arc<Self> {
 
 ---
 
-### 20. Grammar ergonomics for comment syntax
+### 🔲 20. Grammar ergonomics for comment syntax
 
 The `⟨//⟩`, `⟨/*⟩`, `⟨*/⟩` comment glyphs require three keystrokes each (compose sequence + two characters) and are easy to confuse with the `⟨T⟩` / `⟨N⟩` type/name glyphs. Some directions:
 
