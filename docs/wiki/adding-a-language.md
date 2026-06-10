@@ -67,7 +67,7 @@ impl TSProvider for YourProvider {
     }
 
     fn hashbang(&self) -> Option<&'static str> {
-        // Only needed for host languages that support `quilt run`.
+        // Only needed for host languages that are runnable via `quilt`.
         None
     }
 }

@@ -18,7 +18,7 @@ This builds a wheel with maturin and extracts the native extension module into `
 
 The crate targets ABI3 (`abi3-py38`) so one build works for CPython ≥ 3.8.
 
-`quilt run` automatically sets `PYTHONPATH` to include the `quilt-python/` directory.
+`quilt` automatically sets `PYTHONPATH` to include the `quilt-python/` directory.
 
 ## API
 
@@ -106,7 +106,7 @@ scaled = ↖↙ten↘ * 100↗
 print("scaled =", scaled.coparse())
 ```
 
-Run with `quilt run examples/hello.py.quilt`.
+Run with `quilt examples/hello.py.quilt`.
 
 ## Relation to Rust bindings
 

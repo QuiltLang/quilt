@@ -10,7 +10,7 @@ Quilt is self-hosting: the Rust `MetaLanguage` implementation (`langs/rust/meta.
 
 ## The two stages
 
-Both stages `quilt run` the same generator program, `mk_meta.rs.quilt`. The program:
+Both stages run the same generator program via `quilt`, `mk_meta.rs.quilt`. The program:
 1. Uses the Quilt library (`use quilt::prelude::*;`) to build `RustMetaLanguage`'s implementation as a `QTerm`.
 2. Uses `⟨T⟩` (expanded to `Arc<QTerm>`) to avoid hard-coding the type.
 3. Writes `quilt/src/langs/rust/meta.rs` and runs `cargo fmt` on it.
@@ -22,7 +22,7 @@ The stages differ only in which `MetaLanguage` expands the generator.
 Expand and run `mk_meta.rs.quilt` using the `Bootstrap` multi (`BootstrapMetaLanguage`), with the CLI built `--no-default-features -F bootstrap`:
 
 ```sh
-cd quilt && cargo run -p quilt --no-default-features -F bootstrap -- run -m bootstrap src/langs/bootstrap/mk_meta.rs.quilt
+cd quilt && cargo run -p quilt --no-default-features -F bootstrap -- -m bootstrap src/langs/bootstrap/mk_meta.rs.quilt
 ```
 
 This works without an existing `meta.rs` and regenerates it.
@@ -32,7 +32,7 @@ This works without an existing `meta.rs` and regenerates it.
 Expand and run `mk_meta.rs.quilt` again, this time with the `Omni` multi — i.e. the freshly generated `RustMetaLanguage` (self-hosting):
 
 ```sh
-cd quilt && cargo run -p quilt --no-default-features -F rust,parse -- run -m omni src/langs/bootstrap/mk_meta.rs.quilt
+cd quilt && cargo run -p quilt --no-default-features -F rust,parse -- -m omni src/langs/bootstrap/mk_meta.rs.quilt
 ```
 
 `bootstrap` (no suffix) runs stage 0 then stage 1. If `meta.rs` is already correct and nothing has changed in `mk_meta.rs.quilt`, both stages leave the file unchanged (idempotent).
