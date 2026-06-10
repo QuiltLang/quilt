@@ -50,13 +50,14 @@ impl MetaLanguage for PythonMetaLanguage {
         })
     }
 
-    // `↑` is target-directed: into Python it spells the postfix `.qlift()`
-    // method on a term; into HTML it spells the prefix `qlift_html` function
-    // (written `↑(value)`), which entity-escapes lifted strings at runtime.
-    // Both live in the `quilt_python` runtime.
+    // `↑` is target-directed and written prefix, `↑(value)`: into Python it
+    // spells the `qlift` function (int, str, or QTerm — a method can't hang
+    // off builtin ints); into HTML it spells `qlift_html`, which
+    // entity-escapes lifted strings at runtime. Both live in the
+    // `quilt_python` runtime.
     fn lift_str(&self, target: &str) -> Result<&'static str> {
         match target {
-            "python" | "py" => Ok("qlift()"),
+            "python" | "py" => Ok("qlift"),
             "html" => Ok("qlift_html"),
             _ => miette::bail!("python can't lift into {target:?}: no spelling registered"),
         }

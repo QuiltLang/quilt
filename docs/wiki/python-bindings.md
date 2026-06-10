@@ -118,5 +118,5 @@ The Python builder API is intentionally parallel to the Rust `QTermBuilder` API.
 |---------------------------------------------------|----------------------------------------------|
 | `.c(&child)`                                      | `.c(child)`                                  |
 | `Arc<QTerm>`                                      | opaque `QTerm` object                        |
-| `qlift()` is a method on values via `QLift` trait | `qlift()` is a method on `QTerm` objects     |
+| `↑` is postfix: `x.↑` → `x.qlift()` (`QLift` trait) | `↑` is prefix: `↑(x)` → free `qlift(x)` function |
 | Variadic block uses imperative `b_`               | Variadic block uses fluent `.e(child)` chain |
