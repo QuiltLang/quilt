@@ -1,6 +1,6 @@
 # Multi and Omni
 
-**File:** `rust/quilt/src/multi.rs`, `rust/quilt/src/langs/omni.rs`
+**File:** `quilt/src/multi.rs`, `quilt/src/langs/omni.rs`
 
 ## `Multi<LS, MS>`
 

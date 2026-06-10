@@ -22,7 +22,7 @@ foo.rs.quilt
 
 ## Stage 1: `Node::parse` — surface AST
 
-**File:** `rust/quilt/src/node.rs`
+**File:** `quilt/src/node.rs`
 
 `Node::parse(source)` runs tree-sitter-quilt over the raw source string and produces a `Box<[Node]>`. `Node` is a simple enum:
 
@@ -44,7 +44,7 @@ pub enum Node {
 
 ## Stage 2: `Multi::parse_chain` — building the QTerm tree
 
-**File:** `rust/quilt/src/multi.rs` — `Multi::build_nodes`
+**File:** `quilt/src/multi.rs` — `Multi::build_nodes`
 
 This stage recursively descends through the `Node` list and dispatches each language fragment to its `Language` implementation via a two-phase parse.
 
@@ -94,7 +94,7 @@ Special nodes (`Lift`, `Reduce`, `Emit`, `Type`, `Name`) are translated to their
 
 ## Stage 3: `Multi::expand_lang` — expansion
 
-**File:** `rust/quilt/src/multi.rs` — `Expander`
+**File:** `quilt/src/multi.rs` — `Expander`
 
 The `Expander` walks the `QTerm` tree and calls the ground language's `MetaLanguage` to transform each node. It tracks the current `Stage` (Ground vs Sky).
 

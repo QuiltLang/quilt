@@ -1,6 +1,6 @@
 # Adding a Language
 
-This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `text`).
+This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `text`).
 
 ## 1. Decide the role
 
@@ -15,14 +15,14 @@ If the language needs tree-sitter parsing (recommended):
 
 1. Fork or adapt an existing tree-sitter grammar for the language.
 2. Add a **hole node** to the grammar. Rust uses `{}` and Python uses `__HOLE__` as hole tokens; your grammar needs a token that is syntactically valid in expression/statement position and uniquely recognizable.
-3. Place the grammar in `rust/tree-sitter-<lang>/` following the same structure as the existing ones (Cargo bindings in `bindings/rust/`).
-4. Add it to the workspace in `rust/Cargo.toml` if it needs to be a workspace member.
+3. Host the grammar as its own repo under the [QuiltLang](https://github.com/QuiltLang) GitHub org, following the same structure as the existing forks (Cargo bindings in `bindings/rust/`).
+4. Add it to `[workspace.dependencies]` in the root `Cargo.toml` as a git dependency, like the existing `tree-sitter-*` forks.
 
 If the language doesn't need tree-sitter, implement `Language` directly (see the `bootstrap/lang.rs` approach).
 
 ## 3. Create the language module
 
-Create `rust/quilt/src/langs/<lang>/`:
+Create `quilt/src/langs/<lang>/`:
 
 ```
 langs/<lang>/
@@ -112,14 +112,22 @@ You can reuse `langs::rust::ops` or `langs::python::ops` helpers if your meta-la
 
 ## 4. Add a Cargo feature
 
-In `rust/quilt/Cargo.toml`:
+In the root `Cargo.toml`:
+
+```toml
+[workspace.dependencies]
+tree-sitter-your-lang = { git = "https://github.com/QuiltLang/tree-sitter-your-lang.git" }
+```
+
+In `quilt/Cargo.toml` (tree-sitter languages must also enable `parse`):
 
 ```toml
 [features]
-your_lang = ["dep:tree-sitter-your-lang"]
+your_lang = ["dep:tree-sitter-your-lang", "parse"]
+default = [..., "your_lang"]
 
 [dependencies]
-tree-sitter-your-lang = { path = "../tree-sitter-your-lang", optional = true }
+tree-sitter-your-lang = { workspace = true, optional = true }
 ```
 
 ## 5. Register in `langs/mod.rs`
@@ -169,7 +177,7 @@ If you want the language accessible via `dict_omni_language()` (needed for tests
 
 If the language will be a host ground language in the LSP:
 
-1. Add a `LanguageAdapter` impl in `rust/quilt-lsp/src/adapters.rs` defining:
+1. Add a `LanguageAdapter` impl in `quilt-lsp/src/adapters.rs` defining:
    - `comment_syntax()` — how to write placeholder comments.
    - `splice_block()` — the placeholder for a quote in the projected document.
    - `wrap_fragment(body)` — how to wrap a quoted fragment so the downstream server tokenizes it.

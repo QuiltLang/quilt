@@ -14,7 +14,7 @@ The VS Code extension provides:
 
 1. Build and install the LSP server:
    ```sh
-   cargo install --path rust/quilt-lsp
+   cargo install --path quilt-lsp
    ```
    Or point the extension at the binary you built:
    ```json
@@ -56,7 +56,7 @@ The extension registers chord keybindings for all Quilt Unicode operators so the
 
 ### Mac keybinding file
 
-`tools/DefaultKeyBinding.dict` (also at `tools/quilt/DefaultKeyBinding.dict`) is a macOS `~/Library/KeyBindings/DefaultKeyBinding.dict` snippet for system-level arrow-key input. Copy or merge it into:
+`tools/DefaultKeyBinding.dict` is a macOS `~/Library/KeyBindings/DefaultKeyBinding.dict` snippet for system-level arrow-key input. Copy or merge it into:
 
 ```
 ~/Library/KeyBindings/DefaultKeyBinding.dict

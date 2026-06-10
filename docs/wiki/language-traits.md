@@ -1,6 +1,6 @@
 # Language Traits
 
-**Files:** `rust/quilt/src/lang.rs`, `rust/quilt/src/meta.rs`
+**Files:** `quilt/src/lang.rs`, `quilt/src/meta.rs`
 
 Two trait families are the extension points for adding language support to Quilt.
 
@@ -149,7 +149,7 @@ The Bootstrap meta-language has its own spellings for bootstrapping `meta.rs`.
 
 ## `TSLanguage` — the tree-sitter helper
 
-**File:** `rust/quilt/src/treesitter.rs`
+**File:** `quilt/src/treesitter.rs`
 
 Most concrete language implementations use `TSLanguage<P: TSProvider>` rather than implementing `Language` directly. A `TSProvider` supplies:
 

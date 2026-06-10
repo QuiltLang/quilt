@@ -8,9 +8,9 @@ Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file i
 
 ### Bootstrapping
 
-Just run `./bootstrap` from the `rust/quilt` directory.
+Run `bin/bootstrap` from the repo root (or just `bootstrap` from anywhere once the direnv env is active).
 
 ### Tools
 
 - [tools/quilt](/tools/quilt/): Symlink into `~/.vscode/extensions` for language support.
-- [tools/DefaulKeyBinding.dict](./tools/DefaulKeyBinding.dict): Mac keybinding configuration.
+- [tools/DefaultKeyBinding.dict](./tools/DefaultKeyBinding.dict): Mac keybinding configuration.

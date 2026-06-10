@@ -1,6 +1,6 @@
 # Quilt LSP
 
-**Crate:** `rust/quilt-lsp/`
+**Crate:** `quilt-lsp/`
 
 `quilt-lsp` is a multiplexing Language Server for `.quilt` files. It sits between the editor and the language-specific downstream servers (currently `rust-analyzer`), handling:
 
@@ -105,18 +105,18 @@ cargo build -p quilt-lsp
 cargo test -p quilt-lsp
 
 # End-to-end tests (drive the server over stdio):
-python3 rust/quilt-lsp/tests/smoke_lsp.py        target/debug/quilt-lsp
-python3 rust/quilt-lsp/tests/integration_mock.py target/debug/quilt-lsp
-python3 rust/quilt-lsp/tests/integration_ra.py   target/debug/quilt-lsp
+python3 quilt-lsp/tests/smoke_lsp.py        target/debug/quilt-lsp
+python3 quilt-lsp/tests/integration_mock.py target/debug/quilt-lsp
+python3 quilt-lsp/tests/integration_ra.py   target/debug/quilt-lsp
 
 # Integration tests for specific features:
-python3 rust/quilt-lsp/tests/integration_gotodef.py target/debug/quilt-lsp
-python3 rust/quilt-lsp/tests/integration_semtok.py  target/debug/quilt-lsp
+python3 quilt-lsp/tests/integration_gotodef.py target/debug/quilt-lsp
+python3 quilt-lsp/tests/integration_semtok.py  target/debug/quilt-lsp
 ```
 
 ## Installing
 
 ```sh
-cargo install --path rust/quilt-lsp
+cargo install --path quilt-lsp
 # puts `quilt-lsp` on your PATH
 ```

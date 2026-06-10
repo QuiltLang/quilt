@@ -1,6 +1,6 @@
 # Python Bindings
 
-**Crate:** `rust/quilt_python/` — `quilt_python` (Cargo), `quilt` (Python import name)
+**Crate:** `quilt-python/` — `quilt_python` (Cargo), `quilt` (Python import name)
 
 The `quilt_python` crate exposes the core Quilt IR to Python via PyO3. It is the *runtime* that expanded `.py.quilt` files import:
 
@@ -11,14 +11,14 @@ from quilt import *
 ## Building
 
 ```sh
-build-py   # wrapper around maturin develop / pyo3-pack
+build-py   # maturin build --release, then installs the module into the package dir
 ```
 
-This produces a native extension module (`.so` on Linux/macOS, `.pyd` on Windows) in `quilt_python/quilt/`. The module name is `quilt._quilt`; the `quilt/__init__.py` re-exports everything for `from quilt import *`.
+This builds a wheel with maturin and extracts the native extension module into `quilt-python/quilt/` as `_quilt.abi3.so`. The module name is `quilt._quilt`; the `quilt/__init__.py` re-exports everything for `from quilt import *`.
 
 The crate targets ABI3 (`abi3-py38`) so one build works for CPython ≥ 3.8.
 
-`quilt run` automatically sets `PYTHONPATH` to include the `quilt_python/` directory.
+`quilt run` automatically sets `PYTHONPATH` to include the `quilt-python/` directory.
 
 ## API
 

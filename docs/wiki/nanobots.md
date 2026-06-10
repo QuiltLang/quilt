@@ -1,6 +1,6 @@
 # Nanobots
 
-**Directory:** `rust/nanobots/` (separate Cargo workspace)
+**Repo:** `../nanobots` — a sibling repository with its own Cargo workspace
 
 Nanobots is a gas-metered IR toolchain for building resumable, GPU-friendly state machines. It uses Quilt (`html↖…↗`, `wgsl↖…↗`) for code generation in some of its crates.
 
@@ -71,7 +71,7 @@ nanobots run demos/counter.nb MyBot .
 ## Crate structure
 
 ```
-nanobots/crates/
+nanobots/
 ├── nanobots-hir/      # HIR types + .nb parser + HIR → IR lowering
 ├── nanobots-ir/       # IR types + text parser
 ├── nanobots-vm/       # StateMachine trait + tree-walking interpreter
@@ -111,10 +111,10 @@ loop {
 
 ## Building
 
-Nanobots lives in its own Cargo workspace (`rust/nanobots/`), separate from the main quilt workspace.
+Nanobots lives in its own repository and Cargo workspace, separate from the quilt workspace. It depends on quilt as a library (`default-features = false` for the wasm/codegen crates).
 
 ```sh
-cd rust/nanobots
+cd ../nanobots
 cargo build
 cargo run -- interpret demos/counter.nb
 ```
