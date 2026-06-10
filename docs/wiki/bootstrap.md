@@ -1,6 +1,6 @@
 # Bootstrap
 
-**Files:** `rust/quilt/src/langs/bootstrap/`, `bin/bootstrap`, `bin/bootstrap0`, `bin/bootstrap1`
+**Files:** `quilt/src/langs/bootstrap/`, `bin/bootstrap`, `bin/bootstrap0`, `bin/bootstrap1`
 
 Quilt is self-hosting: the Rust `MetaLanguage` implementation (`langs/rust/meta.rs`) is *generated* by a Quilt program (`langs/bootstrap/mk_meta.rs.quilt`), not hand-written. This page explains how that works.
 
@@ -10,22 +10,30 @@ Quilt is self-hosting: the Rust `MetaLanguage` implementation (`langs/rust/meta.
 
 ## The two stages
 
+Both stages `quilt run` the same generator program, `mk_meta.rs.quilt`. The program:
+1. Uses the Quilt library (`use quilt::prelude::*;`) to build `RustMetaLanguage`'s implementation as a `QTerm`.
+2. Uses `⟨T⟩` (expanded to `Arc<QTerm>`) to avoid hard-coding the type.
+3. Writes `quilt/src/langs/rust/meta.rs` and runs `cargo fmt` on it.
+
+The stages differ only in which `MetaLanguage` expands the generator.
+
 ### Stage 0 — `bootstrap0`
 
-Expand `mk_meta.rs.quilt` using the `Bootstrap` multi (which uses `BootstrapMetaLanguage`):
+Expand and run `mk_meta.rs.quilt` using the `Bootstrap` multi (`BootstrapMetaLanguage`), with the CLI built `--no-default-features -F bootstrap`:
 
 ```sh
-quilt expand -m bootstrap rust/quilt/src/langs/bootstrap/mk_meta.rs.quilt
+cd quilt && cargo run -p quilt --no-default-features -F bootstrap -- run -m bootstrap src/langs/bootstrap/mk_meta.rs.quilt
 ```
 
-This produces `mk_meta.rs` — a plain Rust program (a `rust-script` file).
+This works without an existing `meta.rs` and regenerates it.
 
 ### Stage 1 — `bootstrap1`
 
-Run the generated `mk_meta.rs` with `rust-script`. That program itself:
-1. Uses the Quilt library (`use quilt::prelude::*;`) to build `RustMetaLanguage`'s implementation.
-2. Uses `⟨T⟩` (which it itself expands to `Arc<QTerm>`) to avoid hard-coding the type.
-3. Writes `rust/quilt/src/langs/rust/meta.rs` and runs `cargo fmt` on it.
+Expand and run `mk_meta.rs.quilt` again, this time with the `Omni` multi — i.e. the freshly generated `RustMetaLanguage` (self-hosting):
+
+```sh
+cd quilt && cargo run -p quilt --no-default-features -F rust,parse -- run -m omni src/langs/bootstrap/mk_meta.rs.quilt
+```
 
 `bootstrap` (no suffix) runs stage 0 then stage 1. If `meta.rs` is already correct and nothing has changed in `mk_meta.rs.quilt`, both stages leave the file unchanged (idempotent).
 
@@ -33,7 +41,7 @@ Run the generated `mk_meta.rs` with `rust-script`. That program itself:
 
 This is a Rust source file (a `rust-script` script) that uses:
 - `⟨T⟩` for every occurrence of `Arc<QTerm>` (expanded by bootstrap → `Arc<QTerm>`).
-- `↖…↗` to quote the body of `meta.rs` at stage 1 (so the Quilt machinery generates the file's content as a `QTerm`).
+- `↖…↗` to quote the body of `meta.rs` (so the Quilt machinery generates the file's content as a `QTerm`).
 
 The structure is roughly:
 
@@ -47,7 +55,7 @@ fn main() -> Result<()> {
         // ... full RustMetaLanguage impl body ...
         // uses ⟨T⟩ for Arc<QTerm> again inside the quote
     ↗;
-    meta.dump("rust/quilt/src/langs/rust/meta.rs")?;
+    meta.dump_with_cmds("src/langs/rust/meta.rs", …)?;
     // cargo fmt
     Ok(())
 }
@@ -79,7 +87,3 @@ pub type Bootstrap = Multi<Singleton<BootstrapRustLanguage>, Singleton<Bootstrap
 ## Idempotency
 
 A clean run of `bootstrap` leaves `meta.rs` byte-for-byte unchanged. This is verified in CI by checking that the file has no diff after running bootstrap. If `meta.rs` diverges, it means a change to `mk_meta.rs.quilt` or a breaking change in `ops.rs` that must be reconciled.
-
-## Known issue
-
-`bootstrap1` (stage 1) is currently broken at HEAD because `rust-script` sees a dependency conflict. `bootstrap0` (expanding `mk_meta.rs.quilt` to `mk_meta.rs`) still works. See project memory for context.

@@ -9,14 +9,15 @@ Cargo commands run from the repo root (the Cargo workspace root). The `bin/` scr
 ```sh
 # Build / test / lint / format (from repo root)
 cargo build
-cargo test
+cargo test                 # or `ctest` (wrapper that works from anywhere)
 cargo test -p quilt node   # single test
-cargo clippy
+cargo clippy               # or `lint` (adds --tests)
 cargo fmt
 
 # Expand a .quilt file (bin/quilt wraps `cargo run -p quilt --`)
 quilt expand path/to/file.rs.quilt
 quilt expand path/to/file.py.quilt
+quilt expand path/to/shaders.wgsl.rs.quilt   # language chain, see below
 
 # Run a .quilt file directly (also usable as a shebang: #!/usr/bin/env quilt run).
 # Defaults to the Omni (production) multi; pass `-m bootstrap` for the bootstrap one.
@@ -28,22 +29,35 @@ quilt run path/to/script.py.quilt   # python3 runner (needs `bin/build-py` first
 build-py
 
 # Bootstrap — regenerates quilt/src/langs/rust/meta.rs from mk_meta.rs.quilt.
-# Two stages: bootstrap0 expands with BootstrapMetaLanguage, bootstrap1 with the
-# generated RustMetaLanguage (self-hosting). `bootstrap` runs both in order; a
-# clean run leaves meta.rs unchanged.
+# Both stages `quilt run` mk_meta.rs.quilt (which writes meta.rs): bootstrap0
+# expands it with the BootstrapMetaLanguage (`-m bootstrap`, feature `bootstrap`),
+# bootstrap1 with the freshly generated RustMetaLanguage (`-m omni`, self-hosting).
+# `bootstrap` runs both in order; a clean run leaves meta.rs unchanged.
 bootstrap     # = bootstrap0 then bootstrap1
 bootstrap0    # BootstrapMetaLanguage only
 bootstrap1    # RustMetaLanguage only (self-hosted)
 
 # Regenerate the tree-sitter-quilt parser after editing grammar.js
 ts-gen
+
+# Build/install the editor tooling: cargo-installs quilt-lsp, npm-installs the
+# VS Code extension, symlinks tools/quilt into ~/.vscode/extensions
+install_tools
 ```
+
+The file stem determines the **language chain**: reading the extensions right-to-left, the rightmost is the ground language and the rest are the default languages for nested un-annotated quotes — `shaders.wgsl.rs.quilt` → ground `rs`, un-annotated quotes default to `wgsl` (see `lang_chain` in `quilt/src/bin.rs`).
+
+## Workspace layout
+
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI), `quilt-lsp` (LSP server), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-html`, `-wgsl`, `-bash`, `-zsh`) are pulled as git dependencies from their forks under `github.com/QuiltLang` — they are *not* in this repo. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
+
+The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 
 ## Architecture
 
-Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file is source code in some language (e.g. Rust, Python) with Unicode arrow brackets spliced in to embed quoted/unquoted fragments of other languages. The system parses these files, produces a `QTerm` IR, and can expand the IR back into ordinary source code.
+Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file is source code in some language (e.g. Rust, Python) with Unicode arrow brackets spliced in to embed quoted/unquoted fragments of other languages. The system parses these files, produces a `QTerm` IR, and can expand the IR back into ordinary source code. The `docs/wiki/` pages cover all of this in more depth.
 
-### Core IR: `QTerm` (`src/qterm.rs`)
+### Core IR: `QTerm` (`quilt/src/qterm.rs`)
 
 The central type. An enum with three variants:
 - `Tuple { tag, terms, cmds }` — an AST node for a specific language. `tag` is the tree-sitter node kind (e.g. `"block"`, `"expression_statement"`). `cmds` is a sequence of `StrCmd`s (write/newline/push-prefix/pop-prefix) with holes (`CmdOrHole`) that interleave the children when serializing.
@@ -52,11 +66,13 @@ The central type. An enum with three variants:
 
 `QTermBuilder` (`tb/qb/ub` constructors) is the builder API: chain `.w()`, `.c()`, `.n()`, `.p()`, `.x()`, `.b()` for write/child/newline/push/pop/build.
 
-### Surface syntax: `Node` (`src/node.rs`)
+Supporting modules: `term.rs` (the generic `Term` trait, `ArcTerm`, `STerm`), `validate.rs` (the `Validate` trait), `zipper.rs` (persistent list/zipper utilities), `strcmd.rs` (serialization, below).
 
-The Quilt-level AST parsed by tree-sitter-quilt. Contains `Content`, `NewLine`, `Quote { anno, nodes }`, `Unquote { anno, nodes }`, `Lift` (↑), `Reduce` (↓), `Emit` (←), `Type` (⟨T⟩), `Name` (⟨N⟩). The quilt grammar lives in `rust/tree-sitter-quilt/grammar.js`.
+### Surface syntax: `Node` (`quilt/src/node.rs`)
 
-### Language traits (`src/lang.rs`, `src/meta.rs`)
+The Quilt-level AST parsed by tree-sitter-quilt. Contains `Content`, `NewLine`, `Quote { anno, nodes }`, `Unquote { anno, nodes }`, `Lift` (↑), `Reduce` (↓), `Emit` (←), `Type` (⟨T⟩), `Name` (⟨N⟩). The quilt grammar lives in `tree-sitter-quilt/grammar.js`.
+
+### Language traits (`quilt/src/lang.rs`, `quilt/src/meta.rs`)
 
 Two trait families:
 
@@ -68,51 +84,54 @@ Two trait families:
 - `expand_quote`, `expand_unquote`, `expand_tuple` — the three cases of the expander
 - `wrap_child` — optionally wraps an expanded child (used for emit/splice)
 
-### The multi-language engine: `Multi<LS, MS>` (`src/multi.rs`)
+### The multi-language engine: `Multi<LS, MS>` (`quilt/src/multi.rs`)
 
 `Multi` holds a `Languages` registry and a `MetaLanguages` registry. Key entry points:
 - `parse_lang(lang, src)` — parses a `.quilt` source string into a `QTerm` tree by recursively descending through nested quote/unquote brackets, dispatching each fragment to the appropriate `Language`.
+- `parse_chain(chain, src)` — like `parse_lang`, but takes the language chain derived from the file stem (the CLI uses this).
 - `expand_lang(lang, qterm)` — expands a `QTerm` to a flat `QTerm` (no `Quote`/`Unquote` nodes) using the `MetaLanguage` for the outermost language.
 
 `Expander` inside `multi.rs` is the recursive expansion engine. `Stage` tracks quasi-quote depth: `Ground` (running code) vs `Sky(lang, depth)` (inside quotes).
 
-### Heterogeneous lifting (`src/lift.rs`)
+### Heterogeneous lifting (`quilt/src/lift.rs`)
 
-`↑` is target-directed: `MetaLanguage::lift_str(target)` picks the spelling, where `target` defaults to the language of the enclosing quote (threaded through `build_nodes` as `splice_target`). Rust's spellings (`langs::rust::ops::lift_spelling`) are `qlift()` for rust→rust and `qlift_to::<Wgsl>()` for rust→wgsl. `src/lift.rs` (always compiled, no parser deps — wasm consumers use it) defines `LiftTo<L>` keyed by marker types (`Rust`, `Wgsl`) plus the `QLiftTo` postfix helper; per-(type, language) impls own the target's tags and spellings (e.g. `LiftTo<Wgsl> for u32` → `leaf("int_literal", "3u")`).
+`↑` is target-directed: `MetaLanguage::lift_str(target)` picks the spelling, where `target` defaults to the language of the enclosing quote (threaded through `build_nodes` as `splice_target`). Rust's spellings (`langs::rust::ops::lift_spelling`) are `qlift()` for rust→rust and `qlift_to::<Wgsl>()` for rust→wgsl. `lift.rs` (always compiled, no parser deps — wasm consumers use it) defines `LiftTo<L>` keyed by marker types (`Rust`, `Wgsl`, `Bash`, `Zsh`) plus the `QLiftTo` postfix helper; per-(type, language) impls own the target's tags and spellings (e.g. `LiftTo<Wgsl> for u32` → `leaf("int_literal", "3u")`).
 
-### Concrete languages (`src/langs/`)
+### Concrete languages (`quilt/src/langs/`)
 
-Each language module (python, rust, text, bootstrap) provides:
-- `lang.rs` — implements the `Language` trait. There is no hard dependency on tree-sitter; a language can implement `Language` directly. The current languages (python, rust, text) happen to use the `TSLanguage<P: TSProvider>` helper (`src/treesitter.rs`), which wraps a tree-sitter parser. `TSProvider` supplies the parser, the hole placeholder string (`{}` for Rust, `__HOLE__` for Python), and an `unwrap` method that squashes the tree-sitter root and infers `InnerKind` (Expr/Stmt/File). The bootstrap language implements `Language` directly without tree-sitter.
-- `meta.rs` — implements `MetaLanguage`. Rust's is **generated** by bootstrap from `mk_meta.rs.quilt`; python/text/bootstrap are hand-written. The `expand_*` methods are thin wrappers that delegate to `ops.rs`, and each meta also supplies the operator spellings (`lift_str`/`reduce_str`/`emit_str`/`type_str`/`name_str`) that the `↑ ↓ ← ⟨T⟩ ⟨N⟩` glyphs expand to.
-- `ops.rs` (rust and python) — hand-written helpers that build the output `QTerm` **directly** via the builder: `build_tuple_code` / `build_quote_code` / `build_unquote_code` / `build_variadic_block`, plus `name` (and, for rust, `qlift` and `reduce`). Bootstrap's analogue is `strlift.rs`, which instead lifts to a string and re-parses it — a slower shortcut used only for bootstrapping.
-- `mod.rs` — re-exports types.
+**Host languages** (rust, python) provide:
+- `lang.rs` — implements the `Language` trait. There is no hard dependency on tree-sitter; a language can implement `Language` directly. The tree-sitter-backed languages use the `TSLanguage<P: TSProvider>` helper (`quilt/src/treesitter.rs`), which wraps a tree-sitter parser. `TSProvider` supplies the parser, the hole placeholder string (`{}` for Rust, `__HOLE__` for Python), and an `unwrap` method that squashes the tree-sitter root and infers `InnerKind` (Expr/Stmt/File).
+- `meta.rs` — implements `MetaLanguage`. Rust's is **generated** by bootstrap from `mk_meta.rs.quilt`; python's is hand-written. The `expand_*` methods are thin wrappers that delegate to `ops.rs`, and each meta also supplies the operator spellings (`lift_str`/`reduce_str`/`emit_str`/`type_str`/`name_str`) that the `↑ ↓ ← ⟨T⟩ ⟨N⟩` glyphs expand to.
+- `ops.rs` — hand-written helpers that build the output `QTerm` **directly** via the builder: `build_tuple_code` / `build_quote_code` / `build_unquote_code` / `build_variadic_block`, plus `name` (and, for rust, `qlift` and `reduce`).
 
-`src/langs/omni.rs` defines `Omni` (the default `Multi` used by the CLI) using enum-dispatch over all enabled languages.
+**Target-only languages** (wgsl, html, zsh, bash) provide just `lang.rs` — they can be quoted (`wgsl↖...↗`) but have no `MetaLanguage`, so the host's meta drives expansion. **Text** additionally has a minimal hand-written `meta.rs`.
 
-### Bootstrap (`src/langs/bootstrap/`)
+**Bootstrap** (`langs/bootstrap/`) is internal-only: it implements `Language` directly without tree-sitter, and its meta uses `strlift.rs`, which lifts to a string and re-parses it — a slower shortcut used only for bootstrapping.
 
-A two-step self-hosting process that generates `src/langs/rust/meta.rs`:
-1. **Step 1** — expands `mk_meta.rs.quilt` (using `Bootstrap` multi) → `mk_meta.rs`
-2. **Step 2** — runs the compiled `mk_meta.rs` code to produce and write `meta.rs`, then `cargo fmt`s it
+`langs/omni.rs` defines `Omni` (the default `Multi` used by the CLI) using enum-dispatch over all enabled languages. Registry keys: `rust`/`rs`, `python`/`py`, `text`/`txt`, `wgsl`, `html`, `zsh`, `bash`.
+
+### Feature flags
+
+Each language is gated behind a Cargo feature (see `quilt/Cargo.toml`); all are on by default. The `parse` feature gates tree-sitter (the Quilt-source parser, the `Language` providers, `omni`, and `Multi`'s parse path). The runtime that expanded code targets (the `QTerm` builders, `qlift`, `coparse`) is tree-sitter-free, so consumers like `nanobots-codegen` depend on quilt with `default-features = false, features = ["rust"]` and build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
+
+### Bootstrap (`quilt/src/langs/bootstrap/`)
+
+A two-stage self-hosting process that regenerates `quilt/src/langs/rust/meta.rs`. Both stages `quilt run` the same program, `mk_meta.rs.quilt`, which produces and writes `meta.rs` (then `cargo fmt`s it):
+1. **bootstrap0** — expands it with the `Bootstrap` multi (`BootstrapMetaLanguage`, which works without `meta.rs`)
+2. **bootstrap1** — expands it with the `Omni` multi, i.e. the freshly generated `RustMetaLanguage` (self-hosting); a clean run leaves `meta.rs` unchanged
 
 `mk_meta.rs.quilt` is a Rust source file that uses `⟨T⟩` (type placeholder) to refer to `Arc<QTerm>` without hard-coding it.
 
-### Output: `StrCmd` / `PrefixWriter` (`src/strcmd.rs`)
+### Output: `StrCmd` / `PrefixWriter` (`quilt/src/strcmd.rs`)
 
 Serialization is driven by a stack-based `StrCmd` sequence embedded in each `QTerm`. `PrefixWriter` maintains an indentation prefix stack; `StrCmd::NewLine` emits a newline then the current prefix.
 
-### Tree-sitter grammars (`rust/tree-sitter-*/`)
-
-- `tree-sitter-quilt` — the Quilt bracket language (arrow brackets and special symbols). Source in `grammar.js`; generated C parser in `src/parser.c`.
-- `tree-sitter-rust` and `tree-sitter-python` — forked from upstream, modified to support hole nodes (`{}` and `__HOLE__` respectively) as valid parse-tree positions.
-
 ### Other crates
 
-- `quilt_python` — PyO3 bindings exposing quilt's core IR (`QTerm`, the fluent `tb/.c/.w/.n/.p/.x/.e/.b` builder, `leaf/sym/quote/unquote/cmd/write/push/name/qlift`, `NL/POP/HOLE`, and `.coparse()`) to Python. This is the runtime that expanded `.py.quilt` files target (`PythonMetaLanguage` emits calls into it). The Cargo crate is `quilt_python`, but the Python import name is **`quilt`** (`from quilt import *`): a `quilt/` package whose `__init__.py` re-exports the native `quilt._quilt` module. Built abi3 (one `.so` for CPython ≥3.8) via `bin/build-py`; `quilt run` puts it on `PYTHONPATH` for `python3` runs. See `examples/hello.py.quilt`.
-
-The `rust/` directory also holds `s2s` (a ratatui TUI), `sharede` (shared/deduplicated data structures), `nanobots_old` (sandbox), and `quilt_old`, but these are **not** in the Cargo workspace — `rust/Cargo.toml` lists only `quilt`, `quilt_python`, `tree-sitter-quilt`, so `cargo build`/`test` ignore them.
+- `quilt-lsp` — a multiplexing Language Server for `.quilt` files (tower-lsp). It parses the quilt structure, projects each language into a virtual document, proxies LSP traffic to per-language downstream servers (currently `rust-analyzer` for the ground language), and remaps positions in both directions. See `quilt-lsp/README.md` and `docs/wiki/lsp.md`.
+- `quilt-python/` (crate `quilt_python`) — PyO3 bindings exposing quilt's core IR (`QTerm`, the fluent `tb/.c/.w/.n/.p/.x/.e/.b` builder, `leaf/sym/quote/unquote/cmd/write/push/name/qlift`, `NL/POP/HOLE`, and `.coparse()`) to Python. This is the runtime that expanded `.py.quilt` files target (`PythonMetaLanguage` emits calls into it). The Python import name is **`quilt`** (`from quilt import *`): a `quilt/` package whose `__init__.py` re-exports the native `quilt._quilt` module. Built abi3 (one `.so` for CPython ≥3.8) via `bin/build-py` (maturin); `quilt run` puts it on `PYTHONPATH` for `python3` runs. See `examples/hello.py.quilt`.
+- `tree-sitter-quilt` — the Quilt bracket language (arrow brackets and special symbols). Source in `grammar.js`; regenerate the parser with `ts-gen`.
 
 ### Clippy configuration
 
-The workspace enables `clippy::pedantic` but suppresses several lints globally (see `rust/Cargo.toml`). Run `cargo clippy` to check.
+The workspace enables `clippy::pedantic` but suppresses several lints globally (see `[workspace.lints.clippy]` in the root `Cargo.toml`). Run `cargo clippy` (or `bin/lint`) to check.

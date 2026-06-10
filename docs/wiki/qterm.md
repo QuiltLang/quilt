@@ -1,6 +1,6 @@
 # QTerm IR
 
-**File:** `rust/quilt/src/qterm.rs`
+**File:** `quilt/src/qterm.rs`
 
 `QTerm` is the central intermediate representation. Every parsed `.quilt` file becomes a tree of `Arc<QTerm>` nodes; expansion transforms that tree into a flat `QTerm` (no `Quote`/`Unquote` variants) ready for serialization.
 

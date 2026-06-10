@@ -1,0 +1,20 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=827846 to learn about workspace recommendations.
+    "recommendations": [
+        // Rust development, and the downstream server quilt-lsp drives for
+        // .rs.quilt files.
+        "rust-lang.rust-analyzer",
+
+        // Provides the source.wgsl TextMate grammar that the Quilt extension's
+        // wgsl↖…↗ embedded regions include, plus the wgsl-analyzer server
+        // quilt-lsp drives for WGSL quotes.
+        "wgsl-analyzer.wgsl-analyzer",
+
+        // Python development for .py.quilt files (the quilt_python bindings and
+        // pyright as the downstream server).
+        "ms-python.python",
+
+        // Cargo.toml editing.
+        "tamasfe.even-better-toml"
+    ]
+}

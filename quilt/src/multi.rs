@@ -139,9 +139,6 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// plain `foo.rs.quilt` case where bare quotes default to the host.
     #[cfg(feature = "parse")]
     pub fn parse_chain(&mut self, chain: &[&str], s: &str) -> Result<Arc<QTerm>> {
-        // FIXME: this is temporary
-        let s = &format!("\n{s}\n");
-
         let nodes = Node::parse(s)
             .iter()
             .map(|n| n.clone().into())
@@ -154,6 +151,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 &nodes,
                 &zipper_from_chain(chain),
                 None,
+                false,
             )?
             .first()
             .unwrap())
@@ -163,7 +161,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// fragment's value will be spliced into: `Some` only for unquote bodies
     /// (the lang of the enclosing quote), `None` otherwise. It directs `↑` —
     /// a lift inside `wgsl↖ … ↙x.↑↘ … ↗` targets WGSL; elsewhere a lift is
-    /// homogeneous (targets the fragment's own language).
+    /// homogeneous (targets the fragment's own language). `bracketed` is true
+    /// when `nodes` is the body of a `↖…↗`/`↙…↘` pair and false at the top
+    /// level: only bracketed bodies get their boundary newlines trimmed.
     #[cfg(feature = "parse")]
     pub fn build_nodes(
         &mut self,
@@ -172,6 +172,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         nodes: &[Arc<Node>],
         zipper: &Zipper<Box<str>>,
         splice_target: Option<&str>,
+        bracketed: bool,
     ) -> Result<QTermBuilder> {
         let lang = zipper.head().unwrap();
 
@@ -238,8 +239,13 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             }
             nodes = nodes_new;
         }
-        let first_nl = !nodes.is_empty() && **nodes.first().unwrap() == Node::NewLine;
-        let last_nl = !nodes.is_empty()
+        // Trim one boundary newline on each side so `↖\n…\n↗` parses the same
+        // body as `↖…↗`; the trimmed newlines are re-emitted as builder cmds
+        // below. At the top level (no enclosing brackets) the boundary
+        // newlines are real source content and must stay in `code`.
+        let first_nl = bracketed && !nodes.is_empty() && **nodes.first().unwrap() == Node::NewLine;
+        let last_nl = bracketed
+            && !nodes.is_empty()
             && **nodes.last().unwrap() == Node::NewLine
             && num_nl != usize::from(first_nl); // distinguish ↖↗ from ↖\n↗
         let nodes = &nodes[usize::from(first_nl)..nodes.len() - usize::from(last_nl)];
@@ -314,7 +320,8 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         ikind: None,
                         ..hole.clone()
                     };
-                    let mut builder = self.build_nodes(builder, &hole, nodes, &zipper, None)?;
+                    let mut builder =
+                        self.build_nodes(builder, &hole, nodes, &zipper, None, true)?;
                     builder.write("↗");
                     plugs.push(builder.b());
                 }
@@ -330,8 +337,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     let splice_target = lang;
                     let zipper = zipper.clone().tail().unwrap();
                     builder.write(anno).write("↙");
-                    let mut builder =
-                        self.build_nodes(builder, &hole, nodes, &zipper, Some(splice_target))?;
+                    let mut builder = self.build_nodes(
+                        builder,
+                        &hole,
+                        nodes,
+                        &zipper,
+                        Some(splice_target),
+                        true,
+                    )?;
                     builder.write("↘");
                     plugs.push(builder.b());
                 }
@@ -493,51 +506,72 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
 
 /**************************************************************/
 
+/// Resolve `lang` through an alias map; non-aliases pass through unchanged.
+fn canonical<'a>(aliases: &'a BTreeMap<Box<str>, Box<str>>, lang: &'a str) -> &'a str {
+    aliases.get(lang).map_or(lang, AsRef::as_ref)
+}
+
 #[derive(Default)]
-pub struct DictLanguages(BTreeMap<Box<str>, Box<dyn Language<Post = Box<dyn LanguagePost>>>>);
+pub struct DictLanguages {
+    langs: BTreeMap<Box<str>, Box<dyn Language<Post = Box<dyn LanguagePost>>>>,
+    /// alias → canonical key in `langs`, so aliases share one instance
+    aliases: BTreeMap<Box<str>, Box<str>>,
+}
 
 impl Languages for DictLanguages {
     type Language = Box<dyn Language<Post = Box<dyn LanguagePost>>>;
 
     fn get(&self, lang: &str) -> Result<&Self::Language> {
-        self.0
-            .get(lang)
+        self.langs
+            .get(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
     fn get_mut(&mut self, lang: &str) -> Result<&mut Self::Language> {
-        self.0
-            .get_mut(lang)
+        self.langs
+            .get_mut(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
 }
 
 impl DictLanguages {
     pub fn add(&mut self, lang: &str, language: <Self as Languages>::Language) {
-        self.0.insert(lang.into(), language);
+        self.langs.insert(lang.into(), language);
+    }
+
+    pub fn add_alias(&mut self, alias: &str, canonical: &str) {
+        self.aliases.insert(alias.into(), canonical.into());
     }
 }
 
 #[derive(Default)]
-pub struct DictMetaLanguages(BTreeMap<Box<str>, Box<dyn MetaLanguage>>);
+pub struct DictMetaLanguages {
+    metas: BTreeMap<Box<str>, Box<dyn MetaLanguage>>,
+    /// alias → canonical key in `metas`, so aliases share one instance
+    aliases: BTreeMap<Box<str>, Box<str>>,
+}
 
 impl MetaLanguages for DictMetaLanguages {
     type MetaLanguage = Box<dyn MetaLanguage>;
 
     fn get(&self, lang: &str) -> Result<&Self::MetaLanguage> {
-        self.0
-            .get(lang)
+        self.metas
+            .get(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
     fn get_mut(&mut self, lang: &str) -> Result<&mut Self::MetaLanguage> {
-        self.0
-            .get_mut(lang)
+        self.metas
+            .get_mut(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
     }
 }
 
 impl DictMetaLanguages {
     pub fn add(&mut self, lang: &str, meta_language: <Self as MetaLanguages>::MetaLanguage) {
-        self.0.insert(lang.into(), meta_language);
+        self.metas.insert(lang.into(), meta_language);
+    }
+
+    pub fn add_alias(&mut self, alias: &str, canonical: &str) {
+        self.aliases.insert(alias.into(), canonical.into());
     }
 }
 
@@ -554,6 +588,14 @@ impl DictMulti {
         meta: <DictMetaLanguages as MetaLanguages>::MetaLanguage,
     ) {
         self.metas.add(lang, meta);
+    }
+
+    /// Register `alias` as an alternate name for `canonical` in both the
+    /// language and meta-language registries. Lookups under the alias resolve
+    /// to the canonical entry's instance (no entry there → "not found").
+    pub fn add_alias(&mut self, alias: &str, canonical: &str) {
+        self.langs.add_alias(alias, canonical);
+        self.metas.add_alias(alias, canonical);
     }
 }
 

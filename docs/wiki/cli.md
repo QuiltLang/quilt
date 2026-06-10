@@ -2,7 +2,7 @@
 
 ## `quilt` — the main CLI
 
-**File:** `rust/quilt/src/bin.rs`
+**File:** `quilt/src/bin.rs`
 
 The `quilt` binary has two subcommands.
 
@@ -28,7 +28,7 @@ Expand a `.quilt` file to a temp file and run it immediately. The file's inner e
 | Extension | Runner                                                      |
 |-----------|-------------------------------------------------------------|
 | `.rs`     | `rust-script`                                               |
-| `.py`     | `python3` (with `PYTHONPATH` set to include `quilt_python`) |
+| `.py`     | `python3` (with `PYTHONPATH` set to include `quilt-python`) |
 
 The runner is read from `Language::hashbang()`. If the language does not return a hashbang, `quilt run` errors.
 
@@ -69,7 +69,7 @@ A thin wrapper around `cargo run -p quilt --`. Passes all arguments to the `quil
 
 ### `bootstrap`
 
-Runs the full two-stage bootstrap: expands `mk_meta.rs.quilt` (stage 0) then runs the result to regenerate `meta.rs` (stage 1).
+Runs the full two-stage bootstrap that regenerates `quilt/src/langs/rust/meta.rs`. Both stages `quilt run` the generator program `mk_meta.rs.quilt`, which writes `meta.rs`; see [Bootstrap](bootstrap.md).
 
 ```sh
 bootstrap
@@ -79,7 +79,7 @@ Equivalent to running `bootstrap0` then `bootstrap1` in order.
 
 ### `bootstrap0`
 
-Stage 0 only: expand `mk_meta.rs.quilt` using `BootstrapMetaLanguage`.
+Stage 0 only: `quilt run -m bootstrap mk_meta.rs.quilt` — expands the generator with `BootstrapMetaLanguage` (built with `--no-default-features -F bootstrap`) and runs it.
 
 ```sh
 bootstrap0
@@ -87,10 +87,19 @@ bootstrap0
 
 ### `bootstrap1`
 
-Stage 1 only: run the already-expanded `mk_meta.rs` with `rust-script` to regenerate `meta.rs`.
+Stage 1 only: `quilt run -m omni mk_meta.rs.quilt` — expands the generator with the freshly generated `RustMetaLanguage` (self-hosted) and runs it. A clean run leaves `meta.rs` unchanged.
 
 ```sh
 bootstrap1
+```
+
+### `ctest` / `lint`
+
+Wrappers around `cargo test` and `cargo clippy --tests` that work from any directory (they pass `--manifest-path` for the repo root).
+
+```sh
+ctest -p quilt node
+lint
 ```
 
 ### `build-py`
@@ -101,7 +110,7 @@ Build the `quilt_python` PyO3 extension module. Required before running `.py.qui
 build-py
 ```
 
-Produces a `.so` / `.dylib` file in the `quilt_python/quilt/` directory that Python can import as `import quilt`.
+Builds with maturin and installs the abi3 module as `quilt-python/quilt/_quilt.abi3.so`, which Python can import as `import quilt`.
 
 ### `ts-gen`
 
@@ -111,11 +120,19 @@ Regenerate the tree-sitter parser after editing `tree-sitter-quilt/grammar.js`.
 ts-gen
 ```
 
+### `install_tools`
+
+Build and install the editor tooling: `cargo install --path quilt-lsp`, `npm install` for the VS Code extension, and symlink `tools/quilt` into `~/.vscode/extensions/quilt`. Idempotent; warns if `rust-analyzer` or `rust-script` is missing. See [Editor Setup](editor-setup.md).
+
+```sh
+install_tools
+```
+
 ---
 
 ## Cargo workspace commands
 
-Run from `rust/` (the Cargo workspace root):
+Run from the repo root (the Cargo workspace root):
 
 ```sh
 cargo build                       # build all workspace members
@@ -136,4 +153,4 @@ cargo test -p quilt-lsp           # run LSP tests
 |---------------------------|----------------------|-------------------------------------------------------|
 | `RUST_LOG`                | `quilt`, `quilt-lsp` | `tracing` log filter (e.g. `debug`, `info`)           |
 | `QUILT_LSP_RUST_ANALYZER` | `quilt-lsp`          | Override rust-analyzer command (whitespace-separated) |
-| `PYTHONPATH`              | `quilt run` (Python) | Extended to include `quilt_python/` directory         |
+| `PYTHONPATH`              | `quilt run` (Python) | Extended to include the `quilt-python/` directory     |
