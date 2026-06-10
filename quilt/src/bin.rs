@@ -137,13 +137,19 @@ fn lang_chain<'a, LS: Languages, MS: MetaLanguages>(
 }
 
 fn run(args: &RunArgs) -> Result<()> {
-    let input_filename = &args.filename;
-    let base = input_filename
-        .strip_suffix(".quilt")
-        .unwrap_or(input_filename);
+    // Resolve symlinks so an extension-less entry point (`bin/issues ->
+    // ../examples/issue_triage.html.py.quilt`) derives the language chain from
+    // the target's name, and use only the file name so dots in directories
+    // can't leak into it.
+    let input_path = fs::canonicalize(&args.filename).into_diagnostic()?;
+    let file_name = input_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| miette!("invalid filename: {}", args.filename))?;
+    let base = file_name.strip_suffix(".quilt").unwrap_or(file_name);
     let lang = base.split('.').next_back().unwrap();
 
-    let input = fs::read_to_string(input_filename).into_diagnostic()?;
+    let input = fs::read_to_string(&input_path).into_diagnostic()?;
 
     // Strip shebang line so the language parser doesn't see `#!`
     let input = if input.starts_with("#!") {
