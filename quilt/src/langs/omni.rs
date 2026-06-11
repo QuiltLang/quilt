@@ -416,8 +416,8 @@ impl MetaLanguage for OmniMetaLanguage {
         self.inner().lift_str(target)
     }
 
-    fn reduce_str(&self) -> &'static str {
-        self.inner().reduce_str()
+    fn reduce_str(&self, target: &str) -> Result<&'static str> {
+        self.inner().reduce_str(target)
     }
 
     fn emit_str(&self) -> &'static str {

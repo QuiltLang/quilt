@@ -63,8 +63,12 @@ impl MetaLanguage for PythonMetaLanguage {
         }
     }
 
-    fn reduce_str(&self) -> &'static str {
-        "reduce()"
+    fn reduce_str(&self, target: &str) -> Result<&'static str> {
+        match target {
+            "" | "python" | "py" => Ok("reduce()"),
+            "rust" | "rs" => Ok("reduce_rs()"),
+            _ => miette::bail!("python can't reduce via {target:?}: no reduce_spelling registered"),
+        }
     }
 
     fn name_str(&self) -> &'static str {

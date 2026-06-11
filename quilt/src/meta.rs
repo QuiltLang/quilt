@@ -99,10 +99,15 @@ pub trait MetaLanguage {
         let _ = target;
         Ok(LIFT)
     }
-    // TODO: support heterogenous reduction: meta-lang A reducing lang B
+    /// The spelling `↓` expands to when reducing with meta-language `target`
+    /// (e.g. `py↓` inside a Rust meta-program invokes Python evaluation).
+    /// The homogeneous case is `target` == `""` (no annotation); the default
+    /// ignores `target`, preserving existing behavior for metas without
+    /// heterogeneous support.
     #[inline]
-    fn reduce_str(&self) -> &'static str {
-        REDUCE
+    fn reduce_str(&self, target: &str) -> Result<&'static str> {
+        let _ = target;
+        Ok(REDUCE)
     }
     #[inline]
     fn emit_str(&self) -> &'static str {
@@ -181,8 +186,8 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
         (**self).lift_str(target)
     }
 
-    fn reduce_str(&self) -> &'static str {
-        (**self).reduce_str()
+    fn reduce_str(&self, target: &str) -> Result<&'static str> {
+        (**self).reduce_str(target)
     }
 
     fn emit_str(&self) -> &'static str {
