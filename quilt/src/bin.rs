@@ -37,6 +37,8 @@ enum Commands {
     Run(RunArgs),
     /// Validate .quilt files without writing output
     Check(CheckArgs),
+    /// Clear the expand cache
+    Clean,
 }
 
 #[derive(Args, Debug)]
@@ -94,12 +96,36 @@ fn main() -> Result<()> {
         (Some(Commands::Expand(args)), _) => expand(args),
         (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
         (Some(Commands::Check(args)), _) => check(args),
+        (Some(Commands::Clean), _) => clean(),
         (None, None) => {
             use clap::CommandFactory;
             Cli::command().print_help().into_diagnostic()?;
             std::process::exit(2);
         }
     }
+}
+
+fn clean() -> Result<()> {
+    let Some(dir) = cache_dir() else {
+        println!("No cache directory configured.");
+        return Ok(());
+    };
+    if !dir.exists() {
+        println!("Cache directory does not exist: {}", dir.display());
+        return Ok(());
+    }
+    let count = fs::read_dir(&dir)
+        .into_diagnostic()?
+        .filter(|e| {
+            e.as_ref()
+                .ok()
+                .and_then(|e| e.path().extension().map(|x| x == "postcard"))
+                .unwrap_or(false)
+        })
+        .count();
+    fs::remove_dir_all(&dir).into_diagnostic()?;
+    println!("Cleared {count} cached expansion(s) from {}.", dir.display());
+    Ok(())
 }
 
 fn expand(args: &ExpandArgs) -> Result<()> {
