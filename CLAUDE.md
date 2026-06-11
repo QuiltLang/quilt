@@ -19,6 +19,9 @@ quilt expand path/to/file.rs.quilt
 quilt expand path/to/file.py.quilt
 quilt expand path/to/shaders.wgsl.rs.quilt   # language chain, see below
 
+# Validate .quilt files (parse + expand, no output written) — for CI / pre-commit
+quilt check path/to/file.rs.quilt path/to/other.py.quilt
+
 # Run a .quilt file directly. `run` is the default subcommand, so it can be
 # omitted (which is what makes the `#!/usr/bin/env quilt` shebang work).
 # Defaults to the Omni (production) multi; pass `-m bootstrap` for the bootstrap one.
