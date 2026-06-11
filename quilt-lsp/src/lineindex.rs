@@ -142,6 +142,18 @@ impl LineIndex {
     ) -> Range<usize> {
         self.offset(text, range.start, enc)..self.offset(text, range.end, enc)
     }
+
+    /// Byte offset → `(row, column_in_bytes)` for building a tree-sitter
+    /// `InputEdit`. `column` is the byte distance from the line start, which
+    /// is what tree-sitter's `Point::column` expects.
+    pub fn byte_to_row_col(&self, byte_offset: usize) -> (usize, usize) {
+        let byte_offset = byte_offset.min(self.len);
+        let line = match self.line_starts.binary_search(&byte_offset) {
+            Ok(l) => l,
+            Err(next) => next - 1,
+        };
+        (line, byte_offset - self.line_starts[line])
+    }
 }
 
 #[cfg(test)]

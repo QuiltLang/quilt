@@ -23,11 +23,12 @@ pub fn parser() -> Parser {
     parser
 }
 
-/// Parse `.quilt` source into a CST. Parsing the raw document text (no
+/// Parse `.quilt` source into a CST. Pass `old_tree` for incremental re-parse
+/// (tree-sitter reuses unchanged subtrees). Parsing the raw document text (no
 /// wrapping) keeps byte offsets aligned with what the editor sees.
-pub fn parse(parser: &mut Parser, text: &str) -> Tree {
+pub fn parse(parser: &mut Parser, text: &str, old_tree: Option<&Tree>) -> Tree {
     parser
-        .parse(text, None)
+        .parse(text, old_tree)
         .expect("parse only returns None when cancelled, which we never do")
 }
 
@@ -276,7 +277,7 @@ mod tests {
     use super::*;
 
     fn tree_of(text: &str) -> Tree {
-        parse(&mut parser(), text)
+        parse(&mut parser(), text, None)
     }
 
     #[test]
