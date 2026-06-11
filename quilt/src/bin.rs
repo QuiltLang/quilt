@@ -364,17 +364,33 @@ fn generate(filename: &str, x: &Arc<QTerm>) -> Result<()> {
 // --- Expand cache -----------------------------------------------------------
 //
 // File-based cache for the expanded QTerm, keyed by (canonical path, mtime,
-// multi variant, binary version).  Invalidation is trivial because .quilt
-// files have no transitive imports.  Cache misses are silent: we just fall
-// back to a full parse+expand.
+// multi variant, binary version, binary mtime).  Invalidation is trivial
+// because .quilt files have no transitive imports.  The binary mtime ensures
+// the cache is discarded on every `cargo build`, so changes to MetaLanguage
+// or Language implementations are never silently ignored.  Cache misses are
+// silent: we just fall back to a full parse+expand.
+
+/// Mtime of the running executable, as (secs, nanos) since `UNIX_EPOCH`.
+/// Returns (0, 0) if unavailable (e.g. proc-replaced binaries or unusual fs).
+fn binary_mtime() -> (u64, u32) {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or((0, 0), |d| (d.as_secs(), d.subsec_nanos()))
+}
 
 fn cache_hash(path: &str, mtime_secs: u64, mtime_nanos: u32, multi: &str) -> u64 {
+    let (bin_secs, bin_nanos) = binary_mtime();
     let mut h = DefaultHasher::new();
     path.hash(&mut h);
     mtime_secs.hash(&mut h);
     mtime_nanos.hash(&mut h);
     multi.hash(&mut h);
     env!("CARGO_PKG_VERSION").hash(&mut h);
+    bin_secs.hash(&mut h);
+    bin_nanos.hash(&mut h);
     h.finish()
 }
 
