@@ -7,7 +7,7 @@ version.workspace = true
 clap = {workspace = true, features = ["derive"]}
 indoc = {workspace = true}
 miette = {workspace = true, features = ["fancy"]}
-postcard = {workspace = true, features = ["alloc"]}
+postcard = {workspace = true, features = ["alloc", "use-std"]}
 regex = {workspace = true}
 serde = {workspace = true, features = ["derive", "rc"]}
 tempfile = {workspace = true}

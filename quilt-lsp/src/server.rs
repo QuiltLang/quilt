@@ -35,6 +35,22 @@ fn is_host_ground(ground: Option<&str>) -> bool {
     ground.and_then(meta_adapter).is_some()
 }
 
+/// Compute the tree-sitter `new_end_position` (row, col-in-bytes) for an
+/// `InputEdit` by walking `replacement` from `start_row/col`.
+fn new_end_point(start_row: usize, start_col: usize, replacement: &str) -> (usize, usize) {
+    let mut row = start_row;
+    let mut col = start_col;
+    for b in replacement.bytes() {
+        if b == b'\n' {
+            row += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    (row, col)
+}
+
 /// `foo.rs.quilt` → `file:///…/foo.rs` (string URI), the overlay we open to the
 /// downstream server.
 fn dequilt_uri(quilt_uri: &Url) -> Option<String> {
@@ -292,8 +308,14 @@ impl Inner {
     }
 
     /// Re-analyze text, store it, publish diagnostics, and sync to the child.
-    async fn ingest(self: &Arc<Self>, uri: Url, text: String, version: i32) {
-        let doc = Document::new(&uri, text, version);
+    async fn ingest(
+        self: &Arc<Self>,
+        uri: Url,
+        text: String,
+        version: i32,
+        old_tree: Option<&tree_sitter::Tree>,
+    ) {
+        let doc = Document::new(&uri, text, version, old_tree);
         // Project only if the ground language is a host; otherwise quilt-only.
         if let Some(key) = doc.ground.as_deref() {
             if let (Some(meta), Some(lang)) = (meta_adapter(key), language_adapter(key)) {
@@ -1316,7 +1338,7 @@ impl LanguageServer for Backend {
             capabilities: ServerCapabilities {
                 position_encoding: Some(enc.as_kind()),
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                    TextDocumentSyncKind::INCREMENTAL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
@@ -1342,19 +1364,64 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let doc = params.text_document;
-        self.inner.ingest(doc.uri, doc.text, doc.version).await;
+        self.inner.ingest(doc.uri, doc.text, doc.version, None).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        let Some(change) = params.content_changes.into_iter().next_back() else {
+        if params.content_changes.is_empty() {
             return;
+        }
+        let uri = params.text_document.uri;
+        let version = params.text_document.version;
+        let enc = self.inner.enc();
+
+        // Clone the current text and tree so we can apply edits incrementally.
+        let (mut text, mut old_tree) = match self.inner.docs.get(&uri) {
+            Some(doc) => (doc.text.clone(), Some(doc.ts_tree.clone())),
+            None => (String::new(), None),
         };
+
+        for change in params.content_changes {
+            if let Some(lsp_range) = change.range {
+                let li = LineIndex::new(&text);
+                let byte_range = li.byte_range(&text, lsp_range, enc);
+                let start_byte = byte_range.start;
+                let old_end_byte = byte_range.end;
+                let new_end_byte = start_byte + change.text.len();
+
+                if let Some(tree) = old_tree.as_mut() {
+                    let (start_row, start_col) = li.byte_to_row_col(start_byte);
+                    let (old_end_row, old_end_col) = li.byte_to_row_col(old_end_byte);
+                    let (new_end_row, new_end_col) =
+                        new_end_point(start_row, start_col, &change.text);
+                    tree.edit(&tree_sitter::InputEdit {
+                        start_byte,
+                        old_end_byte,
+                        new_end_byte,
+                        start_position: tree_sitter::Point {
+                            row: start_row,
+                            column: start_col,
+                        },
+                        old_end_position: tree_sitter::Point {
+                            row: old_end_row,
+                            column: old_end_col,
+                        },
+                        new_end_position: tree_sitter::Point {
+                            row: new_end_row,
+                            column: new_end_col,
+                        },
+                    });
+                }
+                text.replace_range(byte_range, &change.text);
+            } else {
+                // Full-text replacement — can't reuse the old tree.
+                text = change.text;
+                old_tree = None;
+            }
+        }
+
         self.inner
-            .ingest(
-                params.text_document.uri,
-                change.text,
-                params.text_document.version,
-            )
+            .ingest(uri, text, version, old_tree.as_ref())
             .await;
     }
 
@@ -1434,7 +1501,7 @@ mod tests {
 
     fn doc(text: &str) -> Document {
         let url = Url::parse("file:///x/foo.rs.quilt").unwrap();
-        Document::new(&url, text.to_string(), 1)
+        Document::new(&url, text.to_string(), 1, None)
     }
 
     #[test]

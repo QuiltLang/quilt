@@ -1,13 +1,13 @@
 //! Per-document analysis state.
 //!
-//! Holds only plain owned data (no tree-sitter handles), so a `Document` is
-//! `Send + Sync` and can live in the shared document store. The CST is parsed
-//! transiently during analysis and distilled into the [`Region`] tree and the
-//! list of syntax errors.
+//! Holds plain owned data plus the tree-sitter [`Tree`] (which is `Send +
+//! Sync`) so that [`crate::server`] can hand the old tree back on the next
+//! keystroke and let tree-sitter do an incremental re-parse.
 
 use crate::lineindex::LineIndex;
 use crate::regions::{self, Region, SyntaxError};
 use tower_lsp::lsp_types::Url;
+use tree_sitter::Tree;
 
 #[derive(Debug)]
 pub struct Document {
@@ -25,14 +25,17 @@ pub struct Document {
     pub region: Region,
     /// Quilt-level syntax errors.
     pub errors: Vec<SyntaxError>,
+    /// The raw CST, kept so the next `did_change` can pass it to tree-sitter
+    /// as the old tree for incremental re-parse.
+    pub ts_tree: Tree,
 }
 
 impl Document {
-    pub fn new(uri: &Url, text: String, version: i32) -> Self {
+    pub fn new(uri: &Url, text: String, version: i32, old_tree: Option<&Tree>) -> Self {
         let chain = crate::adapters::lang_chain(uri);
         let ground = chain.first().cloned();
         let mut parser = regions::parser();
-        let tree = regions::parse(&mut parser, &text);
+        let tree = regions::parse(&mut parser, &text, old_tree);
         let errors = regions::collect_errors(&tree);
         let region = regions::regions(&text, &tree, &self::chain_refs(&chain));
         let line_index = LineIndex::new(&text);
@@ -44,6 +47,7 @@ impl Document {
             ground,
             region,
             errors,
+            ts_tree: tree,
         }
     }
 }
