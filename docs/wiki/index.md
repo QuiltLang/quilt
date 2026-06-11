@@ -19,7 +19,6 @@ Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file i
 | [Editor Setup](editor-setup.md)             | VS Code extension, keybindings, and `tools/quilt`                  |
 | [Nanobots](nanobots.md)                     | The gas-metered nanobot IR toolchain                               |
 | [Adding a Language](adding-a-language.md)   | Step-by-step guide for supporting a new language                   |
-| [Possible Improvements](improvements.md)    | Prioritized list of correctness / usability improvements           |
 
 ## Quick orientation
 

@@ -15,15 +15,26 @@
 //! match. Bindings are returned as `text` leaf terms, so splicing one into a
 //! later quote reproduces the matched source verbatim.
 //!
+//! ## Structural pattern matching ([`smatch`] / [`sinstantiate`] / [`QTerm::rewrite`])
+//!
+//! A separate, tree-level pattern language sits alongside the textual one.
+//! Patterns are ordinary [`QTerm`]s except that [`smvar`] nodes act as
+//! wildcards that match **any** single subtree and bind it by name.  Matching
+//! is purely structural — the tree shapes must agree at every non-wildcard
+//! position — and the cmds (layout) of a node are not compared.  See
+//! [`smatch`] for the full semantics.
+//!
 //! Like `lift.rs`, this module is part of the parser-free runtime that
 //! expanded code links against, plus the codegen helpers ([`pattern_var_code`],
 //! [`pattern_let_code`]) the meta-languages use to spell calls into it.
 
 use crate::prelude::*;
-use crate::qterm::QTerm;
+use crate::qterm::{qquote_at, qunquote_at, QTerm};
 use crate::strcmd::StrCmd;
 use crate::term::{CmdOrHole, STerm};
 use miette::{bail, ensure};
+use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 /**************************************************************/
 
@@ -230,6 +241,195 @@ pub fn pattern_let_code(
 }
 
 /**************************************************************/
+// Structural pattern matching
+
+/// The tag marking a structural metavariable (see [`smvar`]).
+pub const SMVAR: &str = "smvar";
+
+/// A structural metavariable: matches any single [`QTerm`] subtree and binds
+/// it to `name`. Coparses to `?name` for debugging.
+pub fn smvar(name: &str) -> Arc<QTerm> {
+    unquote(SMVAR, 0, "", sym(name), &[cmd(write("?")), HOLE])
+}
+
+/// Try to merge `from` into `into`, failing if the same name is bound to two
+/// structurally unequal terms.
+fn merge_bindings(
+    into: &mut HashMap<Box<str>, Arc<QTerm>>,
+    from: HashMap<Box<str>, Arc<QTerm>>,
+) -> Option<()> {
+    for (k, v) in from {
+        if let Some(existing) = into.get(&k) {
+            if existing.as_ref() != v.as_ref() {
+                return None;
+            }
+        } else {
+            into.insert(k, v);
+        }
+    }
+    Some(())
+}
+
+/// Extract `(tag, index, lang, inner_term)` from a Quote or Unquote node,
+/// together with a flag that is `true` for Quote and `false` for Unquote.
+/// Returns `None` for Tuple.
+fn quote_fields(t: &QTerm) -> Option<(&str, crate::util::Index, &str, &QTerm, bool)> {
+    match t {
+        QTerm::Quote {
+            tag,
+            index,
+            lang,
+            term,
+            ..
+        } => Some((tag, *index, lang, term, true)),
+        QTerm::Unquote {
+            tag,
+            index,
+            lang,
+            term,
+            ..
+        } => Some((tag, *index, lang, term, false)),
+        QTerm::Tuple { .. } => None,
+    }
+}
+
+/// Match `subject` against `pattern` structurally, returning a map from
+/// metavariable name to bound subtree on success, or `None` on mismatch.
+///
+/// - An [`smvar`] node in the pattern matches any single [`QTerm`] and binds
+///   it by name. If the same name appears more than once in the pattern, all
+///   occurrences must match structurally equal subtrees.
+/// - Everything else requires the same variant, tag, index, and lang; children
+///   are matched pairwise and recursively.
+/// - The `cmds` (layout instructions) of non-metavariable nodes are **not**
+///   compared, so a constructed term and a parsed one that differ only in
+///   whitespace still match.
+pub fn smatch(pattern: &QTerm, subject: &QTerm) -> Option<HashMap<Box<str>, Arc<QTerm>>> {
+    if let QTerm::Unquote { tag, term, .. } = pattern {
+        if &**tag == SMVAR {
+            let name: Box<str> = term.coparse().into_boxed_str();
+            return Some(HashMap::from([(name, Arc::new(subject.clone()))]));
+        }
+    }
+    if let (
+        QTerm::Tuple {
+            tag: pt,
+            terms: pterms,
+            ..
+        },
+        QTerm::Tuple {
+            tag: st,
+            terms: sterms,
+            ..
+        },
+    ) = (pattern, subject)
+    {
+        if pt != st || pterms.len() != sterms.len() {
+            return None;
+        }
+        let mut bindings = HashMap::new();
+        for (pc, sc) in pterms.iter().zip(sterms.iter()) {
+            let sub = smatch(pc, sc)?;
+            merge_bindings(&mut bindings, sub)?;
+        }
+        return Some(bindings);
+    }
+    let (pt, pi, pl, pterm, pq) = quote_fields(pattern)?;
+    let (st, si, sl, sterm, sq) = quote_fields(subject)?;
+    if pq != sq || pt != st || pi != si || pl != sl {
+        return None;
+    }
+    smatch(pterm, sterm)
+}
+
+/// Substitute [`smvar`] markers in `template` with their bound values from
+/// `bindings`. Variables absent from `bindings` are left in place.
+pub fn sinstantiate<S: BuildHasher>(
+    template: &QTerm,
+    bindings: &HashMap<Box<str>, Arc<QTerm>, S>,
+) -> Arc<QTerm> {
+    if let QTerm::Unquote { tag, term, .. } = template {
+        if &**tag == SMVAR {
+            let name: Box<str> = term.coparse().into_boxed_str();
+            if let Some(bound) = bindings.get(&name) {
+                return bound.clone();
+            }
+        }
+    }
+    match template {
+        QTerm::Quote {
+            tag,
+            index,
+            lang,
+            term,
+            cmds,
+            span,
+        } => {
+            let term = sinstantiate(term, bindings);
+            Arc::new(qquote_at(tag, *index, lang, term, cmds, span.clone()))
+        }
+        QTerm::Unquote {
+            tag,
+            index,
+            lang,
+            term,
+            cmds,
+            span,
+        } => {
+            let term = sinstantiate(term, bindings);
+            Arc::new(qunquote_at(tag, *index, lang, term, cmds, span.clone()))
+        }
+        QTerm::Tuple { tag, terms, cmds } => {
+            let terms: Vec<Arc<QTerm>> = terms.iter().map(|t| sinstantiate(t, bindings)).collect();
+            tuple(tag, &terms, cmds)
+        }
+    }
+}
+
+impl QTerm {
+    /// Rewrite every subtree that matches the `find` pattern, replacing it with
+    /// `replace` (with metavariable bindings substituted in). Traversal is
+    /// outermost-first: if a node matches the pattern, its children are **not**
+    /// recursed into — the replacement is returned as-is. This differs from
+    /// [`rewrite_naive`][QTerm::rewrite_naive], which uses structural equality
+    /// and recurses unconditionally.
+    pub fn rewrite(&self, find: &Self, replace: &Self) -> Arc<Self> {
+        if let Some(bindings) = smatch(find, self) {
+            return sinstantiate(replace, &bindings);
+        }
+        match self {
+            QTerm::Quote {
+                tag,
+                index,
+                lang,
+                term,
+                cmds,
+                span,
+            } => {
+                let term = term.rewrite(find, replace);
+                Arc::new(qquote_at(tag, *index, lang, term, cmds, span.clone()))
+            }
+            QTerm::Unquote {
+                tag,
+                index,
+                lang,
+                term,
+                cmds,
+                span,
+            } => {
+                let term = term.rewrite(find, replace);
+                Arc::new(qunquote_at(tag, *index, lang, term, cmds, span.clone()))
+            }
+            QTerm::Tuple { tag, terms, cmds } => {
+                let terms: Vec<Arc<QTerm>> =
+                    terms.iter().map(|t| t.rewrite(find, replace)).collect();
+                tuple(tag, &terms, cmds)
+            }
+        }
+    }
+}
+
+/**************************************************************/
 
 #[cfg(test)]
 mod tests {
@@ -341,5 +541,149 @@ mod tests {
     #[test]
     fn mvar_coparses_for_debugging() {
         assert_eq!(mvar("x").coparse(), "↙x↘");
+    }
+
+    // --- structural pattern matching ---
+
+    #[test]
+    fn smvar_coparses_for_debugging() {
+        assert_eq!(smvar("x").coparse(), "?x");
+    }
+
+    #[test]
+    fn smatch_exact_leaf() {
+        let t = leaf("k", "hello");
+        let binds = smatch(&t, &t).unwrap();
+        assert!(binds.is_empty());
+    }
+
+    #[test]
+    fn smatch_tag_mismatch() {
+        assert!(smatch(&leaf("a", "x"), &leaf("b", "x")).is_none());
+    }
+
+    #[test]
+    fn smatch_single_metavar() {
+        let pat = smvar("x");
+        let subject = leaf("integer_literal", "42");
+        let binds = smatch(&pat, &subject).unwrap();
+        assert_eq!(binds.len(), 1);
+        assert_eq!(binds["x"].as_ref(), subject.as_ref());
+    }
+
+    #[test]
+    fn smatch_metavar_in_tuple() {
+        // pattern: add(?x, ?y)  subject: add(1, 2)
+        let pat = tb("add").c(&smvar("x")).c(&smvar("y")).b();
+        let subject = tb("add").c(&leaf("int", "1")).c(&leaf("int", "2")).b();
+        let binds = smatch(&pat, &subject).unwrap();
+        assert_eq!(binds["x"].as_ref(), leaf("int", "1").as_ref());
+        assert_eq!(binds["y"].as_ref(), leaf("int", "2").as_ref());
+    }
+
+    #[test]
+    fn smatch_arity_mismatch() {
+        let pat = tb("f").c(&smvar("x")).b();
+        let subject = tb("f").c(&leaf("a", "1")).c(&leaf("b", "2")).b();
+        assert!(smatch(&pat, &subject).is_none());
+    }
+
+    #[test]
+    fn smatch_repeated_var_consistent() {
+        // pattern: f(?x, ?x) — both positions must match the same subtree
+        let x = smvar("x");
+        let pat = tb("f").c(&x).c(&x).b();
+        let same = leaf("int", "1");
+        let binds = smatch(&pat, &tb("f").c(&same).c(&same).b()).unwrap();
+        assert_eq!(binds["x"].as_ref(), same.as_ref());
+    }
+
+    #[test]
+    fn smatch_repeated_var_conflict() {
+        let x = smvar("x");
+        let pat = tb("f").c(&x).c(&x).b();
+        let subject = tb("f").c(&leaf("int", "1")).c(&leaf("int", "2")).b();
+        assert!(smatch(&pat, &subject).is_none());
+    }
+
+    #[test]
+    fn smatch_cmds_ignored() {
+        // Two tuples with the same tag/children but different layout (cmds)
+        // should still match: cmds are not compared.
+        let pat = tb("x").w("  ").c(&smvar("v")).b();
+        let subject = tb("x").c(&leaf("n", "1")).b();
+        let binds = smatch(&pat, &subject).unwrap();
+        assert_eq!(binds["v"].as_ref(), leaf("n", "1").as_ref());
+    }
+
+    #[test]
+    fn sinstantiate_replaces_var() {
+        let tmpl = tb("add").c(&smvar("x")).c(&smvar("y")).b();
+        let bindings: HashMap<Box<str>, Arc<QTerm>> = HashMap::from([
+            ("x".into(), leaf("int", "10")),
+            ("y".into(), leaf("int", "20")),
+        ]);
+        let result = sinstantiate(&tmpl, &bindings);
+        let expected = tb("add").c(&leaf("int", "10")).c(&leaf("int", "20")).b();
+        assert_eq!(result.as_ref(), expected.as_ref());
+    }
+
+    #[test]
+    fn sinstantiate_missing_var_left_in_place() {
+        // A var not in bindings should remain as an smvar node
+        let tmpl = smvar("x");
+        let bindings: HashMap<Box<str>, Arc<QTerm>> = HashMap::new();
+        let result = sinstantiate(&tmpl, &bindings);
+        assert_eq!(result.as_ref(), smvar("x").as_ref());
+    }
+
+    #[test]
+    fn rewrite_no_match() {
+        let find = tb("f").c(&leaf("a", "1")).b();
+        let replace = leaf("b", "2");
+        let tree = tb("g").c(&leaf("c", "3")).b();
+        let result = tree.rewrite(&find, &replace);
+        assert_eq!(result.as_ref(), tree.as_ref());
+    }
+
+    #[test]
+    fn rewrite_root_match() {
+        let x = smvar("x");
+        let find = tb("neg").c(&x).b();
+        let replace = tb("neg").c(&tb("neg").c(&smvar("x")).b()).b();
+        let subject = tb("neg").c(&leaf("int", "5")).b();
+        let result = subject.rewrite(&find, &replace);
+        let expected = tb("neg").c(&tb("neg").c(&leaf("int", "5")).b()).b();
+        assert_eq!(result.as_ref(), expected.as_ref());
+    }
+
+    #[test]
+    fn rewrite_deep_match() {
+        // replace every `zero` leaf with `0`
+        let find = sym("zero");
+        let replace = sym("0");
+        let tree = tb("add")
+            .c(&sym("zero"))
+            .c(&tb("mul").c(&sym("zero")).c(&leaf("int", "3")).b())
+            .b();
+        let result = tree.rewrite(&find, &replace);
+        let expected = tb("add")
+            .c(&sym("0"))
+            .c(&tb("mul").c(&sym("0")).c(&leaf("int", "3")).b())
+            .b();
+        assert_eq!(result.as_ref(), expected.as_ref());
+    }
+
+    #[test]
+    fn rewrite_outermost_first() {
+        // A match at the root suppresses recursion into children.
+        // find = f(?x),  replace = ?x  (strip one level of `f`)
+        // subject = f(f(a))  → should give f(a), not a
+        let find = tb("f").c(&smvar("x")).b();
+        let replace = smvar("x");
+        let subject = tb("f").c(&tb("f").c(&leaf("a", "a")).b()).b();
+        let result = subject.rewrite(&find, &replace);
+        let expected = tb("f").c(&leaf("a", "a")).b();
+        assert_eq!(result.as_ref(), expected.as_ref());
     }
 }

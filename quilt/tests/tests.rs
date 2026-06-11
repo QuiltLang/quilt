@@ -6,6 +6,13 @@ use quilt::langs::python::lang::PythonLanguage;
 use quilt::prelude::*;
 use quilt::term::STerm;
 
+fn expand(lang: &str, code: &str) -> Result<String> {
+    let mut omni = Omni::default();
+    let term = omni.parse_lang(lang, code.trim())?;
+    let expanded = omni.expand_lang(lang, &term)?;
+    Ok(expanded.coparse())
+}
+
 /**************************************************************/
 
 fn roundtrip(code: &str) -> Result<()> {
@@ -159,4 +166,71 @@ fn rs_var() -> Result<()> {
     roundtrip(indoc! {r#"
         let code = ↖let ↙foo↘ = "bar";↗;
     "#})
+}
+
+#[test]
+fn reduce_expands_homogeneous() -> Result<()> {
+    // ↓ at ground level in Rust expands to `.reduce()` in the coparse output
+    let out = expand("rs", indoc! {r#"
+        fn main() {
+            let result = program.↓;
+        }
+    "#})?;
+    assert_eq!(
+        out.trim(),
+        "fn main() {\n    let result = program.reduce();\n}"
+    );
+    Ok(())
+}
+
+#[test]
+fn hetero_reduce_py_coparse() -> Result<()> {
+    // py↓ at ground level in Rust expands to `.reduce_py()` in the coparse output
+    let out = expand("rs", indoc! {r#"
+        fn main() {
+            let result = program.py↓;
+        }
+    "#})?;
+    assert_eq!(
+        out.trim(),
+        "fn main() {\n    let result = program.reduce_py();\n}"
+    );
+    Ok(())
+}
+
+#[test]
+fn hetero_reduce_py_expands_to_reduce_py() -> Result<()> {
+    let out = expand("rs", indoc! {r#"
+        fn main() {
+            let result = program.py↓;
+        }
+    "#})?;
+    assert!(out.contains("reduce_py()"), "expected `reduce_py()` in output, got: {out}");
+    Ok(())
+}
+
+#[test]
+fn homo_reduce_expands_to_reduce() -> Result<()> {
+    let out = expand("rs", indoc! {r#"
+        fn main() {
+            let result = program.↓;
+        }
+    "#})?;
+    assert!(out.contains("reduce()"), "expected `reduce()` in output, got: {out}");
+    assert!(!out.contains("reduce_py()"), "should not contain `reduce_py()`, got: {out}");
+    Ok(())
+}
+
+#[test]
+fn py_homo_reduce_expands_to_reduce() -> Result<()> {
+    let out = expand("py", "result = program.↓")?;
+    assert!(out.contains("reduce()"), "expected `reduce()` in py output, got: {out}");
+    Ok(())
+}
+
+#[test]
+fn py_hetero_reduce_rs_expands_to_reduce_rs() -> Result<()> {
+    let out = expand("py", "result = program.rs↓")?;
+    assert!(out.contains("reduce_rs()"), "expected `reduce_rs()` in py output, got: {out}");
+    Ok(())
 }

@@ -2,4 +2,5 @@ local
 .DS_Store
 /.direnv
 .claude
+.claire
 /target

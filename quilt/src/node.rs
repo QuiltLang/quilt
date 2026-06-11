@@ -28,7 +28,11 @@ pub enum Node {
         span: Span,
     },
     Lift,
-    Reduce,
+    Reduce {
+        /// The meta-language annotation on `↓`, e.g. `"py"` for `py↓`.
+        /// Empty string means homogeneous (use the current meta-language).
+        anno: Box<str>,
+    },
     Emit,
     Type,
     Name,
@@ -92,7 +96,12 @@ impl Node {
                 Node::Unquote { anno, nodes, span }
             }
             "lift" => Node::Lift,
-            "reduce" => Node::Reduce,
+            "reduce" => {
+                let range = node.range();
+                let text = &code[range.start_byte..range.end_byte];
+                let anno = text[..text.len() - ARROW_LEN].into();
+                Node::Reduce { anno }
+            }
             "emit" => Node::Emit,
             "type" => Node::Type,
             "name" => Node::Name,
@@ -153,7 +162,7 @@ impl Term for Node {
             Node::Quote { .. } => NodeTag::Quote,
             Node::Unquote { .. } => NodeTag::Unquote,
             Node::Lift => NodeTag::Lift,
-            Node::Reduce => NodeTag::Reduce,
+            Node::Reduce { .. } => NodeTag::Reduce,
             Node::Emit => NodeTag::Emit,
             Node::Type => NodeTag::Type,
             Node::Name => NodeTag::Name,
@@ -209,7 +218,10 @@ impl STerm for Node {
                 writer.write("↘");
             }
             Node::Lift => writer.write("↑"),
-            Node::Reduce => writer.write("↓"),
+            Node::Reduce { anno } => {
+                writer.write(anno);
+                writer.write("↓");
+            }
             Node::Emit => writer.write("←"),
             Node::Type => writer.write("⟨T⟩"),
             Node::Name => writer.write("⟨N⟩"),
@@ -243,6 +255,18 @@ mod tests {
         assert!(matches!(&nodes[0], Node::PlainLineComment(s) if &**s == "// line comment"));
         assert!(matches!(&nodes[2], Node::PlainBlockComment(s) if &**s == "/* block comment */"));
         assert_eq!(&*Node::coparse(&nodes), source_code);
+    }
+
+    #[test]
+    fn annotated_reduce() {
+        let source_code = "↓ py↓ rs↓";
+        let nodes = Node::parse(source_code);
+        assert_eq!(nodes.len(), 5); // ↓, space, py↓, space, rs↓
+        assert!(matches!(&nodes[0], Node::Reduce { anno } if anno.is_empty()));
+        assert!(matches!(&nodes[2], Node::Reduce { anno } if &**anno == "py"));
+        assert!(matches!(&nodes[4], Node::Reduce { anno } if &**anno == "rs"));
+        let roundtrip = &*Node::coparse(&nodes);
+        assert_eq!(roundtrip, source_code);
     }
 
     #[test]

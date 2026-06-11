@@ -56,7 +56,7 @@ pub fn project(
     chain: &[&str],
 ) -> Projection {
     let mut parser = regions::parser();
-    let tree = regions::parse(&mut parser, text);
+    let tree = regions::parse(&mut parser, text, None);
     let root = tree.root_node();
 
     let mut b = Builder::new();
@@ -149,7 +149,7 @@ pub fn project_fragments(
     chain: &[&str],
 ) -> Vec<FragmentDoc> {
     let mut parser = regions::parser();
-    let tree = regions::parse(&mut parser, text);
+    let tree = regions::parse(&mut parser, text, None);
 
     let zipper = LangZipper::from_chain(chain);
     let mut quotes: Vec<(tree_sitter::Node, LangZipper)> = Vec::new();

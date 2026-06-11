@@ -224,8 +224,9 @@ impl MetaLanguage for BootstrapMetaLanguage {
         Ok("bs_lift()")
     }
 
-    fn reduce_str(&self) -> &'static str {
-        "bs_reduce()"
+    // No heterogeneous reduction from the bootstrap meta: `target` is ignored.
+    fn reduce_str(&self, _target: &str) -> Result<&'static str> {
+        Ok("bs_reduce()")
     }
 
     fn type_str(&self) -> &'static str {
