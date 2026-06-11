@@ -12,7 +12,7 @@ use std::ops::Range;
 use tree_sitter::{Node, Parser, Tree};
 
 /// Byte length of an arrow glyph (`↖↗↙↘↑↓`). They are all 3 bytes in UTF-8.
-const ARROW_LEN: usize = "↖".len();
+pub(crate) const ARROW_LEN: usize = "↖".len();
 
 /// Build a tree-sitter parser configured for the Quilt grammar.
 pub fn parser() -> Parser {
