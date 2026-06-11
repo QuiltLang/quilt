@@ -9,6 +9,7 @@
 
 pub mod adapters;
 pub mod child;
+pub mod code_actions;
 pub mod document;
 pub mod lineindex;
 pub mod projection;

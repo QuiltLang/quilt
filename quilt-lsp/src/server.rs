@@ -1345,6 +1345,16 @@ impl LanguageServer for Backend {
                 completion_provider: Some(CompletionOptions::default()),
                 folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![
+                            CodeActionKind::REFACTOR_REWRITE,
+                            CodeActionKind::REFACTOR_EXTRACT,
+                        ]),
+                        resolve_provider: Some(false),
+                        work_done_progress_options: Default::default(),
+                    },
+                )),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -1461,6 +1471,24 @@ impl LanguageServer for Backend {
 
     async fn folding_range(&self, params: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
         Ok(Some(self.inner.folding(&params.text_document.uri).await))
+    }
+
+    async fn code_action(
+        &self,
+        params: CodeActionParams,
+    ) -> Result<Option<CodeActionResponse>> {
+        let uri = &params.text_document.uri;
+        let Some(doc) = self.inner.docs.get(uri) else {
+            return Ok(None);
+        };
+        let enc = self.inner.enc();
+        let actions =
+            crate::code_actions::code_actions(uri, &doc, enc, params.range);
+        if actions.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(actions))
+        }
     }
 
     async fn document_symbol(
