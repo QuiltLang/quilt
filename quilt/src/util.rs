@@ -16,3 +16,6 @@ pub fn sep() {
 }
 
 pub type Index = u8;
+
+/// A byte range into the original `.quilt` source, for diagnostics.
+pub type Span = std::ops::Range<usize>;

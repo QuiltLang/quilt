@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use miette::IntoDiagnostic;
+use miette::{IntoDiagnostic, NamedSource};
 #[cfg(feature = "bootstrap")]
 use quilt::langs::bootstrap::Bootstrap;
 use quilt::{
@@ -91,19 +91,22 @@ fn expand(args: &ExpandArgs) -> Result<()> {
     let input_filename = &args.filename;
     let output_filename = input_filename.strip_suffix(".quilt").unwrap();
     let input = fs::read_to_string(input_filename).expect("Should have been able to read the file");
+    // attach the source so span-carrying errors render the offending snippet
+    let with_src =
+        |e: miette::Report| e.with_source_code(NamedSource::new(input_filename, input.clone()));
     let expanded = match args.multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
             let chain = lang_chain(&multi, output_filename);
-            let sterm = multi.parse_chain(&chain, &input)?;
-            multi.expand_lang(chain[0], &sterm)?
+            let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
+            multi.expand_lang(chain[0], &sterm).map_err(with_src)?
         }
         #[cfg(feature = "bootstrap")]
         MultiOptions::Bootstrap => {
             let mut multi = Bootstrap::default();
             let chain = lang_chain(&multi, output_filename);
-            let sterm = multi.parse_chain(&chain, &input)?;
-            multi.expand_lang(chain[0], &sterm)?
+            let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
+            multi.expand_lang(chain[0], &sterm).map_err(with_src)?
         }
     };
 
@@ -252,8 +255,13 @@ fn expand_to<LS: Languages, MS: MetaLanguages>(
 ) -> Result<Option<&'static str>> {
     let host = chain[0];
     let hashbang = multi.get_lang(host)?.hashbang();
-    let sterm = multi.parse_chain(chain, input)?;
-    multi.expand_lang(host, &sterm)?.dump(path)?;
+    // attach the source so span-carrying errors render the offending snippet
+    let with_src = |e: miette::Report| e.with_source_code(input.to_string());
+    let sterm = multi.parse_chain(chain, input).map_err(with_src)?;
+    multi
+        .expand_lang(host, &sterm)
+        .map_err(with_src)?
+        .dump(path)?;
     Ok(hashbang)
 }
 

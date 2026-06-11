@@ -30,8 +30,8 @@ foo.rs.quilt
 pub enum Node {
     Content(Box<str>),          // any text that isn't a Quilt glyph
     NewLine,
-    Quote { anno, nodes },      // lang↖ … ↗
-    Unquote { anno, nodes },    // lang↙ … ↘
+    Quote { anno, nodes, span },   // lang↖ … ↗ (span = byte range in the source)
+    Unquote { anno, nodes, span }, // lang↙ … ↘
     Lift,                       // ↑
     Reduce,                     // ↓
     Emit,                       // ←
@@ -82,13 +82,13 @@ trait LanguagePost {
 ### Recursion
 
 For each `Node::Quote { anno, nodes }` encountered:
-- A `qb(hole_tag, 1, lang)` builder is created.
+- A `qb(hole_tag, 1, lang)` builder is created, carrying the node's source span.
 - `build_nodes` is called recursively on `nodes` with the new zipper.
 - The resulting builder is closed and pushed as a plug.
 
 For each `Node::Unquote { anno, nodes }`:
-- A `ub(hole_tag, 1, outer_lang)` builder is created.
-- `build_nodes` is called recursively on `nodes` with the zipper unwound one step (the inner content is in the outer language).
+- A `ub(hole_tag, 1, outer_lang)` builder is created, carrying the node's source span.
+- `build_nodes` is called recursively on `nodes` with the zipper unwound one step (the inner content is in the outer language). An unquote with no enclosing quote is a spanned "unquote depth too high" error.
 
 Special nodes (`Lift`, `Reduce`, `Emit`, `Type`, `Name`) are translated to their language-specific string spellings by querying the `MetaLanguages` registry.
 
@@ -102,7 +102,7 @@ The `Expander` walks the `QTerm` tree and calls the ground language's `MetaLangu
 
 - `Tuple { tag, terms, cmds }` — recurse into each child at Ground; call `meta.wrap_child` on the result.
 - `Quote { … }` — switch to Sky, recurse.
-- `Unquote { … }` — error (unquote at depth 0 is invalid).
+- `Unquote { … }` — error (unquote at depth 0 is invalid); the diagnostic points at the unquote's source span when the term carries one.
 
 ### Sky stage (inside quotes)
 

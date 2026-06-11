@@ -12,12 +12,14 @@ pub trait StrLift {
 impl StrLift for Arc<QTerm> {
     fn strlift(&self) -> String {
         match &**self {
+            // span is dropped: lifted code rebuilds the term without one
             QTerm::Quote {
                 tag,
                 index,
                 lang,
                 term,
                 cmds,
+                ..
             } => format!(
                 "quote({}, {}, {}, {}, &{})",
                 (**tag).strlift(),
@@ -32,6 +34,7 @@ impl StrLift for Arc<QTerm> {
                 lang,
                 term,
                 cmds,
+                ..
             } => format!(
                 "unquote({}, {}, {}, {}, &{})",
                 (**tag).strlift(),

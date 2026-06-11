@@ -293,14 +293,30 @@ impl LanguagePost for TSLanguagePost {
                     lang,
                     term,
                     cmds,
-                } => quote(tag, *index, lang, fill(term, plugs, hole_str), cmds),
+                    span,
+                } => arc(crate::qterm::qquote_at(
+                    tag,
+                    *index,
+                    lang,
+                    fill(term, plugs, hole_str),
+                    cmds,
+                    span.clone(),
+                )),
                 QTerm::Unquote {
                     tag,
                     index,
                     lang,
                     term,
                     cmds,
-                } => unquote(tag, *index, lang, fill(term, plugs, hole_str), cmds),
+                    span,
+                } => arc(crate::qterm::qunquote_at(
+                    tag,
+                    *index,
+                    lang,
+                    fill(term, plugs, hole_str),
+                    cmds,
+                    span.clone(),
+                )),
                 QTerm::Tuple { tag, terms, cmds } => {
                     if &**tag == hole_str {
                         return plugs.next().unwrap().clone();

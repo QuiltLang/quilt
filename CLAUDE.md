@@ -62,8 +62,10 @@ Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file i
 
 The central type. An enum with three variants:
 - `Tuple { tag, terms, cmds }` — an AST node for a specific language. `tag` is the tree-sitter node kind (e.g. `"block"`, `"expression_statement"`). `cmds` is a sequence of `StrCmd`s (write/newline/push-prefix/pop-prefix) with holes (`CmdOrHole`) that interleave the children when serializing.
-- `Quote { tag, index, lang, term, cmds }` — a quoted fragment: `↖...↗` or `lang↖...↗`. `index` tracks quasi-quote nesting depth.
-- `Unquote { tag, index, lang, term, cmds }` — an unquoted splice: `↙...↘` or `lang↙...↘`.
+- `Quote { tag, index, lang, term, cmds, span }` — a quoted fragment: `↖...↗` or `lang↖...↗`. `index` tracks quasi-quote nesting depth.
+- `Unquote { tag, index, lang, term, cmds, span }` — an unquoted splice: `↙...↘` or `lang↙...↘`.
+
+`span` is the byte range of the quote/unquote in the original source (`Option<Span>`; attached by `build_nodes`, `None` for constructed terms). It is diagnostic metadata only — ignored by `PartialEq` and used to point errors like "unquote depth too high" at the offending source.
 
 `QTermBuilder` (`tb/qb/ub` constructors) is the builder API: chain `.w()`, `.c()`, `.n()`, `.p()`, `.x()`, `.b()` for write/child/newline/push/pop/build.
 
@@ -71,7 +73,7 @@ Supporting modules: `term.rs` (the generic `Term` trait, `ArcTerm`, `STerm`), `v
 
 ### Surface syntax: `Node` (`quilt/src/node.rs`)
 
-The Quilt-level AST parsed by tree-sitter-quilt. Contains `Content`, `NewLine`, `Quote { anno, nodes }`, `Unquote { anno, nodes }`, `Lift` (↑), `Reduce` (↓), `Emit` (←), `Type` (⟨T⟩), `Name` (⟨N⟩). The quilt grammar lives in `tree-sitter-quilt/grammar.js`.
+The Quilt-level AST parsed by tree-sitter-quilt. Contains `Content`, `NewLine`, `Quote { anno, nodes, span }`, `Unquote { anno, nodes, span }`, `Lift` (↑), `Reduce` (↓), `Emit` (←), `Type` (⟨T⟩), `Name` (⟨N⟩). The quilt grammar lives in `tree-sitter-quilt/grammar.js`.
 
 ### Language traits (`quilt/src/lang.rs`, `quilt/src/meta.rs`)
 

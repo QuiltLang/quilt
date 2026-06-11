@@ -266,12 +266,14 @@ impl<T: QLift + ?Sized> crate::lift::LiftTo<crate::lift::Rust> for T {
 impl QLift for Arc<QTerm> {
     fn qlift(&self) -> Arc<QTerm> {
         match &**self {
+            // span is dropped: lifted code rebuilds the term without one
             QTerm::Quote {
                 tag,
                 index,
                 lang,
                 term,
                 cmds,
+                ..
             } => tb("_")
                 .w("quote(")
                 .c(&strlit_term(tag))
@@ -289,6 +291,7 @@ impl QLift for Arc<QTerm> {
                 lang,
                 term,
                 cmds,
+                ..
             } => tb("_")
                 .w("unquote(")
                 .c(&strlit_term(tag))
