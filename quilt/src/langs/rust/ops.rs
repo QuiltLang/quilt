@@ -241,6 +241,66 @@ pub fn lift_spelling(target: &str) -> Result<&'static str> {
     }
 }
 
+/// The Rust spelling of `↓` reducing with meta-language `target`. The
+/// homogeneous case (`target` == `""` or `"rust"`/`"rs"`) keeps `reduce()`;
+/// heterogeneous targets invoke the corresponding cross-language reducer.
+pub fn reduce_spelling(target: &str) -> Result<&'static str> {
+    match target {
+        "" | "rust" | "rs" => Ok("reduce()"),
+        "python" | "py" => Ok("reduce_py()"),
+        _ => bail!("rust can't reduce via {target:?}: no reduce_spelling registered"),
+    }
+}
+
+/// Evaluate a `QTerm` by running it as Python code, then deserialize the
+/// result (the `py↓` operator from a Rust meta-program). The term's code is
+/// run via `python3` with the `quilt` Python bindings on `PYTHONPATH`; the
+/// result QTerm is shuttled back via its postcard serialization.
+pub fn reduce_py(x: &QTerm) -> Result<Arc<QTerm>> {
+    let input = x.coparse();
+    let mut out_file = tempfile::NamedTempFile::new().into_diagnostic()?;
+    let out_path = out_file.path().to_str().unwrap();
+
+    let quilt_dir = env!("CARGO_MANIFEST_DIR");
+    // The quilt Python package lives next to the quilt crate.
+    let py_pkg = format!("{quilt_dir}/../quilt-python");
+    let script = indoc::formatdoc! {r#"
+        import sys
+        sys.path.insert(0, "{py_pkg}")
+        from quilt import *
+        result = {input}
+        data = result.postcard_bytes()
+        with open("{out_path}", "wb") as f:
+            f.write(data)
+    "#};
+
+    let script_file = tempfile::Builder::new()
+        .suffix(".py")
+        .tempfile()
+        .into_diagnostic()?;
+    std::fs::write(script_file.path(), script).into_diagnostic()?;
+    let status = Command::new("python3")
+        .arg(script_file.path())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .into_diagnostic()?;
+
+    if !status.success() {
+        bail!("reduce_py: script failed with status {status}");
+    }
+
+    let mut data = Vec::new();
+    out_file.read_to_end(&mut data).into_diagnostic()?;
+    postcard::from_bytes(&data).into_diagnostic()
+}
+
+impl QTerm {
+    pub fn reduce_py(&self) -> Result<Arc<QTerm>> {
+        reduce_py(self)
+    }
+}
+
 /// Lift a value to a `QTerm` whose code reconstructs it (the `↑` operator).
 ///
 /// Unlike the `build_*_code` helpers (flat, dump-only), the strings here are

@@ -10,4 +10,5 @@ name = "quilt_python"
 
 [dependencies]
 pyo3 = {workspace = true, features = ["abi3-py38"]}
+postcard = {workspace = true, features = ["alloc"]}
 quilt = {workspace = true}

@@ -73,8 +73,8 @@ pub trait MetaLanguages {
     fn lift_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.get(lang)?.lift_str(target)
     }
-    fn reduce_str(&self, lang: &str) -> Result<&'static str> {
-        Ok(self.get(lang)?.reduce_str())
+    fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
+        self.get(lang)?.reduce_str(target)
     }
     fn emit_str(&self, lang: &str) -> Result<&'static str> {
         Ok(self.get(lang)?.emit_str())
@@ -109,8 +109,8 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     pub fn lift_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.lift_str(lang, target)
     }
-    pub fn reduce_str(&self, lang: &str) -> Result<&'static str> {
-        self.metas.reduce_str(lang)
+    pub fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
+        self.metas.reduce_str(lang, target)
     }
     pub fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.emit_str(lang)
@@ -261,7 +261,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 Node::Lift => code.push(FlatNode::Str(
                     self.lift_str(lang, splice_target.unwrap_or(lang))?,
                 )),
-                Node::Reduce => code.push(FlatNode::Str(self.reduce_str(lang)?)),
+                Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
                 Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
                 Node::Type => code.push(FlatNode::Str(self.type_str(lang)?)),
                 Node::Name => code.push(FlatNode::Str(self.name_str(lang)?)),
@@ -286,7 +286,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 Node::Content(_)
                 | Node::NewLine
                 | Node::Lift
-                | Node::Reduce
+                | Node::Reduce { .. }
                 | Node::Emit
                 | Node::Type
                 | Node::Name => {}

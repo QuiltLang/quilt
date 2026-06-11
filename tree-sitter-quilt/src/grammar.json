@@ -115,8 +115,8 @@
       "value": "↑"
     },
     "reduce": {
-      "type": "STRING",
-      "value": "↓"
+      "type": "PATTERN",
+      "value": "[a-z]*↓"
     },
     "emit": {
       "type": "STRING",

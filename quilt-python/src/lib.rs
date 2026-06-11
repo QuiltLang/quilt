@@ -40,6 +40,12 @@ impl PyQTerm {
         self.0.coparse()
     }
 
+    /// Serialize this term to postcard bytes for the heterogeneous `py↓` protocol.
+    fn postcard_bytes(&self) -> PyResult<Vec<u8>> {
+        postcard::to_allocvec(&self.0)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    }
+
     /// Eval this term's source and return the resulting Python value (the `↓` operator).
     fn reduce<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let code = self.0.coparse();
@@ -250,6 +256,14 @@ fn escape_html(s: &str) -> String {
 
 /**************************************************************/
 
+/// Deserialize a `QTerm` from postcard bytes (the `rs↓` protocol in Python).
+#[pyfunction]
+fn from_postcard_bytes(data: &[u8]) -> PyResult<PyQTerm> {
+    postcard::from_bytes::<Arc<QTerm>>(data)
+        .map(PyQTerm)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+}
+
 /// quilt's core IR, exposed to Python as the native `quilt._quilt` module
 /// (re-exported by the `quilt` package's `__init__.py`).
 #[pymodule]
@@ -270,6 +284,7 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(name, m)?)?;
     m.add_function(wrap_pyfunction!(qlift, m)?)?;
     m.add_function(wrap_pyfunction!(qlift_html, m)?)?;
+    m.add_function(wrap_pyfunction!(from_postcard_bytes, m)?)?;
 
     m.add("NL", PyStrCmd(StrCmd::NewLine))?;
     m.add("POP", PyStrCmd(StrCmd::Pop))?;
