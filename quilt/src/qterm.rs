@@ -11,7 +11,7 @@ use std::{iter::once, sync::Arc};
 
 pub type Gaps = Box<[CmdOrHole]>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub enum QTerm {
     Quote {
         tag: Box<str>,
@@ -19,6 +19,12 @@ pub enum QTerm {
         lang: Box<str>,
         term: Arc<QTerm>,
         cmds: Box<[CmdOrHole]>,
+        /// Byte range of the `anno↖…↗` in the original source, when this term
+        /// came from parsing one (`build_nodes` attaches it); `None` for
+        /// constructed terms. Diagnostic metadata only — not part of equality.
+        /// No serde skip: `reduce` round-trips terms through postcard, which
+        /// is positional and cannot tolerate omitted fields.
+        span: Option<Span>,
     },
     Unquote {
         tag: Box<str>,
@@ -26,12 +32,69 @@ pub enum QTerm {
         lang: Box<str>,
         term: Arc<QTerm>,
         cmds: Box<[CmdOrHole]>,
+        /// Byte range of the `anno↙…↘` in the original source, when this term
+        /// came from parsing one; diagnostic metadata only, like a quote's.
+        span: Option<Span>,
     },
     Tuple {
         tag: Box<str>,
         terms: Box<[Arc<QTerm>]>,
         cmds: Box<[CmdOrHole]>,
     },
+}
+
+/// Spans are diagnostic metadata, not part of a term's identity: a parsed term
+/// (which carries spans) compares equal to the equivalent constructed one.
+impl PartialEq for QTerm {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                QTerm::Quote {
+                    tag,
+                    index,
+                    lang,
+                    term,
+                    cmds,
+                    span: _,
+                },
+                QTerm::Quote {
+                    tag: tag2,
+                    index: index2,
+                    lang: lang2,
+                    term: term2,
+                    cmds: cmds2,
+                    span: _,
+                },
+            )
+            | (
+                QTerm::Unquote {
+                    tag,
+                    index,
+                    lang,
+                    term,
+                    cmds,
+                    span: _,
+                },
+                QTerm::Unquote {
+                    tag: tag2,
+                    index: index2,
+                    lang: lang2,
+                    term: term2,
+                    cmds: cmds2,
+                    span: _,
+                },
+            ) => tag == tag2 && index == index2 && lang == lang2 && term == term2 && cmds == cmds2,
+            (
+                QTerm::Tuple { tag, terms, cmds },
+                QTerm::Tuple {
+                    tag: tag2,
+                    terms: terms2,
+                    cmds: cmds2,
+                },
+            ) => tag == tag2 && terms == terms2 && cmds == cmds2,
+            _ => false,
+        }
+    }
 }
 
 pub fn quote(
@@ -68,13 +131,7 @@ pub fn sym(s: &str) -> Arc<QTerm> {
 }
 
 pub fn qquote(tag: &str, index: Index, lang: &str, term: Arc<QTerm>, cmds: &[CmdOrHole]) -> QTerm {
-    QTerm::Quote {
-        tag: tag.into(),
-        index,
-        lang: lang.into(),
-        term,
-        cmds: cmds.into(),
-    }
+    qquote_at(tag, index, lang, term, cmds, None)
 }
 pub fn qunquote(
     tag: &str,
@@ -83,12 +140,40 @@ pub fn qunquote(
     term: Arc<QTerm>,
     cmds: &[CmdOrHole],
 ) -> QTerm {
+    qunquote_at(tag, index, lang, term, cmds, None)
+}
+pub fn qquote_at(
+    tag: &str,
+    index: Index,
+    lang: &str,
+    term: Arc<QTerm>,
+    cmds: &[CmdOrHole],
+    span: Option<Span>,
+) -> QTerm {
+    QTerm::Quote {
+        tag: tag.into(),
+        index,
+        lang: lang.into(),
+        term,
+        cmds: cmds.into(),
+        span,
+    }
+}
+pub fn qunquote_at(
+    tag: &str,
+    index: Index,
+    lang: &str,
+    term: Arc<QTerm>,
+    cmds: &[CmdOrHole],
+    span: Option<Span>,
+) -> QTerm {
     QTerm::Unquote {
         tag: tag.into(),
         index,
         lang: lang.into(),
         term,
         cmds: cmds.into(),
+        span,
     }
 }
 pub fn qtuple(tag: &str, terms: &[Arc<QTerm>], cmds: &[CmdOrHole]) -> QTerm {
@@ -150,15 +235,17 @@ impl QTerm {
                 index,
                 lang,
                 term,
+                span,
                 ..
-            } => qquote(tag, *index, lang, term.clone(), &cmds),
+            } => qquote_at(tag, *index, lang, term.clone(), &cmds, span.clone()),
             QTerm::Unquote {
                 tag,
                 index,
                 lang,
                 term,
+                span,
                 ..
-            } => qunquote(tag, *index, lang, term.clone(), &cmds),
+            } => qunquote_at(tag, *index, lang, term.clone(), &cmds, span.clone()),
             QTerm::Tuple { tag, terms, .. } => qtuple(tag, terms, &cmds),
         }
     }
@@ -174,9 +261,10 @@ impl QTerm {
                 lang,
                 term,
                 cmds,
+                span,
             } => {
                 let term = term.rewrite_naive(find, replace);
-                quote(tag, *index, lang, term, cmds)
+                arc(qquote_at(tag, *index, lang, term, cmds, span.clone()))
             }
             QTerm::Unquote {
                 tag,
@@ -184,9 +272,10 @@ impl QTerm {
                 lang,
                 term,
                 cmds,
+                span,
             } => {
                 let term = term.rewrite_naive(find, replace);
-                unquote(tag, *index, lang, term, cmds)
+                arc(qunquote_at(tag, *index, lang, term, cmds, span.clone()))
             }
             QTerm::Tuple { tag, terms, cmds } => {
                 let terms = terms
@@ -342,6 +431,8 @@ pub struct QTermBuilder {
     tag: QTermTag,
     children: Vec<Arc<QTerm>>,
     cmds: Vec<CmdOrHole>,
+    /// Source span for the built Quote/Unquote (ignored for Tuple).
+    span: Option<Span>,
 }
 
 impl QTermBuilder {
@@ -350,7 +441,13 @@ impl QTermBuilder {
             tag,
             children: Vec::new(),
             cmds: Vec::new(),
+            span: None,
         }
+    }
+
+    pub fn span(&mut self, span: Span) -> &mut Self {
+        self.span = Some(span);
+        self
     }
 
     pub fn child(&mut self, child: &Arc<QTerm>) -> &mut Self {
@@ -368,11 +465,25 @@ impl QTermBuilder {
         match self.tag {
             QTermTag::Quote(tag, index, lang) => {
                 assert_eq!(self.children.len(), 1);
-                qquote(&tag, index, &lang, self.children[0].clone(), &self.cmds)
+                qquote_at(
+                    &tag,
+                    index,
+                    &lang,
+                    self.children[0].clone(),
+                    &self.cmds,
+                    self.span,
+                )
             }
             QTermTag::Unquote(tag, index, lang) => {
                 assert_eq!(self.children.len(), 1);
-                qunquote(&tag, index, &lang, self.children[0].clone(), &self.cmds)
+                qunquote_at(
+                    &tag,
+                    index,
+                    &lang,
+                    self.children[0].clone(),
+                    &self.cmds,
+                    self.span,
+                )
             }
             QTermTag::Tuple(tag) => qtuple(&tag, &self.children, &self.cmds),
         }

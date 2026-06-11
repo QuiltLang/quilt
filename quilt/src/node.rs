@@ -18,10 +18,14 @@ pub enum Node {
     Quote {
         anno: Box<str>,
         nodes: Box<[Arc<Node>]>,
+        /// Byte range of the whole `anno↖…↗` in the parsed source.
+        span: Span,
     },
     Unquote {
         anno: Box<str>,
         nodes: Box<[Arc<Node>]>,
+        /// Byte range of the whole `anno↙…↘` in the parsed source.
+        span: Span,
     },
     Lift,
     Reduce,
@@ -67,7 +71,8 @@ impl Node {
                     nodes.push(Self::from_ts(&node.child(i).unwrap(), code).into());
                 }
                 let nodes = nodes.into();
-                Node::Quote { anno, nodes }
+                let span = node.start_byte()..node.end_byte();
+                Node::Quote { anno, nodes, span }
             }
             "unquote" => {
                 let range = node.child(0).unwrap().range();
@@ -77,7 +82,8 @@ impl Node {
                     nodes.push(Self::from_ts(&node.child(i).unwrap(), code).into());
                 }
                 let nodes = nodes.into();
-                Node::Unquote { anno, nodes }
+                let span = node.start_byte()..node.end_byte();
+                Node::Unquote { anno, nodes, span }
             }
             "lift" => Node::Lift,
             "reduce" => Node::Reduce,
@@ -168,7 +174,7 @@ impl STerm for Node {
         match self {
             Node::Content(s) => writer.write(&escape(s)),
             Node::NewLine => writer.newline(),
-            Node::Quote { anno, nodes } => {
+            Node::Quote { anno, nodes, .. } => {
                 writer.write(anno);
                 writer.write("↖");
                 for n in nodes {
@@ -176,7 +182,7 @@ impl STerm for Node {
                 }
                 writer.write("↗");
             }
-            Node::Unquote { anno, nodes } => {
+            Node::Unquote { anno, nodes, .. } => {
                 writer.write(anno);
                 writer.write("↙");
                 for n in nodes {

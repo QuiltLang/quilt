@@ -11,7 +11,7 @@ use crate::qterm::{tuple, QTerm};
 use crate::term::CmdOrHole;
 #[cfg(feature = "parse")]
 use crate::zipper::{List, Zipper};
-use miette::{bail, ensure, miette};
+use miette::{ensure, miette, LabeledSpan};
 #[cfg(feature = "parse")]
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -290,7 +290,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 | Node::Emit
                 | Node::Type
                 | Node::Name => {}
-                Node::Quote { anno, nodes } => {
+                Node::Quote { anno, nodes, span } => {
                     let hole = holes
                         .next()
                         .ok_or_else(|| miette!("Ran out of holes for quote: {n:?}"))?;
@@ -313,6 +313,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     };
                     let quote_lang = zipper.head().unwrap();
                     let mut builder = qb(&hole.otag, 1, quote_lang);
+                    builder.span(span.clone());
                     builder.write(anno).write("↖");
                     // A quote's body is free-form (a statement-shaped term may
                     // fill an expression hole and vice versa), so don't coerce
@@ -326,17 +327,24 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     builder.write("↗");
                     plugs.push(builder.b());
                 }
-                Node::Unquote { anno, nodes } => {
+                Node::Unquote { anno, nodes, span } => {
                     let hole = hole
                         + holes
                             .next()
                             .ok_or_else(|| miette!("Ran out of holes for unquote: {n:?}"))?;
                     let mut builder = ub(&hole.otag, 1, lang);
+                    builder.span(span.clone());
                     // The body's value is spliced into *this* fragment's
                     // language: it directs any `↑` in the body (e.g. a lift
                     // inside `wgsl↖…↗` lifts into WGSL).
                     let splice_target = lang;
                     let zipper = zipper.clone().tail().unwrap();
+                    // an unquote with no enclosing quote pops the host off the
+                    // zipper; catch it here (with a span) instead of panicking
+                    // on the empty zipper when recursing into the body
+                    if zipper.head().is_none() {
+                        return Err(unquote_depth_error(Some(span)));
+                    }
                     builder.write(anno).write("↙");
                     let mut builder = self.build_nodes(
                         builder,
@@ -385,6 +393,22 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     }
 }
 
+/// An "unquote depth too high" error pointing at the offending unquote when
+/// its source span is known (parsed terms carry spans; constructed terms
+/// don't). Callers with the source text at hand (e.g. the CLI) can attach it
+/// via [`miette::Report::with_source_code`] to render the offending snippet.
+fn unquote_depth_error(span: Option<&Span>) -> miette::Report {
+    match span {
+        Some(span) => miette!(
+            labels = vec![LabeledSpan::at(span.clone(), "this unquote")],
+            "unquote depth too high! (source bytes {}..{})",
+            span.start,
+            span.end
+        ),
+        None => miette!("unquote depth too high!"),
+    }
+}
+
 pub struct Expander<'a, LS: Languages, M: MetaLanguage + ?Sized> {
     langs: &'a mut LS,
     meta: &'a M,
@@ -409,7 +433,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     self.expand(&Stage::Sky(lang1.clone(), *index), term)
                     // self.get_meta(meta).wrap_quote(meta, expanded, emit)
                 }
-                QTerm::Unquote { .. } => bail!("unquote depth too high!"),
+                QTerm::Unquote { span, .. } => Err(unquote_depth_error(span.as_ref())),
                 QTerm::Tuple { tag, terms, cmds } => {
                     // `let ↖pattern↗ = value;` — a quote in binding position
                     // destructures the value instead of building a term.
@@ -463,6 +487,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     lang: lang2,
                     term,
                     cmds,
+                    ..
                 } => {
                     let term = self.expand(&Stage::Sky(lang1.clone(), d + index), term)?;
                     self.meta
@@ -474,8 +499,11 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     lang: lang2,
                     term,
                     cmds,
+                    span,
                 } => {
-                    ensure!(index <= d, "unquote depth too high!");
+                    if index > d {
+                        return Err(unquote_depth_error(span.as_ref()));
+                    }
                     let new_depth = d - index;
 
                     if new_depth == 0 {

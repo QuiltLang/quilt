@@ -8,6 +8,6 @@ pub use crate::qterm::{leaf, qb, quote, sym, tb, tuple, ub, unquote, Emit, QTerm
 pub use crate::strcmd::{newline, pop, push, write, StrCmd, NL, POP};
 pub use crate::term::STerm;
 pub use crate::term::{cmd, hole, HOLE};
-pub use crate::util::{arc, bx, sep, Index, SEP};
+pub use crate::util::{arc, bx, sep, Index, Span, SEP};
 pub use miette::{miette, Result};
 pub use std::sync::Arc;

@@ -8,8 +8,8 @@
 
 ```rust
 pub enum QTerm {
-    Quote   { tag, index, lang, term: Arc<QTerm>, cmds },
-    Unquote { tag, index, lang, term: Arc<QTerm>, cmds },
+    Quote   { tag, index, lang, term: Arc<QTerm>, cmds, span: Option<Span> },
+    Unquote { tag, index, lang, term: Arc<QTerm>, cmds, span: Option<Span> },
     Tuple   { tag, terms: Box<[Arc<QTerm>]>,      cmds },
 }
 ```
@@ -31,6 +31,7 @@ Wraps a fragment to be treated as data.
 - **`lang`** — the language of the quoted content (e.g. `"rs"`, `"wgsl"`).
 - **`term`** — the quoted `QTerm`.
 - **`cmds`** — the surrounding serialization commands (includes the `↖…↗` glyphs).
+- **`span`** — byte range of the `anno↖…↗` in the original source when the term came from parsing (`build_nodes` attaches it), `None` for constructed terms. Diagnostic metadata only: it is ignored by `PartialEq`, and errors like "unquote depth too high" use it to point at the offending source.
 
 ### `Unquote`
 
@@ -39,7 +40,7 @@ A splice site.
 - **`tag`** — the hole kind in the outer language.
 - **`index`** — depth at which this unquote escapes (1 = escape one level of quoting).
 - **`lang`** — the language being unquoted into.
-- Same `term` and `cmds` fields as `Quote`.
+- Same `term`, `cmds`, and `span` fields as `Quote`.
 
 ## Constructor functions
 
@@ -53,6 +54,10 @@ unquote(tag, index, lang, term, &cmds)
 
 // QTerm-returning (no Arc) — used internally
 qleaf, qsym, qtuple, qquote, qunquote
+
+// span-carrying variants (used by the parser and span-preserving rewrites)
+qquote_at(tag, index, lang, term, &cmds, span)
+qunquote_at(tag, index, lang, term, &cmds, span)
 ```
 
 `leaf("integer_literal", "42")` is the typical way to create a literal token. `sym("{")` creates a token where the tag is also the printed text (punctuation, keywords).
