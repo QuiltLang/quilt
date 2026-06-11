@@ -395,6 +395,23 @@ impl MetaLanguage for OmniMetaLanguage {
         self.inner().wrap_child(qterm, okind)
     }
 
+    fn pattern_tag(&self) -> Option<&'static str> {
+        self.inner().pattern_tag()
+    }
+
+    fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
+        self.inner().pattern_var(name)
+    }
+
+    fn pattern_let(
+        &self,
+        names: &[Box<str>],
+        pattern: &Arc<QTerm>,
+        value: &Arc<QTerm>,
+    ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
+        self.inner().pattern_let(names, pattern, value)
+    }
+
     fn lift_str(&self, target: &str) -> Result<&'static str> {
         self.inner().lift_str(target)
     }

@@ -56,6 +56,39 @@ pub trait MetaLanguage {
         Ok(qterm)
     }
 
+    /// The ground-tuple tag that introduces a pattern-let (e.g. Rust's
+    /// `let_declaration`), or `None` if this meta-language has no pattern
+    /// matching. A ground tuple with this tag whose binding position holds a
+    /// quote is expanded as `let ↖pattern↗ = value;` (see
+    /// `Expander::expand_pattern_let` and `crate::qmatch`).
+    fn pattern_tag(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Code for a pattern metavariable: the expression spliced where `↙name↘`
+    /// sits inside a pattern quote (e.g. `mvar("name")` for Rust).
+    fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
+        let _ = name;
+        Err(miette!(
+            "this meta-language does not support pattern matching"
+        ))
+    }
+
+    /// The two terms a pattern-let rewrites to: the destructuring binder that
+    /// replaces the pattern quote (e.g. `[a, b]`) and the matching call that
+    /// replaces the initializer (e.g. `qmatch_n(&<pattern>, &<value>)`).
+    fn pattern_let(
+        &self,
+        names: &[Box<str>],
+        pattern: &Arc<QTerm>,
+        value: &Arc<QTerm>,
+    ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
+        let _ = (names, pattern, value);
+        Err(miette!(
+            "this meta-language does not support pattern matching"
+        ))
+    }
+
     /// The spelling `↑` expands to when lifting into the object language
     /// `target` (e.g. Rust lifting a value into a WGSL term). The homogeneous
     /// case is `target` == the meta-language's own language; the default
@@ -125,6 +158,23 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn wrap_child(&self, qterm: Arc<QTerm>, okind: OuterKind) -> Result<Arc<QTerm>> {
         (**self).wrap_child(qterm, okind)
+    }
+
+    fn pattern_tag(&self) -> Option<&'static str> {
+        (**self).pattern_tag()
+    }
+
+    fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
+        (**self).pattern_var(name)
+    }
+
+    fn pattern_let(
+        &self,
+        names: &[Box<str>],
+        pattern: &Arc<QTerm>,
+        value: &Arc<QTerm>,
+    ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
+        (**self).pattern_let(names, pattern, value)
     }
 
     fn lift_str(&self, target: &str) -> Result<&'static str> {

@@ -120,6 +120,63 @@ fn ground_unit_unquote_spliced() -> Result<()> {
 }
 
 #[test]
+fn pattern_let() -> Result<()> {
+    // A quote in the binding position of a `let` is a pattern (issue #18):
+    // its ground unquotes become metavariables and the statement destructures
+    // the value by matching its shape.
+    let out = expand_both("let ↖1 + ↙x↘↗ = rhs;")?;
+    assert_eq!(
+        out,
+        r#"let [x] = qmatch_n(&tb("binary_expression").c(&leaf("integer_literal", "1")).w(" ").c(&sym("+")).w(" ").c(&mvar("x")).b(), &rhs);"#
+    );
+    Ok(())
+}
+
+#[test]
+fn pattern_let_value_quote_untouched() -> Result<()> {
+    // Only the binding position triggers pattern matching: a value quote and
+    // a type-position quote expand as before.
+    let out = expand_both("let x = ↖1 + 2↗;")?;
+    assert!(!out.contains("qmatch_n"), "{out}");
+    let out = expand_both("let x: ↖T↗ = rhs;")?;
+    assert!(!out.contains("qmatch_n"), "{out}");
+    Ok(())
+}
+
+#[test]
+fn pattern_let_duplicate_var_rejected() {
+    let mut omni = Omni::default();
+    let qterm = omni.parse("let ↖↙x↘ + ↙x↘↗ = rhs;").unwrap();
+    let err = omni.expand(&qterm).unwrap_err();
+    assert!(err.to_string().contains("more than once"), "{err}");
+}
+
+#[test]
+fn pattern_let_non_ident_var_rejected() {
+    let mut omni = Omni::default();
+    let qterm = omni.parse("let ↖1 + ↙f(x)↘↗ = rhs;").unwrap();
+    let err = omni.expand(&qterm).unwrap_err();
+    assert!(err.to_string().contains("plain identifier"), "{err}");
+}
+
+#[test]
+fn pattern_let_runtime() -> Result<()> {
+    // End-to-end: expand and run the issue #18 example shape. The Rust
+    // pattern destructures a Rust quote, the Python pattern a Python quote;
+    // each metavariable binds the matched source text.
+    let mut omni = Omni::default();
+    let code = indoc! {r#"{
+        let ↖1 + ↙x↘↗ = ↖1 + 2↗;
+        let py↖def f(↙args↘): pass↗ = py↖def f(y: int): pass↗;
+        format!("{} | {}", x.coparse(), args.coparse())
+    }"#};
+    let qterm = omni.parse(code)?;
+    let out: String = omni.expand(&qterm)?.reduce()?;
+    assert_eq!(out, "2 | y: int");
+    Ok(())
+}
+
+#[test]
 fn reduce() -> Result<()> {
     let mut omni = Omni::default();
     let code = "3..5";

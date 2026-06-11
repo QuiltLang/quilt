@@ -73,6 +73,25 @@ let expr = ↖↙one↘ + 2↗;  // splices `one` at the hole position
 
 The inner content of an unquote is code in the *ground* language evaluated at code-generation time.
 
+### Pattern matching `let ↖…↗ = …`
+
+A quote in the *binding position* of a Rust ground `let` is a **pattern**: instead of building a term, it destructures the value term by matching its shape. Each ground unquote inside the pattern must be a plain identifier and becomes a *metavariable* that binds the matching part of the value:
+
+```rust
+let py↖def f(↙args↘): pass↗ = py↖def f(x: int): pass↗;
+// args now holds a term that coparses to "x: int"
+```
+
+The statement expands to a destructuring of `qmatch_n` (see `qmatch.rs`):
+
+```rust
+let [args] = qmatch_n(&/* pattern with mvar("args") markers */, &/* value */);
+```
+
+Matching is *syntactic*: both sides are compared as the source text they coparse to, anchored at both ends and whitespace-sensitive. Each metavariable binds the text between the surrounding literals (leftmost-shortest when ambiguous; two adjacent metavariables are rejected) as a leaf term that splices back verbatim. A failed match panics at generation time — the expanded `let` is irrefutable.
+
+This is distinct from `rewrite_naive` (term-equality rewriting): pattern lets match during expansion, like macro patterns in Rust or Racket.
+
 ## Quasi-quoting and staging
 
 Quilt is a *two-level* language. The ground level runs at code-generation time; the sky level (inside `↖…↗`) is data that will be serialized to the output file.
