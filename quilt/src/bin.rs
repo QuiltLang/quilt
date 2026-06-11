@@ -33,6 +33,8 @@ enum Commands {
     Expand(ExpandArgs),
     /// Run a .quilt file as a script
     Run(RunArgs),
+    /// Validate .quilt files without writing output
+    Check(CheckArgs),
 }
 
 #[derive(Args, Debug)]
@@ -52,6 +54,16 @@ pub enum MultiOptions {
     Omni,
     #[cfg(feature = "bootstrap")]
     Bootstrap,
+}
+
+#[derive(Args, Debug)]
+struct CheckArgs {
+    /// .quilt files to check
+    #[clap(required = true)]
+    filenames: Vec<String>,
+    /// multi-language to use
+    #[clap(short, long, default_value_t, value_enum)]
+    multi: MultiOptions,
 }
 
 #[derive(Args, Debug)]
@@ -79,6 +91,7 @@ fn main() -> Result<()> {
     match (&args.command, &args.run) {
         (Some(Commands::Expand(args)), _) => expand(args),
         (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
+        (Some(Commands::Check(args)), _) => check(args),
         (None, None) => {
             use clap::CommandFactory;
             Cli::command().print_help().into_diagnostic()?;
@@ -111,6 +124,61 @@ fn expand(args: &ExpandArgs) -> Result<()> {
     };
 
     generate(output_filename, &expanded)
+}
+
+/// Validate each file like `expand` would (parse + expansion), but discard the
+/// result instead of writing it — for CI pipelines and pre-commit hooks that
+/// don't want generated files. Checks every file before failing so one broken
+/// file doesn't hide errors in the rest.
+fn check(args: &CheckArgs) -> Result<()> {
+    let mut failures = 0;
+    for filename in &args.filenames {
+        match check_file(filename, &args.multi) {
+            Ok(()) => println!("{filename}: ok"),
+            Err(report) => {
+                failures += 1;
+                eprintln!("{filename}: {report:?}");
+            }
+        }
+    }
+    if failures > 0 {
+        return Err(miette!(
+            "{failures} of {} file(s) failed to check",
+            args.filenames.len()
+        ));
+    }
+    Ok(())
+}
+
+fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
+    let stem = filename
+        .strip_suffix(".quilt")
+        .ok_or_else(|| miette!("expected a .quilt file"))?;
+    let input = fs::read_to_string(filename).into_diagnostic()?;
+
+    // Strip a shebang line like `run` does, so executable scripts check clean
+    let input = if input.starts_with("#!") {
+        input.lines().skip(1).collect::<Vec<_>>().join("\n")
+    } else {
+        input
+    };
+
+    match multi {
+        MultiOptions::Omni => {
+            let mut multi = Omni::default();
+            let chain = lang_chain(&multi, stem);
+            let sterm = multi.parse_chain(&chain, &input)?;
+            multi.expand_lang(chain[0], &sterm)?;
+        }
+        #[cfg(feature = "bootstrap")]
+        MultiOptions::Bootstrap => {
+            let mut multi = Bootstrap::default();
+            let chain = lang_chain(&multi, stem);
+            let sterm = multi.parse_chain(&chain, &input)?;
+            multi.expand_lang(chain[0], &sterm)?;
+        }
+    }
+    Ok(())
 }
 
 /// Derive the language chain from a `.quilt` file's stem (the name with the
