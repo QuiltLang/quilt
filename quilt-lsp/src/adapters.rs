@@ -96,11 +96,11 @@ pub trait MetaLanguageAdapter: Send + Sync {
 
 /// Whether `key` names a language this server recognizes as a filename
 /// extension (mirroring the keys registered in quilt's `Omni`). Distinct from
-/// having an adapter: WGSL is a known language without one.
+/// having an adapter: a key can be known without one compiled in.
 pub fn is_known_lang(key: &str) -> bool {
     matches!(
         key,
-        "rs" | "rust" | "py" | "python" | "txt" | "text" | "wgsl" | "html"
+        "rs" | "rust" | "py" | "python" | "txt" | "text" | "wgsl" | "html" | "bash" | "zsh"
     )
 }
 
@@ -149,6 +149,12 @@ pub fn language_adapter(key: &str) -> Option<&'static dyn LanguageAdapter> {
         "py" | "python" => Some(&PYTHON),
         #[cfg(feature = "wgsl")]
         "wgsl" => Some(&WGSL),
+        #[cfg(feature = "html")]
+        "html" => Some(&HTML),
+        #[cfg(feature = "bash")]
+        "bash" => Some(&BASH),
+        #[cfg(feature = "zsh")]
+        "zsh" => Some(&ZSH),
         _ => None,
     }
 }
@@ -169,10 +175,19 @@ pub fn meta_adapter(key: &str) -> Option<&'static dyn MetaLanguageAdapter> {
 /// `wgsl↖…↗` quote is a complete shader module sent to wgsl-analyzer), rather
 /// than merged into the ground projection. Host languages (Rust, Python) are
 /// *not* here: their same-language quotes ride the merged ground projection.
+/// Languages with no downstream server (html, bash, zsh) are still listed:
+/// their fragments are projected so the in-process tree-sitter highlighter
+/// ([`crate::tshl`]) can produce semantic tokens, but nothing is `didOpen`ed.
 pub fn embedded_adapters() -> Vec<&'static dyn LanguageAdapter> {
     let adapters: &[&'static dyn LanguageAdapter] = &[
         #[cfg(feature = "wgsl")]
         &WGSL,
+        #[cfg(feature = "html")]
+        &HTML,
+        #[cfg(feature = "bash")]
+        &BASH,
+        #[cfg(feature = "zsh")]
+        &ZSH,
     ];
     adapters.to_vec()
 }
@@ -445,6 +460,101 @@ impl LanguageAdapter for WgslAdapter {
     }
 }
 
+/* --------------------------------- HTML --------------------------------- */
+
+#[cfg(feature = "html")]
+static HTML: HtmlAdapter = HtmlAdapter;
+
+/// The HTML adapter — target-only like WGSL, but with no downstream server at
+/// all: [`LanguageAdapter::server_command`] is `None`, so `html↖…↗` quotes are
+/// never `didOpen`ed anywhere. Their fragments exist purely for the in-process
+/// tree-sitter highlighter ([`crate::tshl`]).
+#[cfg(feature = "html")]
+pub struct HtmlAdapter;
+
+#[cfg(feature = "html")]
+impl LanguageAdapter for HtmlAdapter {
+    fn language_id(&self) -> &'static str {
+        "html"
+    }
+    fn virtual_extension(&self) -> &'static str {
+        "html"
+    }
+    fn server_command(&self) -> Option<(String, Vec<String>)> {
+        None // highlight-only: no downstream HTML server
+    }
+    fn splice_placeholder(&self) -> &'static str {
+        // A nested `↙…↘` splice sits in text or attribute-value position when
+        // templating a page; a bare word is valid in both.
+        "__q__"
+    }
+    fn wrap_fragment(&self, _n: usize) -> (String, String) {
+        // An HTML quote is already a complete document or fragment.
+        (String::new(), String::new())
+    }
+    fn comment_syntax(&self) -> CommentSyntax {
+        // HTML has only `<!-- … -->`, so a `⟨//⟩` line-comment glyph opens a
+        // comment that never closes. Tolerable: these fragments are
+        // highlight-only, so the worst case is over-colored trailing text.
+        CommentSyntax {
+            line: "<!--",
+            block_open: "<!--",
+            block_close: "-->",
+        }
+    }
+}
+
+/* ------------------------------ Bash / Zsh ------------------------------- */
+
+#[cfg(feature = "bash")]
+static BASH: ShellAdapter = ShellAdapter { id: "bash" };
+
+#[cfg(feature = "zsh")]
+static ZSH: ShellAdapter = ShellAdapter { id: "zsh" };
+
+/// The Bash and Zsh adapters — target-only and highlight-only, like
+/// [`HtmlAdapter`]: `bash↖…↗` / `zsh↖…↗` quotes are projected for the
+/// in-process tree-sitter highlighter and dispatched to no downstream server.
+/// The two shells differ only in name (separate grammars, same adapter shape),
+/// so they share one struct.
+#[cfg(any(feature = "bash", feature = "zsh"))]
+pub struct ShellAdapter {
+    id: &'static str,
+}
+
+#[cfg(any(feature = "bash", feature = "zsh"))]
+impl LanguageAdapter for ShellAdapter {
+    fn language_id(&self) -> &'static str {
+        self.id
+    }
+    fn virtual_extension(&self) -> &'static str {
+        self.id
+    }
+    fn server_command(&self) -> Option<(String, Vec<String>)> {
+        None // highlight-only: no downstream shell server
+    }
+    fn splice_placeholder(&self) -> &'static str {
+        // A nested `↙…↘` splice sits in word/argument position; `__q__` is a
+        // plain word there.
+        "__q__"
+    }
+    fn wrap_fragment(&self, _n: usize) -> (String, String) {
+        // A shell quote is already a complete script or command sequence.
+        (String::new(), String::new())
+    }
+    fn comment_syntax(&self) -> CommentSyntax {
+        // Shells have no block comments; the closest syntactically-inert
+        // delimiter is a single-quoted string (it spans newlines). Same
+        // pragmatic trade as Python's triple-quoted string: block-comment
+        // glyphs are rare in shell quotes, and fragments are highlight-only.
+        CommentSyntax {
+            line: "#",
+            block_open: "'",
+            block_close: "'",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,6 +660,33 @@ mod tests {
         // (it cannot be the ground/host of a `.quilt` file), even though it now
         // has a LanguageAdapter so its quoted fragments can reach wgsl-analyzer.
         assert!(meta_adapter("wgsl").is_none());
+    }
+
+    #[test]
+    fn shell_and_html_keys_are_known() {
+        // `lang_chain` / quote annotations must recognize the highlight-only
+        // languages, mirroring quilt's `Omni` registry keys.
+        for key in ["html", "bash", "zsh"] {
+            assert!(is_known_lang(key), "{key}");
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "html", feature = "bash", feature = "zsh"))]
+    fn highlight_only_targets_are_embedded_without_a_server() {
+        // html/bash/zsh are per-fragment embedded targets so their quotes get
+        // FragmentDoc projections to highlight, but they are never hosts and
+        // have no downstream server (`embedded_sync` must skip `didOpen`).
+        for key in ["html", "bash", "zsh"] {
+            let adapter = language_adapter(key).unwrap_or_else(|| panic!("{key} adapter"));
+            assert_eq!(adapter.language_id(), key);
+            assert!(adapter.server_command().is_none(), "{key}");
+            assert!(meta_adapter(key).is_none(), "{key}");
+            assert!(
+                embedded_adapters().iter().any(|a| a.language_id() == key),
+                "{key}"
+            );
+        }
     }
 
     #[test]

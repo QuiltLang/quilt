@@ -53,12 +53,16 @@ pub const TOKEN_TYPES: &[&str] = &[
 /// Map a highlight-query capture name (nvim-style, e.g. `keyword.function`,
 /// `type.builtin`) to an LSP standard token type. `None` drops the capture:
 /// punctuation (themes rarely color it; the `TextMate` layer already provides
-/// a base) and `error` (the quilt/downstream diagnostics own error reporting).
+/// a base), `error` (the quilt/downstream diagnostics own error reporting),
+/// and `embedded` (a container around `$(…)`-style substitutions whose
+/// contents carry their own captures).
 fn lsp_token_type(capture: &str) -> Option<&'static str> {
     match capture.split('.').next().unwrap_or(capture) {
         "number" | "float" => Some("number"),
         "boolean" | "keyword" | "repeat" | "conditional" | "storageclass" => Some("keyword"),
-        "type" | "constructor" => Some("type"),
+        // HTML element names color like types (the TextMate `entity.name.tag`
+        // convention); LSP has no dedicated tag token type.
+        "type" | "constructor" | "tag" => Some("type"),
         "function" | "method" => Some("function"),
         "parameter" => Some("parameter"),
         "structure" | "struct" => Some("struct"),
@@ -126,6 +130,47 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
                     )
                 })
                 .as_ref()
+        }
+        #[cfg(feature = "html")]
+        "html" => {
+            static HTML: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            HTML.get_or_init(|| {
+                // The fork ships upstream tree-sitter-html's own query
+                // (upstream-flavored; one pattern per node, so order is moot).
+                Highlighter::new(
+                    tree_sitter_html::LANGUAGE.into(),
+                    tree_sitter_html::HIGHLIGHTS_QUERY,
+                    Order::LastWins,
+                )
+            })
+            .as_ref()
+        }
+        #[cfg(feature = "bash")]
+        "bash" => {
+            static BASH: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            BASH.get_or_init(|| {
+                // The fork ships upstream tree-sitter-bash's own query
+                // (upstream-flavored: later patterns override).
+                Highlighter::new(
+                    tree_sitter_bash::LANGUAGE.into(),
+                    tree_sitter_bash::HIGHLIGHT_QUERY,
+                    Order::LastWins,
+                )
+            })
+            .as_ref()
+        }
+        #[cfg(feature = "zsh")]
+        "zsh" => {
+            static ZSH: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            ZSH.get_or_init(|| {
+                // Same shape as the bash query (the zsh grammar forked it).
+                Highlighter::new(
+                    tree_sitter_zsh::LANGUAGE.into(),
+                    tree_sitter_zsh::HIGHLIGHT_QUERY,
+                    Order::LastWins,
+                )
+            })
+            .as_ref()
         }
         _ => None,
     }
@@ -299,9 +344,15 @@ fn push_tok(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(any(feature = "wgsl", feature = "python"))]
+    #[cfg(any(
+        feature = "wgsl",
+        feature = "python",
+        feature = "html",
+        feature = "bash",
+        feature = "zsh"
+    ))]
     use crate::adapters::language_adapter;
-    #[cfg(feature = "wgsl")]
+    #[cfg(any(feature = "wgsl", feature = "bash", feature = "html"))]
     use crate::projection::project_fragments;
 
     #[cfg(feature = "wgsl")]
@@ -470,6 +521,108 @@ mod tests {
             !texts
                 .iter()
                 .any(|(_, s)| s.contains('↖') || s.contains('↗')),
+            "{texts:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "html")]
+    fn highlights_basic_html() {
+        let src = "<p class=\"intro\">hi</p><!-- note -->";
+        let got = span_text(
+            src,
+            &highlighter("html").expect("html query compiles").spans(src),
+        );
+        // `@tag` is the capture-audit addition: element names map to "type".
+        assert!(got.contains(&("p", "type")), "{got:?}");
+        assert!(got.contains(&("class", "decorator")), "{got:?}");
+        assert!(got.contains(&("intro", "string")), "{got:?}");
+        assert!(got.contains(&("<!-- note -->", "comment")), "{got:?}");
+        // `@punctuation.bracket` (`<`, `>`, `</`) stays dropped.
+        assert!(!got.iter().any(|(t, _)| *t == "<"), "{got:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "bash")]
+    fn highlights_basic_bash() {
+        let src = "if true; then echo \"hi\" $(ls -l); fi # done\n";
+        let got = span_text(
+            src,
+            &highlighter("bash").expect("bash query compiles").spans(src),
+        );
+        assert!(got.contains(&("if", "keyword")), "{got:?}");
+        assert!(got.contains(&("then", "keyword")), "{got:?}");
+        assert!(got.contains(&("echo", "function")), "{got:?}");
+        assert!(got.contains(&("\"hi\"", "string")), "{got:?}");
+        assert!(got.contains(&("# done", "comment")), "{got:?}");
+        // Inside the `@embedded` substitution (dropped container), the inner
+        // command and its `-` flag (`@constant`, `#match?`-gated) still land.
+        assert!(got.contains(&("ls", "function")), "{got:?}");
+        assert!(got.contains(&("-l", "variable")), "{got:?}");
+        assert!(!got.iter().any(|(t, _)| t.starts_with("$(")), "{got:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "zsh")]
+    fn highlights_basic_zsh() {
+        let src = "for f in a b; do tar -czf \"$f.tar.gz\" $f; done # all\n";
+        let got = span_text(
+            src,
+            &highlighter("zsh").expect("zsh query compiles").spans(src),
+        );
+        assert!(got.contains(&("for", "keyword")), "{got:?}");
+        assert!(got.contains(&("do", "keyword")), "{got:?}");
+        assert!(got.contains(&("done", "keyword")), "{got:?}");
+        assert!(got.contains(&("tar", "function")), "{got:?}");
+        assert!(got.contains(&("-czf", "variable")), "{got:?}");
+        assert!(got.contains(&("# all", "comment")), "{got:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "bash")]
+    fn bash_fragment_tokens_map_to_quilt_and_skip_splices() {
+        // A bash quote with Rust splices (the `bash_backup.rs.quilt` shape):
+        // tokens land on the bash text in quilt coordinates; nothing is
+        // emitted over the masked `↙…↘` splices.
+        let src = "fn f() -> String { bash↖tar -czf ↙archive.↑↘ /etc↗.coparse() }\n";
+        let lang = language_adapter("bash").unwrap();
+        let frags = project_fragments(src, lang, &["rs"]);
+        assert_eq!(frags.len(), 1);
+
+        let type_index: HashMap<&'static str, u32> = TOKEN_TYPES
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (*n, u32::try_from(i).unwrap()))
+            .collect();
+        let qi = LineIndex::new(src);
+        let toks = projection_tokens(
+            highlighter("bash").unwrap(),
+            &frags[0].proj,
+            src,
+            &qi,
+            Encoding::Utf16,
+            &type_index,
+        );
+        assert!(!toks.is_empty());
+
+        let line: Vec<char> = src.lines().next().unwrap().chars().collect();
+        let texts: Vec<String> = toks
+            .iter()
+            .map(|t| {
+                assert_eq!(t.line, 0);
+                line[t.start as usize..(t.start + t.length) as usize]
+                    .iter()
+                    .collect()
+            })
+            .collect();
+        assert!(texts.iter().any(|t| t == "tar"), "{texts:?}");
+        assert!(texts.iter().any(|t| t == "-czf"), "{texts:?}");
+        // The masked splice (placeholder `__q__`) must produce no token:
+        // nothing mapped onto the `↙archive.↑↘` glyph span.
+        assert!(
+            !texts
+                .iter()
+                .any(|t| t.contains('↙') || t.contains("archive")),
             "{texts:?}"
         );
     }
