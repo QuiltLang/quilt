@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Clear the quilt expand cache (~/.cache/quilt or $XDG_CACHE_HOME/quilt).
+# Useful when something seems wrong with cached expansion output.
+set -euo pipefail
+
+if [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+    CACHE_DIR="$XDG_CACHE_HOME/quilt"
+else
+    CACHE_DIR="$HOME/.cache/quilt"
+fi
+
+if [[ ! -d "$CACHE_DIR" ]]; then
+    echo "Cache directory does not exist: $CACHE_DIR"
+    exit 0
+fi
+
+COUNT=$(find "$CACHE_DIR" -maxdepth 1 -name '*.postcard' | wc -l | tr -d ' ')
+rm -rf "$CACHE_DIR"
+echo "Cleared $COUNT cached expansion(s) from $CACHE_DIR"
