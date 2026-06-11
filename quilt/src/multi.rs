@@ -265,6 +265,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
                 Node::Type => code.push(FlatNode::Str(self.type_str(lang)?)),
                 Node::Name => code.push(FlatNode::Str(self.name_str(lang)?)),
+                Node::PlainLineComment(s) | Node::PlainBlockComment(s) => {
+                    code.push(FlatNode::Str(s));
+                }
             }
         }
 
@@ -289,7 +292,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 | Node::Reduce
                 | Node::Emit
                 | Node::Type
-                | Node::Name => {}
+                | Node::Name
+                | Node::PlainLineComment(_)
+                | Node::PlainBlockComment(_) => {}
                 Node::Quote { anno, nodes, span } => {
                     let hole = holes
                         .next()
