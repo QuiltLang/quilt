@@ -202,6 +202,23 @@ impl MetaLanguage for BootstrapMetaLanguage {
         }
     }
 
+    fn pattern_tag(&self) -> Option<&'static str> {
+        Some("let_declaration")
+    }
+
+    fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
+        Ok(crate::qmatch::pattern_var_code(name))
+    }
+
+    fn pattern_let(
+        &self,
+        names: &[Box<str>],
+        pattern: &Arc<QTerm>,
+        value: &Arc<QTerm>,
+    ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
+        Ok(crate::qmatch::pattern_let_code(names, pattern, value))
+    }
+
     // No heterogeneous lifting from the bootstrap meta: `target` is ignored.
     fn lift_str(&self, _target: &str) -> Result<&'static str> {
         Ok("bs_lift()")

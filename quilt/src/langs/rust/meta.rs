@@ -7,6 +7,7 @@ use super::ops::{
 use crate::lang::Arity;
 use crate::meta::OuterKind;
 use crate::prelude::{Index, *};
+use crate::qmatch::{pattern_let_code, pattern_var_code};
 use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
 
 /**************************************************************/
@@ -60,6 +61,23 @@ impl MetaLanguage for RustMetaLanguage {
             OuterKind::Emit => wrap_emit(&qterm),
             OuterKind::Splice => wrap_splice(&qterm),
         })
+    }
+
+    fn pattern_tag(&self) -> Option<&'static str> {
+        Some("let_declaration")
+    }
+
+    fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
+        Ok(pattern_var_code(name))
+    }
+
+    fn pattern_let(
+        &self,
+        names: &[Box<str>],
+        pattern: &Arc<QTerm>,
+        value: &Arc<QTerm>,
+    ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
+        Ok(pattern_let_code(names, pattern, value))
     }
 
     fn lift_str(&self, target: &str) -> Result<&'static str> {

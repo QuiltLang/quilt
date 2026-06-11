@@ -14,6 +14,7 @@ fn main() -> Result<()> {
         use crate::lang::Arity;
         use crate::meta::OuterKind;
         use crate::prelude::{Index, *};
+        use crate::qmatch::{pattern_let_code, pattern_var_code};
         use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
 
         /**************************************************************/
@@ -67,6 +68,23 @@ fn main() -> Result<()> {
                     OuterKind::Emit => wrap_emit(&qterm),
                     OuterKind::Splice => wrap_splice(&qterm),
                 })
+            }
+
+            fn pattern_tag(&self) -> Option<&'static str> {
+                Some("let_declaration")
+            }
+
+            fn pattern_var(&self, name: &str) -> Result<⟨T⟩> {
+                Ok(pattern_var_code(name))
+            }
+
+            fn pattern_let(
+                &self,
+                names: &[Box<str>],
+                pattern: &⟨T⟩,
+                value: &⟨T⟩,
+            ) -> Result<(⟨T⟩, ⟨T⟩)> {
+                Ok(pattern_let_code(names, pattern, value))
             }
 
             fn lift_str(&self, target: &str) -> Result<&'static str> {

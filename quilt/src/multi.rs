@@ -8,9 +8,10 @@ use crate::prelude::*;
 #[cfg(feature = "parse")]
 use crate::qterm::QTermBuilder;
 use crate::qterm::{tuple, QTerm};
+use crate::term::CmdOrHole;
 #[cfg(feature = "parse")]
 use crate::zipper::{List, Zipper};
-use miette::{miette, LabeledSpan};
+use miette::{ensure, miette, LabeledSpan};
 #[cfg(feature = "parse")]
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -382,7 +383,13 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             ref mut metas,
         } = self;
         let meta = metas.get(lang)?;
-        Expander { langs, meta, lang }.expand(&Default::default(), qterm)
+        Expander {
+            langs,
+            meta,
+            lang,
+            pattern_vars: None,
+        }
+        .expand(&Default::default(), qterm)
     }
 }
 
@@ -407,6 +414,9 @@ pub struct Expander<'a, LS: Languages, M: MetaLanguage + ?Sized> {
     meta: &'a M,
     /// The ground (host) language, used to classify tags of ground tuples.
     lang: &'a str,
+    /// `Some` while expanding the pattern quote of a pattern-let: ground
+    /// unquotes become metavariables, collected here in source order.
+    pattern_vars: Option<Vec<Box<str>>>,
 }
 
 impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
@@ -425,6 +435,13 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                 }
                 QTerm::Unquote { span, .. } => Err(unquote_depth_error(span.as_ref())),
                 QTerm::Tuple { tag, terms, cmds } => {
+                    // `let ↖pattern↗ = value;` — a quote in binding position
+                    // destructures the value instead of building a term.
+                    if self.meta.pattern_tag() == Some(&**tag) {
+                        if let Some(QTerm::Quote { .. }) = terms.get(1).map(AsRef::as_ref) {
+                            return self.expand_pattern_let(tag, terms, cmds);
+                        }
+                    }
                     let arity = self.langs.get(self.lang)?.arity(tag);
                     let terms = terms
                         .iter()
@@ -490,6 +507,14 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     let new_depth = d - index;
 
                     if new_depth == 0 {
+                        // Inside a pattern quote a ground unquote is a
+                        // metavariable binder, not a splice: record its name
+                        // and splice an `mvar` marker (see `crate::qmatch`).
+                        if let Some(vars) = &mut self.pattern_vars {
+                            let name = pattern_var_name(term)?;
+                            vars.push(name.clone());
+                            return self.meta.pattern_var(&name);
+                        }
                         self.expand(&Stage::Ground, term)
                     } else {
                         let qterm = self.expand(&Stage::Sky(lang1.clone(), new_depth), term)?;
@@ -530,6 +555,73 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
             },
         }
     }
+
+    /// Expand `let ↖pattern↗ = value;` (issue #18). The pattern quote is
+    /// expanded with its ground unquotes replaced by `mvar` markers (their
+    /// names collected via `pattern_vars`), and the statement is rewritten to
+    /// destructure the result of matching the pattern against the value:
+    /// `let [a, b] = qmatch_n(&<pattern>, &<value>);` (see `crate::qmatch`).
+    fn expand_pattern_let(
+        &mut self,
+        tag: &str,
+        terms: &[Arc<QTerm>],
+        cmds: &[CmdOrHole],
+    ) -> Result<Arc<QTerm>> {
+        // the value is the expression after `=`
+        let eq = terms
+            .iter()
+            .position(
+                |t| matches!(&**t, QTerm::Tuple { tag, terms, .. } if &**tag == "=" && terms.is_empty()),
+            )
+            .ok_or_else(|| miette!("pattern let without `= value`"))?;
+        let val = eq + 1;
+        ensure!(val < terms.len(), "pattern let without `= value`");
+
+        // expand the pattern quote with ground unquotes as metavariables
+        ensure!(
+            self.pattern_vars.is_none(),
+            "pattern let nested inside another pattern"
+        );
+        self.pattern_vars = Some(Vec::new());
+        let pattern = self.expand(&Stage::Ground, &terms[1]);
+        let names = self.pattern_vars.take().unwrap();
+        let pattern = pattern?;
+        for (i, name) in names.iter().enumerate() {
+            ensure!(
+                !names[..i].contains(name),
+                "pattern let binds metavariable `{name}` more than once"
+            );
+        }
+
+        let value = self.expand(&Stage::Ground, &terms[val])?;
+        let (binder, call) = self.meta.pattern_let(&names, &pattern, &value)?;
+
+        let terms = terms
+            .iter()
+            .enumerate()
+            .map(|(i, term)| match i {
+                1 => Ok(binder.clone()),
+                _ if i == val => Ok(call.clone()),
+                _ => self.expand(&Stage::Ground, term),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(tuple(tag, &terms, cmds))
+    }
+}
+
+/// The metavariable name of a ground unquote inside a pattern quote: its body
+/// must be a plain identifier.
+fn pattern_var_name(term: &QTerm) -> Result<Box<str>> {
+    let text = term.coparse();
+    let name = text.trim();
+    let mut chars = name.chars();
+    let ident = chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '_');
+    ensure!(
+        ident,
+        "pattern metavariable must be a plain identifier, got {name:?}"
+    );
+    Ok(name.into())
 }
 
 /**************************************************************/
