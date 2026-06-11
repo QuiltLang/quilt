@@ -58,6 +58,18 @@ pub trait TSProvider {
         Default::default()
     }
 
+    /// Classify a fully-parsed term to determine its kind.  Unlike [`typ`],
+    /// which only sees the root tag, this can inspect the full term tree.
+    /// The default falls back to `typ` on the root tag; override for languages
+    /// where the wrapper node's tag is ambiguous (e.g. WGSL's `source_file`
+    /// which can hold a statement + trailing `;` with `len == 2`).
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        match term {
+            QTerm::Tuple { tag, .. } => self.typ(tag),
+            _ => InnerKind::default(),
+        }
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
@@ -73,6 +85,10 @@ pub struct TSLanguagePost {
     pub holes: Box<[Hole]>,
     pub qterm: QTerm,
     pub hole_str: &'static str,
+    /// The `InnerKind` returned by [`TSProvider::unwrap`] for this fragment.
+    /// Stored here so callers of `parse_pre` (e.g. `build_nodes`) can read
+    /// the actual classified kind via [`LanguagePost::inner_kind`].
+    pub inner_kind: InnerKind,
 }
 
 impl<P: TSProvider> Language for TSLanguage<P> {
@@ -250,7 +266,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             &mut prefix,
             true,
         );
-        let (qterm, _ikind) = self.provider.unwrap(qterm, ikind);
+        let (qterm, inner_kind) = self.provider.unwrap(qterm, ikind);
         let holes = holes.into();
         let hole_str = self.provider.hole_str();
 
@@ -258,6 +274,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             holes,
             qterm,
             hole_str,
+            inner_kind,
         })
     }
 
@@ -269,6 +286,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         self.provider.typ(tag)
     }
 
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        self.provider.classify_term(term)
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         self.provider.hashbang()
     }
@@ -277,6 +298,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
 impl LanguagePost for TSLanguagePost {
     fn holes(&self) -> &[Hole] {
         &self.holes
+    }
+
+    fn inner_kind(&self) -> InnerKind {
+        self.inner_kind
     }
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
@@ -358,6 +383,10 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
         self.0.typ(tag)
     }
 
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        self.0.classify_term(term)
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
     }
@@ -370,6 +399,10 @@ impl<T: LanguagePost> LanguagePost for Box<T> {
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
         self.as_ref().parse_post(plugs)
+    }
+
+    fn inner_kind(&self) -> InnerKind {
+        self.as_ref().inner_kind()
     }
 }
 

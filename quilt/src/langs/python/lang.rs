@@ -50,12 +50,18 @@ impl TSProvider for PythonProvider {
         }
     }
 
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
         if qterm.len() != 1 {
             return (qterm, InnerKind::File);
         }
         let qterm = qterm.squash();
         if qterm.tag() == QTermTag::tuple("expression_statement") {
+            // When the caller explicitly placed the hole in statement position,
+            // honour that: keep the `expression_statement` wrapper and report
+            // Stmt even for a non-assignment expression like `foo()`.
+            if ikind == Some(InnerKind::Stmt) {
+                return (qterm, InnerKind::Stmt);
+            }
             // A bare tuple (`a, b`) keeps its elements directly under the
             // statement — there is no single inner node to squash to. Keep
             // the statement whole; bare tuples render without delimiters, so
@@ -65,8 +71,14 @@ impl TSProvider for PythonProvider {
             }
             let qterm = qterm.squash();
             if qterm.tag() == QTermTag::tuple("assignment") {
+                // An assignment is always a statement, regardless of position.
                 return (qterm, InnerKind::Stmt);
             }
+            return (qterm, InnerKind::Expr);
+        }
+        // If the caller explicitly expected an expression (e.g. the hole was
+        // in expression position), trust that over the default Stmt guess.
+        if ikind == Some(InnerKind::Expr) {
             return (qterm, InnerKind::Expr);
         }
         (qterm, InnerKind::Stmt)

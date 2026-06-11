@@ -113,6 +113,18 @@ impl TSProvider for BashProvider {
         }
     }
 
+    /// Classify a Bash tag as expression, statement, or file-level.
+    fn typ(&self, tag: &str) -> InnerKind {
+        if tag == "program" {
+            InnerKind::File
+        } else if is_expr_tag(tag) {
+            InnerKind::Expr
+        } else {
+            // Commands, control flow, function definitions, etc. are statements.
+            InnerKind::Stmt
+        }
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env bash")
     }

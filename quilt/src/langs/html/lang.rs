@@ -78,6 +78,18 @@ impl TSProvider for HtmlProvider {
         }
     }
 
+    /// Classify an HTML tag as expression, statement, or file-level.
+    fn typ(&self, tag: &str) -> InnerKind {
+        if tag == "document" {
+            InnerKind::File
+        } else if is_expr_tag(tag) {
+            InnerKind::Expr
+        } else {
+            // Elements, script/style blocks, etc. are treated as statements.
+            InnerKind::Stmt
+        }
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         None
     }

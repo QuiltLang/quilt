@@ -10,8 +10,11 @@ use std::sync::Arc;
 pub enum InnerKind {
     Expr,
     Stmt,
+    /// A braced block expression (e.g. Rust's `{ stmts… expr }`). Distinct
+    /// from `Stmt` so the tail-expression / statement-list ambiguity can be
+    /// resolved exactly.
+    Block,
     #[default]
-    // TODO: rename or also add `Block`
     File,
     // TODO: add more, language specific types, number, function, etc.
 }
@@ -123,6 +126,23 @@ pub trait Language {
         Default::default()
     }
 
+    /// Classify a fully-parsed `QTerm` to determine its grammatical kind.
+    ///
+    /// This is the *accurate* version of [`typ`]: unlike `typ`, which receives
+    /// only the root tag name, `classify_term` can inspect the full term tree.
+    /// This matters for languages (e.g. WGSL) where a single statement is
+    /// wrapped in a `source_file` node with a trailing `;` sibling, so the
+    /// root tag alone gives `File` even though the fragment is really `Stmt`.
+    ///
+    /// The default implementation falls back to `typ` on the root tag, which
+    /// is correct for languages whose `unwrap` always squashes the wrapper.
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        match term {
+            QTerm::Tuple { tag, .. } => self.typ(tag),
+            _ => InnerKind::default(),
+        }
+    }
+
     /// Shebang line used to run an expanded file of this language, if supported.
     /// e.g. `"#!/usr/bin/env rust-script"` or `"#!/usr/bin/env python3"`.
     fn hashbang(&self) -> Option<&'static str> {
@@ -135,6 +155,15 @@ pub trait LanguagePost: Debug {
     fn holes(&self) -> &[Hole];
     /// Fill with plugs.
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>>;
+    /// The `InnerKind` of the parsed fragment as determined by [`TSProvider::unwrap`].
+    ///
+    /// This closes the feedback loop described in issue #25: the kind the
+    /// inner parser actually produced is now accessible to callers of
+    /// `parse_pre` (e.g. `build_nodes` in `multi.rs`) rather than being
+    /// silently discarded. Non-tree-sitter languages return `File` by default.
+    fn inner_kind(&self) -> InnerKind {
+        InnerKind::File
+    }
 }
 
 /**************************************************************/
@@ -154,6 +183,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
         self.as_ref().typ(tag)
     }
 
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        self.as_ref().classify_term(term)
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         self.as_ref().hashbang()
     }
@@ -166,5 +199,9 @@ impl LanguagePost for Box<dyn LanguagePost> {
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
         self.as_ref().parse_post(plugs)
+    }
+
+    fn inner_kind(&self) -> InnerKind {
+        self.as_ref().inner_kind()
     }
 }
