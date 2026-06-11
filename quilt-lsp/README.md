@@ -80,8 +80,10 @@ python3 quilt-lsp/tests/integration_python.py target/debug/quilt-lsp # .py.quilt
   Defaults to `wgsl-analyzer` on `PATH`.
 - `RUST_LOG` — standard `tracing` filter; logs go to stderr.
 
-Cargo features mirror quilt's own: `rust`, `python`, and `wgsl` are all enabled
-by default.
+Cargo features mirror quilt's own: `rust`, `python`, `wgsl`, `html`, `bash`,
+and `zsh` are all enabled by default. The last three are highlight-only: their
+quoted fragments get in-process tree-sitter semantic tokens, with no
+downstream server.
 
 ## Editor setup
 

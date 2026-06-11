@@ -17,6 +17,9 @@ tree-sitter = {workspace = true}
 tree-sitter-quilt = {workspace = true}
 tree-sitter-python = {workspace = true, optional = true}
 tree-sitter-wgsl = {workspace = true, optional = true}
+tree-sitter-html = {workspace = true, optional = true}
+tree-sitter-bash = {workspace = true, optional = true}
+tree-sitter-zsh = {workspace = true, optional = true}
 streaming-iterator = {workspace = true}
 
 [dev-dependencies]
@@ -25,10 +28,13 @@ tempfile.workspace = true
 [features]
 # Mirror quilt's own feature flags: each enables wiring for one downstream
 # language. v1 ships only `rust`. Others are reserved extension points.
-default = ["rust", "python", "wgsl"]
+default = ["rust", "python", "wgsl", "html", "bash", "zsh"]
 rust = []
 python = ["dep:tree-sitter-python"]
 wgsl = ["dep:tree-sitter-wgsl"]
+html = ["dep:tree-sitter-html"]
+bash = ["dep:tree-sitter-bash"]
+zsh = ["dep:tree-sitter-zsh"]
 
 [lints]
 workspace = true

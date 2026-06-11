@@ -1010,9 +1010,12 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-html",
  "tree-sitter-python",
  "tree-sitter-quilt",
  "tree-sitter-wgsl",
+ "tree-sitter-zsh",
 ]
 
 [[package]]
