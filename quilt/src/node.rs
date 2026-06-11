@@ -36,6 +36,12 @@ pub enum Node {
     Emit,
     Type,
     Name,
+    /// Plain `// …` line comment: passes through verbatim to output.
+    /// The `/.*/` in the grammar consumes the rest of the line as raw text,
+    /// so Quilt special chars inside are not interpreted.
+    PlainLineComment(Box<str>),
+    /// Plain `/* … */` block comment: passes through verbatim to output.
+    PlainBlockComment(Box<str>),
 }
 
 impl Node {
@@ -99,6 +105,14 @@ impl Node {
             "emit" => Node::Emit,
             "type" => Node::Type,
             "name" => Node::Name,
+            "plain_line_comment" => {
+                let range = node.range();
+                Node::PlainLineComment(code[range.start_byte..range.end_byte].into())
+            }
+            "plain_block_comment" => {
+                let range = node.range();
+                Node::PlainBlockComment(code[range.start_byte..range.end_byte].into())
+            }
             _ => unreachable!("unexpected node kind: {:?}", node.kind()),
         }
     }
@@ -134,6 +148,8 @@ pub enum NodeTag {
     Emit,
     Name,
     Type,
+    PlainLineComment,
+    PlainBlockComment,
 }
 
 impl Term for Node {
@@ -150,6 +166,8 @@ impl Term for Node {
             Node::Emit => NodeTag::Emit,
             Node::Type => NodeTag::Type,
             Node::Name => NodeTag::Name,
+            Node::PlainLineComment(_) => NodeTag::PlainLineComment,
+            Node::PlainBlockComment(_) => NodeTag::PlainBlockComment,
         }
     }
 
@@ -207,6 +225,7 @@ impl STerm for Node {
             Node::Emit => writer.write("←"),
             Node::Type => writer.write("⟨T⟩"),
             Node::Name => writer.write("⟨N⟩"),
+            Node::PlainLineComment(s) | Node::PlainBlockComment(s) => writer.write(s),
         }
     }
 }
@@ -227,6 +246,15 @@ mod tests {
         dbg!(&nodes);
         let source_code2 = &*Node::coparse(&nodes);
         assert_eq!(source_code, source_code2);
+    }
+
+    #[test]
+    fn plain_comments_coparse() {
+        let source_code = "// line comment\n/* block comment */\ncode\n";
+        let nodes = Node::parse(source_code);
+        assert!(matches!(&nodes[0], Node::PlainLineComment(s) if &**s == "// line comment"));
+        assert!(matches!(&nodes[2], Node::PlainBlockComment(s) if &**s == "/* block comment */"));
+        assert_eq!(&*Node::coparse(&nodes), source_code);
     }
 
     #[test]

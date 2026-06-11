@@ -16,6 +16,8 @@ module.exports = grammar({
       $.name,
       // NOTE: comment is not an "extra" because we don't want it inside (content) nodes
       $._comment,
+      $.plain_line_comment,
+      $.plain_block_comment,
     ),
 
     content: $ => prec.right(repeat1(choice($._char, $._non_escape))),
@@ -35,6 +37,14 @@ module.exports = grammar({
     name: $ => "⟨N⟩",
     quote: $ => seq($.left_quote, repeat($._node), $.right_quote),
     unquote: $ => seq($.left_unquote, repeat($._node), $.right_unquote),
+
+    // Plain C-style line comment: passes through to output; Quilt special chars inside are raw text.
+    // prec(1) ensures this wins over content when '//' appears at a token boundary.
+    plain_line_comment: $ => token(prec(1, seq('//', /.*/))),
+
+    // Plain C-style block comment: passes through to output; Quilt special chars inside are raw text.
+    // prec(1) ensures this wins over content when '/*' appears at a token boundary.
+    plain_block_comment: $ => token(prec(1, seq('/*', /[^*]*\*+([^/*][^*]*\*+)*/, '/'))),
 
     _comment: $ => token(choice(
       // Line comments

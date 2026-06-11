@@ -41,6 +41,14 @@
           "named": true
         },
         {
+          "type": "plain_block_comment",
+          "named": true
+        },
+        {
+          "type": "plain_line_comment",
+          "named": true
+        },
+        {
           "type": "quote",
           "named": true
         },
@@ -94,6 +102,14 @@
         },
         {
           "type": "newline",
+          "named": true
+        },
+        {
+          "type": "plain_block_comment",
+          "named": true
+        },
+        {
+          "type": "plain_line_comment",
           "named": true
         },
         {
@@ -152,6 +168,14 @@
           "named": true
         },
         {
+          "type": "plain_block_comment",
+          "named": true
+        },
+        {
+          "type": "plain_line_comment",
+          "named": true
+        },
+        {
           "type": "quote",
           "named": true
         },
@@ -200,6 +224,14 @@
   },
   {
     "type": "newline",
+    "named": true
+  },
+  {
+    "type": "plain_block_comment",
+    "named": true
+  },
+  {
+    "type": "plain_line_comment",
     "named": true
   },
   {
