@@ -11,9 +11,16 @@ Editor support for Quilt (`.quilt`) files:
 
 ## Setup
 
+For the alpha the extension is installed manually (it is not on the
+Marketplace yet). From the repo root, `bin/install_tools` does everything:
+installs `quilt-lsp`, runs `npm install` here, and symlinks this directory
+into `~/.vscode/extensions`. Then reload VS Code.
+
+Or, step by step:
+
 1. Build/install the server:
    ```sh
-   cargo install --path rust/quilt-lsp   # puts `quilt-lsp` on your PATH
+   cargo install --path quilt-lsp   # puts `quilt-lsp` on your PATH
    ```
    (or set `quilt-lsp.serverPath` to the built binary).
 2. Install the client deps in this folder:
@@ -38,4 +45,4 @@ rust-analyzer`).
 A `.quilt` file is one ground-language program with other-language fragments in
 `↖…↗`/`↙…↘`. The server projects the ground language into a virtual document,
 opens it to `rust-analyzer` under the de-quilted URI, and maps positions back
-and forth. See [`rust/quilt-lsp`](../../rust/quilt-lsp) for details.
+and forth. See [`quilt-lsp`](../../quilt-lsp) for details.
