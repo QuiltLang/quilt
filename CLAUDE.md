@@ -40,6 +40,7 @@ build-py
 bootstrap     # = bootstrap0 then bootstrap1
 bootstrap0    # BootstrapMetaLanguage only
 bootstrap1    # RustMetaLanguage only (self-hosted)
+check-bootstrap   # run bootstrap and fail if meta.rs changed (CI / pre-commit)
 
 # Regenerate the tree-sitter-quilt parser after editing grammar.js
 ts-gen

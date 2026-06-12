@@ -355,7 +355,7 @@ mod tests {
         let actions = code_actions(&uri, &d, Encoding::Utf8, range);
         actions.into_iter().find_map(|a| match a {
             CodeActionOrCommand::CodeAction(ca) => Some(ca),
-            _ => None,
+            CodeActionOrCommand::Command(_) => None,
         })
     }
 
@@ -392,7 +392,7 @@ mod tests {
         let actions = code_actions(&uri, &d, Encoding::Utf8, range);
         let has_wrap = actions.iter().any(|a| match a {
             CodeActionOrCommand::CodeAction(ca) => ca.title == "Wrap in ↖…↗",
-            _ => false,
+            CodeActionOrCommand::Command(_) => false,
         });
         assert!(!has_wrap, "wrap should not be offered for empty selection");
     }
