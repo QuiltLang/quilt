@@ -23,52 +23,57 @@ env:
   CARGO_NET_RETRY: "5"
 
 jobs:
-  # Each job runs a single bin/ script so the exact same check reproduces
-  # locally: `bin/ctest`, `bin/lint`, `bin/check-bootstrap`.
-  test:
-    name: Test
+  # Every check runs a single bin/ script inside the flake devShell
+  # (`nix develop ./nix`), so the exact same command reproduces locally and the
+  # flake is the single source of truth for tooling — rustup (→ rust 1.96.0 with
+  # clippy + rustfmt from rust-toolchain.toml), rust-script, python3,
+  # tree-sitter, nodejs. No per-job setup-rust-toolchain / setup-python /
+  # `cargo install rust-script` steps to drift out of sync with the dev env.
+  check:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      # Let the other checks finish even if one fails.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Test
+            run: bin/ctest
+          - name: Lint (fmt + clippy)
+            # Formatting needs no build, so check it first for fast feedback.
+            run: |
+              bin/fmt-check
+              bin/lint -- -D warnings
+          - name: Bootstrap (self-host no-op)
+            run: bin/check-bootstrap
+    # Run every `run:` step inside the devShell: GitHub writes the step's script
+    # to a temp file and substitutes it for `{0}`, so multi-line steps work too.
+    defaults:
+      run:
+        shell: nix develop ./nix --command bash -euo pipefail {0}
     steps:
       - uses: actions/checkout@v4
-      # Honors rust-toolchain.toml (channel 1.96.0) and bundles cargo caching.
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      # Install Nix with flakes + the `nix-command` enabled (needed for
+      # `nix develop`).
+      - uses: DeterminateSystems/nix-installer-action@v22
+      # Free, zero-config binary cache backed by the GitHub Actions cache —
+      # caches the devShell's /nix/store closure between runs. No secret needed.
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      # rustup downloads the toolchain (rust-toolchain.toml → 1.96.0) on first
+      # use into ~/.rustup, and crates/build artifacts land in ~/.cargo and
+      # target/ — none of which live in the Nix store, so cache them directly.
+      # (Swatinem/rust-cache runs on the host PATH where the Nix-provided rustc
+      # isn't visible, so it can't be used here; actions/cache works fine.)
+      - uses: actions/cache@v4
         with:
-          components: clippy, rustfmt
-      # No Python needed: quilt-python is not in the workspace default-members,
-      # so `cargo test` builds the CLI + LSP without linking libpython.
-      # The reduce/run tests in quilt/tests/bootstrap.rs shell out to
-      # `rust-script` (the `↓` operator runs expanded code), so it must be on
-      # PATH for the test job too — not only the bootstrap job.
-      - name: Install rust-script
-        run: cargo install rust-script --locked
-      - name: Run tests
-        run: bin/ctest
-
-  lint:
-    name: Lint (fmt + clippy)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: clippy, rustfmt
-      # Formatting needs no build, so check it first for fast feedback.
-      - name: Format check
-        run: bin/fmt-check
-      # No Python needed (quilt-python is out of default-members; see the test job).
-      - name: Clippy (warnings are errors)
-        run: bin/lint -- -D warnings
-
-  bootstrap:
-    name: Bootstrap (self-host no-op)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          components: clippy, rustfmt
-      # The two bootstrap stages expand and run mk_meta.rs.quilt via rust-script.
-      - name: Install rust-script
-        run: cargo install rust-script --locked
-      - name: Verify bootstrap regenerates meta.rs unchanged
-        run: bin/check-bootstrap
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - run: ${{ matrix.run }}

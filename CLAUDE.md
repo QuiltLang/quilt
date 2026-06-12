@@ -60,7 +60,7 @@ The `nanobots` project (gas-metered state-machine toolchain) lives in a **siblin
 
 ## Architecture
 
-Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file is source code in some language (e.g. Rust, Python) with Unicode arrow brackets spliced in to embed quoted/unquoted fragments of other languages. The system parses these files, produces a `QTerm` IR, and can expand the IR back into ordinary source code. The `docs/wiki/` pages cover all of this in more depth.
+Quilt is a polyglot metaprogramming language. A `.quilt` file is source code in some language (e.g. Rust, Python) with Unicode arrow brackets spliced in to embed quoted/unquoted fragments of other languages. The system parses these files, produces a `QTerm` IR, and can expand the IR back into ordinary source code. The `docs/wiki/` pages cover all of this in more depth.
 
 ### Core IR: `QTerm` (`quilt/src/qterm.rs`)
 

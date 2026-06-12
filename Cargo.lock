@@ -1555,7 +1555,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-bash"
 version = "0.25.1"
-source = "git+https://github.com/QuiltLang/tree-sitter-bash.git#4e44c9fca4f64f75dbafd64d07eb3b065f15e45b"
+source = "git+https://github.com/QuiltLang/tree-sitter-bash.git?rev=4e44c9fca4f64f75dbafd64d07eb3b065f15e45b#4e44c9fca4f64f75dbafd64d07eb3b065f15e45b"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1564,7 +1564,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-html"
 version = "0.23.2"
-source = "git+https://github.com/QuiltLang/tree-sitter-html.git#d81ae0f44b1e084a3383b3355c62cb6953260467"
+source = "git+https://github.com/QuiltLang/tree-sitter-html.git?rev=d81ae0f44b1e084a3383b3355c62cb6953260467#d81ae0f44b1e084a3383b3355c62cb6953260467"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1579,7 +1579,7 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 [[package]]
 name = "tree-sitter-python"
 version = "0.23.6"
-source = "git+https://github.com/QuiltLang/tree-sitter-python.git#72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"
+source = "git+https://github.com/QuiltLang/tree-sitter-python.git?rev=72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9#72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1597,7 +1597,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-rust"
 version = "0.24.0"
-source = "git+https://github.com/QuiltLang/tree-sitter-rust.git#167de1910dcba9c59d6fa59e37868aa8d14c772b"
+source = "git+https://github.com/QuiltLang/tree-sitter-rust.git?rev=167de1910dcba9c59d6fa59e37868aa8d14c772b#167de1910dcba9c59d6fa59e37868aa8d14c772b"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1606,7 +1606,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-wgsl"
 version = "0.0.1"
-source = "git+https://github.com/QuiltLang/tree-sitter-wgsl.git#a83b84c4dd9ce8f28ee79d36b09ccbaef0f51d6b"
+source = "git+https://github.com/QuiltLang/tree-sitter-wgsl.git?rev=a83b84c4dd9ce8f28ee79d36b09ccbaef0f51d6b#a83b84c4dd9ce8f28ee79d36b09ccbaef0f51d6b"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1615,7 +1615,7 @@ dependencies = [
 [[package]]
 name = "tree-sitter-zsh"
 version = "0.63.4"
-source = "git+https://github.com/QuiltLang/tree-sitter-zsh.git#6923371dfd93a273e6ef4af0ba27c12ec8e5ab1d"
+source = "git+https://github.com/QuiltLang/tree-sitter-zsh.git?rev=6923371dfd93a273e6ef4af0ba27c12ec8e5ab1d#6923371dfd93a273e6ef4af0ba27c12ec8e5ab1d"
 dependencies = [
  "cc",
  "tree-sitter-language",
