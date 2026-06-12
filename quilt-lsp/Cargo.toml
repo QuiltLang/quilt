@@ -3,6 +3,7 @@ edition.workspace = true
 name = "quilt-lsp"
 version.workspace = true
 license.workspace = true
+authors.workspace = true
 description = "Language Server for Quilt (.quilt) files: a multiplexing host that proxies to per-language servers."
 
 [dependencies]
