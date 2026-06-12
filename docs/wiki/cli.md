@@ -81,7 +81,7 @@ quilt expand path/to/file.rs.quilt
 quilt path/to/file.rs.quilt [args]
 ```
 
-A thin wrapper around `cargo run -p quilt --`. Passes all arguments to the `quilt` binary.
+A thin wrapper around `cargo run -p quiltlang --`. Passes all arguments to the `quilt` binary.
 
 ### `bootstrap`
 
@@ -114,7 +114,7 @@ bootstrap1
 Wrappers around `cargo test` and `cargo clippy --tests` that work from any directory (they pass `--manifest-path` for the repo root).
 
 ```sh
-ctest -p quilt node
+ctest -p quiltlang node
 lint
 ```
 
@@ -153,7 +153,7 @@ Run from the repo root (the Cargo workspace root):
 ```sh
 cargo build                       # build all workspace members
 cargo test                        # run all tests
-cargo test -p quilt node          # run tests matching "node" in the quilt crate
+cargo test -p quiltlang node          # run tests matching "node" in the quilt crate
 cargo clippy                      # lint
 cargo fmt                         # format
 

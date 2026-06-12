@@ -322,7 +322,7 @@ fn run(args: &RunArgs) -> Result<()> {
         prepend_cargo_manifest(
             &path,
             &[format!(
-                "quilt = {{ path = \"{quilt_dir}\", default-features = false, features = [\"{quilt_feature}\"] }}"
+                "quilt = {{ path = \"{quilt_dir}\", package = \"quiltlang\", default-features = false, features = [\"{quilt_feature}\"] }}"
             )],
         )?;
     } else if runner.ends_with("python3") || runner.ends_with("python") {

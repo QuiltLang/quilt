@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec cargo run --manifest-path "$ROOT/Cargo.toml" -p quilt -- "$@"
+exec cargo run --manifest-path "$ROOT/Cargo.toml" -p quiltlang -- "$@"

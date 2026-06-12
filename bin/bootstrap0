@@ -2,4 +2,4 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/quilt"
-exec cargo run --manifest-path "$ROOT/Cargo.toml" -p quilt --no-default-features -F bootstrap -- run -m bootstrap src/langs/bootstrap/mk_meta.rs.quilt "$@"
+exec cargo run --manifest-path "$ROOT/Cargo.toml" -p quiltlang --no-default-features -F bootstrap -- run -m bootstrap src/langs/bootstrap/mk_meta.rs.quilt "$@"

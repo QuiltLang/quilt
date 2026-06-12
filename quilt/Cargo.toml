@@ -1,9 +1,16 @@
 [package]
 edition.workspace = true
-name = "quilt"
+# Published as `quiltlang` (`quilt` is taken on crates.io); the lib target
+# below keeps the `quilt` import name, so `use quilt::prelude::*` works
+# everywhere. External consumers depend on it via
+# `quilt = { package = "quiltlang", version = "0.1" }`. See issue #33.
+name = "quiltlang"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+
+[lib]
+name = "quilt"
 
 [dependencies]
 clap = {workspace = true, features = ["derive"]}
