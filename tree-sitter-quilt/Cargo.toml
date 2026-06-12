@@ -3,8 +3,7 @@ name = "tree-sitter-quilt"
 description = "Quilt grammar for tree-sitter"
 version = "0.1.0"
 authors = ["Alexander Varga <varga.alex@gmail.com>"]
-license = "MIT"
-readme = "README.md"
+license.workspace = true
 keywords = ["incremental", "parsing", "tree-sitter", "quilt"]
 categories = ["parser-implementations", "parsing", "text-editors"]
 repository = "https://github.com/tree-sitter/tree-sitter-quilt"
@@ -18,7 +17,8 @@ include = [
   "queries/*",
   "src/*",
   "tree-sitter.json",
-  "LICENSE",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
 ]
 
 [lib]
