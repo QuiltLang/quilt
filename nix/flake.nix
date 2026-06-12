@@ -16,17 +16,22 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        # python3 + pytest so `bin/test-py` can `python3 -m pytest`; the PyO3
+        # cdylib's libpython comes from the same interpreter (see LD_LIBRARY_PATH).
+        python = pkgs.python3.withPackages (ps: [ ps.pytest ]);
       in
       {
         devShells.default = pkgs.mkShellNoCC {
           packages = [
             pkgs.cargo-nextest
             pkgs.lolcat
+            # maturin builds the quilt_python PyO3 module (`bin/build-py`).
+            pkgs.maturin
             pkgs.nodejs
-            # quilt_python (PyO3 cdylib) links libpython; provide it from the
-            # flake so the env is self-contained instead of relying on a
-            # python3 from the ambient/global profile.
-            pkgs.python3
+            # quilt_python (PyO3 cdylib) links libpython; provide python3 — plus
+            # pytest for bin/test-py — from the flake so the env is self-contained
+            # instead of relying on a python3 from the ambient/global profile.
+            python
             pkgs.rust-script
             pkgs.rustup
             pkgs.tree-sitter
