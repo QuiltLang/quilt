@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/QuiltLang/quilt/security/advisories/new
+    about: Please report security issues privately, not in the public tracker.
+  - name: Documentation
+    url: https://github.com/QuiltLang/quilt/tree/main/docs/wiki
+    about: The wiki covers the language, the IR, and the tooling.
