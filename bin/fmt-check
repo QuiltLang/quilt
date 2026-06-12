@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Verify every workspace crate is rustfmt-clean (the formatting CI gate).
+# Run `cargo fmt --all` to fix, or this script (`bin/fmt-check`) to verify.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec cargo fmt --manifest-path "$ROOT/Cargo.toml" --all -- --check

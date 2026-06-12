@@ -255,7 +255,7 @@ pub fn reduce_spelling(target: &str) -> Result<&'static str> {
 /// Evaluate a `QTerm` by running it as Python code, then deserialize the
 /// result (the `py↓` operator from a Rust meta-program). The term's code is
 /// run via `python3` with the `quilt` Python bindings on `PYTHONPATH`; the
-/// result QTerm is shuttled back via its postcard serialization.
+/// result `QTerm` is shuttled back via its postcard serialization.
 pub fn reduce_py(x: &QTerm) -> Result<Arc<QTerm>> {
     let input = x.coparse();
     let mut out_file = tempfile::NamedTempFile::new().into_diagnostic()?;

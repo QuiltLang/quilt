@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch/PR cancels in-flight runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Each job runs a single bin/ script so the exact same check reproduces
+  # locally: `bin/ctest`, `bin/lint`, `bin/check-bootstrap`.
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Honors rust-toolchain.toml (channel 1.96.0) and bundles cargo caching.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      # quilt_python is a PyO3 cdylib in the workspace, so `cargo test` links
+      # libpython — a Python interpreter must be on the runner.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # The quilt_python test binary loads libpython at run time; point the
+      # dynamic loader at the interpreter installed above.
+      - name: Expose libpython to the dynamic loader
+        run: echo "LD_LIBRARY_PATH=$pythonLocation/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Run tests
+        run: bin/ctest
+
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      # Formatting needs no build, so check it first for fast feedback.
+      - name: Format check
+        run: bin/fmt-check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Clippy (warnings are errors)
+        run: bin/lint -- -D warnings
+
+  bootstrap:
+    name: Bootstrap (self-host no-op)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      # The two bootstrap stages expand and run mk_meta.rs.quilt via rust-script.
+      - name: Install rust-script
+        run: cargo install rust-script --locked
+      - name: Verify bootstrap regenerates meta.rs unchanged
+        run: bin/check-bootstrap
