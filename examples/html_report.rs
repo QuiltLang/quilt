@@ -287,4 +287,5 @@ fn main() -> Result<()> {
     };
     
     println!("{}", page.coparse());
+    Ok(())
 }

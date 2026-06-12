@@ -15,12 +15,18 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # The bootstrap tests' `rust-script` subprocess re-resolves deps against the
+  # sparse crates.io index; HTTP/2 multiplexing intermittently dies on CI
+  # runners with "[16] Error in the HTTP2 framing layer". Force HTTP/1.1 and
+  # allow more network retries to make these registry fetches reliable.
+  CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_NET_RETRY: "5"
 
 jobs:
   # Every check runs a single bin/ script inside the flake devShell
   # (`nix develop ./nix`), so the exact same command reproduces locally and the
   # flake is the single source of truth for tooling — rustup (→ rust 1.96.0 with
-  # clippy + rustfmt from rust-toolchain.toml), rust-script, python3,
+  # clippy + rustfmt from rust-toolchain.toml), rust-script, python3, maturin,
   # tree-sitter, nodejs. No per-job setup-rust-toolchain / setup-python /
   # `cargo install rust-script` steps to drift out of sync with the dev env.
   check:
@@ -40,6 +46,17 @@ jobs:
               bin/lint -- -D warnings
           - name: Bootstrap (self-host no-op)
             run: bin/check-bootstrap
+          # Exercise the bundled examples: `quilt check` every examples/**/*.quilt,
+          # then expand each one with a committed output and diff against it.
+          - name: Examples (check + expand diff)
+            run: bin/check-examples
+          # Build the quilt_python PyO3 module (maturin), then pytest its bindings
+          # and run the self-contained .py.quilt examples. maturin + pytest are
+          # provided by the flake devShell.
+          - name: Python (quilt_python bindings + .py.quilt runtime)
+            run: |
+              bin/build-py
+              bin/test-py
     # Run every `run:` step inside the devShell: GitHub writes the step's script
     # to a temp file and substitutes it for `{0}`, so multi-line steps work too.
     defaults:

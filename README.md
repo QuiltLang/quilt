@@ -45,7 +45,7 @@ main()
 
 ## Installation
 
-Quilt is a Rust project, so you'll need a Rust toolchain — install one via [rustup](https://rustup.rs) if you don't have it.
+Quilt is a Rust project, so you'll need a **Rust toolchain** (1.96 or newer) — install one via [rustup](https://rustup.rs) if you don't have it — plus a **C compiler** (`cc`; clang or gcc), which the bundled tree-sitter grammars build against. That's the whole story for the CLI and the LSP: neither needs Python. (The Python interpreter and [`maturin`](https://www.maturin.rs/) are only required to run `.py.quilt` files — see below.)
 
 ### CLI
 
