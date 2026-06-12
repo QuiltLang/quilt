@@ -66,7 +66,7 @@ Reference material for contributors and anyone extending Quilt.
 | [Adding a Language](adding-a-language.md) | Step-by-step guide for supporting a new language |
 | [Nanobots](nanobots.md) | The gas-metered nanobot IR toolchain (sibling repo) |
 
-## Repository layout
+### Repository layout
 
 ```
 quilt/
