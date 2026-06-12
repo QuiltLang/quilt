@@ -1,5 +1,5 @@
 {
-  description = "Quilt — multi-language metaprogramming system";
+  description = "Quilt — polyglot metaprogramming language";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

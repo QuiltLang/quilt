@@ -2,7 +2,7 @@
 
 > **⚠️ Early alpha.** Quilt is under active development. Expect breaking changes, rough edges, and gaps in the docs — the syntax, APIs, and CLI may all change without notice. Bug reports and feedback are very welcome.
 
-Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file is ordinary source code with Unicode arrow-bracket syntax for embedding and manipulating code fragments of other languages at code-generation time.
+Quilt is a polyglot metaprogramming language. A `.quilt` file is ordinary source code with Unicode arrow-bracket syntax for embedding and manipulating code fragments of other languages at code-generation time.
 
 **[→ Documentation Wiki](docs/wiki/index.md)  ·  [→ Website](https://quiltlang.github.io)**
 
