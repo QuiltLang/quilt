@@ -1,9 +1,13 @@
 [workspace]
 resolver = "2"
+# quilt-python is intentionally NOT in default-members: it is a PyO3 `cdylib`
+# that links libpython, so including it would make a bare `cargo build` / `cargo
+# test` at the workspace root require a Python interpreter + dev headers. The
+# common CLI/LSP path needs neither. Build it explicitly with
+# `cargo build -p quilt_python` (or `bin/build-py`, which uses maturin).
 default-members = [
   "quilt",
   "quilt-lsp",
-  "quilt-python",
 ]
 members = [
   "quilt",
