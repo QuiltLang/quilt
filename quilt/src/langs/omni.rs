@@ -242,18 +242,6 @@ macro_rules! define_omni {
             }
 
             #[allow(unused_variables)]
-            fn inner_kind(&self) -> InnerKind {
-                match self {
-                    $(
-                        #[cfg(feature = $feat)]
-                        OmniLanguagePost::$variant(post) => post.inner_kind(),
-                    )*
-                    #[allow(unreachable_patterns)]
-                    _ => InnerKind::default(),
-                }
-            }
-
-            #[allow(unused_variables)]
             fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
                 match self {
                     $(

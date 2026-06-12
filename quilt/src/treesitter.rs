@@ -85,10 +85,6 @@ pub struct TSLanguagePost {
     pub holes: Box<[Hole]>,
     pub qterm: QTerm,
     pub hole_str: &'static str,
-    /// The `InnerKind` returned by [`TSProvider::unwrap`] for this fragment.
-    /// Stored here so callers of `parse_pre` (e.g. `build_nodes`) can read
-    /// the actual classified kind via [`LanguagePost::inner_kind`].
-    pub inner_kind: InnerKind,
 }
 
 impl<P: TSProvider> Language for TSLanguage<P> {
@@ -266,7 +262,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             &mut prefix,
             true,
         );
-        let (qterm, inner_kind) = self.provider.unwrap(qterm, ikind);
+        let (qterm, _ikind) = self.provider.unwrap(qterm, ikind);
         let holes = holes.into();
         let hole_str = self.provider.hole_str();
 
@@ -274,7 +270,6 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             holes,
             qterm,
             hole_str,
-            inner_kind,
         })
     }
 
@@ -298,10 +293,6 @@ impl<P: TSProvider> Language for TSLanguage<P> {
 impl LanguagePost for TSLanguagePost {
     fn holes(&self) -> &[Hole] {
         &self.holes
-    }
-
-    fn inner_kind(&self) -> InnerKind {
-        self.inner_kind
     }
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
@@ -399,10 +390,6 @@ impl<T: LanguagePost> LanguagePost for Box<T> {
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
         self.as_ref().parse_post(plugs)
-    }
-
-    fn inner_kind(&self) -> InnerKind {
-        self.as_ref().inner_kind()
     }
 }
 

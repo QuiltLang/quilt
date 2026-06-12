@@ -39,27 +39,14 @@ impl TSProvider for RustProvider {
                         match &**q0 {
                             QTerm::Tuple { tag, .. } => {
                                 // The hole's position (when known) settles
-                                // ambiguous bodies like a bare `{ }`.
-                                // `Block` is accepted directly; for other
-                                // explicit hints we trust the caller.
-                                // Otherwise guess from the tag.
+                                // ambiguous bodies like a bare `{ }`; otherwise
+                                // guess from the tag.
                                 let kind = match ikind {
                                     Some(k) if k != InnerKind::File => k,
                                     _ if **tag == *"{}" => InnerKind::Stmt,
                                     _ => self.typ(tag),
                                 };
-                                let mut qterm = qterm.squash();
-                                // When the caller explicitly asks for a Block,
-                                // peel off any `expression_statement` wrapper
-                                // to expose the `block` node directly.
-                                if kind == InnerKind::Block {
-                                    if let QTerm::Tuple { tag: inner_tag, .. } = &qterm {
-                                        if &**inner_tag == "expression_statement" {
-                                            qterm = qterm.squash();
-                                        }
-                                    }
-                                }
-                                (qterm, kind)
+                                (qterm.squash(), kind)
                             }
                             _ => unimplemented!("{}", qterm.sexp()),
                         }
@@ -84,8 +71,6 @@ impl TSProvider for RustProvider {
     fn typ(&self, tag: &str) -> InnerKind {
         if tag == "source_file" {
             InnerKind::File
-        } else if tag == "block" {
-            InnerKind::Block
         } else if tag.ends_with("statement")
             || tag.ends_with("item")
             || tag.ends_with("declaration")

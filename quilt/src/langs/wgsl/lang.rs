@@ -40,12 +40,9 @@ impl TSProvider for WgslProvider {
     /// term is the fragment itself (expression / statement / declaration). A
     /// multi-declaration fragment (a whole shader) stays a `source_file`.
     ///
-    /// Unlike in Rust, WGSL statement fragments are typically wrapped in
-    /// `source_file` with **two** children — the statement node and a trailing
-    /// `;` sibling — so `terms.len() != 1` and the squash is not attempted.
-    /// The returned `InnerKind` is determined by inspecting the child(ren),
-    /// and is now stored in [`TSLanguagePost::inner_kind`] rather than
-    /// discarded.
+    /// The returned `InnerKind` is advisory only (`parse_pre` discards it; the
+    /// emit heuristic re-derives the kind from the term via `classify_term`).
+    /// We never panic on an unexpected shape, unlike the Rust provider.
     fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
         let QTerm::Tuple { tag, terms, .. } = &qterm else {
             return (qterm, InnerKind::default());
@@ -53,40 +50,17 @@ impl TSProvider for WgslProvider {
         if &**tag != "source_file" {
             return (qterm, InnerKind::default());
         }
-        match terms.len() {
-            0 => (qterm, InnerKind::File),
-            1 => {
-                // Single child: expression or top-level declaration.
-                let kind = match &*terms[0] {
-                    QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
-                    _ => InnerKind::Stmt,
-                };
-                (qterm.squash(), kind)
-            }
-            2 => {
-                // A WGSL statement with trailing `;`: `source_file(stmt, ;)`.
-                // The fragment is a statement even though it has two children.
-                // Check whether the second child is a bare semicolon leaf.
-                let is_semi = match &*terms[1] {
-                    QTerm::Tuple { tag, terms: semi_terms, .. } => {
-                        &**tag == ";" && semi_terms.is_empty()
-                    }
-                    _ => false,
-                };
-                if is_semi {
-                    // Single statement + trailing `;` — classify as Stmt.
-                    // Do not squash: the semicolon is part of the output.
-                    (qterm, InnerKind::Stmt)
-                } else {
-                    // Two top-level declarations (e.g. a global + a function).
-                    (qterm, InnerKind::File)
-                }
-            }
-            _ => {
-                // Multiple top-level items: a whole (partial) shader.
-                (qterm, InnerKind::File)
-            }
+        if terms.len() != 1 {
+            // empty file, or several top-level declarations (a whole shader),
+            // or a statement plus its trailing `;` — all kept whole. The
+            // statement/`;` shape is recognised by `classify_term` below.
+            return (qterm, InnerKind::File);
         }
+        let kind = match &*terms[0] {
+            QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+            _ => InnerKind::Stmt,
+        };
+        (qterm.squash(), kind)
     }
 
     fn arity(&self, tag: &str) -> Arity {
@@ -100,46 +74,43 @@ impl TSProvider for WgslProvider {
         }
     }
 
-    /// Classify a WGSL tag as expression, statement, or file-level.
-    fn typ(&self, tag: &str) -> InnerKind {
-        if tag == "source_file" {
-            InnerKind::File
-        } else if is_expr_tag(tag) {
-            InnerKind::Expr
-        } else {
-            // Everything else is statement-level (assignments, control flow,
-            // top-level declarations, compound statements, …).
-            InnerKind::Stmt
-        }
-    }
-
-    /// Classify a fully-parsed WGSL term.
+    /// Classify a fully-parsed WGSL term as expression / statement / file.
     ///
-    /// Overrides the default to handle `source_file(stmt, ;)` fragments:
-    /// a single WGSL statement wrapped in `source_file` with a trailing `;`
-    /// sibling has `terms.len() == 2`, so `typ("source_file")` alone would
-    /// return `File`.  Here we look at the children to return `Stmt`.
+    /// This is what closes the feedback loop for the emit heuristic (issue
+    /// #25): unlike `typ`, which only sees a root tag, `classify_term` inspects
+    /// the whole term. WGSL needs it because a single statement fragment is
+    /// wrapped in `source_file` with a trailing `;` sibling, so `terms.len() ==
+    /// 2` and the root tag alone (`source_file`) would read as `File` even
+    /// though the fragment is really a `Stmt`.
     fn classify_term(&self, term: &QTerm) -> InnerKind {
         match term {
             QTerm::Tuple { tag, terms, .. } if &**tag == "source_file" => match terms.len() {
-                0 => InnerKind::File,
                 1 => match &*terms[0] {
                     QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
                     _ => InnerKind::Stmt,
                 },
                 2 => {
-                    // Check for stmt + trailing `;` pattern.
+                    // A single statement plus its trailing `;`: still a `Stmt`.
                     let is_semi = match &*terms[1] {
-                        QTerm::Tuple { tag, terms: semi_terms, .. } => {
-                            &**tag == ";" && semi_terms.is_empty()
-                        }
+                        QTerm::Tuple {
+                            tag,
+                            terms: semi_terms,
+                            ..
+                        } => &**tag == ";" && semi_terms.is_empty(),
                         _ => false,
                     };
-                    if is_semi { InnerKind::Stmt } else { InnerKind::File }
+                    if is_semi {
+                        InnerKind::Stmt
+                    } else {
+                        InnerKind::File
+                    }
                 }
+                // Empty (0) or several top-level declarations (3+): a whole
+                // (or partial) shader.
                 _ => InnerKind::File,
             },
-            QTerm::Tuple { tag, .. } => self.typ(tag),
+            QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+            QTerm::Tuple { .. } => InnerKind::Stmt,
             _ => InnerKind::default(),
         }
     }

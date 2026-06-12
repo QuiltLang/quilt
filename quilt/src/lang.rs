@@ -10,11 +10,8 @@ use std::sync::Arc;
 pub enum InnerKind {
     Expr,
     Stmt,
-    /// A braced block expression (e.g. Rust's `{ stmts… expr }`). Distinct
-    /// from `Stmt` so the tail-expression / statement-list ambiguity can be
-    /// resolved exactly.
-    Block,
     #[default]
+    // TODO: rename or also add `Block`
     File,
     // TODO: add more, language specific types, number, function, etc.
 }
@@ -155,15 +152,6 @@ pub trait LanguagePost: Debug {
     fn holes(&self) -> &[Hole];
     /// Fill with plugs.
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>>;
-    /// The `InnerKind` of the parsed fragment as determined by [`TSProvider::unwrap`].
-    ///
-    /// This closes the feedback loop described in issue #25: the kind the
-    /// inner parser actually produced is now accessible to callers of
-    /// `parse_pre` (e.g. `build_nodes` in `multi.rs`) rather than being
-    /// silently discarded. Non-tree-sitter languages return `File` by default.
-    fn inner_kind(&self) -> InnerKind {
-        InnerKind::File
-    }
 }
 
 /**************************************************************/
@@ -199,9 +187,5 @@ impl LanguagePost for Box<dyn LanguagePost> {
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
         self.as_ref().parse_post(plugs)
-    }
-
-    fn inner_kind(&self) -> InnerKind {
-        self.as_ref().inner_kind()
     }
 }
