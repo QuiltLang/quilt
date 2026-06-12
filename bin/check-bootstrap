@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Verify the self-hosting bootstrap is a no-op: on a clean checkout, regenerating
+# quilt/src/langs/rust/meta.rs must reproduce the committed file byte-for-byte.
+# Runs both stages (bootstrap0 then bootstrap1); fails if meta.rs ends up
+# modified — the signal that the committed meta.rs is stale and needs to be
+# regenerated (`bin/bootstrap`) and committed. For CI and pre-commit.
+#
+# Needs `rust-script` and `rustfmt`: the stages expand and run mk_meta.rs.quilt
+# via rust-script, which writes meta.rs and then `cargo fmt`s it.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+META="quilt/src/langs/rust/meta.rs"
+
+"$DIR/bootstrap" "$@"
+
+if ! git -C "$ROOT" diff --quiet -- "$META"; then
+  echo "error: bootstrap modified $META" >&2
+  echo "       The committed file is stale — run 'bin/bootstrap' and commit $META." >&2
+  git -C "$ROOT" --no-pager diff -- "$META" >&2
+  exit 1
+fi
+echo "bootstrap is a no-op: $META is up to date ✓"

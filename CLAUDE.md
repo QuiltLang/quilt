@@ -12,7 +12,7 @@ cargo build
 cargo test                 # or `ctest` (wrapper that works from anywhere)
 cargo test -p quilt node   # single test
 cargo clippy               # or `lint` (adds --tests)
-cargo fmt
+cargo fmt                  # `fmt-check` verifies formatting without writing (CI)
 
 # Expand a .quilt file (bin/quilt wraps `cargo run -p quilt --`)
 quilt expand path/to/file.rs.quilt
@@ -40,6 +40,7 @@ build-py
 bootstrap     # = bootstrap0 then bootstrap1
 bootstrap0    # BootstrapMetaLanguage only
 bootstrap1    # RustMetaLanguage only (self-hosted)
+check-bootstrap   # run bootstrap and fail if meta.rs changed (CI / pre-commit)
 
 # Regenerate the tree-sitter-quilt parser after editing grammar.js
 ts-gen

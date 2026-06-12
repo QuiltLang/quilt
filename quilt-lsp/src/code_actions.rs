@@ -138,7 +138,10 @@ fn inline_unquote(
 
     // Insertion point: beginning of the line that contains the opening ↖ of
     // the parent quote.
-    let quote_open = parent.body.start.saturating_sub(parent.anno.len() + ARROW_LEN);
+    let quote_open = parent
+        .body
+        .start
+        .saturating_sub(parent.anno.len() + ARROW_LEN);
     let insert_byte = line_start_before(&doc.text, quote_open);
     let insert_pos = doc.line_index.position(&doc.text, insert_byte, enc);
 
@@ -198,7 +201,10 @@ fn extract_fragment(
     let name = "_frag";
 
     // Full quote span: anno↖body↗
-    let quote_start = quote.body.start.saturating_sub(quote.anno.len() + ARROW_LEN);
+    let quote_start = quote
+        .body
+        .start
+        .saturating_sub(quote.anno.len() + ARROW_LEN);
     let quote_end = quote.body.end + ARROW_LEN;
     let full_quote = &doc.text[quote_start..quote_end];
 
@@ -254,7 +260,10 @@ fn region_path(root: &Region, offset: usize) -> Vec<&Region> {
 
 fn descend<'a>(region: &'a Region, offset: usize, path: &mut Vec<&'a Region>) {
     for child in &region.children {
-        let child_start = child.body.start.saturating_sub(child.anno.len() + ARROW_LEN);
+        let child_start = child
+            .body
+            .start
+            .saturating_sub(child.anno.len() + ARROW_LEN);
         let child_end = child.body.end + ARROW_LEN;
         if child_start <= offset && offset <= child_end {
             path.push(child);
@@ -282,9 +291,7 @@ fn ground_binding(doc: &Document, name: &str, rhs: &str) -> String {
 /// reuse it with a `_` prefix; otherwise fall back to `default`.
 fn suggested_name(body: &str, default: &str) -> String {
     let trimmed = body.trim();
-    if trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
+    if trimmed.chars().all(|c| c.is_alphanumeric() || c == '_')
         && !trimmed.is_empty()
         && !trimmed.chars().next().is_some_and(|c| c.is_ascii_digit())
     {
@@ -317,12 +324,7 @@ mod tests {
         )
     }
 
-    fn lsp_range(
-        start_line: u32,
-        start_char: u32,
-        end_line: u32,
-        end_char: u32,
-    ) -> Range {
+    fn lsp_range(start_line: u32, start_char: u32, end_line: u32, end_char: u32) -> Range {
         Range {
             start: tower_lsp::lsp_types::Position {
                 line: start_line,
@@ -355,7 +357,7 @@ mod tests {
         let actions = code_actions(&uri, &d, Encoding::Utf8, range);
         actions.into_iter().find_map(|a| match a {
             CodeActionOrCommand::CodeAction(ca) => Some(ca),
-            _ => None,
+            CodeActionOrCommand::Command(_) => None,
         })
     }
 
@@ -386,13 +388,13 @@ mod tests {
     fn wrap_not_available_for_empty_selection() {
         let text = "fn main() {}\n";
         let range = lsp_range(0, 5, 0, 5); // empty
-        // Should not return a wrap action (but may return others)
+                                           // Should not return a wrap action (but may return others)
         let uri: Url = "file:///test.rs.quilt".parse().unwrap();
         let d = doc(text);
         let actions = code_actions(&uri, &d, Encoding::Utf8, range);
         let has_wrap = actions.iter().any(|a| match a {
             CodeActionOrCommand::CodeAction(ca) => ca.title == "Wrap in ↖…↗",
-            _ => false,
+            CodeActionOrCommand::Command(_) => false,
         });
         assert!(!has_wrap, "wrap should not be offered for empty selection");
     }
@@ -439,7 +441,10 @@ mod tests {
         // Cursor inside the quote body — byte 11 (somewhere inside "1 + 2")
         let range = lsp_range(0, 11, 0, 11);
         let ca = find_action(text, range, "Extract to named fragment");
-        assert!(ca.is_some(), "extract fragment should be offered inside a quote");
+        assert!(
+            ca.is_some(),
+            "extract fragment should be offered inside a quote"
+        );
     }
 
     #[test]
@@ -448,7 +453,10 @@ mod tests {
         // Cursor in pure ground code
         let range = lsp_range(0, 4, 0, 4);
         let ca = find_action(text, range, "Extract to named fragment");
-        assert!(ca.is_none(), "extract fragment should not fire in ground code");
+        assert!(
+            ca.is_none(),
+            "extract fragment should not fire in ground code"
+        );
     }
 
     #[test]
