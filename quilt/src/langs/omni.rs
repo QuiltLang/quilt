@@ -206,6 +206,18 @@ macro_rules! define_omni {
                     _ => Default::default(),
                 }
             }
+
+            #[allow(unused_variables)]
+            fn classify_term(&self, term: &QTerm) -> InnerKind {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.classify_term(term),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => Default::default(),
+                }
+            }
         }
 
         /// A `LanguagePost` used by `Omni`.

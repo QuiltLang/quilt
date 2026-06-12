@@ -461,6 +461,13 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                             // with the same outer tag (`expression_statement`),
                             // so also require the quoted body to be a statement
                             // — an expression body means the quote is a value.
+                            //
+                            // The body's kind comes from the inner language's
+                            // `classify_term` (the kind it actually parsed),
+                            // which — unlike `typ` on the root tag — sees through
+                            // wrappers like WGSL's `source_file(stmt, ;)`. This
+                            // closes the feedback loop from issue #25 and makes
+                            // the decision work across language boundaries.
                             if arity == Arity::Variadic {
                                 if let QTerm::Quote {
                                     tag: qtag,
@@ -469,12 +476,11 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                                     ..
                                 } = &**term
                                 {
-                                    if self.langs.get(self.lang)?.typ(qtag) == InnerKind::Stmt {
-                                        if let QTerm::Tuple { tag: btag, .. } = &**body {
-                                            if self.langs.get(lang2)?.typ(btag) == InnerKind::Stmt {
-                                                okind = OuterKind::Emit;
-                                            }
-                                        }
+                                    if self.langs.get(self.lang)?.typ(qtag) == InnerKind::Stmt
+                                        && self.langs.get(lang2)?.classify_term(body)
+                                            == InnerKind::Stmt
+                                    {
+                                        okind = OuterKind::Emit;
                                     }
                                 }
                             }

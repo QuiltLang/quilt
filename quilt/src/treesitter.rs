@@ -58,6 +58,18 @@ pub trait TSProvider {
         Default::default()
     }
 
+    /// Classify a fully-parsed term to determine its kind.  Unlike [`typ`],
+    /// which only sees the root tag, this can inspect the full term tree.
+    /// The default falls back to `typ` on the root tag; override for languages
+    /// where the wrapper node's tag is ambiguous (e.g. WGSL's `source_file`
+    /// which can hold a statement + trailing `;` with `len == 2`).
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        match term {
+            QTerm::Tuple { tag, .. } => self.typ(tag),
+            _ => InnerKind::default(),
+        }
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
@@ -269,6 +281,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         self.provider.typ(tag)
     }
 
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        self.provider.classify_term(term)
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         self.provider.hashbang()
     }
@@ -356,6 +372,10 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
 
     fn typ(&self, tag: &str) -> InnerKind {
         self.0.typ(tag)
+    }
+
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        self.0.classify_term(term)
     }
 
     fn hashbang(&self) -> Option<&'static str> {

@@ -50,7 +50,7 @@ impl TSProvider for PythonProvider {
         }
     }
 
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
         if qterm.len() != 1 {
             return (qterm, InnerKind::File);
         }
@@ -63,10 +63,23 @@ impl TSProvider for PythonProvider {
             if qterm.len() != 1 {
                 return (qterm, InnerKind::Expr);
             }
-            let qterm = qterm.squash();
-            if qterm.tag() == QTermTag::tuple("assignment") {
+            let inner = qterm.squash();
+            if inner.tag() == QTermTag::tuple("assignment") {
+                // An assignment is always a statement, regardless of position.
+                return (inner, InnerKind::Stmt);
+            }
+            // A non-assignment expression statement like `foo()`. When the
+            // caller explicitly placed the hole in statement position, honour
+            // that: keep the `expression_statement` wrapper and report Stmt.
+            // Otherwise treat it as a bare expression and squash to the inner.
+            if ikind == Some(InnerKind::Stmt) {
                 return (qterm, InnerKind::Stmt);
             }
+            return (inner, InnerKind::Expr);
+        }
+        // If the caller explicitly expected an expression (e.g. the hole was
+        // in expression position), trust that over the default Stmt guess.
+        if ikind == Some(InnerKind::Expr) {
             return (qterm, InnerKind::Expr);
         }
         (qterm, InnerKind::Stmt)

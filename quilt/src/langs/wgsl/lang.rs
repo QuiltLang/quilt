@@ -40,8 +40,9 @@ impl TSProvider for WgslProvider {
     /// term is the fragment itself (expression / statement / declaration). A
     /// multi-declaration fragment (a whole shader) stays a `source_file`.
     ///
-    /// The returned `InnerKind` is advisory only (`parse_pre` discards it); we
-    /// never panic on an unexpected shape, unlike the Rust provider.
+    /// The returned `InnerKind` is advisory only (`parse_pre` discards it; the
+    /// emit heuristic re-derives the kind from the term via `classify_term`).
+    /// We never panic on an unexpected shape, unlike the Rust provider.
     fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
         let QTerm::Tuple { tag, terms, .. } = &qterm else {
             return (qterm, InnerKind::default());
@@ -50,7 +51,9 @@ impl TSProvider for WgslProvider {
             return (qterm, InnerKind::default());
         }
         if terms.len() != 1 {
-            // empty file, or several top-level declarations (a whole shader)
+            // empty file, or several top-level declarations (a whole shader),
+            // or a statement plus its trailing `;` — all kept whole. The
+            // statement/`;` shape is recognised by `classify_term` below.
             return (qterm, InnerKind::File);
         }
         let kind = match &*terms[0] {
@@ -68,6 +71,47 @@ impl TSProvider for WgslProvider {
             | "switch_statement"
             | "struct_declaration" => Arity::Variadic,
             _ => Arity::Unknown,
+        }
+    }
+
+    /// Classify a fully-parsed WGSL term as expression / statement / file.
+    ///
+    /// This is what closes the feedback loop for the emit heuristic (issue
+    /// #25): unlike `typ`, which only sees a root tag, `classify_term` inspects
+    /// the whole term. WGSL needs it because a single statement fragment is
+    /// wrapped in `source_file` with a trailing `;` sibling, so `terms.len() ==
+    /// 2` and the root tag alone (`source_file`) would read as `File` even
+    /// though the fragment is really a `Stmt`.
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        match term {
+            QTerm::Tuple { tag, terms, .. } if &**tag == "source_file" => match terms.len() {
+                1 => match &*terms[0] {
+                    QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+                    _ => InnerKind::Stmt,
+                },
+                2 => {
+                    // A single statement plus its trailing `;`: still a `Stmt`.
+                    let is_semi = match &*terms[1] {
+                        QTerm::Tuple {
+                            tag,
+                            terms: semi_terms,
+                            ..
+                        } => &**tag == ";" && semi_terms.is_empty(),
+                        _ => false,
+                    };
+                    if is_semi {
+                        InnerKind::Stmt
+                    } else {
+                        InnerKind::File
+                    }
+                }
+                // Empty (0) or several top-level declarations (3+): a whole
+                // (or partial) shader.
+                _ => InnerKind::File,
+            },
+            QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+            QTerm::Tuple { .. } => InnerKind::Stmt,
+            _ => InnerKind::default(),
         }
     }
 

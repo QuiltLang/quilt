@@ -123,6 +123,23 @@ pub trait Language {
         Default::default()
     }
 
+    /// Classify a fully-parsed `QTerm` to determine its grammatical kind.
+    ///
+    /// This is the *accurate* version of [`typ`]: unlike `typ`, which receives
+    /// only the root tag name, `classify_term` can inspect the full term tree.
+    /// This matters for languages (e.g. WGSL) where a single statement is
+    /// wrapped in a `source_file` node with a trailing `;` sibling, so the
+    /// root tag alone gives `File` even though the fragment is really `Stmt`.
+    ///
+    /// The default implementation falls back to `typ` on the root tag, which
+    /// is correct for languages whose `unwrap` always squashes the wrapper.
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        match term {
+            QTerm::Tuple { tag, .. } => self.typ(tag),
+            _ => InnerKind::default(),
+        }
+    }
+
     /// Shebang line used to run an expanded file of this language, if supported.
     /// e.g. `"#!/usr/bin/env rust-script"` or `"#!/usr/bin/env python3"`.
     fn hashbang(&self) -> Option<&'static str> {
@@ -152,6 +169,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn typ(&self, tag: &str) -> InnerKind {
         self.as_ref().typ(tag)
+    }
+
+    fn classify_term(&self, term: &QTerm) -> InnerKind {
+        self.as_ref().classify_term(term)
     }
 
     fn hashbang(&self) -> Option<&'static str> {
