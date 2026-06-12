@@ -1,6 +1,40 @@
 # Quilt Documentation
 
-Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file is an ordinary source file (Rust, Python, …) with Unicode arrow-bracket syntax spliced in to embed and manipulate code fragments of other languages — or the same language — at code-generation time.
+Quilt lets metaprograms in any language generate and manipulate code in any other language using five Unicode arrow glyphs.
+
+A `.quilt` file is ordinary source code with Quilt brackets spliced in. Running `quilt expand` strips the brackets and writes plain source — no special build system required.
+
+```rust
+// squares.py.rs.quilt  —  a Rust program that generates Python
+let squares: Vec<u64> = (1..=5).map(|n| n * n).collect();
+
+let program = python↖
+    def main():
+        squares = ↙squares.↑↘
+        print(squares)
+
+    main()
+↗;
+
+println!("{}", program.coparse());
+```
+
+```python
+# generated squares.py
+def main():
+    squares = [1, 4, 9, 16, 25]
+    print(squares)
+
+main()
+```
+
+The five operators — quote `↖↗`, unquote `↙↘`, lift `↑`, reduce `↓`, emit `←` — compose across any combination of supported languages. See [Concepts](concepts.md) for a full walkthrough.
+
+## Start here
+
+1. **[Concepts](concepts.md)** — the file format, all five operators, and how staging works
+2. **[CLI & Scripts](cli.md)** — `quilt expand`, `quilt run`, and the helper scripts
+3. **[Editor Setup](editor-setup.md)** — VS Code extension with glyph keybindings and LSP support
 
 ## Language
 
@@ -32,39 +66,16 @@ Reference material for contributors and anyone extending Quilt.
 | [Adding a Language](adding-a-language.md) | Step-by-step guide for supporting a new language |
 | [Nanobots](nanobots.md) | The gas-metered nanobot IR toolchain (sibling repo) |
 
-## Quick orientation
+## Repository layout
 
 ```
-quilt/                  # This repo (the Cargo workspace root)
-├── quilt/              # Core library + CLI (cargo workspace member)
-│   └── src/
-│       ├── qterm.rs        # QTerm IR
-│       ├── node.rs         # Surface AST (tree-sitter-quilt output)
-│       ├── lang.rs         # Language / LanguagePost traits
-│       ├── meta.rs         # MetaLanguage trait
-│       ├── multi.rs        # Multi<LS,MS> engine
-│       ├── strcmd.rs       # StrCmd serialization
-│       └── langs/          # Concrete language implementations
-│           ├── rust/       # Rust language + generated meta.rs
-│           ├── python/     # Python language + meta
-│           ├── html/       # HTML language (target only)
-│           ├── wgsl/       # WGSL language (target only)
-│           ├── zsh/        # Zsh language (target only)
-│           ├── bash/       # Bash language (target only)
-│           ├── text/       # Plain-text language (target only)
-│           ├── bootstrap/  # Bootstrap meta + mk_meta.rs.quilt
-│           └── omni.rs     # Omni (production Multi)
-├── quilt-lsp/          # Language Server (cargo workspace member)
-├── quilt-python/       # PyO3 bindings (cargo workspace member; crate quilt_python)
-├── tree-sitter-quilt/  # Grammar for the quilt bracket language (workspace member)
-├── bin/                # Shell scripts: quilt, bootstrap, build-py, ts-gen, ctest, lint, install_tools
+quilt/
+├── quilt/              # Core library + CLI
+├── quilt-lsp/          # Language Server
+├── quilt-python/       # PyO3 bindings (Python runtime)
+├── tree-sitter-quilt/  # Grammar for the Quilt bracket syntax
+├── bin/                # Helper scripts: quilt, bootstrap, build-py, …
 ├── tools/quilt/        # VS Code extension
 ├── docs/wiki/          # This wiki
-└── examples/           # .quilt example files
+└── examples/           # Annotated .quilt examples
 ```
-
-The forked grammars for the concrete languages (`tree-sitter-rust`, `tree-sitter-python`, `tree-sitter-html`, `-wgsl`, `-zsh`, `-bash`) live in their own repos under [github.com/QuiltLang](https://github.com/QuiltLang) and are pulled in as git dependencies. The [nanobots](nanobots.md) toolchain lives in a sibling repo with its own Cargo workspace.
-
-## Key concepts in one paragraph
-
-A `.quilt` file lives in a *ground language* (determined by the inner extension: `foo.rs.quilt` → Rust). Inside it, `↖…↗` opens a *quote* — a code fragment to be treated as data — and `↙…↘` opens an *unquote* — a spliced value. The `↑` glyph *lifts* a runtime value into a `QTerm`, `↓` *reduces* a `QTerm` by evaluating it, and `←` *emits* a term into the surrounding variadic context. The Quilt compiler parses the file into a `QTerm` tree, then calls the ground language's `MetaLanguage` to expand that tree into ordinary source code, which is written to disk.
