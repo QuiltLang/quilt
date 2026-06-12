@@ -18,7 +18,8 @@ env:
 
 jobs:
   # Each job runs a single bin/ script so the exact same check reproduces
-  # locally: `bin/ctest`, `bin/lint`, `bin/check-bootstrap`.
+  # locally: `bin/ctest`, `bin/lint`, `bin/check-bootstrap`, `bin/check-examples`,
+  # `bin/test-py`.
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -75,3 +76,41 @@ jobs:
         run: cargo install rust-script --locked
       - name: Verify bootstrap regenerates meta.rs unchanged
         run: bin/check-bootstrap
+
+  examples:
+    name: Examples (check + expand diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      # `quilt check`/`expand` only parse + expand (no code runs), so this job
+      # needs neither rust-script nor Python — just the CLI and a C toolchain
+      # for the tree-sitter grammars (preinstalled on ubuntu).
+      - name: Check and expand-diff the bundled examples
+        run: bin/check-examples
+
+  python:
+    name: Python (quilt_python bindings + .py.quilt runtime)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      # quilt-python is a PyO3 cdylib that links libpython; maturin builds it and
+      # pytest drives the binding tests.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Expose libpython to the dynamic loader
+        run: echo "LD_LIBRARY_PATH=$pythonLocation/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - name: Install maturin and pytest
+        run: pip install maturin pytest
+      - name: Build the quilt_python module
+        run: bin/build-py
+      # bin/test-py pytest-runs the bindings, then runs the self-contained
+      # .py.quilt examples (ground Python → python3; no rust-script needed).
+      - name: Run binding tests and .py.quilt examples
+        run: bin/test-py

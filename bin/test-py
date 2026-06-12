@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Test the quilt_python runtime path: the PyO3 bindings and the .py.quilt example
+# programs that target them. Build the module first with `bin/build-py` (the CI
+# `python` job runs build-py then test-py).
+#
+#   1. pytest the binding tests in quilt-python/tests/.
+#   2. `quilt run` the self-contained .py.quilt examples and assert they exit 0.
+#
+# examples/issue_triage.html.py.quilt is intentionally excluded from (2): it
+# shells out to `gh` (network + auth), so it is only `check`ed by
+# bin/check-examples, never run here.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+if [ ! -f "$ROOT/quilt-python/quilt/_quilt.abi3.so" ]; then
+  echo "error: quilt_python module not built — run 'bin/build-py' first" >&2
+  exit 1
+fi
+
+echo "==> binding tests (pytest)"
+( cd "$ROOT/quilt-python" && PYTHONPATH=. python3 -m pytest -q tests/ )
+
+echo "==> run self-contained .py.quilt examples"
+for ex in hello expr_compose pow_specialize reduce upper_tri_mul; do
+  echo "--- $ex.py.quilt"
+  "$ROOT/bin/quilt" "examples/$ex.py.quilt" >/dev/null
+done
+echo "py runtime OK ✓"
