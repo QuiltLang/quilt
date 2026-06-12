@@ -1,24 +1,36 @@
-# Quilt Documentation Wiki
+# Quilt Documentation
 
 Quilt is a multi-stage, multi-language metaprogramming system. A `.quilt` file is an ordinary source file (Rust, Python, …) with Unicode arrow-bracket syntax spliced in to embed and manipulate code fragments of other languages — or the same language — at code-generation time.
 
-## Pages
+## Language
 
-| Page                                        | What it covers                                                     |
-|---------------------------------------------|--------------------------------------------------------------------|
-| [Concepts](concepts.md)                     | The quilt file format, operator glyphs, quasi-quoting, and staging |
-| [QTerm IR](qterm.md)                        | The central `QTerm` data type and the `QTermBuilder` fluent API    |
-| [Parse → Expand Pipeline](pipeline.md)      | How a `.quilt` file becomes ordinary source code                   |
-| [Language Traits](language-traits.md)       | `Language`, `LanguagePost`, `MetaLanguage` — the extension points  |
-| [Concrete Languages](concrete-languages.md) | Rust, Python, HTML, WGSL, Zsh, Bash, Text implementations          |
-| [Multi and Omni](multi-omni.md)             | The `Multi<LS,MS>` engine and the `Omni` production registry       |
-| [Bootstrap](bootstrap.md)                   | Self-hosting: generating `meta.rs` from `mk_meta.rs.quilt`         |
-| [CLI & Scripts](cli.md)                     | `quilt expand`, `quilt`, and the `bin/` helper scripts             |
-| [Python Bindings](python-bindings.md)       | `quilt_python` — the PyO3 runtime for `.py.quilt` files            |
-| [Quilt LSP](lsp.md)                         | `quilt-lsp` — the multiplexing Language Server                     |
-| [Editor Setup](editor-setup.md)             | VS Code extension, keybindings, and `tools/quilt`                  |
-| [Nanobots](nanobots.md)                     | The gas-metered nanobot IR toolchain                               |
-| [Adding a Language](adding-a-language.md)   | Step-by-step guide for supporting a new language                   |
+| Page | What it covers |
+|------|----------------|
+| [Concepts](concepts.md) | The `.quilt` file format, operator glyphs, quasi-quoting, and staging |
+
+## Tooling
+
+| Page | What it covers |
+|------|----------------|
+| [CLI & Scripts](cli.md) | `quilt expand`, `quilt run`, and the `bin/` helper scripts |
+| [Python Bindings](python-bindings.md) | `quilt_python` — the PyO3 runtime for `.py.quilt` files |
+| [Quilt LSP](lsp.md) | `quilt-lsp` — the multiplexing Language Server |
+| [Editor Setup](editor-setup.md) | VS Code extension, keybindings, and `tools/quilt` |
+
+## Internals
+
+Reference material for contributors and anyone extending Quilt.
+
+| Page | What it covers |
+|------|----------------|
+| [QTerm IR](qterm.md) | The central `QTerm` data type and the `QTermBuilder` fluent API |
+| [Parse → Expand Pipeline](pipeline.md) | How a `.quilt` file becomes ordinary source code |
+| [Language Traits](language-traits.md) | `Language`, `LanguagePost`, `MetaLanguage` — the extension points |
+| [Concrete Languages](concrete-languages.md) | Rust, Python, HTML, WGSL, Zsh, Bash, Text implementations |
+| [Multi and Omni](multi-omni.md) | The `Multi<LS,MS>` engine and the `Omni` production registry |
+| [Bootstrap](bootstrap.md) | Self-hosting: generating `meta.rs` from `mk_meta.rs.quilt` |
+| [Adding a Language](adding-a-language.md) | Step-by-step guide for supporting a new language |
+| [Nanobots](nanobots.md) | The gas-metered nanobot IR toolchain (sibling repo) |
 
 ## Quick orientation
 
@@ -51,7 +63,7 @@ quilt/                  # This repo (the Cargo workspace root)
 └── examples/           # .quilt example files
 ```
 
-The forked grammars for the concrete languages (`tree-sitter-rust` with `{}` hole nodes, `tree-sitter-python` with `__HOLE__` nodes, plus `tree-sitter-html`, `-wgsl`, `-zsh`, `-bash`) live in their own repos under [github.com/QuiltLang](https://github.com/QuiltLang) and are pulled in as git dependencies in the root `Cargo.toml`. The [nanobots](nanobots.md) toolchain lives in a sibling repo, in its own Cargo workspace.
+The forked grammars for the concrete languages (`tree-sitter-rust`, `tree-sitter-python`, `tree-sitter-html`, `-wgsl`, `-zsh`, `-bash`) live in their own repos under [github.com/QuiltLang](https://github.com/QuiltLang) and are pulled in as git dependencies. The [nanobots](nanobots.md) toolchain lives in a sibling repo with its own Cargo workspace.
 
 ## Key concepts in one paragraph
 
