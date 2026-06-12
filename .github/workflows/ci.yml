@@ -37,6 +37,11 @@ jobs:
       # dynamic loader at the interpreter installed above.
       - name: Expose libpython to the dynamic loader
         run: echo "LD_LIBRARY_PATH=$pythonLocation/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      # The reduce/run tests in quilt/tests/bootstrap.rs shell out to
+      # `rust-script` (the `↓` operator runs expanded code), so it must be on
+      # PATH for the test job too — not only the bootstrap job.
+      - name: Install rust-script
+        run: cargo install rust-script --locked
       - name: Run tests
         run: bin/ctest
 

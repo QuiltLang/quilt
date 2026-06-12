@@ -23,6 +23,10 @@
             pkgs.cargo-nextest
             pkgs.lolcat
             pkgs.nodejs
+            # quilt_python (PyO3 cdylib) links libpython; provide it from the
+            # flake so the env is self-contained instead of relying on a
+            # python3 from the ambient/global profile.
+            pkgs.python3
             pkgs.rust-script
             pkgs.rustup
             pkgs.tree-sitter
