@@ -1,0 +1,93 @@
+name: Release
+
+# Prebuilt `quilt` + `quilt-lsp` binaries (issue #33): on every `v*` tag, build
+# both bins for Linux + macOS (x86_64 and aarch64 — the same four platforms as
+# the PyPI wheel matrix in ci.yml), then attach one tarball per platform plus a
+# SHA256SUMS file to a GitHub Release for that tag.
+#
+# This workflow is deliberately independent of ci.yml: the same `v*` tag push
+# also runs the full check matrix there (and, once configured, the registry
+# publishes), so a broken tag still gets flagged even though the release build
+# itself only proves "it compiles". Registry publishing must stay in ci.yml
+# (PyPI Trusted Publishing is pinned to that workflow file); GitHub Release
+# assets have no such constraint, so they live here.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform.target }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { runner: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          # Free arm64 Linux runners require the repo to be public.
+          - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
+          - { runner: macos-13, target: x86_64-apple-darwin }
+          - { runner: macos-latest, target: aarch64-apple-darwin }
+    steps:
+      - uses: actions/checkout@v4
+      # No Nix devShell here (unlike ci.yml): a release build of the two bins
+      # only needs the pinned Rust toolchain and a C compiler (for the
+      # tree-sitter grammar build scripts). The runners' preinstalled rustup
+      # auto-installs the rust-toolchain.toml toolchain on first `cargo` use,
+      # and every runner image ships a C compiler. Each runner builds its
+      # native target, so no `--target` / cross-compilation is involved.
+      - name: Build
+        run: cargo build --release --locked -p quiltlang -p quilt-lsp
+      # One tarball per platform containing both binaries (debuginfo is already
+      # stripped: the release profile defaults to `strip = "debuginfo"`) and
+      # the license texts, named quilt-<tag>-<target>.tar.gz.
+      - name: Package
+        run: |
+          mkdir stage
+          cp target/release/quilt target/release/quilt-lsp stage/
+          cp LICENSE-MIT LICENSE-APACHE stage/
+          tar -czf "quilt-$GITHUB_REF_NAME-${{ matrix.platform.target }}.tar.gz" -C stage .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform.target }}
+          path: quilt-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    # Guard against tags pushed to forks creating releases there by accident.
+    if: github.repository == 'QuiltLang/quilt'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+      # Create the release if the tag doesn't have one yet (a hyphen in the
+      # tag, e.g. v0.1.0-alpha, marks it as a prerelease), then upload the
+      # assets. The two-step create/upload keeps this re-runnable and works
+      # even if the release was already created by hand: `--clobber` replaces
+      # any same-named assets instead of failing.
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          prerelease=()
+          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes "${prerelease[@]}"
+          fi
+          gh release upload "$GITHUB_REF_NAME" --clobber dist/*
