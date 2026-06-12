@@ -15,6 +15,12 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # The bootstrap tests' `rust-script` subprocess re-resolves deps against the
+  # sparse crates.io index; HTTP/2 multiplexing intermittently dies on CI
+  # runners with "[16] Error in the HTTP2 framing layer". Force HTTP/1.1 and
+  # allow more network retries to make these registry fetches reliable.
+  CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_NET_RETRY: "5"
 
 jobs:
   # Each job runs a single bin/ script so the exact same check reproduces
