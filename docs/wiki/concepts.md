@@ -151,3 +151,12 @@ These are used internally in bootstrap source:
 
 - `⟨T⟩` expands to `Arc<QTerm>` — the canonical type of a quilt term in Rust meta-code.
 - `⟨N⟩` creates an `identifier` node from a string — useful when building code that references a named variable.
+
+## Why the arrows?
+
+The quote glyphs `↖↗` and unquote glyphs `↙↘` are a synthesis of the two historical notations for quasi-quotation:
+
+- **Quine corners `⌜⌝`** — introduced by W.V.O. Quine in *Mathematical Logic* (1940) as the standard logical notation for quasi-quotation. The corner bracket signals "treat the contents as a name of an expression, with holes where values can be substituted."
+- **Lisp backtick `` ` ``** — the quasi-quote operator used in Lisp since the 1970s, where `` `(foo ,bar) `` quotes the list with `,bar` as an unquote splice. Almost every modern language's macro system (Scheme, Clojure, Rust's `quote!`, Julia's `:(...)`) descends from this convention.
+
+Both traditions use distinct paired delimiters to mark the boundary between "code that runs" and "code that is data." Quilt's arrows extend this to *two* pairs — `↖↗` for quote and `↙↘` for unquote — so both levels are visually present at once, and the direction of each arrow reflects the direction of the staging: outward arrows capture code into a term, inward arrows splice a term back into code.
