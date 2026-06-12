@@ -52,15 +52,26 @@ Quilt is a Rust project, so you'll need a Rust toolchain — install one via [ru
 Install the `quilt` command straight from the repo:
 
 ```sh
-cargo install --git https://github.com/QuiltLang/quilt quilt
+cargo install --git https://github.com/QuiltLang/quilt quiltlang
 ```
 
-This builds the `quilt` binary (`expand`, `run`, `check`, `clean`) and drops it in `~/.cargo/bin`. That's all you need to **expand** `.quilt` files into plain source.
+This builds the `quilt` binary (`expand`, `run`, `check`, `clean`) and drops it in `~/.cargo/bin`. (The package is named `quiltlang` — `quilt` is taken on crates.io — but the binary it installs is still `quilt`.) That's all you need to **expand** `.quilt` files into plain source.
 
 To **run** a `.quilt` file as a script, you also need the runtime for its ground language:
 
 - **`.rs.quilt` (Rust ground):** `cargo install rust-script`
 - **`.py.quilt` (Python ground):** the `quilt` Python module — see [Python bindings](docs/wiki/python-bindings.md).
+
+### Library
+
+To use quilt as a Rust library, depend on the `quiltlang` package under the `quilt` name:
+
+```toml
+[dependencies]
+quilt = { package = "quiltlang", git = "https://github.com/QuiltLang/quilt" }
+```
+
+With the `package =` rename, all the `use quilt::prelude::*` code in this README and the wiki works verbatim.
 
 ### Editor tooling (LSP + VS Code)
 
@@ -77,7 +88,7 @@ The VS Code extension (syntax highlighting, glyph keybindings, LSP client) isn't
 1. Make sure the CLI and the Rust runner are installed:
 
    ```sh
-   cargo install --git https://github.com/QuiltLang/quilt quilt
+   cargo install --git https://github.com/QuiltLang/quilt quiltlang
    cargo install rust-script
    ```
 

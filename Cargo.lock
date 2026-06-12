@@ -972,30 +972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quilt"
-version = "0.1.0"
-dependencies = [
- "clap",
- "indoc",
- "miette",
- "postcard",
- "pretty_assertions",
- "regex",
- "serde",
- "tempfile",
- "tracing",
- "tracing-subscriber",
- "tree-sitter",
- "tree-sitter-bash",
- "tree-sitter-html",
- "tree-sitter-python",
- "tree-sitter-quilt",
- "tree-sitter-rust",
- "tree-sitter-wgsl",
- "tree-sitter-zsh",
-]
-
-[[package]]
 name = "quilt-lsp"
 version = "0.1.0"
 dependencies = [
@@ -1024,7 +1000,31 @@ version = "0.1.0"
 dependencies = [
  "postcard",
  "pyo3",
- "quilt",
+ "quiltlang",
+]
+
+[[package]]
+name = "quiltlang"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "indoc",
+ "miette",
+ "postcard",
+ "pretty_assertions",
+ "regex",
+ "serde",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-bash",
+ "tree-sitter-html",
+ "tree-sitter-python",
+ "tree-sitter-quilt",
+ "tree-sitter-rust",
+ "tree-sitter-wgsl",
+ "tree-sitter-zsh",
 ]
 
 [[package]]

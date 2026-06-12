@@ -10,11 +10,11 @@ Cargo commands run from the repo root (the Cargo workspace root). The `bin/` scr
 # Build / test / lint / format (from repo root)
 cargo build
 cargo test                 # or `ctest` (wrapper that works from anywhere)
-cargo test -p quilt node   # single test
+cargo test -p quiltlang node   # single test
 cargo clippy               # or `lint` (adds --tests)
 cargo fmt                  # `fmt-check` verifies formatting without writing (CI)
 
-# Expand a .quilt file (bin/quilt wraps `cargo run -p quilt --`)
+# Expand a .quilt file (bin/quilt wraps `cargo run -p quiltlang --`)
 quilt expand path/to/file.rs.quilt
 quilt expand path/to/file.py.quilt
 quilt expand path/to/shaders.wgsl.rs.quilt   # language chain, see below
@@ -54,7 +54,7 @@ The file stem determines the **language chain**: reading the extensions right-to
 
 ## Workspace layout
 
-Workspace members (root `Cargo.toml`): `quilt` (core library + CLI), `quilt-lsp` (LSP server), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-html`, `-wgsl`, `-bash`, `-zsh`) are pulled as git dependencies from their forks under `github.com/QuiltLang` — they are *not* in this repo. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-html`, `-wgsl`, `-bash`, `-zsh`) are pulled as git dependencies from their forks under `github.com/QuiltLang` — they are *not* in this repo. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
 
 The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 

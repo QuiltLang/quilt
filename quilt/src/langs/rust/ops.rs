@@ -461,7 +461,7 @@ pub fn reduce<T: Serialize + for<'de> Deserialize<'de>>(x: &QTerm) -> Result<T> 
     let script = indoc::formatdoc! {r#"
         //! ```cargo
         //! [dependencies]
-        //! quilt = {{ path = "{quilt_dir}", default-features = false, features = ["rust"] }}
+        //! quilt = {{ path = "{quilt_dir}", package = "quiltlang", default-features = false, features = ["rust"] }}
         //! postcard = {{ version = "1.1", features = ["alloc"] }}
         //! ```
         #[allow(unused_imports)]

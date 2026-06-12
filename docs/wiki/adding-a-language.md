@@ -189,7 +189,7 @@ If the language will be a host ground language in the LSP:
 Add tests alongside your implementation:
 
 ```sh
-cargo test -p quilt your_lang
+cargo test -p quiltlang your_lang
 ```
 
 At minimum test round-tripping: parse a fragment, serialize it back, and check it matches the input.
