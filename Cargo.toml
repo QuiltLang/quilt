@@ -23,12 +23,17 @@ authors = ["Alexander Varga <varga.alex@gmail.com>"]
 quilt = {version = "0.1.0", path = "quilt", default-features = false}
 tree-sitter-quilt = {path = "tree-sitter-quilt"}
 # Grammar crates pulled from their QuiltLang forks (previously git submodules).
-tree-sitter-bash = {git = "https://github.com/QuiltLang/tree-sitter-bash.git"}
-tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git"}
-tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git"}
-tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git"}
-tree-sitter-wgsl = {git = "https://github.com/QuiltLang/tree-sitter-wgsl.git"}
-tree-sitter-zsh = {git = "https://github.com/QuiltLang/tree-sitter-zsh.git"}
+# Each is pinned to an explicit `rev` so the build is reproducible even for
+# library consumers and `cargo install --git … quilt` runs that ignore our
+# Cargo.lock: without a pin these track the fork's default-branch HEAD, so a new
+# commit or force-push on a fork would silently change builds. Bump a rev here
+# deliberately when pulling in upstream grammar changes.
+tree-sitter-bash = {git = "https://github.com/QuiltLang/tree-sitter-bash.git", rev = "4e44c9fca4f64f75dbafd64d07eb3b065f15e45b"}
+tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git", rev = "d81ae0f44b1e084a3383b3355c62cb6953260467"}
+tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"}
+tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "167de1910dcba9c59d6fa59e37868aa8d14c772b"}
+tree-sitter-wgsl = {git = "https://github.com/QuiltLang/tree-sitter-wgsl.git", rev = "a83b84c4dd9ce8f28ee79d36b09ccbaef0f51d6b"}
+tree-sitter-zsh = {git = "https://github.com/QuiltLang/tree-sitter-zsh.git", rev = "6923371dfd93a273e6ef4af0ba27c12ec8e5ab1d"}
 
 # External crates (versions only; features are selected per-crate)
 anyhow = "1"
