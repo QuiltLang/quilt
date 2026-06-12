@@ -171,11 +171,14 @@ fn rs_var() -> Result<()> {
 #[test]
 fn reduce_expands_homogeneous() -> Result<()> {
     // ↓ at ground level in Rust expands to `.reduce()` in the coparse output
-    let out = expand("rs", indoc! {r#"
+    let out = expand(
+        "rs",
+        indoc! {r#"
         fn main() {
             let result = program.↓;
         }
-    "#})?;
+    "#},
+    )?;
     assert_eq!(
         out.trim(),
         "fn main() {\n    let result = program.reduce();\n}"
@@ -186,11 +189,14 @@ fn reduce_expands_homogeneous() -> Result<()> {
 #[test]
 fn hetero_reduce_py_coparse() -> Result<()> {
     // py↓ at ground level in Rust expands to `.reduce_py()` in the coparse output
-    let out = expand("rs", indoc! {r#"
+    let out = expand(
+        "rs",
+        indoc! {r#"
         fn main() {
             let result = program.py↓;
         }
-    "#})?;
+    "#},
+    )?;
     assert_eq!(
         out.trim(),
         "fn main() {\n    let result = program.reduce_py();\n}"
@@ -200,37 +206,58 @@ fn hetero_reduce_py_coparse() -> Result<()> {
 
 #[test]
 fn hetero_reduce_py_expands_to_reduce_py() -> Result<()> {
-    let out = expand("rs", indoc! {r#"
+    let out = expand(
+        "rs",
+        indoc! {r#"
         fn main() {
             let result = program.py↓;
         }
-    "#})?;
-    assert!(out.contains("reduce_py()"), "expected `reduce_py()` in output, got: {out}");
+    "#},
+    )?;
+    assert!(
+        out.contains("reduce_py()"),
+        "expected `reduce_py()` in output, got: {out}"
+    );
     Ok(())
 }
 
 #[test]
 fn homo_reduce_expands_to_reduce() -> Result<()> {
-    let out = expand("rs", indoc! {r#"
+    let out = expand(
+        "rs",
+        indoc! {r#"
         fn main() {
             let result = program.↓;
         }
-    "#})?;
-    assert!(out.contains("reduce()"), "expected `reduce()` in output, got: {out}");
-    assert!(!out.contains("reduce_py()"), "should not contain `reduce_py()`, got: {out}");
+    "#},
+    )?;
+    assert!(
+        out.contains("reduce()"),
+        "expected `reduce()` in output, got: {out}"
+    );
+    assert!(
+        !out.contains("reduce_py()"),
+        "should not contain `reduce_py()`, got: {out}"
+    );
     Ok(())
 }
 
 #[test]
 fn py_homo_reduce_expands_to_reduce() -> Result<()> {
     let out = expand("py", "result = program.↓")?;
-    assert!(out.contains("reduce()"), "expected `reduce()` in py output, got: {out}");
+    assert!(
+        out.contains("reduce()"),
+        "expected `reduce()` in py output, got: {out}"
+    );
     Ok(())
 }
 
 #[test]
 fn py_hetero_reduce_rs_expands_to_reduce_rs() -> Result<()> {
     let out = expand("py", "result = program.rs↓")?;
-    assert!(out.contains("reduce_rs()"), "expected `reduce_rs()` in py output, got: {out}");
+    assert!(
+        out.contains("reduce_rs()"),
+        "expected `reduce_rs()` in py output, got: {out}"
+    );
     Ok(())
 }

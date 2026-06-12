@@ -1374,7 +1374,9 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let doc = params.text_document;
-        self.inner.ingest(doc.uri, doc.text, doc.version, None).await;
+        self.inner
+            .ingest(doc.uri, doc.text, doc.version, None)
+            .await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -1473,17 +1475,13 @@ impl LanguageServer for Backend {
         Ok(Some(self.inner.folding(&params.text_document.uri).await))
     }
 
-    async fn code_action(
-        &self,
-        params: CodeActionParams,
-    ) -> Result<Option<CodeActionResponse>> {
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = &params.text_document.uri;
         let Some(doc) = self.inner.docs.get(uri) else {
             return Ok(None);
         };
         let enc = self.inner.enc();
-        let actions =
-            crate::code_actions::code_actions(uri, &doc, enc, params.range);
+        let actions = crate::code_actions::code_actions(uri, &doc, enc, params.range);
         if actions.is_empty() {
             Ok(None)
         } else {

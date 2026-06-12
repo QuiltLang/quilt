@@ -10,8 +10,8 @@ use quilt::{
     term::STerm,
 };
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::fs;
+use std::hash::{Hash, Hasher};
 
 /**************************************************************/
 
@@ -124,7 +124,10 @@ fn clean() -> Result<()> {
         })
         .count();
     fs::remove_dir_all(&dir).into_diagnostic()?;
-    println!("Cleared {count} cached expansion(s) from {}.", dir.display());
+    println!(
+        "Cleared {count} cached expansion(s) from {}.",
+        dir.display()
+    );
     Ok(())
 }
 
@@ -132,8 +135,7 @@ fn expand(args: &ExpandArgs) -> Result<()> {
     let input_filename = &args.filename;
     let output_filename = input_filename.strip_suffix(".quilt").unwrap();
 
-    let canonical = fs::canonicalize(input_filename)
-        .unwrap_or_else(|_| input_filename.into());
+    let canonical = fs::canonicalize(input_filename).unwrap_or_else(|_| input_filename.into());
     let path_key = canonical.to_string_lossy().into_owned();
     let (mtime_secs, mtime_nanos) = fs::metadata(input_filename)
         .ok()

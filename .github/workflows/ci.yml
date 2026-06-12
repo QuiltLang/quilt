@@ -41,13 +41,16 @@ jobs:
         run: bin/ctest
 
   lint:
-    name: Lint (clippy)
+    name: Lint (fmt + clippy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy, rustfmt
+      # Formatting needs no build, so check it first for fast feedback.
+      - name: Format check
+        run: bin/fmt-check
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"

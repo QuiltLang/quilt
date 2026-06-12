@@ -12,7 +12,7 @@ cargo build
 cargo test                 # or `ctest` (wrapper that works from anywhere)
 cargo test -p quilt node   # single test
 cargo clippy               # or `lint` (adds --tests)
-cargo fmt
+cargo fmt                  # `fmt-check` verifies formatting without writing (CI)
 
 # Expand a .quilt file (bin/quilt wraps `cargo run -p quilt --`)
 quilt expand path/to/file.rs.quilt
