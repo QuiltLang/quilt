@@ -28,8 +28,20 @@ same bare specifier expanded `.ts.quilt` programs import. The `publish-npm` job
 in `.github/workflows/ci.yml` runs on every `v*` tag (after the check matrix
 passes): it does `wasm-pack build quilt-wasm --target web` and `npm publish`es
 the resulting `pkg/`. The package version tracks the workspace version in
-`Cargo.toml`. Auth uses the `NPM_TOKEN` repo secret; a tag with the secret unset
-or a version already on npm is a no-op, not a failure.
+`Cargo.toml`.
+
+Auth is **npm Trusted Publishing (OIDC)** — no secret to manage; GitHub's
+`id-token` authenticates the publish and npm records build provenance. One-time
+setup, because npm can only attach a trusted publisher to a package that already
+exists:
+
+1. Publish the first version manually: `wasm-pack build quilt-wasm --target web`,
+   then `npm login` and `npm publish` from `quilt-wasm/pkg/`.
+2. On npmjs.com → the package → **Settings → Trusted Publisher**, add a GitHub
+   Actions publisher for repo `QuiltLang/quilt`, workflow `ci.yml`.
+
+After that every `v*` tag publishes with no token. A version already on npm is a
+no-op, not a failure.
 
 ## Smoke test
 
