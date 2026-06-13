@@ -12,6 +12,8 @@ pub mod python;
 pub mod rust;
 #[cfg(feature = "text")]
 pub mod text;
+#[cfg(feature = "typescript")]
+pub mod typescript;
 #[cfg(feature = "wgsl")]
 pub mod wgsl;
 #[cfg(feature = "zsh")]

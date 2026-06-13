@@ -35,6 +35,7 @@ tree-sitter-html = {workspace = true, optional = true}
 tree-sitter-python = {workspace = true, optional = true}
 tree-sitter-quilt = {workspace = true, optional = true}
 tree-sitter-rust = {workspace = true, optional = true}
+tree-sitter-typescript = {workspace = true, optional = true}
 tree-sitter-wgsl = {workspace = true, optional = true}
 tree-sitter-zsh = {workspace = true, optional = true}
 
@@ -47,7 +48,7 @@ workspace = true
 
 [features]
 bootstrap = ["parse"]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript"]
 # `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
 # the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
 # the runtime-only consumers (e.g. nanobots-codegen on wasm).
@@ -62,6 +63,7 @@ html = ["dep:tree-sitter-html", "parse"]
 python = []
 rust = []
 text = []
+typescript = ["dep:tree-sitter-typescript", "parse"]
 wgsl = ["dep:tree-sitter-wgsl", "parse"]
 zsh = ["dep:tree-sitter-zsh", "parse"]
 

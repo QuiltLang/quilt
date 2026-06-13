@@ -1037,6 +1037,7 @@ dependencies = [
  "tree-sitter-python",
  "tree-sitter-quilt",
  "tree-sitter-rust",
+ "tree-sitter-typescript",
  "tree-sitter-wgsl",
  "tree-sitter-zsh",
 ]
@@ -1612,6 +1613,15 @@ dependencies = [
 name = "tree-sitter-rust"
 version = "0.24.0"
 source = "git+https://github.com/QuiltLang/tree-sitter-rust.git?rev=167de1910dcba9c59d6fa59e37868aa8d14c772b#167de1910dcba9c59d6fa59e37868aa8d14c772b"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "git+https://github.com/QuiltLang/tree-sitter-typescript.git?rev=25f4db1700b970293b83c5964581ff8ef718106f#25f4db1700b970293b83c5964581ff8ef718106f"
 dependencies = [
  "cc",
  "tree-sitter-language",
