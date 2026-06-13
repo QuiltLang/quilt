@@ -1,7 +1,7 @@
 [package]
 name = "tree-sitter-quilt"
 description = "Quilt grammar for tree-sitter"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Alexander Varga <varga.alex@gmail.com>"]
 license.workspace = true
 keywords = ["incremental", "parsing", "tree-sitter", "quilt"]
