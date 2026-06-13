@@ -14,10 +14,14 @@
 //! 3. Python `unwrap` respects `ikind` — when the caller passes an explicit
 //!    `InnerKind` hint, Python's `unwrap` uses it instead of guessing.
 //!
-//! (Issue #25 items #2 `typ` for target languages and #4 `InnerKind::Block`
-//! are deferred: both need the emit/splice heuristic to classify a child by its
-//! *own* language rather than the enclosing quote's before they can be added
-//! without breaking the existing splice behaviour.)
+//! (Issue #25 item #2 — `typ` for target languages — is still deferred: it
+//! needs the emit/splice heuristic to classify a child by its *own* language
+//! rather than the enclosing quote's before it can be added without breaking
+//! the existing splice behaviour. Item #4 — `InnerKind::Block` — has since
+//! landed via issue #10: rather than mapping the `{}` placeholder's tag (which
+//! would poison every Rust expression hole), `TSProvider::hole_kind` reads the
+//! hole's parent in the parse tree, so only body-position blocks become
+//! `Block`. See `rs_block_hole_ikind` in tests/kinds.rs.)
 
 use indoc::indoc;
 use quilt::{

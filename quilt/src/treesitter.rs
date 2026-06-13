@@ -58,6 +58,19 @@ pub trait TSProvider {
         Default::default()
     }
 
+    /// The [`InnerKind`] a hole at this tree-sitter node's position demands.
+    ///
+    /// Unlike [`typ`](TSProvider::typ), which only sees a node's *kind* (its
+    /// tag), this is handed the node in its parse tree, so it can read context
+    /// the tag alone can't express. The motivating case is [`InnerKind::Block`]:
+    /// a Rust `block` is an expression by tag (`let x = { … }`), but in body
+    /// position (`fn f() { … }`, `loop { … }`, `if c { … }`) it denotes a block
+    /// body. The default ignores the extra context and falls back to
+    /// `typ(node.kind())`.
+    fn hole_kind(&self, node: tree_sitter::Node) -> InnerKind {
+        self.typ(node.kind())
+    }
+
     /// Classify a fully-parsed term to determine its kind.  Unlike [`typ`],
     /// which only sees the root tag, this can inspect the full term tree.
     /// The default falls back to `typ` on the root tag; override for languages
@@ -122,7 +135,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 hole_points.next();
                 holes.push(Hole {
                     otag: node.kind().into(),
-                    ikind: Some(provider.typ(node.kind())),
+                    // `hole_kind` (not `typ`) so the surrounding tree can refine
+                    // the kind — e.g. a body-position `block` becomes `Block`
+                    // rather than the `Expr` its tag alone implies.
+                    ikind: Some(provider.hole_kind(node)),
                     prefix: prefix.clone().into(),
                 });
                 return qsym(hole_str);
