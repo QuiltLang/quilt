@@ -10,6 +10,7 @@ use crate::{
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
+use miette::Result;
 use tree_sitter::Parser;
 
 /**************************************************************/
@@ -42,25 +43,26 @@ impl TSProvider for WgslProvider {
     ///
     /// The returned `InnerKind` is advisory only (`parse_pre` discards it; the
     /// emit heuristic re-derives the kind from the term via `classify_term`).
-    /// We never panic on an unexpected shape, unlike the Rust provider.
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    /// We accept any shape here rather than rejecting unrecognised ones, unlike
+    /// the Rust provider (which errors on shapes it can't place).
+    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> Result<(QTerm, InnerKind)> {
         let QTerm::Tuple { tag, terms, .. } = &qterm else {
-            return (qterm, InnerKind::default());
+            return Ok((qterm, InnerKind::default()));
         };
         if &**tag != "source_file" {
-            return (qterm, InnerKind::default());
+            return Ok((qterm, InnerKind::default()));
         }
         if terms.len() != 1 {
             // empty file, or several top-level declarations (a whole shader),
             // or a statement plus its trailing `;` — all kept whole. The
             // statement/`;` shape is recognised by `classify_term` below.
-            return (qterm, InnerKind::File);
+            return Ok((qterm, InnerKind::File));
         }
         let kind = match &*terms[0] {
             QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
             _ => InnerKind::Stmt,
         };
-        (qterm.squash(), kind)
+        Ok((qterm.squash(), kind))
     }
 
     fn arity(&self, tag: &str) -> Arity {

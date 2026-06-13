@@ -4,6 +4,7 @@ use crate::{
     term::Term,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
+use miette::Result;
 use tree_sitter::Parser;
 
 /**************************************************************/
@@ -50,9 +51,9 @@ impl TSProvider for PythonProvider {
         }
     }
 
-    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> Result<(QTerm, InnerKind)> {
         if qterm.len() != 1 {
-            return (qterm, InnerKind::File);
+            return Ok((qterm, InnerKind::File));
         }
         let qterm = qterm.squash();
         if qterm.tag() == QTermTag::tuple("expression_statement") {
@@ -61,28 +62,28 @@ impl TSProvider for PythonProvider {
             // the statement whole; bare tuples render without delimiters, so
             // the fragment splices flat into expression position.
             if qterm.len() != 1 {
-                return (qterm, InnerKind::Expr);
+                return Ok((qterm, InnerKind::Expr));
             }
             let inner = qterm.squash();
             if inner.tag() == QTermTag::tuple("assignment") {
                 // An assignment is always a statement, regardless of position.
-                return (inner, InnerKind::Stmt);
+                return Ok((inner, InnerKind::Stmt));
             }
             // A non-assignment expression statement like `foo()`. When the
             // caller explicitly placed the hole in statement position, honour
             // that: keep the `expression_statement` wrapper and report Stmt.
             // Otherwise treat it as a bare expression and squash to the inner.
             if ikind == Some(InnerKind::Stmt) {
-                return (qterm, InnerKind::Stmt);
+                return Ok((qterm, InnerKind::Stmt));
             }
-            return (inner, InnerKind::Expr);
+            return Ok((inner, InnerKind::Expr));
         }
         // If the caller explicitly expected an expression (e.g. the hole was
         // in expression position), trust that over the default Stmt guess.
         if ikind == Some(InnerKind::Expr) {
-            return (qterm, InnerKind::Expr);
+            return Ok((qterm, InnerKind::Expr));
         }
-        (qterm, InnerKind::Stmt)
+        Ok((qterm, InnerKind::Stmt))
     }
 }
 

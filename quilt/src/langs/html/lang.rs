@@ -14,6 +14,7 @@ use crate::{
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
+use miette::Result;
 use tree_sitter::Parser;
 
 /**************************************************************/
@@ -44,24 +45,26 @@ impl TSProvider for HtmlProvider {
     /// term is the fragment itself (element / text / …). A multi-node fragment
     /// (a whole page) stays a `document`.
     ///
-    /// The returned `InnerKind` is advisory only (`parse_pre` discards it); we
-    /// never panic on an unexpected shape, like the WGSL provider.
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    /// The returned `InnerKind` is advisory only (`parse_pre` discards it); like
+    /// the WGSL provider, we accept any shape here rather than rejecting
+    /// unrecognised ones (only the Rust provider errors on shapes it can't
+    /// place).
+    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> Result<(QTerm, InnerKind)> {
         let QTerm::Tuple { tag, terms, .. } = &qterm else {
-            return (qterm, InnerKind::default());
+            return Ok((qterm, InnerKind::default()));
         };
         if &**tag != "document" {
-            return (qterm, InnerKind::default());
+            return Ok((qterm, InnerKind::default()));
         }
         if terms.len() != 1 {
             // empty file, or several top-level nodes (a whole page)
-            return (qterm, InnerKind::File);
+            return Ok((qterm, InnerKind::File));
         }
         let kind = match &*terms[0] {
             QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
             _ => InnerKind::Stmt,
         };
-        (qterm.squash(), kind)
+        Ok((qterm.squash(), kind))
     }
 
     fn arity(&self, tag: &str) -> Arity {
