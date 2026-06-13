@@ -69,16 +69,35 @@ impl TSProvider for RustProvider {
     }
 
     fn typ(&self, tag: &str) -> InnerKind {
-        if tag == "source_file" {
-            InnerKind::File
-        } else if tag.ends_with("statement")
-            || tag.ends_with("item")
-            || tag.ends_with("declaration")
-        {
-            InnerKind::Stmt
-        } else {
-            InnerKind::Expr
+        match tag {
+            "source_file" => InnerKind::File,
+            // `let_declaration` ends with "declaration" but is a statement, not
+            // an item — match it before the item rule below.
+            "let_declaration" => InnerKind::Stmt,
+            _ if tag.ends_with("item") || tag.ends_with("declaration") => InnerKind::Item,
+            _ if tag.ends_with("statement") => InnerKind::Stmt,
+            _ => InnerKind::Expr,
         }
+    }
+
+    fn hole_kind(&self, node: tree_sitter::Node) -> InnerKind {
+        // A `block` is a value (expression) by tag, but in body/branch
+        // position it is a block body. Read the parent to tell the two apart:
+        // `fn f() {…}` / `loop {…}` use the `body` field, `if c {…}` uses
+        // `consequence`, and the `else {…}` block hangs off an `else_clause`.
+        // (A `block` in `value` position — `let x = {…}` — stays `Expr`.)
+        if node.kind() == "block" {
+            if let Some(parent) = node.parent() {
+                let is_body = parent.kind() == "else_clause"
+                    || ["body", "consequence"]
+                        .iter()
+                        .any(|field| parent.child_by_field_name(field) == Some(node));
+                if is_body {
+                    return InnerKind::Block;
+                }
+            }
+        }
+        self.typ(node.kind())
     }
 
     fn hashbang(&self) -> Option<&'static str> {

@@ -1,4 +1,4 @@
-use crate::lang::{Arity, InnerKind, Language, LanguagePost};
+use crate::lang::{Arity, Language, LanguagePost};
 #[cfg(feature = "parse")]
 use crate::lang::{FlatNode, Hole};
 use crate::meta::{MetaLanguage, OuterKind};
@@ -476,9 +476,8 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                                     ..
                                 } = &**term
                                 {
-                                    if self.langs.get(self.lang)?.typ(qtag) == InnerKind::Stmt
-                                        && self.langs.get(lang2)?.classify_term(body)
-                                            == InnerKind::Stmt
+                                    if self.langs.get(self.lang)?.typ(qtag).is_stmt_like()
+                                        && self.langs.get(lang2)?.classify_term(body).is_stmt_like()
                                     {
                                         okind = OuterKind::Emit;
                                     }
@@ -550,7 +549,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                                 {
                                     if index == d {
                                         if let QTerm::Tuple { tag, .. } = &**child {
-                                            if self.langs.get(lang1)?.typ(tag) == InnerKind::Stmt {
+                                            if self.langs.get(lang1)?.typ(tag).is_stmt_like() {
                                                 okind = OuterKind::Splice;
                                             }
                                         }

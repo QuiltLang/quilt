@@ -6,14 +6,44 @@ use std::sync::Arc;
 /**************************************************************/
 
 /// Kinds of terms. These are sorts of messages for communicating between parsers.
+///
+/// The variants name the grammatical roles a fragment can play. Languages map
+/// their tree-sitter node tags onto these via [`Language::typ`] /
+/// [`Language::classify_term`], and holes record the kind their position
+/// demands via [`TSProvider::hole_kind`](crate::treesitter::TSProvider::hole_kind).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InnerKind {
+    /// An expression — produces a value (e.g. `1 + 2`, a function call).
     Expr,
+    /// A statement — runs for its effect and lives among siblings in a block
+    /// (e.g. `let x = 1;`, an expression statement).
     Stmt,
+    /// An item / top-level declaration (e.g. `fn`, `struct`, `impl`, `use`).
+    /// Like [`Stmt`](InnerKind::Stmt) it sits among siblings rather than
+    /// producing a value, but it is a definition rather than a runtime
+    /// statement. [`InnerKind::is_stmt_like`] groups the two.
+    Item,
+    /// A brace-delimited block *body* — the `{ … }` of a function, loop, or
+    /// branch. Distinct from a block used as a value (which is an
+    /// [`Expr`](InnerKind::Expr)); see
+    /// [`TSProvider::hole_kind`](crate::treesitter::TSProvider::hole_kind),
+    /// which reads the surrounding tree to tell the two apart.
+    Block,
     #[default]
-    // TODO: rename or also add `Block`
+    /// A whole file / module — a sequence of top-level items.
     File,
     // TODO: add more, language specific types, number, function, etc.
+}
+
+impl InnerKind {
+    /// Whether a fragment of this kind lives in a "variadic" sibling position
+    /// (a statement or an item) rather than producing a value. The expander's
+    /// emit/splice heuristics treat statements and items alike, so they ask
+    /// this instead of comparing against a single variant.
+    #[must_use]
+    pub fn is_stmt_like(self) -> bool {
+        matches!(self, InnerKind::Stmt | InnerKind::Item)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
