@@ -5,9 +5,11 @@ edition.workspace = true
 # everywhere. External consumers depend on it via
 # `quilt = { package = "quiltlang", version = "0.1" }`. See issue #33.
 name = "quiltlang"
+description = "Quilt, a polyglot metaprogramming language: source code with arrow-bracket syntax for embedding and manipulating code fragments of other languages at code-generation time."
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
 
 [lib]
 name = "quilt"
