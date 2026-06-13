@@ -22,12 +22,13 @@ if (!existsSync(join(dist, "quilt-expand.wasm"))) {
   process.exit(0);
 }
 
-// Resolve the bare `quilt-wasm` specifier for the expanded module (import-map
-// equivalent), pointing at the same runtime files we initialise here.
+// Resolve the bare `quilt` specifier for the expanded module (import-map
+// equivalent), pointing at the same runtime files we initialise here. The dist
+// runtime dir stays `quilt-wasm`; only the node_modules entry is named `quilt`.
 const nm = join(dist, "node_modules");
-if (!existsSync(join(nm, "quilt-wasm"))) {
+if (!existsSync(join(nm, "quilt"))) {
   mkdirSync(nm, { recursive: true });
-  symlinkSync(join("..", "quilt-wasm"), join(nm, "quilt-wasm"));
+  symlinkSync(join("..", "quilt-wasm"), join(nm, "quilt"));
 }
 
 // 1. Expand the source through the wasm expander + WASI shim.
@@ -43,7 +44,7 @@ assert(ts.includes('tb("element")') && ts.includes("qlift_html("), "expanded to 
 const { default: init } = await import(pathToFileURL(join(dist, "quilt-wasm", "quilt_wasm.js")));
 await init({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_bg.wasm")) });
 
-// The expanded module imports "quilt-wasm" (bare) → dist/node_modules → same
+// The expanded module imports "quilt" (bare) → dist/node_modules → same
 // runtime instance. Write it inside dist so that resolution works.
 const modPath = join(dist, "__expanded.mjs");
 writeFileSync(modPath, ts);

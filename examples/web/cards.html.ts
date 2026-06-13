@@ -11,7 +11,7 @@
 // runtime; index.html loads the expansion as an ES module and injects
 // render() into the page. It is deliberately annotation-free so the expansion
 // is valid JavaScript a browser can run without a transpile step.
-import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt-wasm";
+import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
 
 // One card as a quoted HTML fragment, with the title and body lifted in as
 // entity-escaped text.

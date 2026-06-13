@@ -5,7 +5,7 @@
 //
 //   node examples/web/verify.mjs
 //
-// Node resolves module identity by realpath, so app.js's bare `quilt-wasm`
+// Node resolves module identity by realpath, so app.js's bare `quilt`
 // import (via the dist/node_modules symlink) is the *same* module instance we
 // initialise here — render() sees an initialised runtime.
 import { execSync } from "node:child_process";
@@ -20,12 +20,13 @@ const dist = join(here, "dist");
 // 1. Build the static demo.
 execSync(`node ${join(here, "build.mjs")}`, { stdio: "inherit" });
 
-// 2. Make the bare `quilt-wasm` specifier resolve for app.js (import-map
-//    equivalent), pointing at the same files the page uses.
+// 2. Make the bare `quilt` specifier resolve for app.js (import-map
+//    equivalent), pointing at the same files the page uses. The dist runtime
+//    dir stays `quilt-wasm`; only the node_modules entry is named `quilt`.
 const nm = join(dist, "node_modules");
-if (!existsSync(join(nm, "quilt-wasm"))) {
+if (!existsSync(join(nm, "quilt"))) {
   mkdirSync(nm, { recursive: true });
-  symlinkSync(join("..", "quilt-wasm"), join(nm, "quilt-wasm"));
+  symlinkSync(join("..", "quilt-wasm"), join(nm, "quilt"));
 }
 
 // 3. Initialise the WebAssembly from bytes, then run the program's render().

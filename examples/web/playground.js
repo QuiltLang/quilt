@@ -8,7 +8,7 @@
 // demo. Both are WebAssembly; only the expander needs WASI (it links the C
 // grammars), so it runs through the small hand-rolled shim in wasi-shim.js.
 
-import initRuntime from "quilt-wasm";
+import initRuntime from "quilt";
 import { WASI } from "./wasi-shim.js";
 
 const $ = (id) => document.getElementById(id);
@@ -39,7 +39,7 @@ function expand(source) {
 }
 
 // Import the expanded TypeScript as a module and call its render(). The blob
-// module's bare `quilt-wasm` import resolves through the page import map to the
+// module's bare `quilt` import resolves through the page import map to the
 // already-initialised runtime, so it shares the same wasm instance.
 async function run(tsSource) {
   const url = URL.createObjectURL(new Blob([tsSource], { type: "text/javascript" }));

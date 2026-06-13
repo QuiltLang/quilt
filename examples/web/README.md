@@ -14,9 +14,9 @@ in the browser.
   browser loads as an ES module with no transpile step.
 - `cards.html.ts` — the committed expansion (`quilt expand cards.html.ts.quilt`):
   plain TypeScript whose `html↖…↗` quotes have become `quilt-wasm` builder calls.
-- `index.html` — the page shell. An import map resolves the bare `quilt-wasm`
-  specifier to the runtime; a module script initialises the WebAssembly and
-  injects `render()` into the page.
+- `index.html` — the page shell. An import map resolves the bare `quilt`
+  specifier to the runtime (published on npm as `quilt-wasm`); a module script
+  initialises the WebAssembly and injects `render()` into the page.
 
 ## 2. Meta-meta playground (`/playground.html`, issue #47)
 
@@ -34,7 +34,7 @@ source --(WASI shim + quilt-expand.wasm)--> TypeScript --(import + runtime)--> H
 - `wasi-shim.js` — a tiny hand-rolled WASI preview1 shim (zero deps) that runs
   the expander command, wiring argv / stdin / stdout to in-memory buffers.
 - `playground.js` / `playground.html` — drive the loop: run the expander, show
-  the expanded TypeScript, import it as a module (its bare `quilt-wasm` import
+  the expanded TypeScript, import it as a module (its bare `quilt` import
   resolves through the page import map to the runtime), and render the result.
 
 The *run* step imports the expansion as a module, so it needs the expansion to

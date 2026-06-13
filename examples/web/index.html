@@ -15,10 +15,12 @@
     footer { color: #888; font-size: .85rem; margin-top: 2rem; }
     code { background: #f4f4f4; padding: .1rem .3rem; border-radius: 4px; }
   </style>
-  <!-- Resolve the bare `quilt-wasm` specifier (used by app.js) to the runtime
-       built with `wasm-pack build quilt-wasm --target web`. No bundler. -->
+  <!-- Resolve the bare `quilt` specifier (used by app.js) to the runtime
+       built with `wasm-pack build quilt-wasm --target web`. No bundler.
+       (The npm package is published as `quilt-wasm`; this import map maps it
+       to the bare `quilt` name the demos import.) -->
   <script type="importmap">
-  { "imports": { "quilt-wasm": "./quilt-wasm/quilt_wasm.js" } }
+  { "imports": { "quilt": "./quilt-wasm/quilt_wasm.js" } }
   </script>
 </head>
 <body>
@@ -39,7 +41,7 @@
   </footer>
 
   <script type="module">
-    import init from "quilt-wasm";
+    import init from "quilt";
     import { render } from "./app.js";
 
     // The runtime is WebAssembly, so initialise it before calling in.
