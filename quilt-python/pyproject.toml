@@ -3,11 +3,13 @@ requires = ["maturin>=1.4,<2.0"]
 build-backend = "maturin"
 
 [project]
-# PyPI distribution name is `quiltlang` (`quilt` is taken on PyPI — Quilt
-# Data's package manager; see issue #33). The Python *import* name stays
-# `quilt` via [tool.maturin] module-name below; the Cargo crate stays
-# `quilt_python`.
-name = "quiltlang"
+# PyPI distribution name is `quilt-python`. `quilt` is taken (Quilt Data's
+# package manager) and `quiltlang` is rejected by PyPI as "too similar to an
+# existing project" (issue #33), so the Python distribution diverges from the
+# crates.io crate name (`quiltlang`). The Python *import* name still stays
+# `quilt` via [tool.maturin] module-name below, so `from quilt import …` is
+# unchanged; the Cargo crate stays `quilt_python`.
+name = "quilt-python"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",

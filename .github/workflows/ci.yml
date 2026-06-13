@@ -153,7 +153,7 @@ jobs:
           # cargo publish -p quiltlang
           # cargo publish -p quilt-lsp
 
-  # PyPI: build the `quiltlang` distribution (abi3 wheels, one per platform,
+  # PyPI: build the `quilt-python` distribution (abi3 wheels, one per platform,
   # each working for any CPython >= 3.8, plus an sdist) with maturin. The
   # Python import name stays `quilt` (pyproject.toml module-name).
   pypi-wheels:
@@ -204,10 +204,10 @@ jobs:
           name: pypi-sdist
           path: dist
 
-  # Upload via PyPI Trusted Publishing (OIDC): the pending publisher on PyPI
-  # must point at QuiltLang/quilt + workflow `ci.yml` and the project name
-  # `quiltlang` (the distribution name in quilt-python/pyproject.toml). No API
-  # token / secret is needed; `id-token: write` is what authenticates us.
+  # Upload via PyPI Trusted Publishing (OIDC): the publisher on PyPI must point
+  # at QuiltLang/quilt + workflow `ci.yml` and the project name `quilt-python`
+  # (the distribution name in quilt-python/pyproject.toml). No API token /
+  # secret is needed; `id-token: write` is what authenticates us.
   publish-pypi:
     name: Publish to PyPI
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'QuiltLang/quilt'
