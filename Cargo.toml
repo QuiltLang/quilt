@@ -44,9 +44,8 @@ tree-sitter-bash = {git = "https://github.com/QuiltLang/tree-sitter-bash.git", r
 tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git", rev = "d81ae0f44b1e084a3383b3355c62cb6953260467"}
 tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"}
 tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "167de1910dcba9c59d6fa59e37868aa8d14c772b"}
-# Pinned to the `quilt-hole` change (QuiltLang/tree-sitter-typescript#1, issue
-# #44), which adds the `__HOLE__` interpolation token. Re-pin to the squashed
-# rev once that PR merges to the fork's master.
+# The `quilt_hole` change (issue #44) is merged to the fork's master; this rev
+# is its tip, adding the `__HOLE__` interpolation token.
 tree-sitter-typescript = {git = "https://github.com/QuiltLang/tree-sitter-typescript.git", rev = "25f4db1700b970293b83c5964581ff8ef718106f"}
 tree-sitter-wgsl = {git = "https://github.com/QuiltLang/tree-sitter-wgsl.git", rev = "a83b84c4dd9ce8f28ee79d36b09ccbaef0f51d6b"}
 tree-sitter-zsh = {git = "https://github.com/QuiltLang/tree-sitter-zsh.git", rev = "6923371dfd93a273e6ef4af0ba27c12ec8e5ab1d"}
