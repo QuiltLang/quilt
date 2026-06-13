@@ -1,0 +1,22 @@
+[package]
+edition.workspace = true
+name = "quilt-wasm"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+# The runtime that expanded `.ts.quilt` programs target in the browser — the
+# JS/WASM analog of the `quilt` Python module (`quilt-python/`). Exposes the
+# `QTerm` builder, `qlift`/`qlift_html`, and `coparse` to JavaScript via
+# wasm-bindgen. Like `nanobots-codegen`, it depends on `quilt` with
+# `default-features = false, features = ["rust"]`, so the tree-sitter-free
+# runtime path builds for `wasm32-unknown-unknown` with no C runtime.
+
+[lib]
+# `cdylib` for the wasm artifact (wasm-pack); `rlib` so host `cargo test` works.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+quilt = {workspace = true, features = ["rust"]}
+wasm-bindgen = "0.2"
