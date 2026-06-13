@@ -20,6 +20,11 @@ use super::rust::{
 };
 #[cfg(feature = "text")]
 use super::text::lang::{DynTextLanguage, TextLanguage};
+#[cfg(feature = "typescript")]
+use super::typescript::{
+    lang::{DynTypeScriptLanguage, TypeScriptLanguage},
+    meta::TypeScriptMetaLanguage,
+};
 #[cfg(feature = "wgsl")]
 use super::wgsl::lang::{DynWgslLanguage, WgslLanguage};
 #[cfg(feature = "zsh")]
@@ -486,11 +491,13 @@ define_omni! {
         py   if "python" => Python(PythonLanguage, DynPythonLanguage): ["python", "py"];
         rs   if "rust"   => Rust(RustLanguage, DynRustLanguage):       ["rust", "rs"];
         txt  if "text"   => Text(TextLanguage, DynTextLanguage):       ["text", "txt"];
+        ts   if "typescript" => TypeScript(TypeScriptLanguage, DynTypeScriptLanguage): ["typescript", "ts"];
         wgsl if "wgsl"   => Wgsl(WgslLanguage, DynWgslLanguage):       ["wgsl"];
         zsh  if "zsh"    => Zsh(ZshLanguage, DynZshLanguage):          ["zsh"];
     }
     metas {
         py   if "python" => Python(PythonMetaLanguage):                ["python", "py"];
         rs   if "rust"   => Rust(RustMetaLanguage):                    ["rust", "rs"];
+        ts   if "typescript" => TypeScript(TypeScriptMetaLanguage):    ["typescript", "ts"];
     }
 }
