@@ -4,6 +4,7 @@ use crate::{
     term::Term,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
+use miette::Result;
 use tree_sitter::Parser;
 
 /**************************************************************/
@@ -63,10 +64,10 @@ impl TSProvider for TypeScriptProvider {
     /// Python provider. A single top-level `expression_statement` squashes to
     /// its inner expression (so `ts↖foo()↗` splices in expression position);
     /// the hole's known position (`ikind`) settles the ambiguous cases.
-    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    fn unwrap(&self, qterm: QTerm, ikind: Option<InnerKind>) -> Result<(QTerm, InnerKind)> {
         // empty file, or several top-level nodes — keep the `program` whole.
         if qterm.len() != 1 {
-            return (qterm, InnerKind::File);
+            return Ok((qterm, InnerKind::File));
         }
         let qterm = qterm.squash();
         if qterm.tag() == QTermTag::tuple("expression_statement") {
@@ -74,27 +75,27 @@ impl TSProvider for TypeScriptProvider {
             // sequence: keep the statement, but it splices flat as an
             // expression.
             if qterm.len() != 1 {
-                return (qterm, InnerKind::Expr);
+                return Ok((qterm, InnerKind::Expr));
             }
             let inner = qterm.squash();
             // When the caller explicitly placed the hole in statement position,
             // honour that (keep the `expression_statement`); otherwise treat a
             // bare expression statement as an expression.
             if ikind == Some(InnerKind::Stmt) {
-                return (qterm, InnerKind::Stmt);
+                return Ok((qterm, InnerKind::Stmt));
             }
-            return (inner, InnerKind::Expr);
+            return Ok((inner, InnerKind::Expr));
         }
         // A declaration / control-flow statement / other top-level node. Trust
         // an explicit expression expectation over the default Stmt guess.
         if ikind == Some(InnerKind::Expr) {
-            return (qterm, InnerKind::Expr);
+            return Ok((qterm, InnerKind::Expr));
         }
         let tag = match &qterm {
             QTerm::Tuple { tag, .. } => self.typ(tag),
             _ => InnerKind::Stmt,
         };
-        (qterm, tag)
+        Ok((qterm, tag))
     }
 }
 

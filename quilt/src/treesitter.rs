@@ -46,8 +46,8 @@ pub trait TSProvider {
     /// A string representing a hole where another language is dropped in.
     /// Must not contain new-lines.
     fn hole_str(&self) -> &'static str;
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
-        (qterm, Default::default())
+    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> Result<(QTerm, InnerKind)> {
+        Ok((qterm, Default::default()))
     }
     fn arity(&self, _tag: &str) -> Arity {
         Default::default()
@@ -262,7 +262,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             &mut prefix,
             true,
         );
-        let (qterm, _ikind) = self.provider.unwrap(qterm, ikind);
+        let (qterm, _ikind) = self.provider.unwrap(qterm, ikind)?;
         let holes = holes.into();
         let hole_str = self.provider.hole_str();
 

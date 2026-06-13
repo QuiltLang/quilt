@@ -10,6 +10,7 @@ use crate::{
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
+use miette::Result;
 use tree_sitter::Parser;
 
 /**************************************************************/
@@ -43,21 +44,21 @@ impl TSProvider for ZshProvider {
     /// Squash the `program` wrapper around a single quoted fragment so the
     /// term is the fragment itself (command / statement). A multi-statement
     /// fragment (a whole script) stays a `program`.
-    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> (QTerm, InnerKind) {
+    fn unwrap(&self, qterm: QTerm, _ikind: Option<InnerKind>) -> Result<(QTerm, InnerKind)> {
         let QTerm::Tuple { tag, terms, .. } = &qterm else {
-            return (qterm, InnerKind::default());
+            return Ok((qterm, InnerKind::default()));
         };
         if &**tag != "program" {
-            return (qterm, InnerKind::default());
+            return Ok((qterm, InnerKind::default()));
         }
         if terms.len() != 1 {
-            return (qterm, InnerKind::File);
+            return Ok((qterm, InnerKind::File));
         }
         let kind = match &*terms[0] {
             QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
             _ => InnerKind::Stmt,
         };
-        (qterm.squash(), kind)
+        Ok((qterm.squash(), kind))
     }
 
     fn arity(&self, tag: &str) -> Arity {
