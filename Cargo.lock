@@ -978,6 +978,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "quilt-expand-wasm"
+version = "0.1.0"
+dependencies = [
+ "miette",
+ "quiltlang",
+]
+
+[[package]]
 name = "quilt-lsp"
 version = "0.1.0"
 dependencies = [

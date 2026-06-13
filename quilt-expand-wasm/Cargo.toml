@@ -1,0 +1,27 @@
+[package]
+edition.workspace = true
+name = "quilt-expand-wasm"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+# The Quilt *expander* compiled to WebAssembly for the in-browser meta-meta demo
+# (issue #47). Unlike the `quilt-wasm` runtime (wasm-bindgen, the tree-sitter-
+# free path, `wasm32-unknown-unknown`), expansion needs the `parse` feature —
+# tree-sitter plus the C grammars — which requires a libc, so this targets
+# `wasm32-wasip1` and is driven in the browser through a small WASI shim.
+#
+# It is a WASI *command*: read the `.quilt` source from stdin, take the language
+# chain (ground first) from argv, write expanded source to stdout. Build with a
+# WASI sysroot for the C grammars, e.g.:
+#
+#   WASI=$HOME/wasi-sdk-33.0-arm64-macos \
+#   CC_wasm32_wasip1=$WASI/bin/clang \
+#   CFLAGS_wasm32_wasip1="--sysroot=$WASI/share/wasi-sysroot" \
+#   AR_wasm32_wasip1=$WASI/bin/llvm-ar \
+#   cargo build -p quilt-expand-wasm --release --target wasm32-wasip1
+
+[dependencies]
+quilt = {workspace = true, features = ["parse", "html", "typescript"]}
+miette = {workspace = true}
