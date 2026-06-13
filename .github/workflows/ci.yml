@@ -242,3 +242,67 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
+
+  # VS Code extension (tools/quilt): package with vsce and publish to the VS
+  # Code Marketplace + Open VSX. Unlike the crates.io/PyPI jobs this uses PAT
+  # secrets (VSCE_PAT for the `quiltlang` Marketplace publisher, OVSX_PAT for
+  # Open VSX), not OIDC, so it isn't pinned to this workflow file. The extension
+  # is plain JS (no compile step); vsce bundles the one prod dep
+  # (vscode-languageclient) because .vscodeignore keeps node_modules.
+  #
+  # Version guard: both registries reject re-publishing an existing version, so
+  # each publish tolerates the "already exists" case (treats it as a no-op) and
+  # fails only on a real error. A core-only release or a re-tag therefore won't
+  # fail here — bump tools/quilt/package.json's `version` to cut an extension
+  # release. (Skipped automatically on forks / non-QuiltLang repos.)
+  publish-vscode:
+    name: Publish VS Code extension
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'QuiltLang/quilt'
+    needs: check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/quilt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      # Plain-JS extension → no compile step; just package into a .vsix.
+      - name: Package (.vsix)
+        run: npx --yes @vscode/vsce package --out quilt.vsix
+      - name: Publish to the VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::VSCE_PAT secret not set — skipping Marketplace publish (the .vsix still built above)"
+            exit 0
+          fi
+          if out=$(npx --yes @vscode/vsce publish --packagePath quilt.vsix -p "$VSCE_PAT" 2>&1); then
+            echo "$out"
+          else
+            echo "$out"
+            echo "$out" | grep -qiE "already exists|already published|same version" \
+              && echo "::notice::this version already on the Marketplace — skipping" \
+              || { echo "::error::vsce publish failed"; exit 1; }
+          fi
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::notice::OVSX_PAT secret not set — skipping Open VSX publish"
+            exit 0
+          fi
+          # Idempotent: no-op if the namespace is already owned.
+          npx --yes ovsx create-namespace quiltlang -p "$OVSX_PAT" 2>/dev/null || true
+          if out=$(npx --yes ovsx publish quilt.vsix -p "$OVSX_PAT" 2>&1); then
+            echo "$out"
+          else
+            echo "$out"
+            echo "$out" | grep -qiE "already exists|already published" \
+              && echo "::notice::this version already on Open VSX — skipping" \
+              || { echo "::error::ovsx publish failed"; exit 1; }
+          fi
