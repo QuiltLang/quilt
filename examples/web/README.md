@@ -1,7 +1,11 @@
-# Browser demo: TypeScript generates HTML
+# Browser demos: TypeScript generates HTML
 
-A Quilt meta demo (issue #46): a TypeScript program generates HTML and runs
-**in the browser** against the `quilt-wasm` runtime.
+Two demos that run Quilt in the browser against the `quilt-wasm` runtime.
+
+## 1. Ahead-of-time (`/index.html`, issue #46)
+
+A TypeScript program generates HTML; expansion is done offline, the result runs
+in the browser.
 
 - `cards.html.ts.quilt` — the source. Ground language TypeScript; un-annotated
   quotes are HTML (the `.html.ts` chain). It exports `render()`, which builds an
@@ -14,33 +18,54 @@ A Quilt meta demo (issue #46): a TypeScript program generates HTML and runs
   specifier to the runtime; a module script initialises the WebAssembly and
   injects `render()` into the page.
 
-Expansion happens **ahead of time** here (`quilt expand`). Doing the expansion
-*in* the browser too is the meta-meta demo (issue #47).
+## 2. Meta-meta playground (`/playground.html`, issue #47)
 
-## Run it
+The **expansion itself** runs in the browser: edit the `.html.ts.quilt` source,
+press *Expand & run*, and the whole pipeline runs client-side —
 
-Requires the Quilt dev env (`wasm-pack` + `node`):
+```
+source --(WASI shim + quilt-expand.wasm)--> TypeScript --(import + runtime)--> HTML
+```
+
+- `quilt-expand.wasm` — the Quilt parser+expander. Unlike the runtime, expansion
+  needs the `parse` feature (tree-sitter + the C grammars), which needs a libc,
+  so it is built for `wasm32-wasip1` (see `bin/build-expand-wasm`, the
+  `quilt-expand-wasm` crate). 
+- `wasi-shim.js` — a tiny hand-rolled WASI preview1 shim (zero deps) that runs
+  the expander command, wiring argv / stdin / stdout to in-memory buffers.
+- `playground.js` / `playground.html` — drive the loop: run the expander, show
+  the expanded TypeScript, import it as a module (its bare `quilt-wasm` import
+  resolves through the page import map to the runtime), and render the result.
+
+The *run* step imports the expansion as a module, so it needs the expansion to
+be valid JS (annotation-free); the default source is.
+
+## Run them
 
 ```sh
 node examples/web/build.mjs                          # → examples/web/dist/
 python3 -m http.server -d examples/web/dist 8000     # open http://localhost:8000
 ```
 
-`build.mjs` builds the runtime (`wasm-pack build quilt-wasm --target web`),
-copies it plus the expanded program and `index.html` into `dist/` (git-ignored).
+`build.mjs` builds the runtime (`wasm-pack build quilt-wasm --target web`) and
+assembles `dist/` (git-ignored). The playground also needs the expander wasm,
+which needs a **WASI sdk** for the C grammars: install one from
+<https://github.com/WebAssembly/wasi-sdk/releases> and set `WASI_SDK_PATH` (the
+default is `$HOME/wasi-sdk-33.0-arm64-macos`). Without it, `build.mjs` skips the
+playground and builds only demo 1.
 
 ## Verify headlessly
 
 ```sh
-node examples/web/verify.mjs
+node examples/web/verify.mjs              # demo 1: runtime renders the expansion
+node examples/web/verify-playground.mjs   # demo 2: full source → expand → run loop
 ```
 
-Builds `dist/`, then loads the runtime and the expanded program exactly as the
-page does — but in Node, initialising the WebAssembly from the bundled bytes —
-and asserts the rendered HTML (including that lifted `<script>`/`"quotes"` come
-out entity-escaped).
+Both load the same modules the page does but in Node (initialising the
+WebAssembly from bytes), and assert the rendered HTML — including that lifted
+`<script>`/`"quotes"` come out entity-escaped.
 
-## Regenerate the expansion
+## Regenerate the committed expansion
 
 After editing `cards.html.ts.quilt`:
 

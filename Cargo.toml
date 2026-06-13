@@ -1,13 +1,15 @@
 [workspace]
 resolver = "2"
-# quilt-python and quilt-wasm are intentionally NOT in default-members. The
-# first is a PyO3 `cdylib` that links libpython, so including it would make a
-# bare `cargo build` / `cargo test` at the workspace root require a Python
-# interpreter + dev headers. The second is a wasm-bindgen `cdylib` whose real
-# artifact is produced by `wasm-pack build` for `wasm32-unknown-unknown`. The
-# common CLI/LSP path needs neither. Build them explicitly with
-# `cargo build -p quilt_python` (or `bin/build-py`) and `wasm-pack build
-# quilt-wasm` respectively.
+# quilt-python, quilt-wasm, and quilt-expand-wasm are intentionally NOT in
+# default-members. quilt-python is a PyO3 `cdylib` that links libpython, so
+# including it would make a bare `cargo build` / `cargo test` at the workspace
+# root require a Python interpreter + dev headers. quilt-wasm is a wasm-bindgen
+# `cdylib` whose real artifact is `wasm-pack build`ed for
+# `wasm32-unknown-unknown`. quilt-expand-wasm is a WASI command whose real
+# artifact is built for `wasm32-wasip1` against a WASI sysroot (see its
+# Cargo.toml). The common CLI/LSP path needs none of them. Build them
+# explicitly: `cargo build -p quilt_python` (or `bin/build-py`), `wasm-pack
+# build quilt-wasm`, and `bin/build-expand-wasm`.
 default-members = [
   "quilt",
   "quilt-lsp",
@@ -17,6 +19,7 @@ members = [
   "quilt-lsp",
   "quilt-python",
   "quilt-wasm",
+  "quilt-expand-wasm",
   "tree-sitter-quilt",
 ]
 

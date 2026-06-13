@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Build the Quilt expander as a WASI command (`wasm32-wasip1`) for the
+# in-browser meta-meta demo (issue #47). Unlike the `quilt-wasm` runtime
+# (wasm-bindgen, `wasm32-unknown-unknown`), expansion needs the `parse` feature
+# — tree-sitter + the C grammars — which needs a libc, hence WASI.
+#
+# Requires a WASI sysroot for the C grammars. Point WASI_SDK_PATH at a wasi-sdk
+# install (https://github.com/WebAssembly/wasi-sdk/releases); the default below
+# matches the arm64-macos tarball extracted into $HOME. Output:
+#   target/wasm32-wasip1/release/quilt-expand-wasm.wasm
+# optionally size-optimised in place with wasm-opt when binaryen is on PATH.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+WASI_SDK_PATH="${WASI_SDK_PATH:-$HOME/wasi-sdk-33.0-arm64-macos}"
+if [ ! -x "$WASI_SDK_PATH/bin/clang" ]; then
+  echo "error: no wasi-sdk clang at $WASI_SDK_PATH/bin/clang" >&2
+  echo "       set WASI_SDK_PATH, or download wasi-sdk from" >&2
+  echo "       https://github.com/WebAssembly/wasi-sdk/releases" >&2
+  exit 1
+fi
+
+rustup target list --installed | grep -qx wasm32-wasip1 || rustup target add wasm32-wasip1
+
+# The cc crate builds the grammars' C with wasi-sdk's clang against its sysroot;
+# Rust links with rust-lld + its self-contained wasip1 libc.
+CC_wasm32_wasip1="$WASI_SDK_PATH/bin/clang" \
+CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK_PATH/share/wasi-sysroot" \
+AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar" \
+  cargo build -p quilt-expand-wasm --release --target wasm32-wasip1
+
+out="$ROOT/target/wasm32-wasip1/release/quilt-expand-wasm.wasm"
+echo "built $out ($(du -h "$out" | cut -f1))"
+
+if command -v wasm-opt >/dev/null 2>&1; then
+  wasm-opt -Oz "$out" -o "$out"
+  echo "wasm-opt -Oz -> $(du -h "$out" | cut -f1)"
+fi
