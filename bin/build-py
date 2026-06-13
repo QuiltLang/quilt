@@ -9,8 +9,12 @@ cd "$ROOT/quilt-python"
 
 maturin build --release "$@"
 
-# Extract the freshly built abi3 module into the `quilt/` package dir.
-wheel="$(ls -t "$ROOT"/target/wheels/quiltlang-*-abi3-*.whl | head -1)"
+# Extract the freshly built abi3 module into the `quilt/` package dir. Match
+# the wheel by its abi3 shape rather than the distribution name (which is
+# `quilt_python` on PyPI; see quilt-python/pyproject.toml) so a future rename
+# can't break this. maturin builds exactly one wheel here; `-t` picks the
+# freshest in case stale ones linger in a cached target/wheels.
+wheel="$(ls -t "$ROOT"/target/wheels/*-abi3-*.whl | head -1)"
 echo "extracting from $wheel"
 unzip -o -j "$wheel" 'quilt/_quilt.abi3.so' -d quilt/
 echo "installed quilt/_quilt.abi3.so"
