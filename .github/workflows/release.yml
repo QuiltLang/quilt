@@ -1,9 +1,14 @@
 name: Release
 
 # Prebuilt `quilt` + `quilt-lsp` binaries (issue #33): on every `v*` tag, build
-# both bins for Linux + macOS (x86_64 and aarch64 — the same four platforms as
-# the PyPI wheel matrix in ci.yml), then attach one tarball per platform plus a
+# both bins for x86_64/aarch64 Linux and aarch64 macOS — the same platforms as
+# the PyPI wheel matrix in ci.yml — then attach one tarball per platform plus a
 # SHA256SUMS file to a GitHub Release for that tag.
+#
+# No x86_64-apple-darwin (Intel mac): GitHub's `macos-13` runners are being
+# retired and queue indefinitely (jobs sat ~10h unscheduled during the
+# v0.1.0-alpha release), so Intel-mac users build from source for now. Revisit
+# via cross-compilation on the arm64 macOS runner.
 #
 # This workflow is deliberately independent of ci.yml: the same `v*` tag push
 # also runs the full check matrix there (and, once configured, the registry
@@ -32,7 +37,6 @@ jobs:
           - { runner: ubuntu-latest, target: x86_64-unknown-linux-gnu }
           # Free arm64 Linux runners require the repo to be public.
           - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
-          - { runner: macos-13, target: x86_64-apple-darwin }
           - { runner: macos-latest, target: aarch64-apple-darwin }
     steps:
       - uses: actions/checkout@v4
