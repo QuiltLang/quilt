@@ -91,11 +91,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Install Nix with flakes + the `nix-command` enabled (needed for
-      # `nix develop`).
+      # `nix develop`). The devShell closure is substituted from the upstream
+      # cache.nixos.org — we deliberately do NOT use magic-nix-cache-action:
+      # under heavy load the GitHub Actions Cache throttles it (HTTP 418), at
+      # which point it disables its local substituter and `nix` hard-errors
+      # ("substituter is disabled") instead of falling back to cache.nixos.org,
+      # breaking the build. cache.nixos.org has no such rate-limit failure mode.
       - uses: DeterminateSystems/nix-installer-action@v22
-      # Free, zero-config binary cache backed by the GitHub Actions cache —
-      # caches the devShell's /nix/store closure between runs. No secret needed.
-      - uses: DeterminateSystems/magic-nix-cache-action@v14
       # rustup downloads the toolchain (rust-toolchain.toml → 1.96.0) on first
       # use into ~/.rustup, and crates/build artifacts land in ~/.cargo and
       # target/ — none of which live in the Nix store, so cache them directly.
@@ -140,8 +142,9 @@ jobs:
         shell: nix develop ./nix --command bash -euo pipefail {0}
     steps:
       - uses: actions/checkout@v4
+      # No magic-nix-cache-action (see the check job): it hard-fails the build
+      # when the GitHub Actions Cache throttles it. cache.nixos.org suffices.
       - uses: DeterminateSystems/nix-installer-action@v22
-      - uses: DeterminateSystems/magic-nix-cache-action@v14
       - name: cargo publish (dependency order)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
