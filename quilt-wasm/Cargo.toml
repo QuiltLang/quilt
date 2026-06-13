@@ -4,7 +4,16 @@ name = "quilt-wasm"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
+# `publish = false` only blocks `cargo publish` (crates.io); this crate ships to
+# npm via `wasm-pack`, which ignores it. The npm package keeps the crate name
+# (`quilt-wasm`) so the bare `import … from "quilt-wasm"` that expanded
+# `.ts.quilt` code emits resolves to it.
 publish = false
+# Copied verbatim into the wasm-pack-generated `pkg/package.json`. `repository`
+# also lets `npm publish --provenance` (in ci.yml) link the package to this repo.
+description = "WebAssembly runtime for Quilt's core IR — the browser/Node target of expanded `.ts.quilt` programs (QTerm builder, qlift/qlift_html, coparse) via wasm-bindgen."
+repository.workspace = true
+keywords = ["quilt", "metaprogramming", "wasm", "webassembly", "typescript"]
 
 # The runtime that expanded `.ts.quilt` programs target in the browser — the
 # JS/WASM analog of the `quilt` Python module (`quilt-python/`). Exposes the

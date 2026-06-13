@@ -21,6 +21,16 @@ wasm-pack build quilt-wasm --target nodejs   # for Node (CommonJS) + tests
 
 The artifact lands in `quilt-wasm/pkg/` (git-ignored).
 
+## Releasing to npm
+
+Published to npm as [`quilt-wasm`](https://www.npmjs.com/package/quilt-wasm) — the
+same bare specifier expanded `.ts.quilt` programs import. The `publish-npm` job
+in `.github/workflows/ci.yml` runs on every `v*` tag (after the check matrix
+passes): it does `wasm-pack build quilt-wasm --target web` and `npm publish`es
+the resulting `pkg/`. The package version tracks the workspace version in
+`Cargo.toml`. Auth uses the `NPM_TOKEN` repo secret; a tag with the secret unset
+or a version already on npm is a no-op, not a failure.
+
 ## Smoke test
 
 ```sh

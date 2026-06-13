@@ -306,3 +306,66 @@ jobs:
               && echo "::notice::this version already on Open VSX — skipping" \
               || { echo "::error::ovsx publish failed"; exit 1; }
           fi
+
+  # npm: build the `quilt-wasm` runtime with wasm-pack and publish it to npm —
+  # the JS/WASM analog of the PyPI `quilt-python` wheel. It is the runtime that
+  # expanded `.ts.quilt` programs import as the bare `quilt-wasm` specifier, so
+  # the npm package keeps the crate name. Built with `--target web` (a
+  # default-export `init()` plus the named builder functions, native browser
+  # ESM) because that is exactly what every consumer expects: the browser demos
+  # (examples/web) and the TypeScript that `quilt expand` emits.
+  #
+  # Unlike publish-crates (Nix devShell) but like pypi-*/publish-vscode, this
+  # runs outside Nix — wasm-pack + node are simpler to provision with their own
+  # actions than to add to the flake. The runner's preinstalled rustup
+  # auto-installs the pinned toolchain (rust-toolchain.toml) on first cargo use,
+  # and wasm-pack adds the wasm32-unknown-unknown target itself.
+  #
+  # Auth uses an NPM_TOKEN repo secret (a granular/automation token). Like
+  # publish-vscode it tolerates the secret being unset (the package still
+  # builds, the publish is skipped) and treats an already-published version as a
+  # no-op, so a re-tag or a core-only release won't fail here. Migrate to npm
+  # Trusted Publishing (OIDC) once the package exists, mirroring the crates.io
+  # note above.
+  publish-npm:
+    name: Publish to npm
+    if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'QuiltLang/quilt'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      # `npm publish --provenance` mints a signed build-provenance attestation
+      # from GitHub's OIDC token; that needs id-token: write.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Writes an .npmrc that reads NODE_AUTH_TOKEN for npmjs.org auth.
+          registry-url: 'https://registry.npmjs.org'
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: 'latest'
+      # `--target web`: a default-export `init()` + the named runtime functions,
+      # the API expanded `.ts.quilt` modules import. Lands in quilt-wasm/pkg/
+      # with a generated package.json (name/version/license/description/
+      # repository/keywords all from quilt-wasm/Cargo.toml).
+      - name: wasm-pack build
+        run: wasm-pack build quilt-wasm --target web
+      - name: npm publish
+        working-directory: quilt-wasm/pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN secret not set — skipping npm publish (the package still built above)"
+            exit 0
+          fi
+          if out=$(npm publish --access public --provenance 2>&1); then
+            echo "$out"
+          else
+            echo "$out"
+            echo "$out" | grep -qiE "cannot publish over|previously published|already exists|EPUBLISHCONFLICT" \
+              && echo "::notice::this version already on npm — skipping" \
+              || { echo "::error::npm publish failed"; exit 1; }
+          fi
