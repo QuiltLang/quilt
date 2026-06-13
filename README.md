@@ -120,7 +120,7 @@ For more, browse the [`examples/`](examples/) directory and the [Documentation W
 
 ## Supported platforms
 
-Quilt is developed on **macOS** and continuously tested on **Linux** (CI runs on `ubuntu-latest`); both are known-good. **Windows is currently untested** — it may work, but it isn't part of CI, so expect rough edges. Reports are welcome.
+Quilt is developed on **macOS** and continuously tested on both **macOS** and **Linux** in CI (`macos-latest` + `ubuntu-latest`); both are known-good. **Windows is currently untested** — it may work, but it isn't part of CI, so expect rough edges. Reports are welcome.
 
 ## Tenets
 

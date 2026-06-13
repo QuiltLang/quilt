@@ -34,30 +34,52 @@ jobs:
   # tree-sitter, nodejs. No per-job setup-rust-toolchain / setup-python /
   # `cargo install rust-script` steps to drift out of sync with the dev env.
   check:
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+    name: ${{ matrix.name }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       # Let the other checks finish even if one fails.
       fail-fast: false
       matrix:
         include:
-          - name: Test
+          - os: ubuntu-latest
+            name: Test
             run: bin/ctest
-          - name: Lint (fmt + clippy)
+          - os: ubuntu-latest
+            name: Lint (fmt + clippy)
             # Formatting needs no build, so check it first for fast feedback.
             run: |
               bin/fmt-check
               bin/lint -- -D warnings
-          - name: Bootstrap (self-host no-op)
+          - os: ubuntu-latest
+            name: Bootstrap (self-host no-op)
             run: bin/check-bootstrap
           # Exercise the bundled examples: `quilt check` every examples/**/*.quilt,
           # then expand each one with a committed output and diff against it.
-          - name: Examples (check + expand diff)
+          - os: ubuntu-latest
+            name: Examples (check + expand diff)
             run: bin/check-examples
           # Build the quilt_python PyO3 module (maturin), then pytest its bindings
           # and run the self-contained .py.quilt examples. maturin + pytest are
           # provided by the flake devShell.
-          - name: Python (quilt_python bindings + .py.quilt runtime)
+          - os: ubuntu-latest
+            name: Python (quilt_python bindings + .py.quilt runtime)
+            run: |
+              bin/build-py
+              bin/test-py
+          # macOS is the primary development platform, so run the
+          # platform-sensitive checks there too (paths, dyld libpython loading,
+          # tree-sitter codegen). The Linux matrix above stays the canonical
+          # gate; Lint/Bootstrap are platform-independent and need not repeat.
+          # Windows is intentionally omitted — the Nix devShell every check runs
+          # in isn't supported there.
+          - os: macos-latest
+            name: Test
+            run: bin/ctest
+          - os: macos-latest
+            name: Examples (check + expand diff)
+            run: bin/check-examples
+          - os: macos-latest
+            name: Python (quilt_python bindings + .py.quilt runtime)
             run: |
               bin/build-py
               bin/test-py
