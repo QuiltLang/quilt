@@ -35,7 +35,7 @@ const { default: init } = await import(glue);
 await init({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_bg.wasm")) });
 
 const { render } = await import(pathToFileURL(join(dist, "app.js")));
-const html = render();
+const html = render().coparse(); // render() returns a term; the harness coparses
 
 console.log(html);
 assert(html.includes('<section class="cards">'), "section wrapper");

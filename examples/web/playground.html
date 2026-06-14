@@ -73,17 +73,21 @@
     TypeScript whose <code>html↖…↗</code> quotes have become
     <code>quilt-wasm</code> builder calls. That program is then imported and run
     against the same runtime, and its HTML is rendered below. The arrow glyphs
-    are hard to type, so use the buttons (or their <kbd>Alt</kbd> shortcuts).
+    are hard to type, so use the buttons — or the keyboard chords from the VS
+    Code extension: <kbd>⌘/Ctrl</kbd>+<kbd>1</kbd> then a direction
+    (<kbd>↑↓←→</kbd> or <kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd>) for a
+    single glyph, <kbd>⌘/Ctrl</kbd>+<kbd>2</kbd> then two directions for a
+    diagonal (e.g. up-then-left → <code>↖</code>).
   </p>
 
   <div class="bar">
     <button id="run" disabled>Expand &amp; run</button>
     <span class="glyphs" id="glyphs">
-      <button type="button" class="g-quote"   data-wrap="↖↗" title="quote ↖…↗ (Alt+Q)">↖↗</button>
-      <button type="button" class="g-unquote" data-wrap="↙↘" title="unquote ↙…↘ (Alt+U)">↙↘</button>
-      <button type="button" class="g-lift"    data-ins="↑"   title="lift ↑ (Alt+L)">↑</button>
-      <button type="button" class="g-reduce"  data-ins="↓"   title="reduce ↓ (Alt+R)">↓</button>
-      <button type="button" class="g-emit"    data-ins="←"   title="emit ← (Alt+E)">←</button>
+      <button type="button" class="g-quote"   data-wrap="↖↗" title="quote ↖…↗  (⌘/Ctrl+2 then up,left / up,right)">↖↗</button>
+      <button type="button" class="g-unquote" data-wrap="↙↘" title="unquote ↙…↘  (⌘/Ctrl+2 then down,left / down,right)">↙↘</button>
+      <button type="button" class="g-lift"    data-ins="↑"   title="lift ↑  (⌘/Ctrl+1 then up)">↑</button>
+      <button type="button" class="g-reduce"  data-ins="↓"   title="reduce ↓  (⌘/Ctrl+1 then down)">↓</button>
+      <button type="button" class="g-emit"    data-ins="←"   title="emit ←  (⌘/Ctrl+1 then left)">←</button>
     </span>
     <span id="status" class="status">loading WebAssembly…</span>
   </div>

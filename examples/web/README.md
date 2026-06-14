@@ -9,14 +9,15 @@ in the browser.
 
 - `cards.html.ts.quilt` — the source. Ground language TypeScript; un-annotated
   quotes are HTML (the `.html.ts` chain). It exports `render()`, which builds an
-  HTML fragment from quoted `html↖…↗` templates and `coparse()`s it. It is
-  deliberately annotation-free, so its expansion is valid JavaScript that a
+  HTML fragment from quoted `html↖…↗` templates and returns it as a Quilt term;
+  the harness that calls `render()` is what `coparse()`s the term into a string.
+  It is deliberately annotation-free, so its expansion is valid JavaScript that a
   browser loads as an ES module with no transpile step.
 - `cards.html.ts` — the committed expansion (`quilt expand cards.html.ts.quilt`):
   plain TypeScript whose `html↖…↗` quotes have become `quilt-wasm` builder calls.
 - `index.html` — the page shell. An import map resolves the bare `quilt`
   specifier to the runtime (published on npm as `quilt-wasm`); a module script
-  initialises the WebAssembly and injects `render()` into the page.
+  initialises the WebAssembly and injects `render().coparse()` into the page.
 
 ## 2. Meta-meta playground (`/playground.html`, issue #47)
 
@@ -39,7 +40,10 @@ source --(WASI shim + quilt-expand.wasm)--> TypeScript --(import + runtime)--> H
   The source editor is a zero-dependency highlighter (a coloured `<pre>` behind
   a transparent `<textarea>`) that also colours the Quilt arrow glyphs. Since
   those glyphs can't be typed, a button row inserts them (`↖↗` `↙↘` `↑` `↓` `←`),
-  with `Alt`+`Q`/`U`/`L`/`R`/`E` shortcuts; `⌘`/`Ctrl`+`Enter` expands & runs.
+  and the keyboard uses the same chord scheme as the VS Code extension
+  (`tools/quilt`): leader `⌘`/`Ctrl`+`1` then a direction (`↑↓←→` or `hjkl`)
+  for a single glyph, leader `⌘`/`Ctrl`+`2` then two directions for a diagonal
+  (e.g. up-then-left → `↖`). `⌘`/`Ctrl`+`Enter` expands & runs.
 - `theme.css` — the shared site theme (brand palette + per-glyph syntax colours,
   mirroring the docs site's `custom.css`). Both demo pages link it, and the
   playground links it from the *rendered preview* by a relative href, so the

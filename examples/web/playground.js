@@ -110,7 +110,8 @@ function expand(source) {
   return dec.decode(wasi.stdoutBytes);
 }
 
-// Import the expanded TypeScript as a module and call its render(). The blob
+// Import the expanded TypeScript as a module, call its render() to get a Quilt
+// term, then coparse() it here (the harness) into an HTML string. The blob
 // module's bare `quilt` import resolves through the page import map to the
 // already-initialised runtime, so it shares the same wasm instance.
 async function run(tsSource) {
@@ -120,7 +121,7 @@ async function run(tsSource) {
     if (typeof mod.render !== "function") {
       throw new Error("expanded program does not export render()");
     }
-    return mod.render();
+    return mod.render().coparse();
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -151,9 +152,51 @@ async function expandAndRun() {
   }
 }
 
-// ── Glyph buttons + keybindings ───────────────────────────────────────────────
-// The arrow glyphs can't be typed on a normal keyboard, so each button inserts
-// one (wrapping the selection for the bracket pairs); Alt+<key> does the same.
+// ── Arrow-glyph buttons + keyboard chords ─────────────────────────────────────
+// The arrow glyphs can't be typed on a normal keyboard. The buttons insert them
+// (wrapping the selection for the bracket pairs), and the keyboard uses the same
+// chord scheme as the VS Code extension (tools/quilt): leader ⌘/Ctrl+1 then a
+// direction inserts a single glyph; leader ⌘/Ctrl+2 then two directions inserts
+// the diagonal that combines them. Directions are the arrow keys or vim h/j/k/l.
+const DIR = { ArrowLeft: "L", KeyH: "L", ArrowRight: "R", KeyL: "R", ArrowUp: "U", KeyK: "U", ArrowDown: "D", KeyJ: "D" };
+const SINGLE = { L: "←", R: "→", U: "↑", D: "↓", Comma: "⟨", Period: "⟩", KeyT: "⟨T⟩", KeyN: "⟨N⟩" };
+const DIAG = {
+  UL: "↖", LU: "↖", UR: "↗", RU: "↗", DL: "↙", LD: "↙", DR: "↘", RD: "↘",
+  LR: "↔", RL: "↔", UD: "↕", DU: "↕", UU: "↑", DD: "↓", LL: "←", RR: "→",
+};
+
+let chord = null, chordTimer = null; // null | "1" | "2" | "2:<dir>"
+function resetChord() { chord = null; clearTimeout(chordTimer); }
+function armChord(c) { chord = c; clearTimeout(chordTimer); chordTimer = setTimeout(resetChord, 1500); }
+
+function onKey(ev) {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") { ev.preventDefault(); resetChord(); expandAndRun(); return; }
+  // Leaders. (Mid-chord direction keys are accepted with or without the
+  // modifier, so both `⌘1 ←` and `⌘1 ⌘←` work, like the extension.)
+  if ((ev.metaKey || ev.ctrlKey) && ev.code === "Digit1") { ev.preventDefault(); armChord("1"); return; }
+  if ((ev.metaKey || ev.ctrlKey) && ev.code === "Digit2") { ev.preventDefault(); armChord("2"); return; }
+  if (chord === "1") {
+    const g = SINGLE[DIR[ev.code] || ev.code];
+    if (g) { ev.preventDefault(); insert(g); }
+    resetChord();
+    return;
+  }
+  if (chord === "2") {
+    const d = DIR[ev.code];
+    if (d) { ev.preventDefault(); armChord("2:" + d); } else resetChord();
+    return;
+  }
+  if (chord?.startsWith("2:")) {
+    const d2 = DIR[ev.code];
+    if (d2 && DIAG[chord.slice(2) + d2]) { ev.preventDefault(); insert(DIAG[chord.slice(2) + d2]); }
+    resetChord();
+    return;
+  }
+  if (ev.key === "Tab" && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+    ev.preventDefault(); insert("  ");
+  }
+}
+
 function setupGlyphs() {
   $("glyphs").addEventListener("click", (ev) => {
     const btn = ev.target.closest("button");
@@ -161,19 +204,7 @@ function setupGlyphs() {
     if (btn.dataset.wrap) { const [o, c] = [...btn.dataset.wrap]; insert(o, c); }
     else if (btn.dataset.ins) insert(btn.dataset.ins);
   });
-
-  // Use ev.code (physical key) so Option-as-Meta on macOS doesn't matter.
-  const SHORTCUTS = { KeyQ: ["↖", "↗"], KeyU: ["↙", "↘"], KeyL: ["↑"], KeyR: ["↓"], KeyE: ["←"] };
-  src.addEventListener("keydown", (ev) => {
-    if ((ev.metaKey || ev.ctrlKey) && ev.key === "Enter") { ev.preventDefault(); expandAndRun(); return; }
-    if (ev.key === "Tab" && !ev.shiftKey && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
-      ev.preventDefault(); insert("  "); return;
-    }
-    if (ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-      const g = SHORTCUTS[ev.code];
-      if (g) { ev.preventDefault(); insert(g[0], g[1] || ""); }
-    }
-  });
+  src.addEventListener("keydown", onKey);
 }
 
 async function main() {

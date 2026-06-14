@@ -46,7 +46,8 @@
 
     // The runtime is WebAssembly, so initialise it before calling in.
     await init();
-    document.getElementById("app").innerHTML = render();
+    // render() returns a Quilt term; the harness serializes it with coparse().
+    document.getElementById("app").innerHTML = render().coparse();
   </script>
 </body>
 </html>

@@ -1,9 +1,11 @@
 // A TypeScript program that generates HTML, for the in-browser meta demo. The
 // ground language is TypeScript; un-annotated quotes are HTML (the .html.ts
-// chain). Quoted HTML fragments splice child terms into holes, lift (the
+// chain). Quoted HTML fragments splice child terms into holes, and lift (the
 // up-arrow, expanding to the runtime's qlift_html) injects plain string values
-// as entity-escaped HTML text, and the finished fragment is serialized
-// (coparse) once.
+// as entity-escaped HTML text.
+//
+// render() returns the assembled fragment as a Quilt term (a ⟨T⟩); the harness
+// that calls it serializes it with coparse() — see index.html / playground.js.
 //
 // `quilt expand` rewrites this into plain TypeScript that calls the quilt-wasm
 // runtime; index.html loads the expansion as an ES module and injects
@@ -49,8 +51,8 @@ function pipeline() {
   ↗;
 }
 
-// Build the page fragment by splicing the card terms into a quoted section,
-// then serialize the whole thing to an HTML string.
+// Build the page fragment by splicing the card terms into a quoted section and
+// return it as a term — the harness coparse()s it into an HTML string.
 export function render() {
   const intro = card(
     "Hello from TypeScript",
@@ -66,5 +68,5 @@ export function render() {
       ↙escaped↘
       ↙pipeline()↘
     </section>
-  ↗.coparse();
+  ↗;
 }
