@@ -124,9 +124,18 @@ Quilt is developed on **macOS** and continuously tested on both **macOS** and **
 
 ## Tenets
 
-1. **Code should be generic over representation.** Every language already has a textual syntax, so a metaprogramming system that operates only on terms adds surface area instead of reusing what exists. And there is no single right representation: strings, token trees, or terms; arcs, hash-consing, plain references, or none; arena or heap allocation; red-green trees; eager or lazy properties; source text, spans, or commands; mutable or immutable; untyped or typed. Metaprograms shouldn't be married to any one of these choices.
-2. **A language shouldn't need a second language for metaprogramming.** "Meta" is as universal a concept as arithmetic or functions, yet most languages bolt on an ad-hoc macro layer that sacrifices the host language's tooling and guarantees. Bad metaprogramming is everywhere; it deserves to be fixed once, with meta-meta-programming.
-3. **Support all languages.** When one system spans many languages, the right tool for the job is always available.
+1. **Meta-programming is everywhere.**
+   - Many tasks in software development and maintenance can be considered meta-programming, such as macro systems, web development frameworks, and build scripts.
+   - These tasks are often awkward and error-prone because they stray from the tools and guarantees of normal languages.
+   - We should embrace meta-programming as a necessary evil and build tools to address these pain points.
+2. **Meta-programming should be representation-agnostic.**
+   - We don't write programs by constructing syntax trees, so we shouldn't have to do so when writing meta-programs.
+   - Languages already expose textual syntax as their primary interface, so we should avoid expanding their surface areas with tree-like representations.
+   - This allows meta-language implementations to freely choose the data structures used to represent code behind the scenes.
+3. **Meta-programming should be language-agnostic.**
+   - Languages shouldn't force a single meta-language upon users, and force them to learn a whole new language for such purposes.
+   - Users should be able to choose whichever meta-language best fits the job at hand, as we do when choosing a normal language or framework.
+   - Standardizing the syntax for stitching languages together can make it easier to switch between languages.
 
 ## Development
 
