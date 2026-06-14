@@ -11,8 +11,9 @@
 // is valid JavaScript a browser can run without a transpile step.
 import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
 
-// One card as a quoted HTML fragment, with the title and body lifted in as
-// entity-escaped text.
+// One card as a quoted HTML fragment. `↑(x)` lifts a plain string into inert,
+// entity-escaped HTML text; the surrounding unquote splices that text into the
+// hole. Try editing a title or body and re-running.
 function card(title, body) {
   return html↖
     <article class="card">
@@ -22,15 +23,48 @@ function card(title, body) {
   ↗;
 }
 
+// One list item, again a quoted fragment with its text lifted in. Returning a
+// term (not a string) lets the caller splice it into another quote.
+function bullet(text) {
+  return html↖<li>↙↑(text)↘</li>↗;
+}
+
+// A card whose body is a nested <ul>: the <li> fragments are built separately
+// and spliced into the quote's holes. This shows quotes composing — a hole
+// takes another fragment (a term), not only a lifted string.
+function pipeline() {
+  const heading = "How this page was built";
+  const step1 = bullet("This .quilt source was expanded to TypeScript,");
+  const step2 = bullet("by the Quilt expander, itself compiled to WebAssembly,");
+  const step3 = bullet("then run against the quilt-wasm runtime to build this HTML.");
+  return html↖
+    <article class="card">
+      <h2>↙↑(heading)↘</h2>
+      <ul>
+        ↙step1↘
+        ↙step2↘
+        ↙step3↘
+      </ul>
+    </article>
+  ↗;
+}
+
 // Build the page fragment by splicing the card terms into a quoted section,
 // then serialize the whole thing to an HTML string.
 export function render() {
-  const a = card("Hello from TypeScript", "This fragment was assembled at runtime, in the browser.");
-  const b = card("Escaping is automatic", "Values like <script> & \"quotes\" splice in inert.");
+  const intro = card(
+    "Hello from TypeScript",
+    "This fragment was assembled at runtime, in the browser.",
+  );
+  const escaped = card(
+    "Escaping is automatic",
+    "Values like <script> & \"quotes\" splice in inert.",
+  );
   return html↖
     <section class="cards">
-      ↙a↘
-      ↙b↘
+      ↙intro↘
+      ↙escaped↘
+      ↙pipeline()↘
     </section>
   ↗.coparse();
 }

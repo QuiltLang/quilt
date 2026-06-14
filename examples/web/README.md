@@ -36,6 +36,14 @@ source --(WASI shim + quilt-expand.wasm)--> TypeScript --(import + runtime)--> H
 - `playground.js` / `playground.html` — drive the loop: run the expander, show
   the expanded TypeScript, import it as a module (its bare `quilt` import
   resolves through the page import map to the runtime), and render the result.
+  The source editor is a zero-dependency highlighter (a coloured `<pre>` behind
+  a transparent `<textarea>`) that also colours the Quilt arrow glyphs. Since
+  those glyphs can't be typed, a button row inserts them (`↖↗` `↙↘` `↑` `↓` `←`),
+  with `Alt`+`Q`/`U`/`L`/`R`/`E` shortcuts; `⌘`/`Ctrl`+`Enter` expands & runs.
+- `theme.css` — the shared site theme (brand palette + per-glyph syntax colours,
+  mirroring the docs site's `custom.css`). Both demo pages link it, and the
+  playground links it from the *rendered preview* by a relative href, so the
+  generated HTML is themed like the site without any inlined CSS.
 
 The *run* step imports the expansion as a module, so it needs the expansion to
 be valid JS (annotation-free); the default source is.

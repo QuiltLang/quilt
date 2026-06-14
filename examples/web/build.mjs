@@ -35,6 +35,7 @@ cpSync(join(repo, "quilt-wasm", "pkg-web"), join(dist, "quilt-wasm"), { recursiv
 //    source with `quilt expand examples/web/cards.html.ts.quilt`.)
 copyFileSync(join(here, "cards.html.ts"), join(dist, "app.js"));
 copyInto("index.html");
+copyInto("theme.css"); // shared site theme: both pages + the rendered preview link it
 
 // 3. Meta-meta playground (#47): the expander wasm + the page that drives it.
 const WASI_SDK = process.env.WASI_SDK_PATH || join(process.env.HOME || "", "wasi-sdk-33.0-arm64-macos");
