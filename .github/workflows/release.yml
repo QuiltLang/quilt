@@ -2,8 +2,10 @@ name: Release
 
 # Prebuilt `quilt` + `quilt-lsp` binaries (issue #33): on every `v*` tag, build
 # both bins for x86_64/aarch64 Linux and aarch64 macOS — the same platforms as
-# the PyPI wheel matrix in ci.yml — then attach one tarball per platform plus a
-# SHA256SUMS file to a GitHub Release for that tag.
+# the PyPI wheel matrix in ci.yml — then attach one tarball per platform, the
+# VS Code extension `.vsix`, and a SHA256SUMS file to a GitHub Release for that
+# tag. The `.vsix` gives stock-VS-Code users an install path without the
+# Marketplace (Marketplace + Open VSX publishing stays in ci.yml).
 #
 # No x86_64-apple-darwin (Intel mac): GitHub's `macos-13` runners are being
 # retired and queue indefinitely (jobs sat ~10h unscheduled during the
@@ -72,13 +74,31 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Checkout must come before download-artifact: actions/checkout cleans the
+      # workspace, which would wipe the tarballs the download drops in dist/.
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
           merge-multiple: true
           path: dist
+      # Build the VS Code extension into a .vsix and attach it to the release so
+      # stock-VS-Code users can "Install from VSIX" without the Marketplace (the
+      # Marketplace + Open VSX publishes live in ci.yml, gated on PAT secrets).
+      # Plain-JS extension → no compile step. vsce's default name carries the
+      # extension's own version (e.g. quilt-0.1.0.vsix), which tracks
+      # tools/quilt/package.json independently of the release tag.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build VS Code extension (.vsix)
+        working-directory: tools/quilt
+        run: |
+          npm ci
+          npx --yes @vscode/vsce package
+          mv ./*.vsix "$GITHUB_WORKSPACE/dist/"
       - name: Checksums
-        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+        run: cd dist && sha256sum *.tar.gz *.vsix > SHA256SUMS
       # Create the release if the tag doesn't have one yet (a hyphen in the
       # tag, e.g. v0.1.0-alpha, marks it as a prerelease), then upload the
       # assets. The two-step create/upload keeps this re-runnable and works
