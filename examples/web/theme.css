@@ -1,0 +1,61 @@
+/* Shared theme for the browser demos, mirroring the quiltlang.github.io site
+ * (docs-site/src/css/custom.css): the brand orange, the GitHub-dark surfaces,
+ * and the per-glyph syntax colours. Both demo pages link it, and the playground
+ * links it from the *generated* preview HTML (via a relative href) so the
+ * rendered output is themed like the site without inlining any styles. */
+
+:root {
+  /* Quilt brand */
+  --quilt-orange:   #f97316;
+  --quilt-orange-2: #fb923c;
+  /* GitHub-dark surfaces (the site's dark mode) */
+  --quilt-bg:       #0d1117;
+  --quilt-surface:  #161b22;
+  --quilt-border:   #30363d;
+  --quilt-text:     #c9d1d9;
+  --quilt-heading:  #f0f6fc;
+  --quilt-muted:    #8b949e;
+
+  /* Syntax token colours — same palette as the site's .token.quilt-* rules */
+  --tok-comment: #8b949e;
+  --tok-string:  #a5d6ff;
+  --tok-keyword: #ff7b72;
+  --tok-number:  #79c0ff;
+  --tok-type:    #ffa657;
+  --glyph-quote:   #f97316;
+  --glyph-unquote: #60a5fa;
+  --glyph-lift:    #facc15;
+  --glyph-reduce:  #c084fc;
+  --glyph-emit:    #34d399;
+}
+
+/* ── Rendered HTML output (the cards the demos generate) ─────────────────── */
+body {
+  font-family: system-ui, sans-serif;
+  margin: 1rem;
+  color: #222;
+  background: #fff;
+}
+.cards { display: grid; gap: 1rem; }
+.card {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+}
+.card h2 { font-size: 1.05rem; margin: 0 0 .4rem; color: #1a1a1a; }
+.card p  { margin: 0; color: #444; }
+.card ul { margin: .3rem 0 0; padding-left: 1.2rem; color: #444; }
+.card li { margin: .15rem 0; }
+
+/* ── Syntax highlighting tokens (used by the playground editor overlay) ──── */
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-string  { color: var(--tok-string); }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-number  { color: var(--tok-number); }
+.tok-type    { color: var(--tok-type); }
+.glyph-quote   { color: var(--glyph-quote);   font-weight: 700; }
+.glyph-unquote { color: var(--glyph-unquote); font-weight: 700; }
+.glyph-lift    { color: var(--glyph-lift);    font-weight: 700; }
+.glyph-reduce  { color: var(--glyph-reduce);  font-weight: 700; }
+.glyph-emit    { color: var(--glyph-emit);    font-weight: 700; }

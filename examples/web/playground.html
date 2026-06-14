@@ -4,26 +4,56 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Quilt Playground — expand TypeScript→HTML in the browser</title>
+  <!-- Shared site theme (brand palette + the per-glyph syntax colours used by
+       the editor overlay below). The rendered preview links it too, relatively,
+       from its own document. -->
+  <link rel="stylesheet" href="./theme.css">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 1.5rem auto; max-width: 70rem; padding: 0 1rem; color: #222; }
+    body { font-family: system-ui, sans-serif; margin: 1.5rem auto; max-width: 70rem; padding: 0 1rem; color: #222; background: #fff; }
     h1 { font-size: 1.3rem; }
+    h1 em { color: var(--quilt-orange); font-style: normal; }
     .lede { color: #555; max-width: 50rem; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
     .pane { display: flex; flex-direction: column; min-height: 0; }
     .pane > h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #666; margin: 0 0 .3rem; }
-    textarea, pre, iframe { border: 1px solid #ccc; border-radius: 8px; }
-    textarea, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.45; padding: .6rem .7rem; }
-    textarea { height: 22rem; resize: vertical; white-space: pre; tab-size: 2; }
-    pre { height: 22rem; margin: 0; overflow: auto; background: #fafafa; white-space: pre-wrap; word-break: break-word; }
-    iframe { width: 100%; height: 16rem; background: #fff; }
-    .bar { display: flex; align-items: center; gap: .8rem; margin: 1rem 0 .2rem; }
-    button { font: inherit; padding: .45rem 1rem; border-radius: 8px; border: 1px solid #0969da; background: #0969da; color: #fff; cursor: pointer; }
+    iframe { border: 1px solid #ccc; border-radius: 8px; width: 100%; height: 16rem; background: #fff; }
+
+    /* ── Code surfaces (editor overlay + expanded view) share these metrics ── */
+    .code, .editor pre, .editor textarea, pre#expanded {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px; line-height: 1.5; padding: .6rem .7rem;
+      border: 1px solid var(--quilt-border); border-radius: 8px;
+      white-space: pre-wrap; word-break: break-word; tab-size: 2;
+      box-sizing: border-box;
+    }
+    pre#expanded { height: 22rem; margin: 0; overflow: auto; background: var(--quilt-bg); color: var(--quilt-text); }
+
+    /* The editor is a highlighted <pre> with a transparent <textarea> on top:
+       you type into the textarea (caret only), the pre behind it shows colour. */
+    .editor { position: relative; height: 22rem; resize: vertical; overflow: hidden; border-radius: 8px; }
+    .editor pre, .editor textarea { position: absolute; inset: 0; margin: 0; overflow: auto; }
+    .editor pre { background: var(--quilt-bg); color: var(--quilt-text); pointer-events: none; }
+    .editor textarea { background: transparent; color: transparent; caret-color: var(--quilt-heading); resize: none; }
+    .editor textarea:focus { outline: 2px solid var(--quilt-orange); outline-offset: -1px; }
+
+    .bar { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 .2rem; }
+    button { font: inherit; padding: .45rem 1rem; border-radius: 8px; border: 1px solid var(--quilt-orange); background: var(--quilt-orange); color: #fff; cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
-    .status { color: #666; font-size: .9rem; }
+    /* The arrow-glyph inserters: smaller, outlined, monospace so the glyphs read. */
+    .glyphs { display: flex; gap: .3rem; margin-left: .3rem; }
+    .glyphs button { padding: .35rem .55rem; font-family: ui-monospace, monospace; font-size: 13px; background: var(--quilt-surface); color: var(--quilt-text); border: 1px solid var(--quilt-border); }
+    .glyphs button:hover { border-color: var(--quilt-orange); }
+    .glyphs .g-quote   { color: var(--glyph-quote); }
+    .glyphs .g-unquote { color: var(--glyph-unquote); }
+    .glyphs .g-lift    { color: var(--glyph-lift); }
+    .glyphs .g-reduce  { color: var(--glyph-reduce); }
+    .glyphs .g-emit    { color: var(--glyph-emit); }
+    .status { color: #666; font-size: .9rem; margin-left: auto; }
     .status.err { color: #b00; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; }
     code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 4px; }
+    kbd { background: #f0f0f0; border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 4px; padding: 0 .3rem; font-size: .85em; font-family: ui-monospace, monospace; }
     footer { color: #888; font-size: .85rem; margin-top: 1.5rem; }
-    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .status { margin-left: 0; width: 100%; } }
   </style>
   <!-- Resolve the bare `quilt` specifier — used both here and inside the
        expanded program when it is imported — to the runtime built with
@@ -38,23 +68,37 @@
   <p class="lede">
     The whole pipeline runs client-side, no server. Editing the
     <code>.html.ts.quilt</code> source and pressing <strong>Expand &amp; run</strong>
-    sends it through the Quilt parser + expander (compiled to WebAssembly,
-    driven by a tiny WASI shim), producing plain TypeScript whose
-    <code>html↖…↗</code> quotes have become <code>quilt-wasm</code> builder
-    calls. That program is then imported and run against the same runtime, and
-    its HTML is rendered below. (The <em>run</em> step needs the expansion to be
-    valid JS, i.e. annotation-free.)
+    (<kbd>⌘/Ctrl</kbd>+<kbd>↵</kbd>) sends it through the Quilt parser + expander
+    (compiled to WebAssembly, driven by a tiny WASI shim), producing plain
+    TypeScript whose <code>html↖…↗</code> quotes have become
+    <code>quilt-wasm</code> builder calls. That program is then imported and run
+    against the same runtime, and its HTML is rendered below. The arrow glyphs
+    are hard to type, so use the buttons — or the keyboard chords from the VS
+    Code extension: <kbd>⌘/Ctrl</kbd>+<kbd>1</kbd> then a direction
+    (<kbd>↑↓←→</kbd> or <kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd>) for a
+    single glyph, <kbd>⌘/Ctrl</kbd>+<kbd>2</kbd> then two directions for a
+    diagonal (e.g. up-then-left → <code>↖</code>).
   </p>
 
   <div class="bar">
     <button id="run" disabled>Expand &amp; run</button>
+    <span class="glyphs" id="glyphs">
+      <button type="button" class="g-quote"   data-wrap="↖↗" title="quote ↖…↗  (⌘/Ctrl+2 then up,left / up,right)">↖↗</button>
+      <button type="button" class="g-unquote" data-wrap="↙↘" title="unquote ↙…↘  (⌘/Ctrl+2 then down,left / down,right)">↙↘</button>
+      <button type="button" class="g-lift"    data-ins="↑"   title="lift ↑  (⌘/Ctrl+1 then up)">↑</button>
+      <button type="button" class="g-reduce"  data-ins="↓"   title="reduce ↓  (⌘/Ctrl+1 then down)">↓</button>
+      <button type="button" class="g-emit"    data-ins="←"   title="emit ←  (⌘/Ctrl+1 then left)">←</button>
+    </span>
     <span id="status" class="status">loading WebAssembly…</span>
   </div>
 
   <div class="grid">
     <div class="pane">
       <h2>source — cards.html.ts.quilt</h2>
-      <textarea id="src" spellcheck="false"></textarea>
+      <div class="editor">
+        <pre id="src-hl" aria-hidden="true"></pre>
+        <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+      </div>
     </div>
     <div class="pane">
       <h2>expanded TypeScript (from the wasm expander)</h2>

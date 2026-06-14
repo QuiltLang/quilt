@@ -49,7 +49,7 @@ await init({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_b
 const modPath = join(dist, "__expanded.mjs");
 writeFileSync(modPath, ts);
 const { render } = await import(pathToFileURL(modPath));
-const html = render();
+const html = render().coparse(); // render() returns a term; the harness coparses
 
 console.log(html);
 assert(html.includes('<section class="cards">'), "section wrapper");
