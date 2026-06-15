@@ -85,9 +85,10 @@ jobs:
       # Build the VS Code extension into a .vsix and attach it to the release so
       # stock-VS-Code users can "Install from VSIX" without the Marketplace (the
       # Marketplace + Open VSX publishes live in ci.yml, gated on PAT secrets).
-      # Plain-JS extension → no compile step. vsce's default name carries the
-      # extension's own version (e.g. quilt-0.1.0.vsix), which tracks
-      # tools/quilt/package.json independently of the release tag.
+      # Plain-JS extension → no compile step. The version comes from the tag
+      # (`v1.2.3` → `1.2.3`), matching the ci.yml publish, so vsce's default
+      # output name (quiltlang-<version>.vsix) tracks the release tag rather than
+      # tools/quilt/package.json.
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -95,6 +96,7 @@ jobs:
         working-directory: tools/quilt
         run: |
           npm ci
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
           npx --yes @vscode/vsce package
           mv ./*.vsix "$GITHUB_WORKSPACE/dist/"
       - name: Checksums

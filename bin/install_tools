@@ -3,7 +3,7 @@
 #   1. quilt-lsp    — `cargo install` into ~/.cargo/bin (the extension's
 #                     default `quilt-lsp.serverPath` finds it on PATH)
 #   2. tools/quilt  — the VS Code extension: `npm install` its dependencies,
-#                     then symlink it into ~/.vscode/extensions/quilt
+#                     then symlink it into ~/.vscode/extensions/quiltlang
 # Idempotent: safe to re-run after updating the repo.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,11 +14,14 @@ cargo install --path "$ROOT/quilt-lsp"
 echo "==> Installing VS Code extension dependencies (npm install)"
 (cd "$ROOT/tools/quilt" && npm install)
 
-ext_link="$HOME/.vscode/extensions/quilt"
+ext_link="$HOME/.vscode/extensions/quiltlang"
 echo "==> Linking $ext_link -> $ROOT/tools/quilt"
 mkdir -p "$HOME/.vscode/extensions"
+# Remove a stale link from the pre-rename name (~/.vscode/extensions/quilt) so
+# VS Code doesn't load the extension twice.
+rm -f "$HOME/.vscode/extensions/quilt"
 # -n: don't dereference an existing link to a directory (avoids accidentally
-# creating tools/quilt/quilt inside the target on re-runs)
+# creating tools/quilt/quiltlang inside the target on re-runs)
 ln -sfn "$ROOT/tools/quilt" "$ext_link"
 
 if ! command -v rust-analyzer >/dev/null; then
