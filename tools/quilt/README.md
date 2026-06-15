@@ -11,27 +11,27 @@ Editor support for Quilt (`.quilt`) files:
 
 ## Setup
 
-For the alpha the extension is installed manually (it is not on the
-Marketplace yet). From the repo root, `bin/install_tools` does everything:
-installs `quilt-lsp`, runs `npm install` here, and symlinks this directory
-into `~/.vscode/extensions`. Then reload VS Code.
+Install **QuiltLang** from the VS Code Marketplace: open the Extensions view
+(`⇧⌘X` / `Ctrl+Shift+X`), search for `QuiltLang`, and click Install — or run
+`code --install-extension quiltlang.quiltlang`. Then reload VS Code.
 
-Or, step by step:
+For diagnostics and Rust support the extension needs the `quilt-lsp` language
+server on your PATH. Grab the binary from the [latest
+release](https://github.com/QuiltLang/quilt/releases/latest), or build it from
+source:
 
-1. Build/install the server:
-   ```sh
-   cargo install --path quilt-lsp   # puts `quilt-lsp` on your PATH
-   ```
-   (or set `quilt-lsp.serverPath` to the built binary).
-2. Install the client deps in this folder:
-   ```sh
-   npm install
-   ```
-3. Symlink this directory into `~/.vscode/extensions` (see the top-level
-   README) and reload VS Code.
+```sh
+cargo install --path quilt-lsp   # puts `quilt-lsp` on your PATH
+```
 
-`rust-analyzer` must be available for Rust support (`rustup component add
-rust-analyzer`).
+(or point `quilt-lsp.serverPath` at the binary). `rust-analyzer` must be
+available for Rust support (`rustup component add rust-analyzer`).
+
+### Developing the extension
+
+From the repo root, `bin/install_tools` does everything for a live local build:
+installs `quilt-lsp`, runs `npm install` here, and symlinks this directory into
+`~/.vscode/extensions`. Then reload VS Code.
 
 ## Settings
 

@@ -81,7 +81,7 @@ With the `package =` rename, all the `use quilt::prelude::*` code in this README
 cargo install --git https://github.com/QuiltLang/quilt quilt-lsp
 ```
 
-The VS Code extension (syntax highlighting, glyph keybindings, LSP client) isn't on the Marketplace yet. Clone the repo and run `bin/install_tools`, which cargo-installs `quilt-lsp`, installs the extension's npm dependencies, and symlinks it into `~/.vscode/extensions`. See [Editor setup](docs/wiki/editor-setup.md) for details, including how to type the arrow glyphs.
+The VS Code extension (syntax highlighting, glyph keybindings, LSP client) is on the [Marketplace](https://marketplace.visualstudio.com/items?itemName=quiltlang.quiltlang) as **QuiltLang** — search for it in the Extensions view or run `code --install-extension quiltlang.quiltlang`. To hack on the extension locally instead, clone the repo and run `bin/install_tools`, which cargo-installs `quilt-lsp`, installs the extension's npm dependencies, and symlinks it into `~/.vscode/extensions`. See [Editor setup](docs/wiki/editor-setup.md) for details, including how to type the arrow glyphs.
 
 ## Quickstart
 

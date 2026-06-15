@@ -12,7 +12,11 @@ The VS Code extension provides:
 
 ### Installation
 
-Run the install script from the repo root (idempotent — re-run it after updates):
+Install **QuiltLang** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=quiltlang.quiltlang): search for `QuiltLang` in the Extensions view, or run `code --install-extension quiltlang.quiltlang`. You'll still need the `quilt-lsp` server on your `PATH` (and `rust-analyzer` for Rust support) — grab the binary from the [latest release](https://github.com/QuiltLang/quilt/releases/latest), or `cargo install --git https://github.com/QuiltLang/quilt quilt-lsp`.
+
+#### From source (for development)
+
+To hack on the extension itself, run the install script from the repo root (idempotent — re-run it after updates):
 
 ```sh
 bin/install_tools

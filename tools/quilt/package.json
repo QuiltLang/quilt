@@ -2,9 +2,11 @@
   "name": "quiltlang",
   "displayName": "QuiltLang",
   "description": "Quilt language support: syntax highlighting with embedded-language grammars, arrow-glyph keybindings, and the quilt-lsp language client.",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "publisher": "quiltlang",
   "license": "(MIT OR Apache-2.0)",
+  "icon": "icon.png",
+  "homepage": "https://quiltlang.github.io/",
   "repository": {
     "type": "git",
     "url": "https://github.com/QuiltLang/quilt.git",

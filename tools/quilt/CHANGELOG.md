@@ -4,8 +4,13 @@ All notable changes to the "quilt" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [0.4.1]
 
+- Added an extension icon.
+- Set `homepage` to https://quiltlang.github.io/.
+- Updated the README to install from the VS Code Marketplace (the extension is
+  now published) rather than via manual `.vsix`/`bin/install_tools`, which is now
+  framed as the from-source/development path.
 - Renamed the extension's package `name` from `quilt` to `quiltlang`, so it now
   publishes and installs as `quiltlang.quiltlang` (publisher unchanged), and
   changed the human-facing `displayName` from "Quilt" to "QuiltLang" (the VS
