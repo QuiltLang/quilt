@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Verify the vendored parsers are in sync with the pinned forks: regenerate
+# quilt/grammars/ with bin/sync-grammars and fail if anything changed. Catches a
+# hand-edited parser or a forgotten sync after a rev bump. For CI / pre-commit.
+#
+# Needs network (clones the QuiltLang/tree-sitter-* forks at their pinned revs).
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+
+"$DIR/sync-grammars"
+
+if ! git -C "$ROOT" diff --quiet -- quilt/grammars; then
+  echo "error: quilt/grammars is out of sync with the pinned forks." >&2
+  echo "       Run 'bin/sync-grammars' and commit quilt/grammars/, or revert the" >&2
+  echo "       hand-edit. (Bump grammars by changing the rev in Cargo.toml.)" >&2
+  git -C "$ROOT" --no-pager diff --stat -- quilt/grammars >&2
+  exit 1
+fi
+echo "vendored grammars match the pinned forks ✓"

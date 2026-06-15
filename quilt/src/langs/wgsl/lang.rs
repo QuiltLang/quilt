@@ -21,7 +21,7 @@ impl Default for WgslProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_wgsl::LANGUAGE.into())
+            .set_language(&crate::grammars::wgsl::LANGUAGE.into())
             .expect("Error loading WGSL parser");
         Self(parser)
     }

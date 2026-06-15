@@ -10,6 +10,9 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+# Compiles the vendored tree-sitter parsers under `grammars/<lang>/` (see
+# `build.rs` and `src/grammars.rs`), gated on the language features below.
+build = "build.rs"
 
 [lib]
 name = "quilt"
@@ -30,14 +33,16 @@ tracing-subscriber = {workspace = true, features = ["env-filter"]}
 # can depend on quilt with `default-features = false, features = ["rust"]` and
 # build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
 tree-sitter = {workspace = true, optional = true}
-tree-sitter-bash = {workspace = true, optional = true}
-tree-sitter-html = {workspace = true, optional = true}
-tree-sitter-python = {workspace = true, optional = true}
 tree-sitter-quilt = {workspace = true, optional = true}
-tree-sitter-rust = {workspace = true, optional = true}
-tree-sitter-typescript = {workspace = true, optional = true}
-tree-sitter-wgsl = {workspace = true, optional = true}
-tree-sitter-zsh = {workspace = true, optional = true}
+# The downstream grammars (rust, python, typescript, wgsl, bash, html, zsh) are
+# vendored under `grammars/<lang>/` and compiled by `build.rs`, not pulled as
+# crates — that keeps `quiltlang` free of the git dependencies crates.io rejects
+# (issue #32). `tree-sitter-language` provides the `LanguageFn` type the
+# generated-parser bindings in `src/grammars.rs` wrap.
+tree-sitter-language = {version = "0.1", optional = true}
+
+[build-dependencies]
+cc = "1.2"
 
 [dev-dependencies]
 indoc = {workspace = true}
@@ -51,21 +56,23 @@ bootstrap = ["parse"]
 default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript"]
 # `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
 # the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
-# the runtime-only consumers (e.g. nanobots-codegen on wasm).
+# the runtime-only consumers (e.g. nanobots-codegen on wasm). It also pulls in
+# the vendored rust + python parsers (the host languages); `build.rs` compiles
+# their C when this feature is set. The target-language features below each add
+# their own vendored parser and imply `parse`.
 parse = [
   "dep:tree-sitter",
   "dep:tree-sitter-quilt",
-  "dep:tree-sitter-rust",
-  "dep:tree-sitter-python",
+  "dep:tree-sitter-language",
 ]
-bash = ["dep:tree-sitter-bash", "parse"]
-html = ["dep:tree-sitter-html", "parse"]
+bash = ["parse"]
+html = ["parse"]
 python = []
 rust = []
 text = []
-typescript = ["dep:tree-sitter-typescript", "parse"]
-wgsl = ["dep:tree-sitter-wgsl", "parse"]
-zsh = ["dep:tree-sitter-zsh", "parse"]
+typescript = ["parse"]
+wgsl = ["parse"]
+zsh = ["parse"]
 
 [[bin]]
 name = "quilt"

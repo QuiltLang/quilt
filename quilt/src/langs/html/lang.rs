@@ -25,7 +25,7 @@ impl Default for HtmlProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_html::LANGUAGE.into())
+            .set_language(&crate::grammars::html::LANGUAGE.into())
             .expect("Error loading HTML parser");
         Self(parser)
     }

@@ -15,7 +15,7 @@ impl Default for PythonProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .set_language(&crate::grammars::python::LANGUAGE.into())
             .expect("Error loading Python parser");
         Self(parser)
     }

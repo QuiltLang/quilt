@@ -21,7 +21,7 @@ impl Default for BashProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_bash::LANGUAGE.into())
+            .set_language(&crate::grammars::bash::LANGUAGE.into())
             .expect("Error loading Bash parser");
         Self(parser)
     }
