@@ -7,8 +7,10 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [Unreleased]
 
 - Renamed the extension's package `name` from `quilt` to `quiltlang`, so it now
-  publishes and installs as `quiltlang.quiltlang` (publisher unchanged). The
-  human-facing `displayName` stays "Quilt".
+  publishes and installs as `quiltlang.quiltlang` (publisher unchanged), and
+  changed the human-facing `displayName` from "Quilt" to "QuiltLang" (the VS
+  Code Marketplace requires display names to be globally unique, and "Quilt"
+  was already taken).
 - The published version now comes from the release tag (`v1.2.3` → `1.2.3`)
   rather than the hardcoded `version` in `package.json`, so every `v*` tag
   publishes a matching extension version with no separate manual bump.

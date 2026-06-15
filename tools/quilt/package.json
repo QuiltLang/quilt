@@ -1,6 +1,6 @@
 {
   "name": "quiltlang",
-  "displayName": "Quilt",
+  "displayName": "QuiltLang",
   "description": "Quilt language support: syntax highlighting with embedded-language grammars, arrow-glyph keybindings, and the quilt-lsp language client.",
   "version": "0.1.0",
   "publisher": "quiltlang",
