@@ -108,7 +108,7 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
             WGSL.get_or_init(|| {
                 // The vendored query is nvim-flavored (specific patterns first).
                 Highlighter::new(
-                    tree_sitter_wgsl::LANGUAGE.into(),
+                    quilt::grammars::wgsl::LANGUAGE.into(),
                     include_str!("../queries/wgsl-highlights.scm"),
                     Order::FirstWins,
                 )
@@ -124,8 +124,8 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
                     // with the `(identifier) @variable` catch-all and overrides
                     // with later, more specific patterns.
                     Highlighter::new(
-                        tree_sitter_python::LANGUAGE.into(),
-                        tree_sitter_python::HIGHLIGHTS_QUERY,
+                        quilt::grammars::python::LANGUAGE.into(),
+                        quilt::grammars::python::HIGHLIGHTS_QUERY,
                         Order::LastWins,
                     )
                 })
@@ -138,8 +138,8 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
                 // The fork ships upstream tree-sitter-html's own query
                 // (upstream-flavored; one pattern per node, so order is moot).
                 Highlighter::new(
-                    tree_sitter_html::LANGUAGE.into(),
-                    tree_sitter_html::HIGHLIGHTS_QUERY,
+                    quilt::grammars::html::LANGUAGE.into(),
+                    quilt::grammars::html::HIGHLIGHTS_QUERY,
                     Order::LastWins,
                 )
             })
@@ -152,8 +152,8 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
                 // The fork ships upstream tree-sitter-bash's own query
                 // (upstream-flavored: later patterns override).
                 Highlighter::new(
-                    tree_sitter_bash::LANGUAGE.into(),
-                    tree_sitter_bash::HIGHLIGHT_QUERY,
+                    quilt::grammars::bash::LANGUAGE.into(),
+                    quilt::grammars::bash::HIGHLIGHTS_QUERY,
                     Order::LastWins,
                 )
             })
@@ -165,8 +165,8 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
             ZSH.get_or_init(|| {
                 // Same shape as the bash query (the zsh grammar forked it).
                 Highlighter::new(
-                    tree_sitter_zsh::LANGUAGE.into(),
-                    tree_sitter_zsh::HIGHLIGHT_QUERY,
+                    quilt::grammars::zsh::LANGUAGE.into(),
+                    quilt::grammars::zsh::HIGHLIGHTS_QUERY,
                     Order::LastWins,
                 )
             })

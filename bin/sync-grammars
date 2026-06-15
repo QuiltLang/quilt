@@ -52,6 +52,13 @@ for lang in rust python wgsl bash html zsh; do
   echo ">> tree-sitter-$lang @ ${rev:0:9}"
   fetch "$WORK/$lang" "$url" "$rev"
   copy_src "$WORK/$lang/src" "$ROOT/quilt/grammars/$lang"
+  # Vendor the fork's highlight query alongside its parser (same pinned rev) for
+  # the languages quilt-lsp highlights through quilt::grammars::<lang>::HIGHLIGHTS_QUERY.
+  # wgsl is excluded on purpose: quilt-lsp ships its own nvim-flavored wgsl query.
+  case "$lang" in
+    python|html|bash|zsh)
+      cp "$WORK/$lang/queries/highlights.scm" "$ROOT/quilt/grammars/$lang/highlights.scm" ;;
+  esac
 done
 
 # typescript: only LANGUAGE_TYPESCRIPT is used, so just the `typescript` dialect
