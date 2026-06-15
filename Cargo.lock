@@ -979,7 +979,7 @@ dependencies = [
 
 [[package]]
 name = "quilt-expand-wasm"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "miette",
  "quiltlang",
@@ -987,7 +987,7 @@ dependencies = [
 
 [[package]]
 name = "quilt-lsp"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "dashmap 6.2.1",
@@ -1006,7 +1006,7 @@ dependencies = [
 
 [[package]]
 name = "quilt-wasm"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "quiltlang",
  "wasm-bindgen",
@@ -1014,7 +1014,7 @@ dependencies = [
 
 [[package]]
 name = "quilt_python"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "postcard",
  "pyo3",
@@ -1023,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "quiltlang"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "clap",
@@ -1574,7 +1574,7 @@ checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
 name = "tree-sitter-quilt"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "cc",
  "tree-sitter",
