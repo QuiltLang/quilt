@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Regenerate the vendored tree-sitter parsers under quilt/grammars/<lang>/ from
+# the pinned QuiltLang/tree-sitter-* forks. The pins (git url + rev) live in the
+# workspace Cargo.toml [workspace.dependencies] — the single source of truth — so
+# bumping a grammar is: update the rev there, run this, commit quilt/grammars/.
+#
+# `quiltlang` compiles these parsers directly (build.rs) instead of depending on
+# the forks as crates, which keeps it free of the git deps crates.io rejects
+# (issue #32). The forks stay the canonical source: maintain the Quilt hole
+# patches there and rebase upstream as usual; this only re-copies the generated
+# C. `bin/check-grammars` (CI) fails if the committed copies drift from the pins.
+set -euo pipefail
+shopt -s nullglob
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CARGO_TOML="$ROOT/Cargo.toml"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# Print "<url> <rev>" for a crate's git pin in [workspace.dependencies].
+pin() {
+  grep -E "^$1 = \{git" "$CARGO_TOML" \
+    | sed -E 's/.*git = "([^"]+)".*rev = "([^"]+)".*/\1 \2/'
+}
+
+# Clone a fork at a pinned commit into $1 (shallow when the host allows fetching
+# a bare sha, as GitHub does; full clone otherwise).
+fetch() {
+  local dest="$1" url="$2" rev="$3"
+  git init -q "$dest"
+  git -C "$dest" remote add origin "$url"
+  if ! git -C "$dest" fetch -q --depth 1 origin "$rev" 2>/dev/null; then
+    git -C "$dest" fetch -q origin
+  fi
+  git -C "$dest" checkout -q "$rev"
+}
+
+# Copy parser.c, scanner.c, sibling *.h (e.g. html's tag.h), and tree_sitter/*.h
+# from a fork src dir ($1) into a vendored dir ($2).
+copy_src() {
+  local src="$1" dst="$2"
+  rm -rf "$dst"
+  mkdir -p "$dst/tree_sitter"
+  cp "$src/parser.c" "$dst/parser.c"
+  [ -f "$src/scanner.c" ] && cp "$src/scanner.c" "$dst/scanner.c"
+  for h in "$src"/*.h; do cp "$h" "$dst/"; done
+  cp "$src"/tree_sitter/*.h "$dst/tree_sitter/"
+}
+
+for lang in rust python wgsl bash html zsh; do
+  read -r url rev < <(pin "tree-sitter-$lang") || true
+  [ -n "${url:-}" ] && [ -n "${rev:-}" ] || { echo "error: no pin for tree-sitter-$lang" >&2; exit 1; }
+  echo ">> tree-sitter-$lang @ ${rev:0:9}"
+  fetch "$WORK/$lang" "$url" "$rev"
+  copy_src "$WORK/$lang/src" "$ROOT/quilt/grammars/$lang"
+done
+
+# typescript: only LANGUAGE_TYPESCRIPT is used, so just the `typescript` dialect
+# is vendored. Its scanner #includes "../../common/scanner.h", so the fork's
+# nested `typescript/src/` + shared `common/` layout is preserved verbatim.
+read -r ts_url ts_rev < <(pin "tree-sitter-typescript") || true
+[ -n "${ts_url:-}" ] && [ -n "${ts_rev:-}" ] || { echo "error: no pin for tree-sitter-typescript" >&2; exit 1; }
+echo ">> tree-sitter-typescript @ ${ts_rev:0:9}"
+fetch "$WORK/typescript" "$ts_url" "$ts_rev"
+tsdst="$ROOT/quilt/grammars/typescript"
+rm -rf "$tsdst"
+mkdir -p "$tsdst/common"
+cp "$WORK/typescript/common/scanner.h" "$tsdst/common/scanner.h"
+copy_src "$WORK/typescript/typescript/src" "$tsdst/typescript/src"
+
+echo "✓ vendored parsers regenerated under quilt/grammars/"

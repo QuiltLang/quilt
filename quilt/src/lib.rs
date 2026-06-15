@@ -1,3 +1,5 @@
+#[cfg(feature = "parse")]
+pub mod grammars;
 pub mod lang;
 pub mod langs;
 pub mod lift;

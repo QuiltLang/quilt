@@ -15,7 +15,7 @@ impl Default for TypeScriptProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .set_language(&crate::grammars::typescript::LANGUAGE_TYPESCRIPT.into())
             .expect("Error loading TypeScript parser");
         Self(parser)
     }

@@ -21,7 +21,7 @@ impl Default for ZshProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_zsh::LANGUAGE.into())
+            .set_language(&crate::grammars::zsh::LANGUAGE.into())
             .expect("Error loading Zsh parser");
         Self(parser)
     }

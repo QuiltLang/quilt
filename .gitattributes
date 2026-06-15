@@ -1,0 +1,6 @@
+# Vendored, generated tree-sitter parsers (quilt/grammars/<lang>/). These are
+# copied verbatim from the pinned QuiltLang/tree-sitter-* forks by
+# bin/sync-grammars — never hand-edited. Mark them vendored so GitHub excludes
+# them from language stats, and suppress their (huge, generated) diffs.
+quilt/grammars/** linguist-vendored=true
+quilt/grammars/** -diff

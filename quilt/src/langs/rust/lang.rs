@@ -14,7 +14,7 @@ impl Default for RustProvider {
     fn default() -> Self {
         let mut parser = Parser::new();
         parser
-            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .set_language(&crate::grammars::rust::LANGUAGE.into())
             .expect("Error loading Rust parser");
         Self(parser)
     }
