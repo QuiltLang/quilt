@@ -4,6 +4,15 @@ All notable changes to the "quilt" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [Unreleased]
+
+- Renamed the extension's package `name` from `quilt` to `quiltlang`, so it now
+  publishes and installs as `quiltlang.quiltlang` (publisher unchanged). The
+  human-facing `displayName` stays "Quilt".
+- The published version now comes from the release tag (`v1.2.3` → `1.2.3`)
+  rather than the hardcoded `version` in `package.json`, so every `v*` tag
+  publishes a matching extension version with no separate manual bump.
+
 ## [0.1.0]
 
 - Filled in extension metadata for the alpha: `publisher` (`quiltlang`),

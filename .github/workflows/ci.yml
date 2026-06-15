@@ -250,11 +250,15 @@ jobs:
   # is plain JS (no compile step); vsce bundles the one prod dep
   # (vscode-languageclient) because .vscodeignore keeps node_modules.
   #
+  # Version: the extension version comes from the pushed `v*` tag (the leading
+  # `v` stripped), not from tools/quilt/package.json — so the published
+  # extension always matches the release tag without a separate manual bump.
+  # The package.json `version` is only the local-dev default (bin/install_tools).
+  #
   # Version guard: both registries reject re-publishing an existing version, so
   # each publish tolerates the "already exists" case (treats it as a no-op) and
-  # fails only on a real error. A core-only release or a re-tag therefore won't
-  # fail here — bump tools/quilt/package.json's `version` to cut an extension
-  # release. (Skipped automatically on forks / non-QuiltLang repos.)
+  # fails only on a real error. Re-tagging the same version is therefore a
+  # no-op. (Skipped automatically on forks / non-QuiltLang repos.)
   publish-vscode:
     name: Publish VS Code extension
     if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'QuiltLang/quilt'
@@ -269,9 +273,16 @@ jobs:
         with:
           node-version: '20'
       - run: npm ci
-      # Plain-JS extension → no compile step; just package into a .vsix.
+      # Plain-JS extension → no compile step; just package into a .vsix. The
+      # version is taken from the tag (`v1.2.3` → `1.2.3`) and written into
+      # package.json with `npm version` before packaging; --no-git-tag-version
+      # keeps it a working-tree-only edit (no commit/tag) and --allow-same-version
+      # makes a re-tag a no-op rather than an error.
       - name: Package (.vsix)
-        run: npx --yes @vscode/vsce package --out quilt.vsix
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          npx --yes @vscode/vsce package --out quiltlang.vsix
       - name: Publish to the VS Code Marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
@@ -280,7 +291,7 @@ jobs:
             echo "::notice::VSCE_PAT secret not set — skipping Marketplace publish (the .vsix still built above)"
             exit 0
           fi
-          if out=$(npx --yes @vscode/vsce publish --packagePath quilt.vsix -p "$VSCE_PAT" 2>&1); then
+          if out=$(npx --yes @vscode/vsce publish --packagePath quiltlang.vsix -p "$VSCE_PAT" 2>&1); then
             echo "$out"
           else
             echo "$out"
@@ -298,7 +309,7 @@ jobs:
           fi
           # Idempotent: no-op if the namespace is already owned.
           npx --yes ovsx create-namespace quiltlang -p "$OVSX_PAT" 2>/dev/null || true
-          if out=$(npx --yes ovsx publish quilt.vsix -p "$OVSX_PAT" 2>&1); then
+          if out=$(npx --yes ovsx publish quiltlang.vsix -p "$OVSX_PAT" 2>&1); then
             echo "$out"
           else
             echo "$out"
