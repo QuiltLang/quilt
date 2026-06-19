@@ -139,6 +139,8 @@ The unquote `↙{…}↘` runs a Rust loop at generation time; each iteration em
 - **Python `↑`** — similar, but written *prefix*: `↑(x)` expands to the `quilt` module's `qlift(x)` function (a method can't hang off builtin ints), or to `qlift_html(x)` when the lift targets an HTML quote.
 - **Heterogeneous `↑`** — inside a quote of another language (e.g. `python↖ … ↙x.↑↘ … ↗`), Rust's `↑` expands to `qlift_to::<L>()` for that target language, producing a term in the *target's* syntax. `LiftTo` impls exist for Python, WGSL, Zsh, and Bash (see `lift.rs`); e.g. a Rust `Vec<u64>` lifts into Python as a `list` literal, and a Rust string lifts into zsh as a properly escaped double-quoted word.
 
+`↑` is **staged** like the brackets around it. A lift only spells itself out (`qlift(…)`) once it reaches ground — when its enclosing unquote brings it back to the running stage. A `↑` still nested inside an unresolved quote belongs to a *later* stage, so it is deferred: it survives expansion as a literal `↑` glyph that the generated code will spell out when it runs. So a nested generator emits a real lift for its output to expand — e.g. `py↖ … py↖ … ↙↑(a)↘ … ↗ … ↗` coparses with a literal `↙↑(a)↘`, not a prematurely-spelled `↙qlift(a)↘`.
+
 `↓` (reduce) evaluates a `QTerm` by compiling it (via `rust-script` for Rust) and deserializing the result using `postcard`:
 
 ```rust
