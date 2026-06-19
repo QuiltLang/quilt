@@ -49,7 +49,7 @@ await quilt.default({ module_or_path: readFileSync(join(dist, "quilt-wasm", "qui
 quilt.setExpander((s) => expand(s));
 
 // 2. Expand Stage 1 (makeRenderer) and import it.
-const ts = expand(readFileSync(join(dist, "dashboard.html.ts.quilt"), "utf8"));
+const ts = expand(readFileSync(join(dist, "dashboard.html.ts.ts.quilt"), "utf8"));
 assert(ts.includes("function makeRenderer") && ts.includes(".reduce()"), "Stage 1 exports makeRenderer + uses ↓");
 const modPath = join(dist, "__dash.mjs");
 writeFileSync(modPath, ts);

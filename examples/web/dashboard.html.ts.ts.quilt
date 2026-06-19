@@ -1,22 +1,4 @@
-// A self-specializing live dashboard: TypeScript that writes TypeScript that
-// writes HTML. The same three-stage idea as examples/staged_pow.py.quilt, but in
-// the browser and driven by a real clock.
-//
-//   Stage 1  makeRenderer(schema, opts)   knows the LAYOUT   -> writes Stage 2
-//   Stage 2  the generated render()        knows the READINGS -> writes Stage 3
-//   Stage 3  the HTML it returns           is what you see, refreshed every tick
-//
-// Stage 1 is the expensive-but-rare step: it loops over the chosen metrics and
-// *unrolls* them into a flat, branch-free render() — there is no loop and no
-// schema left in the generated code, the way staged_pow turns x**4 into
-// x*x*x*x. The labels, units, colours and bar scale are baked in as literals.
-//
-// Stage 2 (the render the program wrote) is the cheap-but-frequent step: the
-// playground calls it once per second with fresh readings, and all it does is
-// drop the live numbers into the pre-built structure — no interpretation.
-//
-// Reduce (↓) is what actually *runs* Stage 2: it expands the generated source
-// (which still quotes HTML) and evaluates it, yielding the render function.
+// dashboard.html.ts.ts.quilt: TypeScript that generates TypeScript that generates HTML — a staged live dashboard
 import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
 
 // The layout the dashboard is specialized for. Editing this — or pressing
@@ -40,7 +22,14 @@ export function makeRenderer(schema, opts) {
     const scale = opts.width / m.max;          // baked: cells-per-unit for this metric
     body = ts↖
       ↙body↘
-      rows = html↖↙rows↘<div class="bar"><span class="lbl">↙↑(↙↑(m.label)↘)↘</span><span class="meter">↙↑("█".repeat(Math.round(values[↙↑(m.key)↘] * ↙↑(scale)↘)).padEnd(↙↑(opts.width)↘, "·"))↘</span><b class="val">↙↑(values[↙↑(m.key)↘])↘↙↑(↙↑(m.unit)↘)↘</b></div>↗;
+      rows = html↖
+        ↙rows↘
+        <div class="bar">
+          <span class="lbl">↙↑(↙↑(m.label)↘)↘</span>
+          <span class="meter">↙↑("█".repeat(Math.round(values[↙↑(m.key)↘] * ↙↑(scale)↘)).padEnd(↙↑(opts.width)↘, "·"))↘</span>
+          <b class="val">↙↑(values[↙↑(m.key)↘])↘↙↑(↙↑(m.unit)↘)↘</b>
+        </div>
+      ↗;
     ↗;
   }
   // Assemble the Stage-2 program: a render(values) that rebuilds the dashboard

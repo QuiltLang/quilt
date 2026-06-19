@@ -31,7 +31,7 @@ makeRenderer(schema) ──(↓ reduce: re-expand + eval)──▶ Stage 2: rend
 render(values) ──(called every second)──────────────▶ Stage 3: HTML
 ```
 
-`dashboard.html.ts.quilt` is a self-specializing live dashboard. **Stage 1**
+`dashboard.html.ts.ts.quilt` is a self-specializing live dashboard. **Stage 1**
 (`makeRenderer`) loops over the chosen metrics and *unrolls* them into a flat,
 branch-free **Stage 2** (`render()`) — there is no loop and no schema left in the
 generated code, the way staged_pow turns `x**4` into `x*x*x*x`. **Stage 3** is
