@@ -26,18 +26,19 @@ the browser and driven by a clock. Everything runs client-side:
 
 ```
 source ──(WASI shim + quilt-expand.wasm)──▶ Stage 1: makeRenderer  (TypeScript)
-makeRenderer(schema) ──(↓ reduce: re-expand + eval)──▶ Stage 2: render  (TypeScript)
-render(values) ──(called every second)──────────────▶ Stage 3: HTML
+makeRenderer(schema) ──(↓ reduce: re-expand + eval)──▶ Stage 2: start()  (TypeScript)
+start(setHtml, read) ──(its own baked setInterval)───▶ Stage 3: HTML, looping
 ```
 
 `dashboard.html.ts.ts.quilt` is a self-specializing live dashboard. **Stage 1**
-(`makeRenderer`) loops over the chosen metrics and *unrolls* them into a flat,
-branch-free **Stage 2** (`render()`) — there is no loop and no schema left in the
-generated code (the metric loop is fully unrolled). **Stage 3** is
-the HTML, repainted once a second by calling `render()` with fresh readings — no
-expansion, no interpretation. Editing the source or pressing *Reconfigure* reruns
-the expensive Stage 1; the per-second tick stays cheap. The page shows the
-timings so the contrast is visible.
+(`makeRenderer`) runs once: it loops over the chosen metrics and *unrolls* them
+into a flat, branch-free **Stage 2** (`start()`) — there is no loop and no schema
+left in the generated code (the metric loop is fully unrolled). `start()` carries
+its own update loop, with the interval baked in from `opts.intervalMs`. **Stage
+3** is the HTML that loop sets every tick — no further expansion, no
+interpretation; the page only supplies the HTML sink and the readings feed.
+Editing the source or pressing *Reconfigure* reruns the expensive Stage 1; the
+codegened loop stays cheap. The page shows the timings so the contrast is visible.
 
 - `quilt-expand.wasm` — the Quilt parser+expander. Unlike the runtime, expansion
   needs the `parse` feature (tree-sitter + the C grammars), which needs a libc,
@@ -54,9 +55,10 @@ timings so the contrast is visible.
   runtime).
 - `wasi-shim.js` — a tiny hand-rolled WASI preview1 shim (zero deps) that runs
   the expander command, wiring argv / stdin / stdout to in-memory buffers.
-- `playground.js` / `playground.html` — drive the loop: expand Stage 1, import it,
-  call `makeRenderer` (which reduces to `render`), then tick `render(values)` into
-  the preview every second. The source editor is a zero-dependency highlighter (a
+- `playground.js` / `playground.html` — host the pipeline: expand Stage 1, import
+  it, call `makeRenderer` (which reduces to `start()`), then hand `start()` the
+  HTML sink + readings feed and let *its* codegened loop drive the preview. The
+  source editor is a zero-dependency highlighter (a
   coloured `<pre>` behind a transparent `<textarea>`) that also colours the Quilt
   arrow glyphs. Since those glyphs can't be typed, a button row inserts them
   (`↖↗` `↙↘` `↑` `↓` `←`), and the keyboard uses the same chord scheme as the VS
@@ -92,8 +94,9 @@ node examples/web/verify-dashboard.mjs   # demo 2: source → expand → ↓ red
 
 Both load the same modules the page does but in Node (initialising the
 WebAssembly from bytes). `verify.mjs` asserts the cards demo's escaped output;
-`verify-dashboard.mjs` runs the whole staged loop and asserts the generated
-`render()` is unrolled (one gauge per metric, no loop), that a tick triggers no
+`verify-dashboard.mjs` runs the whole staged pipeline and asserts the generated
+`start()` is unrolled (one gauge per metric, no schema loop), codegens its own
+`setInterval` with the interval baked in, that running frames triggers no
 expansion, and that the live values land in the HTML.
 
 ## Regenerate the committed expansion

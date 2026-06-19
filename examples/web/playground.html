@@ -75,14 +75,14 @@
   <h1>Quilt Playground: TypeScript that writes TypeScript that writes <em>HTML</em></h1>
   <p class="lede">
     A self-specializing live dashboard — three staged passes, all in the browser.
-    <strong>Stage 1</strong> (<code>makeRenderer</code>) unrolls the chosen
-    metrics into a flat, branch-free <strong>Stage 2</strong>
-    (<code>render()</code>) — the generated program shown below-left. The
-    <code>↓</code> reduce operator <em>runs</em> that stage. Then
-    <strong>Stage 3</strong> is the HTML, repainted every second by calling
-    <code>render()</code> with fresh readings — no expansion, no loop. Editing the
-    source or pressing <strong>Reconfigure</strong> reruns the expensive Stage 1;
-    the per-second tick stays cheap. The arrow glyphs are hard to type, so use the
+    <strong>Stage 1</strong> (<code>makeRenderer</code>) runs once: it unrolls the
+    chosen metrics into a flat, branch-free <strong>Stage 2</strong>
+    (<code>start()</code>) — the generated program shown below-left — whose own
+    loop (interval baked in) repaints the HTML. The <code>↓</code> reduce operator
+    <em>runs</em> that stage; then <strong>Stage 3</strong> is the HTML the loop
+    sets, with no further expansion. Editing the source or pressing
+    <strong>Reconfigure</strong> reruns the expensive Stage 1; the codegened loop
+    stays cheap. The arrow glyphs are hard to type, so use the
     buttons — or the VS Code chords: <kbd>⌘/Ctrl</kbd>+<kbd>1</kbd> then a
     direction for a single glyph, <kbd>⌘/Ctrl</kbd>+<kbd>2</kbd> then two for a
     diagonal. <kbd>⌘/Ctrl</kbd>+<kbd>↵</kbd> expands &amp; runs.
@@ -117,7 +117,7 @@
 
   <div class="grid">
     <div class="pane">
-      <h2>Stage 2 — the <code>render()</code> Stage 1 wrote <span class="meta info dear" id="restage-info"></span></h2>
+      <h2>Stage 2 — the <code>start()</code> loop Stage 1 wrote <span class="meta info dear" id="restage-info"></span></h2>
       <pre id="stage2" class="out stage2 code"></pre>
     </div>
     <div class="pane">
