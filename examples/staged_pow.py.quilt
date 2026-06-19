@@ -22,11 +22,13 @@ p = 4
 # when it runs. Only the loop count (p - 1) is fixed now, by the outer unquote.
 # Stage 2 ends with `make_scaled` as a trailing expression — that is its value,
 # the way a Rust block `{ …; expr }` evaluates to `expr`.
-stage2 = py↖unrolled = py↖x↗
+stage2 = py↖
+unrolled = py↖x↗
 for _ in range(↙↑(p - 1)↘):
     unrolled = py↖↙unrolled↘ * x↗
 make_scaled = lambda a: py↖lambda x: ↙↑(a)↘ * (↙unrolled↘)↗
-make_scaled↗
+make_scaled
+↗
 
 print("=== Stage 2: the generator this program wrote ===")
 print(stage2.coparse())
