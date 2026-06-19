@@ -241,7 +241,7 @@ function setupGlyphs() {
 
 async function main() {
   const [source, , expanderBytes] = await Promise.all([
-    fetch("./dashboard.html.ts.quilt").then((r) => r.text()),
+    fetch("./dashboard.html.ts.ts.quilt").then((r) => r.text()),
     initRuntime(),
     fetch("./quilt-expand.wasm").then((r) => r.arrayBuffer()),
   ]);
