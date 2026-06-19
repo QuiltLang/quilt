@@ -106,3 +106,32 @@ fn bare_tuple_quote() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn block_body_dedents_at_top_level() -> Result<()> {
+    // A block-opened quote (`↖\n…↗`) whose body is indented for readability is
+    // dedented even at the top level (no enclosing indent), so it expands the
+    // same as the flush-left form. Regression test for the dedent only firing
+    // when the quote sat in already-indented code.
+    let indented = expand_py("x = ↖\n    a = 1\n    b = 2\n↗")?;
+    let flush = expand_py("x = ↖\na = 1\nb = 2\n↗")?;
+    assert_eq!(
+        indented, flush,
+        "an indented block body should dedent to the flush-left expansion"
+    );
+    Ok(())
+}
+
+#[test]
+fn inline_body_is_not_dedented() -> Result<()> {
+    // An inline-opened quote (`↖foo…`) keeps its body's indentation, which is
+    // meaningful (e.g. a function body) rather than cosmetic: the opener line
+    // sits at column 0 and bounds the common indent to nothing.
+    let out = expand_py("x = ↖def f():\n    return 1\n↗")?;
+    assert!(
+        out.contains(r#".p("    ").n().c(tb("block").e(tb("return_statement")"#),
+        "inline-opened body keeps its meaningful indentation (return nested in \
+         the function block, not dedented to a sibling); got:\n{out}"
+    );
+    Ok(())
+}
