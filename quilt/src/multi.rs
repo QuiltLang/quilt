@@ -153,6 +153,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 &zipper_from_chain(chain),
                 None,
                 false,
+                0,
             )?
             .first()
             .unwrap())
@@ -165,7 +166,12 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// homogeneous (targets the fragment's own language). `bracketed` is true
     /// when `nodes` is the body of a `↖…↗`/`↙…↘` pair and false at the top
     /// level: only bracketed bodies get their boundary newlines trimmed.
+    /// `sky_depth` is the net quote nesting (quotes minus unquotes) at this
+    /// level: 0 at ground, +1 per enclosing quote, −1 per enclosing unquote.
+    /// An operator (`↑`/`↓`/`←`) at sky depth > 0 runs at a *later* stage, so
+    /// it is deferred (emitted as the glyph) rather than spelled out now.
     #[cfg(feature = "parse")]
+    #[allow(clippy::too_many_arguments)] // recursive parse state; a struct would obscure it
     pub fn build_nodes(
         &mut self,
         mut builder: QTermBuilder,
@@ -174,6 +180,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         zipper: &Zipper<Box<str>>,
         splice_target: Option<&str>,
         bracketed: bool,
+        sky_depth: usize,
     ) -> Result<QTermBuilder> {
         let lang = zipper.head().unwrap();
 
@@ -258,6 +265,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 Node::Content(s) => code.push(FlatNode::Str(s)),
                 Node::NewLine => code.push(FlatNode::NewLine),
                 Node::Quote { .. } | Node::Unquote { .. } => code.push(FlatNode::Hole),
+                // An operator (↑ lift, ↓ reduce, ← emit) inside an as-yet-
+                // unresolved quote (sky depth > 0) belongs to a later stage:
+                // defer it as a hole so it survives `coparse` as its glyph and
+                // is spelled out when that stage runs, instead of being expanded
+                // here one stage too early.
+                Node::Lift | Node::Reduce { .. } | Node::Emit if sky_depth > 0 => {
+                    code.push(FlatNode::Hole);
+                }
                 Node::Lift => code.push(FlatNode::Str(
                     self.lift_str(lang, splice_target.unwrap_or(lang))?,
                 )),
@@ -286,6 +301,27 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let mut plugs = Vec::new();
         for n in nodes {
             match &**n {
+                // Deferred operators (see the code-building pass): consume the
+                // hole and plug the glyph back in, so the term coparses to a real
+                // operator for the next stage to expand.
+                Node::Lift if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for lift: {n:?}"))?;
+                    plugs.push(leaf("identifier", "↑"));
+                }
+                Node::Reduce { anno } if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for reduce: {n:?}"))?;
+                    plugs.push(leaf("identifier", &format!("{anno}↓")));
+                }
+                Node::Emit if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for emit: {n:?}"))?;
+                    plugs.push(leaf("identifier", "←"));
+                }
                 Node::Content(_)
                 | Node::NewLine
                 | Node::Lift
@@ -327,8 +363,15 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         ikind: None,
                         ..hole.clone()
                     };
-                    let mut builder =
-                        self.build_nodes(builder, &hole, nodes, &zipper, None, true)?;
+                    let mut builder = self.build_nodes(
+                        builder,
+                        &hole,
+                        nodes,
+                        &zipper,
+                        None,
+                        true,
+                        sky_depth + 1,
+                    )?;
                     builder.write("↗");
                     plugs.push(builder.b());
                 }
@@ -358,6 +401,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         &zipper,
                         Some(splice_target),
                         true,
+                        sky_depth.saturating_sub(1),
                     )?;
                     builder.write("↘");
                     plugs.push(builder.b());
