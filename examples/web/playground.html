@@ -3,33 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Quilt Playground — expand TypeScript→HTML in the browser</title>
+  <title>Quilt Playground — TypeScript that writes TypeScript that writes HTML</title>
   <!-- Shared site theme (brand palette + the per-glyph syntax colours used by
        the editor overlay below). The rendered preview links it too, relatively,
        from its own document. -->
   <link rel="stylesheet" href="./theme.css">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 1.5rem auto; max-width: 70rem; padding: 0 1rem; color: #222; background: #fff; }
+    body { font-family: system-ui, sans-serif; margin: 1.5rem auto; max-width: 76rem; padding: 0 1rem; color: #222; background: #fff; }
     h1 { font-size: 1.3rem; }
     h1 em { color: var(--quilt-orange); font-style: normal; }
-    .lede { color: #555; max-width: 50rem; }
+    .lede { color: #555; max-width: 54rem; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
     .pane { display: flex; flex-direction: column; min-height: 0; }
     .pane > h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #666; margin: 0 0 .3rem; }
-    iframe { border: 1px solid #ccc; border-radius: 8px; width: 100%; height: 16rem; background: #fff; }
+    .pane > h2 .meta { text-transform: none; letter-spacing: 0; color: #999; font-weight: 400; margin-left: .4rem; }
+    iframe { border: 1px solid #ccc; border-radius: 8px; width: 100%; height: 22rem; background: #0b0f17; }
 
-    /* ── Code surfaces (editor overlay + expanded view) share these metrics ── */
-    .code, .editor pre, .editor textarea, pre#expanded {
+    /* ── Code surfaces (editor overlay + read-only views) share these metrics ── */
+    .code, .editor pre, .editor textarea, pre.out {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       font-size: 12px; line-height: 1.5; padding: .6rem .7rem;
       border: 1px solid var(--quilt-border); border-radius: 8px;
       white-space: pre-wrap; word-break: break-word; tab-size: 2;
       box-sizing: border-box;
     }
-    pre#expanded { height: 22rem; margin: 0; overflow: auto; background: var(--quilt-bg); color: var(--quilt-text); }
+    pre.out { height: 22rem; margin: 0; overflow: auto; background: var(--quilt-bg); color: var(--quilt-text); }
+    pre.stage2 { height: 13rem; }
 
-    /* The editor is a highlighted <pre> with a transparent <textarea> on top:
-       you type into the textarea (caret only), the pre behind it shows colour. */
+    /* The editor is a highlighted <pre> with a transparent <textarea> on top. */
     .editor { position: relative; height: 22rem; resize: vertical; overflow: hidden; border-radius: 8px; }
     .editor pre, .editor textarea { position: absolute; inset: 0; margin: 0; overflow: auto; }
     .editor pre { background: var(--quilt-bg); color: var(--quilt-text); pointer-events: none; }
@@ -38,8 +39,9 @@
 
     .bar { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 .2rem; }
     button { font: inherit; padding: .45rem 1rem; border-radius: 8px; border: 1px solid var(--quilt-orange); background: var(--quilt-orange); color: #fff; cursor: pointer; }
+    button.ghost { background: var(--quilt-surface); color: var(--quilt-text); border-color: var(--quilt-border); }
+    button.ghost:hover { border-color: var(--quilt-orange); }
     button:disabled { opacity: .5; cursor: default; }
-    /* The arrow-glyph inserters: smaller, outlined, monospace so the glyphs read. */
     .glyphs { display: flex; gap: .3rem; margin-left: .3rem; }
     .glyphs button { padding: .35rem .55rem; font-family: ui-monospace, monospace; font-size: 13px; background: var(--quilt-surface); color: var(--quilt-text); border: 1px solid var(--quilt-border); }
     .glyphs button:hover { border-color: var(--quilt-orange); }
@@ -50,38 +52,46 @@
     .glyphs .g-emit    { color: var(--glyph-emit); }
     .status { color: #666; font-size: .9rem; margin-left: auto; }
     .status.err { color: #b00; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; }
+    .info { font-family: ui-monospace, monospace; font-size: 11px; color: #888; }
+    .info.cheap { color: var(--glyph-emit); }
+    .info.dear  { color: var(--glyph-lift); }
     code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 4px; }
     kbd { background: #f0f0f0; border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 4px; padding: 0 .3rem; font-size: .85em; font-family: ui-monospace, monospace; }
     footer { color: #888; font-size: .85rem; margin-top: 1.5rem; }
-    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .status { margin-left: 0; width: 100%; } }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } .status { margin-left: 0; width: 100%; } }
   </style>
-  <!-- Resolve the bare `quilt` specifier — used both here and inside the
-       expanded program when it is imported — to the runtime built with
-       `wasm-pack build quilt-wasm --target web`. (The npm package is
-       published as `quilt-wasm`; this maps it to the bare `quilt` name.) -->
+  <!-- Resolve the bare specifiers used here AND inside the expanded program when
+       it is imported. `quilt` is the reduce-enabled wrapper (quilt-rt.js); it
+       re-exports the runtime (published on npm as `quilt-wasm`) and adds the ↓
+       operator. -->
   <script type="importmap">
-  { "imports": { "quilt": "./quilt-wasm/quilt_wasm.js" } }
+  { "imports": {
+      "quilt": "./quilt-rt.js",
+      "quilt-wasm": "./quilt-wasm/quilt_wasm.js"
+  } }
   </script>
 </head>
 <body>
-  <h1>Quilt Playground: expansion <em>in</em> the browser</h1>
+  <h1>Quilt Playground: TypeScript that writes TypeScript that writes <em>HTML</em></h1>
   <p class="lede">
-    The whole pipeline runs client-side, no server. Editing the
-    <code>.html.ts.quilt</code> source and pressing <strong>Expand &amp; run</strong>
-    (<kbd>⌘/Ctrl</kbd>+<kbd>↵</kbd>) sends it through the Quilt parser + expander
-    (compiled to WebAssembly, driven by a tiny WASI shim), producing plain
-    TypeScript whose <code>html↖…↗</code> quotes have become
-    <code>quilt-wasm</code> builder calls. That program is then imported and run
-    against the same runtime, and its HTML is rendered below. The arrow glyphs
-    are hard to type, so use the buttons — or the keyboard chords from the VS
-    Code extension: <kbd>⌘/Ctrl</kbd>+<kbd>1</kbd> then a direction
-    (<kbd>↑↓←→</kbd> or <kbd>h</kbd><kbd>j</kbd><kbd>k</kbd><kbd>l</kbd>) for a
-    single glyph, <kbd>⌘/Ctrl</kbd>+<kbd>2</kbd> then two directions for a
-    diagonal (e.g. up-then-left → <code>↖</code>).
+    A self-specializing live dashboard, staged like
+    <code>examples/staged_pow.py.quilt</code> — three stages, all in the browser.
+    <strong>Stage 1</strong> (<code>makeRenderer</code>) unrolls the chosen
+    metrics into a flat, branch-free <strong>Stage 2</strong>
+    (<code>render()</code>) — the generated program shown below-left. The
+    <code>↓</code> reduce operator <em>runs</em> that stage. Then
+    <strong>Stage 3</strong> is the HTML, repainted every second by calling
+    <code>render()</code> with fresh readings — no expansion, no loop. Editing the
+    source or pressing <strong>Reconfigure</strong> reruns the expensive Stage 1;
+    the per-second tick stays cheap. The arrow glyphs are hard to type, so use the
+    buttons — or the VS Code chords: <kbd>⌘/Ctrl</kbd>+<kbd>1</kbd> then a
+    direction for a single glyph, <kbd>⌘/Ctrl</kbd>+<kbd>2</kbd> then two for a
+    diagonal. <kbd>⌘/Ctrl</kbd>+<kbd>↵</kbd> expands &amp; runs.
   </p>
 
   <div class="bar">
     <button id="run" disabled>Expand &amp; run</button>
+    <button id="reconfigure" class="ghost" type="button" title="shuffle/drop metrics and rerun Stage 1">Reconfigure ⟳</button>
     <span class="glyphs" id="glyphs">
       <button type="button" class="g-quote"   data-wrap="↖↗" title="quote ↖…↗  (⌘/Ctrl+2 then up,left / up,right)">↖↗</button>
       <button type="button" class="g-unquote" data-wrap="↙↘" title="unquote ↙…↘  (⌘/Ctrl+2 then down,left / down,right)">↙↘</button>
@@ -94,21 +104,27 @@
 
   <div class="grid">
     <div class="pane">
-      <h2>source — cards.html.ts.quilt</h2>
+      <h2>Stage 1 — source <span class="meta">dashboard.html.ts.quilt</span></h2>
       <div class="editor">
         <pre id="src-hl" aria-hidden="true"></pre>
         <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
       </div>
     </div>
     <div class="pane">
-      <h2>expanded TypeScript (from the wasm expander)</h2>
-      <pre id="expanded"></pre>
+      <h2>Stage 3 — live HTML <span class="meta" id="tick-info"></span></h2>
+      <iframe id="preview" sandbox="allow-same-origin" title="rendered output"></iframe>
     </div>
   </div>
 
-  <div class="pane" style="margin-top:1rem">
-    <h2>rendered HTML (from running the expansion)</h2>
-    <iframe id="preview" sandbox="allow-same-origin" title="rendered output"></iframe>
+  <div class="grid">
+    <div class="pane">
+      <h2>Stage 2 — the <code>render()</code> Stage 1 wrote <span class="meta info dear" id="restage-info"></span></h2>
+      <pre id="stage2" class="out stage2 code"></pre>
+    </div>
+    <div class="pane">
+      <h2>Stage 1 expanded — TypeScript from the wasm expander</h2>
+      <pre id="expanded" class="out code"></pre>
+    </div>
   </div>
 
   <footer>

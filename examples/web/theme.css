@@ -48,6 +48,33 @@ body {
 .card ul { margin: .3rem 0 0; padding-left: 1.2rem; color: #444; }
 .card li { margin: .15rem 0; }
 
+/* ── Live dashboard output (the staged playground demo) ─────────────────────
+ * Scoped to .preview (the iframe body) so it never touches the playground page,
+ * which also links this file. A terminal look: monospace ASCII meter bars. */
+.preview {
+  background: var(--quilt-bg);
+  color: var(--quilt-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 1.1rem 1.3rem;
+  margin: 0;
+}
+.preview h1 {
+  font-size: .9rem; font-weight: 600; letter-spacing: .04em;
+  color: var(--quilt-heading); margin: 0 0 1rem;
+  border-bottom: 1px solid var(--quilt-border); padding-bottom: .6rem;
+}
+.preview .bar {
+  display: grid; grid-template-columns: 7rem 1fr 5rem;
+  align-items: center; gap: .9rem; margin: .4rem 0; font-size: 13px;
+}
+.preview .lbl { color: var(--quilt-muted); }
+.preview .meter { letter-spacing: .12em; white-space: pre; overflow: hidden; }
+.preview .val { text-align: right; color: var(--quilt-heading); font-variant-numeric: tabular-nums; }
+.preview .bar:nth-of-type(4n+1) .meter { color: var(--glyph-quote); }
+.preview .bar:nth-of-type(4n+2) .meter { color: var(--glyph-unquote); }
+.preview .bar:nth-of-type(4n+3) .meter { color: var(--glyph-emit); }
+.preview .bar:nth-of-type(4n)   .meter { color: var(--glyph-reduce); }
+
 /* ── Syntax highlighting tokens (used by the playground editor overlay) ──── */
 .tok-comment { color: var(--tok-comment); font-style: italic; }
 .tok-string  { color: var(--tok-string); }
