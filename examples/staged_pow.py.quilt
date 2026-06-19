@@ -4,8 +4,7 @@ from quilt import *
 # Three-stage code generation, glyph-native: a program that writes a program
 # that writes a program. Every layer is built with Quilt quotes (the upper
 # arrows) and unquotes (the lower arrows) — no hand-written AST builders — and
-# each generated stage is actually run, not faked: run() expands a generated
-# fragment (which still contains glyphs) through quilt and execs it in-process.
+# each generated stage is actually run, not faked, with the reduce operator ↓.
 #
 #   Stage 1 (this file)    knows the EXPONENT p  -> writes Stage 2
 #   Stage 2 (make_scaled)  knows the SCALE    a  -> writes Stage 3
@@ -21,17 +20,21 @@ p = 4
 
 # Stage 1 WRITES Stage 2: a generator whose own quote/unquote loop unrolls x**p
 # when it runs. Only the loop count (p - 1) is fixed now, by the outer unquote.
+# Stage 2 ends with `make_scaled` as a trailing expression — that is its value,
+# the way a Rust block `{ …; expr }` evaluates to `expr`.
 stage2 = py↖unrolled = py↖x↗
 for _ in range(↙↑(p - 1)↘):
     unrolled = py↖↙unrolled↘ * x↗
-make_scaled = lambda a: py↖lambda x: ↙↑(a)↘ * (↙unrolled↘)↗↗
+make_scaled = lambda a: py↖lambda x: ↙↑(a)↘ * (↙unrolled↘)↗
+make_scaled↗
 
 print("=== Stage 2: the generator this program wrote ===")
 print(stage2.coparse())
 
 # ---- Stage 2: run it; the scale is known now. ----
-# run() expands Stage 2's glyphs via quilt and execs it, returning its namespace.
-make_scaled = run(stage2)["make_scaled"]
+# ↓ reduces Stage 2 to a value: it expands the glyphs, runs the statements, and
+# returns the trailing expression — the make_scaled generator.
+make_scaled = stage2.↓
 
 print("\n=== Stage 3: the functions that generator wrote ===")
 for a in (3, 10):

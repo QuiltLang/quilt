@@ -46,24 +46,17 @@ impl PyQTerm {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
 
-    /// Eval this term's source and return the resulting Python value (the `↓` operator).
+    /// Evaluate this term's source to a Python value (the `↓` operator).
     ///
-    /// Plain target code is eval'd directly. If the source is still Quilt — it
-    /// contains operator/quote glyphs, e.g. a generated fragment that itself
-    /// quotes — it is expanded via the `quilt` package first and eval'd in that
-    /// package's namespace so the emitted builder calls resolve. The source must
-    /// be a single expression; use `run()` for a generated multi-statement program.
+    /// Delegates to the `quilt` package's reducer, which expands the source
+    /// first if it is still Quilt (contains glyphs), then evaluates it as a
+    /// *block*: leading statements are run and the value is the trailing
+    /// expression (None if it ends in a statement) — the block-value semantics
+    /// of Rust/Lisp/Ruby/…. So a generated multi-statement stage reduces to its
+    /// result, not just a bare expression.
     fn reduce<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let mut code = self.0.coparse();
-        let mut globals = None;
-        if code.contains(|c: char| "↖↗↙↘↑↓←⟨⟩".contains(c)) {
-            let quilt = py.import("quilt")?;
-            code = quilt.getattr("expand")?.call1((code,))?.extract()?;
-            globals = Some(quilt.dict());
-        }
-        let code = std::ffi::CString::new(code)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-        py.eval(&code, globals.as_ref(), None)
+        let quilt = py.import("quilt")?;
+        quilt.getattr("_reduce_src")?.call1((self.0.coparse(),))
     }
 }
 

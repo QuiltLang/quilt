@@ -1,13 +1,40 @@
 from ._quilt import *
+import ast
 import os
 import shutil
 import subprocess
 import tempfile
 
+# Quilt operator/quote glyphs. Their presence in coparse() output means the term
+# still holds Quilt source (a generated fragment that itself quotes), not plain
+# target code, so it must be expanded before it can run.
+_GLYPHS = "↖↗↙↘↑↓←⟨⟩"
+
+def _reduce_src(src):
+    """Reduce target/Quilt source to a value — the engine behind QTerm.reduce()/`↓`.
+
+    If the source is still Quilt (contains glyphs, e.g. a generated fragment that
+    itself quotes) it is expanded via `quilt` first. The source is then evaluated
+    as a *block*: any leading statements run and the value is the trailing
+    expression — None if it ends in a statement — matching the block-value
+    semantics of Rust, Lisp `begin`, Ruby, etc. A lone expression just yields its
+    value. The quilt runtime is in scope so expanded builder calls resolve.
+    """
+    ns = {}
+    if any(g in src for g in _GLYPHS):
+        src = expand(src)
+        exec("from quilt import *", ns)
+    body = ast.parse(src).body
+    if body and isinstance(body[-1], ast.Expr):
+        tail = body.pop().value
+        exec(compile(ast.Module(body, []), "<reduce>", "exec"), ns)
+        return eval(compile(ast.Expression(tail), "<reduce>", "eval"), ns)
+    exec(compile(ast.Module(body, []), "<reduce>", "exec"), ns)
+    return None
+
 def reduce(term):
-    """Reduce a term to a value — the `↓` operator. Delegates to QTerm.reduce(),
-    which expands the source first if it is still Quilt (contains glyphs)."""
-    return term.reduce()
+    """Reduce a term to a value — the `↓` operator (block-aware; see _reduce_src)."""
+    return _reduce_src(term.coparse())
 
 def _quilt_bin():
     """Locate the `quilt` expander: $QUILT (set by `quilt run`) or PATH."""
