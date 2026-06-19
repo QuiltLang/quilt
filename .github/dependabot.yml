@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # Rust workspace (all crates resolve from the root Cargo.lock).
+  # examples/cargo-demo is a standalone crate outside the workspace and is
+  # intentionally not watched.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # GitHub Actions used by ci.yml / release.yml.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # VS Code extension.
+  - package-ecosystem: npm
+    directory: "/tools/quilt"
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # tree-sitter grammar package (dev tooling).
+  - package-ecosystem: npm
+    directory: "/tree-sitter-quilt"
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
