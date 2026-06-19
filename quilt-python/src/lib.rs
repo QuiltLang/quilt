@@ -47,14 +47,23 @@ impl PyQTerm {
     }
 
     /// Eval this term's source and return the resulting Python value (the `↓` operator).
+    ///
+    /// Plain target code is eval'd directly. If the source is still Quilt — it
+    /// contains operator/quote glyphs, e.g. a generated fragment that itself
+    /// quotes — it is expanded via the `quilt` package first and eval'd in that
+    /// package's namespace so the emitted builder calls resolve. The source must
+    /// be a single expression; use `run()` for a generated multi-statement program.
     fn reduce<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let code = self.0.coparse();
-        py.eval(
-            &std::ffi::CString::new(code)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
-            None,
-            None,
-        )
+        let mut code = self.0.coparse();
+        let mut globals = None;
+        if code.contains(|c: char| "↖↗↙↘↑↓←⟨⟩".contains(c)) {
+            let quilt = py.import("quilt")?;
+            code = quilt.getattr("expand")?.call1((code,))?.extract()?;
+            globals = Some(quilt.dict());
+        }
+        let code = std::ffi::CString::new(code)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        py.eval(&code, globals.as_ref(), None)
     }
 }
 

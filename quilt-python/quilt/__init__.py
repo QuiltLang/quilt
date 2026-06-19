@@ -5,7 +5,9 @@ import subprocess
 import tempfile
 
 def reduce(term):
-    return eval(term.coparse())
+    """Reduce a term to a value — the `↓` operator. Delegates to QTerm.reduce(),
+    which expands the source first if it is still Quilt (contains glyphs)."""
+    return term.reduce()
 
 def _quilt_bin():
     """Locate the `quilt` expander: $QUILT (set by `quilt run`) or PATH."""
