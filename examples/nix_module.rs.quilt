@@ -1,0 +1,48 @@
+#!/usr/bin/env quilt
+//! Generate a Nix derivation expression from a declarative Rust table.
+//!
+//! Nix is a *target* language in Quilt: it only appears inside nix quote
+//! brackets embedded in a host language (here, Rust). Quilt parses each
+//! fragment into a QTerm, the Rust host splices values in at generation time,
+//! and .coparse() serializes the tree back to a plain Nix expression.
+//!
+//! Computed Rust values cross into the quoted Nix through the lift operator --
+//! a postfix written between the unquote brackets. It turns a Rust string into
+//! a double-quoted Nix string and a list into a space-separated Nix list, so
+//! the example never builds terms by hand. The inner Rust block over the
+//! dependencies runs at *generation* time: it emits one list element per
+//! dependency, unrolling the list into the emitted source.
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    // The package, fixed at generation time.
+    let pname = "hello";
+    let version = "2.12.1";
+
+    // Build dependencies; each becomes an element of the buildInputs list.
+    let deps = ["gcc", "gnumake", "pkg-config"];
+
+    // The lifted dependency names, emitted into a Nix list. The iteration runs
+    // now; lifting a value (the postfix between the unquote brackets) crosses
+    // it into the quoted Nix as a string literal, emitting appends it, and a
+    // space is emitted before every element but the first to separate them.
+    let build_inputs = nix↖[ ↙{
+        for (i, d) in deps.into_iter().enumerate() {
+            if i > 0 { " ".←; }
+            d.↑.←;
+        }
+    }↘ ]↗;
+
+    // Splice the scalars and the generated list into a derivation skeleton.
+    let drv = nix↖
+        { pkgs ? import <nixpkgs> { } }:
+        pkgs.stdenv.mkDerivation {
+          pname = ↙pname.↑↘;
+          version = ↙version.↑↘;
+          buildInputs = ↙build_inputs↘;
+        }
+    ↗;
+
+    println!("{}", drv.coparse());
+    Ok(())
+}

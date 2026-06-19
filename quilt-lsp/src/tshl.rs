@@ -172,6 +172,21 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
             })
             .as_ref()
         }
+        #[cfg(feature = "nix")]
+        "nix" => {
+            static NIX: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            NIX.get_or_init(|| {
+                // The fork ships upstream tree-sitter-nix's own query: it is
+                // nvim-flavored (specific patterns precede the `(identifier)
+                // @variable` catch-all at the end), so first wins.
+                Highlighter::new(
+                    quilt::grammars::nix::LANGUAGE.into(),
+                    quilt::grammars::nix::HIGHLIGHTS_QUERY,
+                    Order::FirstWins,
+                )
+            })
+            .as_ref()
+        }
         _ => None,
     }
 }
@@ -576,6 +591,22 @@ mod tests {
         assert!(got.contains(&("tar", "function")), "{got:?}");
         assert!(got.contains(&("-czf", "variable")), "{got:?}");
         assert!(got.contains(&("# all", "comment")), "{got:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "nix")]
+    fn highlights_basic_nix() {
+        let src = "let n = \"hi\"; in builtins.toString n # done\n";
+        let got = span_text(
+            src,
+            &highlighter("nix").expect("nix query compiles").spans(src),
+        );
+        assert!(got.contains(&("let", "keyword")), "{got:?}");
+        assert!(got.contains(&("in", "keyword")), "{got:?}");
+        assert!(got.contains(&("\"hi\"", "string")), "{got:?}");
+        // `builtins.toString x` is an apply: `toString` captures as `@function`.
+        assert!(got.contains(&("toString", "function")), "{got:?}");
+        assert!(got.contains(&("# done", "comment")), "{got:?}");
     }
 
     #[test]

@@ -2,8 +2,8 @@
 //! crate. Each grammar is gated on a Cargo feature, mirroring `src/grammars.rs`:
 //!
 //! * `rust` / `python` — the host parsers, tied to the `parse` umbrella feature.
-//! * `typescript` / `wgsl` / `bash` / `html` / `zsh` — each behind its own
-//!   feature (all of which imply `parse`).
+//! * `typescript` / `wgsl` / `bash` / `html` / `zsh` / `nix` — each behind its
+//!   own feature (all of which imply `parse`).
 //!
 //! A `default-features = false` build (e.g. nanobots on `wasm32`) enables none
 //! of these, so no C is compiled and the crate stays tree-sitter-free.
@@ -65,7 +65,7 @@ fn main() {
     build("rust");
     build("python");
 
-    for lang in ["typescript", "wgsl", "bash", "html", "zsh"] {
+    for lang in ["typescript", "wgsl", "bash", "html", "zsh", "nix"] {
         if feature(lang) {
             build(lang);
         }

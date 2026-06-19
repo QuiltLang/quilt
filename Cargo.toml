@@ -45,6 +45,7 @@ tree-sitter-quilt = {version = "0.5.0", path = "tree-sitter-quilt"}
 # deliberately when pulling in upstream grammar changes.
 tree-sitter-bash = {git = "https://github.com/QuiltLang/tree-sitter-bash.git", rev = "4e44c9fca4f64f75dbafd64d07eb3b065f15e45b"}
 tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git", rev = "d81ae0f44b1e084a3383b3355c62cb6953260467"}
+tree-sitter-nix = {git = "https://github.com/QuiltLang/tree-sitter-nix.git", rev = "dd89f89955224e335625858f1de6113261c76045"}
 tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"}
 tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "167de1910dcba9c59d6fa59e37868aa8d14c772b"}
 # The `quilt_hole` change (issue #44) is merged to the fork's master; this rev

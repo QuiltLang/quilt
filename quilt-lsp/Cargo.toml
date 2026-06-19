@@ -31,7 +31,7 @@ tempfile.workspace = true
 [features]
 # Mirror quilt's own feature flags: each enables wiring for one downstream
 # language. v1 ships only `rust`. Others are reserved extension points.
-default = ["rust", "python", "wgsl", "html", "bash", "zsh"]
+default = ["rust", "python", "wgsl", "html", "bash", "zsh", "nix"]
 rust = []
 # Each downstream language pulls its parser (and, where highlighted, its query)
 # from quilt::grammars, gated by the matching quilt feature. python's grammar
@@ -41,6 +41,7 @@ wgsl = ["quilt/wgsl"]
 html = ["quilt/html"]
 bash = ["quilt/bash"]
 zsh = ["quilt/zsh"]
+nix = ["quilt/nix"]
 
 [lints]
 workspace = true

@@ -44,7 +44,7 @@ quilt-lsp  (server.rs)
 | `server.rs`     | The editor-facing server, LSP method handlers, merged diagnostics             |
 | `adapters.rs`   | Language-specific placeholders and comment syntax                             |
 | `semtok.rs`     | Semantic token merging and remap                                              |
-| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (WGSL, HTML, bash, zsh)    |
+| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (WGSL, HTML, bash, zsh, Nix) |
 
 ## The projection
 
@@ -80,10 +80,10 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
     consumes a quoted value, so pyright's errors would be spurious
     (`PythonAdapter::publishes_diagnostics` is `false`).
 - **Semantic tokens** — including inside `↖…↗` quotes. Embedded-language
-  quotes (`wgsl↖…↗`, `html↖…↗`, `bash↖…↗`, `zsh↖…↗`) are highlighted by the
-  server itself with tree-sitter highlight queries (`tshl.rs`), since their
-  downstream servers may provide no semantic tokens (wgsl-analyzer advertises
-  none) or not exist at all (html/bash/zsh are highlight-only:
+  quotes (`wgsl↖…↗`, `html↖…↗`, `bash↖…↗`, `zsh↖…↗`, `nix↖…↗`) are highlighted
+  by the server itself with tree-sitter highlight queries (`tshl.rs`), since
+  their downstream servers may provide no semantic tokens (wgsl-analyzer
+  advertises none) or not exist at all (html/bash/zsh/nix are highlight-only:
   `server_command` is `None`, so their fragments are projected but never
   opened downstream); the downstream legend is advertised with the
   tree-sitter token types appended. A *ground* server with the same gap
@@ -106,7 +106,7 @@ Constraints learned while building the token pipeline (June 2026):
   extension highlights via a static TextMate grammar). Embedded-fragment
   tokens therefore come from in-process tree-sitter highlighting (`tshl.rs`),
   which also works when no WGSL server is installed.
-- **A fragment language needs no server at all.** html/bash/zsh adapters
+- **A fragment language needs no server at all.** html/bash/zsh/nix adapters
   return `None` from `server_command`: `embedded_sync` skips their `didOpen`
   (`ensure_embedded_child` bails before spawning), and the fragments exist
   purely so `tshl.rs` can highlight them. Their queries come from the grammar
