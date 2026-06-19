@@ -21,9 +21,8 @@ in the browser.
 
 ## 2. Staged playground (`/playground.html`, issue #47)
 
-**TypeScript that writes TypeScript that writes HTML** — the same three-stage
-idea as [`examples/staged_pow.py.quilt`](../staged_pow.py.quilt), but in the
-browser and driven by a clock. Everything runs client-side:
+**TypeScript that writes TypeScript that writes HTML** — three staged passes, in
+the browser and driven by a clock. Everything runs client-side:
 
 ```
 source ──(WASI shim + quilt-expand.wasm)──▶ Stage 1: makeRenderer  (TypeScript)
@@ -34,7 +33,7 @@ render(values) ──(called every second)────────────�
 `dashboard.html.ts.ts.quilt` is a self-specializing live dashboard. **Stage 1**
 (`makeRenderer`) loops over the chosen metrics and *unrolls* them into a flat,
 branch-free **Stage 2** (`render()`) — there is no loop and no schema left in the
-generated code, the way staged_pow turns `x**4` into `x*x*x*x`. **Stage 3** is
+generated code (the metric loop is fully unrolled). **Stage 3** is
 the HTML, repainted once a second by calling `render()` with fresh readings — no
 expansion, no interpretation. Editing the source or pressing *Reconfigure* reruns
 the expensive Stage 1; the per-second tick stays cheap. The page shows the
