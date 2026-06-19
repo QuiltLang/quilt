@@ -126,21 +126,19 @@ Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` gr
 
 ---
 
-## Nix (`nix`) — target only
+## Nix (`nix`) — target *and* host
 
-**Files:** `langs/nix/lang.rs`, `langs/nix/mod.rs`
+**Files:** `langs/nix/lang.rs`, `langs/nix/meta.rs`, `langs/nix/ops.rs`, `langs/nix/mod.rs`
 
-The [Nix](https://nix.dev) expression language, parsed via the forked `tree-sitter-nix` grammar. Target-only: it can appear inside quotes (`nix↖…↗`) but has no `MetaLanguage`. Nix is purely expression-oriented — a whole file is a single expression — so every fragment is an `Expr` and unquotes splice into expression positions; there are no statements.
+The [Nix](https://nix.dev) expression language, parsed via the forked `tree-sitter-nix` grammar. Nix is purely expression-oriented — a whole file is a single expression — so every fragment is an `Expr` and unquotes splice into expression positions; there are no statements.
 
-The hole token is `__QUILT_HOLE__`, a plain Nix identifier (so it parses as a `variable_expression` in any expression position; the range-based hole detection in `treesitter.rs` recognises it). Nix has a `LiftTo` marker type (`Nix` in `lift.rs`): strings lift to double-quoted `string_expression`s (with `${` escaped to keep them inert), integers/floats to `integer_expression`/`float_expression`, booleans to the `true`/`false` builtins, and slices/`Vec`s to space-separated `list_expression`s.
+The hole token is `__QUILT_HOLE__`, a plain Nix identifier (so it parses as a `variable_expression` in any expression position; the range-based hole detection in `treesitter.rs` recognises it).
 
-Usage in `*.rs.quilt` (see `examples/nix_module.rs.quilt`):
+### As a target
+
+Quote and splice Nix fragments inside another host (`nix↖…↗`). Nix has a `LiftTo` marker type (`Nix` in `lift.rs`): strings lift to double-quoted `string_expression`s (with `${` escaped to keep them inert), integers/floats to `integer_expression`/`float_expression`, booleans to the `true`/`false` builtins, and slices/`Vec`s to space-separated `list_expression`s. See `examples/nix_module.rs.quilt`:
 
 ```rust
-let build_inputs = nix↖[ ↙{ for (i, d) in deps.into_iter().enumerate() {
-    if i > 0 { " ".←; }
-    d.↑.←;
-} }↘ ]↗;
 let drv = nix↖
     pkgs.stdenv.mkDerivation {
       pname = ↙pname.↑↘;
@@ -148,6 +146,25 @@ let drv = nix↖
     }
 ↗;
 ```
+
+### As a host (string-based meta)
+
+`NixMetaLanguage` makes Nix drive generation. Unlike the Rust/Python hosts, which emit builder calls into a `QTerm` runtime, the Nix host has **no runtime library**: `meta.rs`/`ops.rs` represent generated code as plain **Nix strings**. A quote `↖…↗` becomes a Nix string literal, a host unquote `↙x↘` becomes Nix's own `${x}` antiquotation, and `↑` spells `toString`. So a `.nix.quilt` file expands to a Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. Static sub-structure is flattened inline, so a literal fragment is one flat string, not a tower of `${"…"}`.
+
+The string model is language-agnostic (a Nix host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`). See `examples/nix_host.nix.quilt`:
+
+```nix
+let
+  attr = "enabled";
+  package = "hello";
+in
+  nix↖{
+    ↙attr↘ = true;
+    default = ↙package↘;
+  }↗
+```
+
+expands to the Nix metaprogram `let … in "{\n  ${attr} = true;\n  default = ${package};\n}"`.
 
 ---
 

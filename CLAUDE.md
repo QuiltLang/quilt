@@ -111,7 +111,9 @@ Two trait families:
 - `meta.rs` — implements `MetaLanguage`. Rust's is **generated** by bootstrap from `mk_meta.rs.quilt`; python's is hand-written. The `expand_*` methods are thin wrappers that delegate to `ops.rs`, and each meta also supplies the operator spellings (`lift_str`/`reduce_str`/`emit_str`/`type_str`/`name_str`) that the `↑ ↓ ← ⟨T⟩ ⟨N⟩` glyphs expand to.
 - `ops.rs` — hand-written helpers that build the output `QTerm` **directly** via the builder: `build_tuple_code` / `build_quote_code` / `build_unquote_code` / `build_variadic_block`, plus `name` (and, for rust, `qlift` and `reduce`).
 
-**Target-only languages** (wgsl, html, zsh, bash, nix) provide just `lang.rs` — they can be quoted (`wgsl↖...↗`) but have no `MetaLanguage`, so the host's meta drives expansion. **Text** additionally has a minimal hand-written `meta.rs`.
+**Target-only languages** (wgsl, html, zsh, bash) provide just `lang.rs` — they can be quoted (`wgsl↖...↗`) but have no `MetaLanguage`, so the host's meta drives expansion. **Text** additionally has a minimal hand-written `meta.rs`.
+
+**Nix** is both a quotable target *and* a host: `langs/nix/meta.rs` + `ops.rs` implement a **string-based** `MetaLanguage` — instead of emitting builder calls into a `QTerm` runtime (which Nix has none of), it reconstructs each fragment as a Nix string literal, mapping a host unquote `↙x↘` onto Nix's own `${x}` antiquotation and `↑` onto `toString`. A `.nix.quilt` file therefore expands to a plain Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. The string model is language-agnostic (a Nix host can generate any target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`).
 
 **Bootstrap** (`langs/bootstrap/`) is internal-only: it implements `Language` directly without tree-sitter, and its meta uses `strlift.rs`, which lifts to a string and re-parses it — a slower shortcut used only for bootstrapping.
 

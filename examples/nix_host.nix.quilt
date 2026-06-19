@@ -1,0 +1,19 @@
+#!/usr/bin/env quilt
+# Nix as a *host* (meta) language: this whole file is a Nix metaprogram.
+#
+# Where the Rust and Python hosts emit builder calls into a QTerm runtime, the
+# Nix host has no runtime library -- it represents generated code as plain Nix
+# strings. Quilt expands the nix quote below into a Nix string literal, and each
+# host unquote becomes Nix's own interpolation. So `quilt expand` turns this
+# file into an ordinary Nix expression; evaluating that expression (nix eval)
+# yields the generated code as a string.
+#
+# Everything outside the quote is ordinary Nix that runs at generation time.
+let
+  attr = "enabled";
+  package = "hello";
+in
+  nix↖{
+    ↙attr↘ = true;
+    default = ↙package↘;
+  }↗
