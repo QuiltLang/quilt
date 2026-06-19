@@ -41,7 +41,7 @@ jobs:
           - { runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu }
           - { runner: macos-latest, target: aarch64-apple-darwin }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No Nix devShell here (unlike ci.yml): a release build of the two bins
       # only needs the pinned Rust toolchain and a C compiler (for the
       # tree-sitter grammar build scripts). The runners' preinstalled rustup
@@ -59,7 +59,7 @@ jobs:
           cp target/release/quilt target/release/quilt-lsp stage/
           cp LICENSE-MIT LICENSE-APACHE stage/
           tar -czf "quilt-$GITHUB_REF_NAME-${{ matrix.platform.target }}.tar.gz" -C stage .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform.target }}
           path: quilt-*.tar.gz
@@ -76,8 +76,8 @@ jobs:
     steps:
       # Checkout must come before download-artifact: actions/checkout cleans the
       # workspace, which would wipe the tarballs the download drops in dist/.
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           merge-multiple: true
@@ -89,9 +89,9 @@ jobs:
       # (`v1.2.3` → `1.2.3`), matching the ci.yml publish, so vsce's default
       # output name (quiltlang-<version>.vsix) tracks the release tag rather than
       # tools/quilt/package.json.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
       - name: Build VS Code extension (.vsix)
         working-directory: tools/quilt
         run: |

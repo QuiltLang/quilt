@@ -95,7 +95,7 @@ jobs:
       run:
         shell: nix develop ./nix --command bash -euo pipefail {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Install Nix with flakes + the `nix-command` enabled (needed for
       # `nix develop`).
       - uses: DeterminateSystems/nix-installer-action@v22
@@ -107,7 +107,7 @@ jobs:
       # target/ — none of which live in the Nix store, so cache them directly.
       # (Swatinem/rust-cache runs on the host PATH where the Nix-provided rustc
       # isn't visible, so it can't be used here; actions/cache works fine.)
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -146,7 +146,7 @@ jobs:
       run:
         shell: nix develop ./nix --command bash -euo pipefail {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v22
       - uses: DeterminateSystems/magic-nix-cache-action@v14
       - name: cargo publish (dependency order)
@@ -202,7 +202,7 @@ jobs:
           - { runner: ubuntu-24.04-arm, target: aarch64 }
           - { runner: macos-latest, target: aarch64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # quilt_python depends on quilt with default-features = false (no
       # tree-sitter, no git grammar deps), so this is a plain Rust build —
       # maturin-action provides its own Rust toolchain + manylinux containers
@@ -212,7 +212,7 @@ jobs:
           target: ${{ matrix.platform.target }}
           manylinux: auto
           args: --release --out dist --manifest-path quilt-python/Cargo.toml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi-wheel-${{ matrix.platform.target }}-${{ matrix.platform.runner }}
           path: dist
@@ -223,14 +223,14 @@ jobs:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # maturin bundles the local path-dependency crates (quiltlang) into the
       # sdist, so it builds standalone.
       - uses: PyO3/maturin-action@v1
         with:
           command: sdist
           args: --out dist --manifest-path quilt-python/Cargo.toml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi-sdist
           path: dist
@@ -247,7 +247,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: pypi-*
           merge-multiple: true
@@ -281,10 +281,10 @@ jobs:
       run:
         working-directory: tools/quilt
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
       - run: npm ci
       # Plain-JS extension → no compile step; just package into a .vsix. The
       # version is taken from the tag (`v1.2.3` → `1.2.3`) and written into
@@ -367,8 +367,8 @@ jobs:
       # is no NPM_TOKEN secret.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
