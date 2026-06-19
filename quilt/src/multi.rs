@@ -168,9 +168,10 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// level: only bracketed bodies get their boundary newlines trimmed.
     /// `sky_depth` is the net quote nesting (quotes minus unquotes) at this
     /// level: 0 at ground, +1 per enclosing quote, −1 per enclosing unquote.
-    /// A `↑` at sky depth > 0 runs at a *later* stage, so it is deferred
-    /// (emitted as the glyph) rather than spelled out now.
+    /// An operator (`↑`/`↓`/`←`) at sky depth > 0 runs at a *later* stage, so
+    /// it is deferred (emitted as the glyph) rather than spelled out now.
     #[cfg(feature = "parse")]
+    #[allow(clippy::too_many_arguments)] // recursive parse state; a struct would obscure it
     pub fn build_nodes(
         &mut self,
         mut builder: QTermBuilder,
@@ -264,11 +265,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 Node::Content(s) => code.push(FlatNode::Str(s)),
                 Node::NewLine => code.push(FlatNode::NewLine),
                 Node::Quote { .. } | Node::Unquote { .. } => code.push(FlatNode::Hole),
-                // A lift inside an as-yet-unresolved quote (sky depth > 0)
-                // belongs to a later stage: defer it as a hole so it survives
-                // `coparse` as the `↑` glyph and is spelled out when that stage
-                // runs, instead of being expanded here one stage too early.
-                Node::Lift if sky_depth > 0 => code.push(FlatNode::Hole),
+                // An operator (↑ lift, ↓ reduce, ← emit) inside an as-yet-
+                // unresolved quote (sky depth > 0) belongs to a later stage:
+                // defer it as a hole so it survives `coparse` as its glyph and
+                // is spelled out when that stage runs, instead of being expanded
+                // here one stage too early.
+                Node::Lift | Node::Reduce { .. } | Node::Emit if sky_depth > 0 => {
+                    code.push(FlatNode::Hole);
+                }
                 Node::Lift => code.push(FlatNode::Str(
                     self.lift_str(lang, splice_target.unwrap_or(lang))?,
                 )),
@@ -297,14 +301,26 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let mut plugs = Vec::new();
         for n in nodes {
             match &**n {
-                // Deferred lift (see the code-building pass): consume its hole
-                // and plug the `↑` glyph back in, so the term coparses to a real
-                // lift operator for the next stage to expand.
+                // Deferred operators (see the code-building pass): consume the
+                // hole and plug the glyph back in, so the term coparses to a real
+                // operator for the next stage to expand.
                 Node::Lift if sky_depth > 0 => {
                     holes
                         .next()
                         .ok_or_else(|| miette!("Ran out of holes for lift: {n:?}"))?;
                     plugs.push(leaf("identifier", "↑"));
+                }
+                Node::Reduce { anno } if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for reduce: {n:?}"))?;
+                    plugs.push(leaf("identifier", &format!("{anno}↓")));
+                }
+                Node::Emit if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for emit: {n:?}"))?;
+                    plugs.push(leaf("identifier", "←"));
                 }
                 Node::Content(_)
                 | Node::NewLine
