@@ -46,15 +46,17 @@ impl PyQTerm {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
     }
 
-    /// Eval this term's source and return the resulting Python value (the `↓` operator).
+    /// Evaluate this term's source to a Python value (the `↓` operator).
+    ///
+    /// Delegates to the `quilt` package's reducer, which expands the source
+    /// first if it is still Quilt (contains glyphs), then evaluates it as a
+    /// *block*: leading statements are run and the value is the trailing
+    /// expression (None if it ends in a statement) — the block-value semantics
+    /// of Rust/Lisp/Ruby/…. So a generated multi-statement stage reduces to its
+    /// result, not just a bare expression.
     fn reduce<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let code = self.0.coparse();
-        py.eval(
-            &std::ffi::CString::new(code)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?,
-            None,
-            None,
-        )
+        let quilt = py.import("quilt")?;
+        quilt.getattr("_reduce_src")?.call1((self.0.coparse(),))
     }
 }
 

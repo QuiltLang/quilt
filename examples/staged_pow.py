@@ -6,8 +6,7 @@ from quilt import *
 # Three-stage code generation, glyph-native: a program that writes a program
 # that writes a program. Every layer is built with Quilt quotes (the upper
 # arrows) and unquotes (the lower arrows) — no hand-written AST builders — and
-# each generated stage is actually run, not faked: run() expands a generated
-# fragment (which still contains glyphs) through quilt and execs it in-process.
+# each generated stage is actually run, not faked, with the reduce operator reduce().
 #
 #   Stage 1 (this file)    knows the EXPONENT p  -> writes Stage 2
 #   Stage 2 (make_scaled)  knows the SCALE    a  -> writes Stage 3
@@ -23,14 +22,17 @@ p = 4
 
 # Stage 1 WRITES Stage 2: a generator whose own quote/unquote loop unrolls x**p
 # when it runs. Only the loop count (p - 1) is fixed now, by the outer unquote.
-stage2 = tb("module").e(tb("expression_statement").c(tb("assignment").c(leaf("identifier", "unrolled")).w(" ").c(sym("=")).w(" ").c(quote("identifier", 1, "py", leaf("identifier", "x"), [cmd(write("py")), cmd(write("↖")), HOLE, cmd(write("↗"))])).b()).b()).n().e(tb("for_statement").c(sym("for")).w(" ").c(tb("quilt_hole").c(sym("_")).b()).w(" ").c(sym("in")).w(" ").c(tb("call").c(leaf("identifier", "range")).c(tb("argument_list").c(sym("(")).c(qlift(p - 1)).c(sym(")")).b()).b()).c(sym(":")).p("    ").n().c(tb("block").e(tb("expression_statement").c(tb("assignment").c(leaf("identifier", "unrolled")).w(" ").c(sym("=")).w(" ").c(quote("identifier", 1, "py", tb("binary_operator").c(unquote("identifier", 1, "py", leaf("identifier", "unrolled"), [cmd(write("↙")), HOLE, cmd(write("↘"))])).w(" ").c(sym("*")).w(" ").c(leaf("identifier", "x")).b(), [cmd(write("py")), cmd(write("↖")), HOLE, cmd(write("↗"))])).b()).b()).b()).x().b()).n().e(tb("expression_statement").c(tb("assignment").c(leaf("identifier", "make_scaled")).w(" ").c(sym("=")).w(" ").c(tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "a")).b()).c(sym(":")).w(" ").c(quote("identifier", 1, "py", tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "x")).b()).c(sym(":")).w(" ").c(tb("binary_operator").c(unquote("identifier", 1, "py", tb("call").c(leaf("identifier", "↑")).c(tb("argument_list").c(sym("(")).c(leaf("identifier", "a")).c(sym(")")).b()).b(), [cmd(write("↙")), HOLE, cmd(write("↘"))])).w(" ").c(sym("*")).w(" ").c(tb("parenthesized_expression").c(sym("(")).c(unquote("identifier", 1, "py", leaf("identifier", "unrolled"), [cmd(write("↙")), HOLE, cmd(write("↘"))])).c(sym(")")).b()).b()).b(), [cmd(write("py")), cmd(write("↖")), HOLE, cmd(write("↗"))])).b()).b()).b()).b()
+# Stage 2 ends with `make_scaled` as a trailing expression — that is its value,
+# the way a Rust block `{ …; expr }` evaluates to `expr`.
+stage2 = tb("module").e(tb("expression_statement").c(tb("assignment").c(leaf("identifier", "unrolled")).w(" ").c(sym("=")).w(" ").c(quote("identifier", 1, "py", leaf("identifier", "x"), [cmd(write("py")), cmd(write("↖")), HOLE, cmd(write("↗"))])).b()).b()).n().e(tb("for_statement").c(sym("for")).w(" ").c(tb("quilt_hole").c(sym("_")).b()).w(" ").c(sym("in")).w(" ").c(tb("call").c(leaf("identifier", "range")).c(tb("argument_list").c(sym("(")).c(qlift(p - 1)).c(sym(")")).b()).b()).c(sym(":")).p("    ").n().c(tb("block").e(tb("expression_statement").c(tb("assignment").c(leaf("identifier", "unrolled")).w(" ").c(sym("=")).w(" ").c(quote("identifier", 1, "py", tb("binary_operator").c(unquote("identifier", 1, "py", leaf("identifier", "unrolled"), [cmd(write("↙")), HOLE, cmd(write("↘"))])).w(" ").c(sym("*")).w(" ").c(leaf("identifier", "x")).b(), [cmd(write("py")), cmd(write("↖")), HOLE, cmd(write("↗"))])).b()).b()).b()).x().b()).n().e(tb("expression_statement").c(tb("assignment").c(leaf("identifier", "make_scaled")).w(" ").c(sym("=")).w(" ").c(tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "a")).b()).c(sym(":")).w(" ").c(quote("identifier", 1, "py", tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "x")).b()).c(sym(":")).w(" ").c(tb("binary_operator").c(unquote("identifier", 1, "py", tb("call").c(leaf("identifier", "↑")).c(tb("argument_list").c(sym("(")).c(leaf("identifier", "a")).c(sym(")")).b()).b(), [cmd(write("↙")), HOLE, cmd(write("↘"))])).w(" ").c(sym("*")).w(" ").c(tb("parenthesized_expression").c(sym("(")).c(unquote("identifier", 1, "py", leaf("identifier", "unrolled"), [cmd(write("↙")), HOLE, cmd(write("↘"))])).c(sym(")")).b()).b()).b(), [cmd(write("py")), cmd(write("↖")), HOLE, cmd(write("↗"))])).b()).b()).b()).n().e(tb("expression_statement").c(leaf("identifier", "make_scaled")).b()).b()
 
 print("=== Stage 2: the generator this program wrote ===")
 print(stage2.coparse())
 
 # ---- Stage 2: run it; the scale is known now. ----
-# run() expands Stage 2's glyphs via quilt and execs it, returning its namespace.
-make_scaled = run(stage2)["make_scaled"]
+# reduce() reduces Stage 2 to a value: it expands the glyphs, runs the statements, and
+# returns the trailing expression — the make_scaled generator.
+make_scaled = stage2.reduce()
 
 print("\n=== Stage 3: the functions that generator wrote ===")
 for a in (3, 10):

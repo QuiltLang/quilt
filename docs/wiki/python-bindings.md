@@ -81,20 +81,32 @@ qlift_html(value)   # lift int/str/QTerm to HTML text, entity-escaped (↑ into 
 Helpers (in `quilt/__init__.py`) for evaluating a term's `coparse()` output:
 
 ```python
-reduce(term)     # eval(term.coparse()) — the `↓` operator. Plain-Python, single
-                 # expression; the source must NOT contain Quilt glyphs.
-run(term)        # for a whole generated *stage*: expand its glyphs via `quilt`,
-                 # then exec it as a module; returns the resulting namespace.
+reduce(term)     # the `↓` operator: run the term's code and return the value.
+                 # Glyph-aware (expands a still-Quilt fragment via `quilt` first)
+                 # and block-aware (runs leading statements, returns the trailing
+                 # expression — the block value).
+run(term)        # run a generated stage and return its whole namespace (dict),
+                 # e.g. when you want several bindings, not one value.
 expand(src)      # expand Quilt source text to plain Python by shelling out to
                  # `quilt expand` (no compilation). run() is expand() + exec.
 reduce_rs(term)  # the `rs↓` operator: evaluate a term as Rust via rust-script.
 ```
 
-`reduce`/`.↓` cannot run a *generated* stage that itself quotes — its `coparse()`
-still has glyphs, which `eval` rejects. `run()` bridges that: it re-invokes the
-prebuilt `quilt` binary (found via `$QUILT`, set automatically when launched by
-`quilt`, else `PATH`) to expand the fragment, so multi-stage towers run
-in-process. See `examples/staged_pow.py.quilt`.
+`reduce`/`.↓` evaluates a term to a value, and does so across stages:
+
+- **Glyph-aware** — if the source is still Quilt (it contains glyphs, e.g. a
+  generated fragment that itself quotes) it is expanded via the prebuilt `quilt`
+  binary first (found via `$QUILT`, set automatically when launched by `quilt`,
+  else `PATH`).
+- **Block-aware** — a generated *stage* is usually a statement sequence, not a
+  bare expression. `↓` runs the leading statements and returns the value of the
+  trailing expression — None if it ends in a statement — the block-value
+  semantics of Rust (`{ …; expr }`), Lisp `begin`, Ruby, etc. So a stage ending
+  in its result expression reduces straight to that result. `examples/staged_pow.py.quilt`
+  ends Stage 2 with its `make_scaled` generator and reduces it with `stage2.↓`.
+
+`run()` remains for when you want the stage's whole namespace rather than a
+single value.
 
 ## How expanded `.py.quilt` code looks
 
