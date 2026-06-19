@@ -186,14 +186,27 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
 
         // dbg!(&nodes);
 
-        // Pass 1: dedent nodes and find common prefix
+        // Pass 1: strip the enclosing-context prefix (`hole.prefix`, the indent
+        // the quote sits at) from each line, and measure the body's own common
+        // leading indent. This runs for every line after a newline — including
+        // when there is no enclosing prefix — so a quote whose body is just
+        // written indented (e.g. a top-level `py↖\n    …\n↗`) is dedented too,
+        // not only one spliced into already-indented code.
         let mut nodes_new = Vec::with_capacity(nodes.len());
         let mut indent = None;
         let mut on_nl = false;
         let mut num_nl = 0;
+        // Inline opener content (`↖foo…`) sits flush with the opener, so its own
+        // leading whitespace bounds the common indent. This keeps a quote whose
+        // body carries meaningful indentation — e.g. `↖def f():\n    body` —
+        // from being dedented; only a block-opened quote (`↖\n    body\n↗`),
+        // whose first line is a newline, has its body's common indent stripped.
+        if let Some(Node::Content(s)) = nodes.first().map(|n| &**n) {
+            indent = Some(RE_WS_PREFIX.find(s).unwrap().as_str());
+        }
         for n in nodes {
             match &**n {
-                Node::Content(s) if on_nl && !hole.prefix.is_empty() => {
+                Node::Content(s) if on_nl => {
                     let mut s = &**s;
                     for p in &hole.prefix {
                         s = s
@@ -230,7 +243,11 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
 
         // dbg!(&nodes_new);
 
-        // Pass 2: dedent by common prefix
+        // Pass 2: dedent by common prefix. Reset `on_nl`: like Pass 1 it must
+        // start false so the opener-line content (`↖foo…`, which has no leading
+        // indent) is never stripped — only lines that follow a newline, which
+        // are exactly the lines Pass 1 measured `indent` from.
+        on_nl = false;
         if !indent.is_empty() {
             let mut nodes_new = Vec::with_capacity(nodes.len());
             for n in nodes {
