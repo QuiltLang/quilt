@@ -10,7 +10,7 @@ export const schema = [
   { key: "net",  label: "Network", unit: " MB/s", max: 50 },
   { key: "disk", label: "Disk I/O", unit: " MB/s", max: 40 },
 ];
-export const opts = { width: 16, title: "host-01 · live" };
+export const opts = { width: 32, title: "host-01 · live" };
 
 // Stage 1. Unroll the schema into Stage-2 source: one straight-line gauge
 // builder per metric, accumulated in `body`. ↑ bakes a Stage-1 value in as a
