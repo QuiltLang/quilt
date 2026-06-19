@@ -1,14 +1,21 @@
 // dashboard.html.ts.ts.quilt: TypeScript that generates TypeScript that generates HTML — a staged live dashboard
-import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
+import {
+  tb, leaf, sym, quote, unquote, cmd, write, push,
+  name, qlift, qlift_html, NL, POP, HOLE,
+} from "quilt";
 
 // The layout the dashboard is specialized for. Editing this — or pressing
 // "Reconfigure" — reruns Stage 1, so watch the generated render() below rewrite
 // itself. (The live readings are simulated by the playground, once a second.)
 export const schema = [
-  { key: "cpu",  label: "CPU",     unit: "%",    max: 100 },
-  { key: "mem",  label: "Memory",  unit: "%",    max: 100 },
-  { key: "net",  label: "Network", unit: " MB/s", max: 50 },
-  { key: "disk", label: "Disk I/O", unit: " MB/s", max: 40 },
+  { key: "cpu",  label: "CPU",      unit: "%",     max: 100 },
+  { key: "mem",  label: "Memory",   unit: "%",     max: 100 },
+  { key: "net",  label: "Network",  unit: " MB/s", max: 50  },
+  { key: "disk", label: "Disk I/O", unit: " MB/s", max: 40  },
+  { key: "gpu",  label: "GPU",      unit: "%",     max: 100 },
+  // Uncomment a metric and press Run to regenerate the dashboard with it:
+  // { key: "temp", label: "Temp",  unit: "°C",    max: 90  },
+  // { key: "load", label: "Load",  unit: "",      max: 8   },
 ];
 export const opts = { width: 32, title: "host-01 · live" };
 
@@ -19,22 +26,24 @@ export const opts = { width: 32, title: "host-01 · live" };
 export function makeRenderer(schema, opts) {
   let body = ts↖↗;
   for (const m of schema) {
-    const scale = opts.width / m.max;          // baked: cells-per-unit for this metric
+    const scale = opts.width / m.max; // baked: cells per unit
     body = ts↖
       ↙body↘
       rows = html↖
         ↙rows↘
         <div class="bar">
           <span class="lbl">↙↑(↙↑(m.label)↘)↘</span>
-          <span class="meter">↙↑("█".repeat(Math.round(values[↙↑(m.key)↘] * ↙↑(scale)↘)).padEnd(↙↑(opts.width)↘, "·"))↘</span>
+          <span class="meter">↙↑(bar(values[↙↑(m.key)↘], ↙↑(scale)↘))↘</span>
           <b class="val">↙↑(values[↙↑(m.key)↘])↘↙↑(↙↑(m.unit)↘)↘</b>
         </div>
       ↗;
     ↗;
   }
   // Assemble the Stage-2 program: a render(values) that rebuilds the dashboard
-  // from the unrolled gauges. Its title is baked in from Stage 1 too.
+  // from the unrolled gauges. The bar() helper, width and title bake in here.
   const stage2 = ts↖ (values) => {
+    const W = ↙↑(opts.width)↘;
+    const bar = (v, s) => "█".repeat(Math.round(v * s)).padEnd(W, "·");
     let rows = html↖<h1>↙↑(↙↑(opts.title)↘)↘</h1>↗;
     ↙body↘
     return rows;
