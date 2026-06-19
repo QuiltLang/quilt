@@ -9,7 +9,10 @@ use super::bash::lang::{BashLanguage, DynBashLanguage};
 #[cfg(feature = "html")]
 use super::html::lang::{DynHtmlLanguage, HtmlLanguage};
 #[cfg(feature = "nix")]
-use super::nix::lang::{DynNixLanguage, NixLanguage};
+use super::nix::{
+    lang::{DynNixLanguage, NixLanguage},
+    meta::NixMetaLanguage,
+};
 #[cfg(feature = "python")]
 use super::python::{
     lang::{DynPythonLanguage, PythonLanguage},
@@ -484,8 +487,10 @@ mod tests {
     }
 }
 
-// Languages absent from `metas` (text, wgsl, html, zsh, bash, nix) are target
-// languages only — the host's MetaLanguage drives expansion.
+// Languages absent from `metas` (text, wgsl, html, zsh, bash) are target
+// languages only — the host's MetaLanguage drives expansion. Nix is both: a
+// quotable target *and* a string-based host (its meta generates code as Nix
+// strings, see `langs::nix::meta`).
 define_omni! {
     languages {
         bash if "bash"   => Bash(BashLanguage, DynBashLanguage):       ["bash"];
@@ -499,6 +504,7 @@ define_omni! {
         zsh  if "zsh"    => Zsh(ZshLanguage, DynZshLanguage):          ["zsh"];
     }
     metas {
+        nix  if "nix"    => Nix(NixMetaLanguage):                      ["nix"];
         py   if "python" => Python(PythonMetaLanguage):                ["python", "py"];
         rs   if "rust"   => Rust(RustMetaLanguage):                    ["rust", "rs"];
         ts   if "typescript" => TypeScript(TypeScriptMetaLanguage):    ["typescript", "ts"];
