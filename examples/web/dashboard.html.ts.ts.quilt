@@ -17,12 +17,12 @@ export const schema = [
   // { key: "temp", label: "Temp",  unit: "°C",    max: 90  },
   // { key: "load", label: "Load",  unit: "",      max: 8   },
 ];
-export const opts = { width: 32, title: "host-01 · live" };
+export const opts = { width: 32, intervalMs: 1000, title: "host-01 · live" };
 
 // Stage 1. Unroll the schema into Stage-2 source: one straight-line gauge
 // builder per metric, accumulated in `body`. ↑ bakes a Stage-1 value in as a
 // literal now; a value left under a lone ↙…↘ hole (the live reading) fires later,
-// when the generated render() runs. `opts.width` sets the bar length in cells.
+// each time the generated loop runs. `opts.width` sets the bar length in cells.
 export function makeRenderer(schema, opts) {
   let body = ts↖↗;
   for (const m of schema) {
@@ -39,14 +39,22 @@ export function makeRenderer(schema, opts) {
       ↗;
     ↗;
   }
-  // Assemble the Stage-2 program: a render(values) that rebuilds the dashboard
-  // from the unrolled gauges. The bar() helper, width and title bake in here.
-  const stage2 = ts↖ (values) => {
+  // Assemble the Stage-2 program: it runs the update loop itself. frame() reads
+  // fresh values, rebuilds the unrolled dashboard, and hands the HTML to sink();
+  // start() paints once and then loops. The width, title, and update interval
+  // are all baked in — change opts.intervalMs and rerun to regenerate a loop
+  // that ticks at the new rate.
+  const stage2 = ts↖ (sink, read) => {
     const W = ↙↑(opts.width)↘;
     const bar = (v, s) => "█".repeat(Math.round(v * s)).padEnd(W, "·");
-    let rows = html↖<h1>↙↑(↙↑(opts.title)↘)↘</h1>↗;
-    ↙body↘
-    return rows;
+    const frame = () => {
+      const values = read();
+      let rows = html↖<h1>↙↑(↙↑(opts.title)↘)↘</h1>↗;
+      ↙body↘
+      sink(rows.coparse());
+    };
+    frame();
+    return setInterval(frame, ↙↑(opts.intervalMs)↘);
   } ↗;
   return stage2.↓;
 }

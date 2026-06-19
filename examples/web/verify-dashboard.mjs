@@ -55,24 +55,31 @@ const modPath = join(dist, "__dash.mjs");
 writeFileSync(modPath, ts);
 const mod = await import(pathToFileURL(modPath));
 
-// 3. Stage 1 → Stage 2: makeRenderer reduces (↓) to a render function.
+// 3. Stage 1 → Stage 2: makeRenderer reduces (↓) to a start() that owns its loop.
 quilt.clearReduceTrace();
-const render = mod.makeRenderer(mod.schema, mod.opts);
-assert.strictEqual(typeof render, "function", "makeRenderer returns render()");
+const start = mod.makeRenderer(mod.schema, mod.opts);
+assert.strictEqual(typeof start, "function", "makeRenderer returns start(sink, read)");
 const stage2 = quilt.reduceTrace.at(-1).generated;
-console.log("=== Stage 2: the render() Stage 1 generated ===\n" + stage2 + "\n");
-// It must be unrolled: one gauge statement per metric, no loop left.
+console.log("=== Stage 2: the start() loop Stage 1 generated ===\n" + stage2 + "\n");
+// It must be unrolled (no schema loop), and codegen the update loop + interval.
 assert(!/\bfor\b/.test(stage2), "Stage 2 is unrolled (no for-loop)");
+assert(stage2.includes("setInterval"), "Stage 2 codegens the update loop");
+assert(stage2.includes(String(mod.opts.intervalMs)), "the update interval is baked in");
 assert((stage2.match(/class="bar"/g) || []).length === mod.schema.length, "one gauge per metric");
 
-// 4. Stage 3: render fills live readings. No expansion happens here.
+// 4. Stage 3: start() paints once synchronously, then loops. Capture that first
+//    frame and stop the timer; building frames triggers no expansion.
 const before = quilt.reduceTrace.length;
-const html = render({ cpu: 37, mem: 64, net: 12.5, disk: 8 }).coparse();
-console.log("=== Stage 3: render(values) → HTML ===\n" + html + "\n");
-assert.strictEqual(quilt.reduceTrace.length, before, "rendering a tick triggers no expansion");
+let html = null;
+const values = { cpu: 37, mem: 64, net: 12.5, disk: 8, gpu: 60 };
+const id = start((h) => { html = h; }, () => values);
+clearInterval(id);
+console.log("=== Stage 3: one frame of the generated loop → HTML ===\n" + html + "\n");
+assert(html, "start() painted a frame immediately");
+assert.strictEqual(quilt.reduceTrace.length, before, "running frames triggers no expansion");
 assert(html.includes("<h1>") && html.includes(mod.opts.title), "title baked in");
 assert(html.includes("█"), "ascii meter bars rendered");
 assert(html.includes("37") && html.includes("64"), "live values plugged in");
 assert(!html.includes("↙") && !html.includes("↑"), "no unexpanded glyphs leaked");
 
-console.log("staged dashboard verify: source → expand → ↓ reduce → render → HTML ✓");
+console.log("staged dashboard verify: source → expand → ↓ reduce → start() loop → HTML ✓");
