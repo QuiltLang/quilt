@@ -8,6 +8,8 @@
 use super::bash::lang::{BashLanguage, DynBashLanguage};
 #[cfg(feature = "html")]
 use super::html::lang::{DynHtmlLanguage, HtmlLanguage};
+#[cfg(feature = "nix")]
+use super::nix::lang::{DynNixLanguage, NixLanguage};
 #[cfg(feature = "python")]
 use super::python::{
     lang::{DynPythonLanguage, PythonLanguage},
@@ -482,12 +484,13 @@ mod tests {
     }
 }
 
-// Languages absent from `metas` (text, wgsl, html, zsh, bash) are target
+// Languages absent from `metas` (text, wgsl, html, zsh, bash, nix) are target
 // languages only — the host's MetaLanguage drives expansion.
 define_omni! {
     languages {
         bash if "bash"   => Bash(BashLanguage, DynBashLanguage):       ["bash"];
         html if "html"   => Html(HtmlLanguage, DynHtmlLanguage):       ["html"];
+        nix  if "nix"    => Nix(NixLanguage, DynNixLanguage):          ["nix"];
         py   if "python" => Python(PythonLanguage, DynPythonLanguage): ["python", "py"];
         rs   if "rust"   => Rust(RustLanguage, DynRustLanguage):       ["rust", "rs"];
         txt  if "text"   => Text(TextLanguage, DynTextLanguage):       ["text", "txt"];

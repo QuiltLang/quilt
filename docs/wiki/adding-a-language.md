@@ -1,6 +1,6 @@
 # Adding a Language
 
-This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `text`).
+This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `nix`, `text`).
 
 ## 1. Decide the role
 

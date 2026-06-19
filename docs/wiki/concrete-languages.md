@@ -126,6 +126,31 @@ Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` gr
 
 ---
 
+## Nix (`nix`) — target only
+
+**Files:** `langs/nix/lang.rs`, `langs/nix/mod.rs`
+
+The [Nix](https://nix.dev) expression language, parsed via the forked `tree-sitter-nix` grammar. Target-only: it can appear inside quotes (`nix↖…↗`) but has no `MetaLanguage`. Nix is purely expression-oriented — a whole file is a single expression — so every fragment is an `Expr` and unquotes splice into expression positions; there are no statements.
+
+The hole token is `__QUILT_HOLE__`, a plain Nix identifier (so it parses as a `variable_expression` in any expression position; the range-based hole detection in `treesitter.rs` recognises it). Nix has a `LiftTo` marker type (`Nix` in `lift.rs`): strings lift to double-quoted `string_expression`s (with `${` escaped to keep them inert), integers/floats to `integer_expression`/`float_expression`, booleans to the `true`/`false` builtins, and slices/`Vec`s to space-separated `list_expression`s.
+
+Usage in `*.rs.quilt` (see `examples/nix_module.rs.quilt`):
+
+```rust
+let build_inputs = nix↖[ ↙{ for (i, d) in deps.into_iter().enumerate() {
+    if i > 0 { " ".←; }
+    d.↑.←;
+} }↘ ]↗;
+let drv = nix↖
+    pkgs.stdenv.mkDerivation {
+      pname = ↙pname.↑↘;
+      buildInputs = ↙build_inputs↘;
+    }
+↗;
+```
+
+---
+
 ## Text (`txt`) — target only
 
 **Files:** `langs/text/lang.rs`, `langs/text/mod.rs`, `langs/text/meta.rs`

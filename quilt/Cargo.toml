@@ -34,8 +34,8 @@ tracing-subscriber = {workspace = true, features = ["env-filter"]}
 # build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
 tree-sitter = {workspace = true, optional = true}
 tree-sitter-quilt = {workspace = true, optional = true}
-# The downstream grammars (rust, python, typescript, wgsl, bash, html, zsh) are
-# vendored under `grammars/<lang>/` and compiled by `build.rs`, not pulled as
+# The downstream grammars (rust, python, typescript, wgsl, bash, html, zsh, nix)
+# are vendored under `grammars/<lang>/` and compiled by `build.rs`, not pulled as
 # crates — that keeps `quiltlang` free of the git dependencies crates.io rejects
 # (issue #32). `tree-sitter-language` provides the `LanguageFn` type the
 # generated-parser bindings in `src/grammars.rs` wrap.
@@ -53,7 +53,7 @@ workspace = true
 
 [features]
 bootstrap = ["parse"]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix"]
 # `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
 # the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
 # the runtime-only consumers (e.g. nanobots-codegen on wasm). It also pulls in
@@ -67,6 +67,7 @@ parse = [
 ]
 bash = ["parse"]
 html = ["parse"]
+nix = ["parse"]
 python = []
 rust = []
 text = []

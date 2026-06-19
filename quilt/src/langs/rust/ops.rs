@@ -237,6 +237,7 @@ pub fn lift_spelling(target: &str) -> Result<&'static str> {
         "wgsl" => Ok("qlift_to::<Wgsl>()"),
         "zsh" => Ok("qlift_to::<Zsh>()"),
         "bash" => Ok("qlift_to::<Bash>()"),
+        "nix" => Ok("qlift_to::<Nix>()"),
         _ => bail!("rust can't lift into {target:?}: no spelling/LiftTo impls registered"),
     }
 }
