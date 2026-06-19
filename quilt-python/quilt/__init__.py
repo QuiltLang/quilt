@@ -1,10 +1,55 @@
 from ._quilt import *
 import os
+import shutil
 import subprocess
 import tempfile
 
 def reduce(term):
     return eval(term.coparse())
+
+def _quilt_bin():
+    """Locate the `quilt` expander: $QUILT (set by `quilt run`) or PATH."""
+    qbin = os.environ.get("QUILT") or shutil.which("quilt")
+    if not qbin:
+        raise RuntimeError(
+            "expand(): cannot find the `quilt` binary — set $QUILT or put "
+            "`quilt` on PATH (it is set automatically when run via `quilt`)"
+        )
+    return qbin
+
+def expand(src, lang="py"):
+    """Expand Quilt source text to plain target source by invoking `quilt expand`.
+
+    Unlike reduce()/`.↓` (which is plain-Python eval of coparse()), this handles
+    source that still contains Quilt glyphs — e.g. a generated stage that itself
+    quotes. It shells out to the prebuilt `quilt` binary, so nothing is compiled.
+    """
+    qbin = _quilt_bin()
+    with tempfile.TemporaryDirectory() as d:
+        inp = os.path.join(d, f"frag.{lang}.quilt")
+        with open(inp, "w") as f:
+            f.write(src)
+        subprocess.run([qbin, "expand", inp], check=True, capture_output=True)
+        with open(inp[: -len(".quilt")]) as f:  # quilt expand strips `.quilt`
+            out = f.read()
+    # Drop the leading `//! DO NOT EDIT…` header line(s) quilt expand prepends.
+    lines = out.splitlines()
+    while lines and lines[0].startswith("//!"):
+        lines.pop(0)
+    return "\n".join(lines).lstrip("\n")
+
+def run(term, lang="py"):
+    """Run a generated *stage* — Quilt source that may still contain glyphs — by
+    expanding it and exec-ing it as a module. Returns the resulting namespace.
+
+    The glyph-aware counterpart to reduce(): use reduce()/`.↓` for a single
+    plain-Python expression, run() for a whole generated program (e.g. one that
+    defines a generator). The quilt runtime is pre-imported into the namespace.
+    """
+    ns = {}
+    exec("from quilt import *", ns)
+    exec(compile(expand(term.coparse(), lang), "<quilt-stage>", "exec"), ns)
+    return ns
 
 def reduce_rs(term):
     """Evaluate a QTerm by running it as Rust code via rust-script (the `rs↓` operator)."""

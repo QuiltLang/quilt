@@ -22,7 +22,7 @@ echo "==> binding tests (pytest)"
 ( cd "$ROOT/quilt-python" && PYTHONPATH=. python3 -m pytest -q tests/ )
 
 echo "==> run self-contained .py.quilt examples"
-for ex in hello expr_compose pow_specialize reduce upper_tri_mul; do
+for ex in hello expr_compose pow_specialize staged_pow reduce upper_tri_mul; do
   echo "--- $ex.py.quilt"
   "$ROOT/bin/quilt" "examples/$ex.py.quilt" >/dev/null
 done

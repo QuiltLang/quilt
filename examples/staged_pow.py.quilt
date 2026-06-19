@@ -1,0 +1,42 @@
+#!/usr/bin/env quilt
+from quilt import *
+
+# Three-stage code generation, glyph-native: a program that writes a program
+# that writes a program. Every layer is built with Quilt quotes (the upper
+# arrows) and unquotes (the lower arrows) — no hand-written AST builders — and
+# each generated stage is actually run, not faked: run() expands a generated
+# fragment (which still contains glyphs) through quilt and execs it in-process.
+#
+#   Stage 1 (this file)    knows the EXPONENT p  -> writes Stage 2
+#   Stage 2 (make_scaled)  knows the SCALE    a  -> writes Stage 3
+#   Stage 3 (f)            knows the ARGUMENT x  -> computes a * x**p
+#
+# Nesting stages the work. In a nested quote, the inner quote is *Quilt source
+# that survives into the generated program*. A ground unquote at the outer level
+# — the loop count below — is evaluated now (Stage 1) and baked in as a literal;
+# the inner quotes and unquotes are emitted verbatim, to run when Stage 2 runs.
+
+# ---- Stage 1: the exponent is known now. ----
+p = 4
+
+# Stage 1 WRITES Stage 2: a generator whose own quote/unquote loop unrolls x**p
+# when it runs. Only the loop count (p - 1) is fixed now, by the outer unquote.
+stage2 = py↖unrolled = py↖x↗
+for _ in range(↙↑(p - 1)↘):
+    unrolled = py↖↙unrolled↘ * x↗
+make_scaled = lambda a: py↖lambda x: ↙↑(a)↘ * (↙unrolled↘)↗↗
+
+print("=== Stage 2: the generator this program wrote ===")
+print(stage2.coparse())
+
+# ---- Stage 2: run it; the scale is known now. ----
+# run() expands Stage 2's glyphs via quilt and execs it, returning its namespace.
+make_scaled = run(stage2)["make_scaled"]
+
+print("\n=== Stage 3: the functions that generator wrote ===")
+for a in (3, 10):
+    stage3 = make_scaled(a)          # a QTerm holding Stage-3 source
+    f = stage3.↓                     # Stage 3 is plain Python, so .↓ reduce runs it
+    print(f"  a={a:<2} -> {stage3.coparse()}")
+    for x in (2, 5):
+        print(f"        f({x}) = {f(x)}   (check {a * x ** p})")

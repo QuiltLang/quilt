@@ -335,6 +335,13 @@ fn run(args: &RunArgs) -> Result<()> {
             _ => py_dir,
         };
         runner_cmd.env("PYTHONPATH", pythonpath);
+        // Hand the running expander's own path to the script so the runtime's
+        // `expand`/`run` helpers can re-invoke `quilt expand` on generated
+        // fragments that still contain Quilt glyphs (which plain-Python eval,
+        // i.e. `reduce`/`.↓`, can't parse). `quilt` isn't necessarily on PATH.
+        if let Ok(exe) = std::env::current_exe() {
+            runner_cmd.env("QUILT", exe);
+        }
     }
 
     runner_cmd.arg(&path).args(&args.args);

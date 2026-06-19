@@ -76,6 +76,26 @@ qlift(value)        # lift int/str/QTerm to a Python term (↑ into a py quote)
 qlift_html(value)   # lift int/str/QTerm to HTML text, entity-escaped (↑ into an html quote)
 ```
 
+### Running generated code
+
+Helpers (in `quilt/__init__.py`) for evaluating a term's `coparse()` output:
+
+```python
+reduce(term)     # eval(term.coparse()) — the `↓` operator. Plain-Python, single
+                 # expression; the source must NOT contain Quilt glyphs.
+run(term)        # for a whole generated *stage*: expand its glyphs via `quilt`,
+                 # then exec it as a module; returns the resulting namespace.
+expand(src)      # expand Quilt source text to plain Python by shelling out to
+                 # `quilt expand` (no compilation). run() is expand() + exec.
+reduce_rs(term)  # the `rs↓` operator: evaluate a term as Rust via rust-script.
+```
+
+`reduce`/`.↓` cannot run a *generated* stage that itself quotes — its `coparse()`
+still has glyphs, which `eval` rejects. `run()` bridges that: it re-invokes the
+prebuilt `quilt` binary (found via `$QUILT`, set automatically when launched by
+`quilt`, else `PATH`) to expand the fragment, so multi-stage towers run
+in-process. See `examples/staged_pow.py.quilt`.
+
 ## How expanded `.py.quilt` code looks
 
 When the Quilt engine expands a Python `.quilt` file, each `↖…↗` quote becomes a call that constructs a `QTerm`:
