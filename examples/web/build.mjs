@@ -47,9 +47,10 @@ if (existsSync(join(WASI_SDK, "bin", "clang"))) {
   );
   copyInto("playground.html");
   copyInto("playground.js");
+  copyInto("quilt-rt.js"); // reduce-enabled `quilt` wrapper (adds the ↓ operator)
   copyInto("wasi-shim.js");
-  copyInto("cards.html.ts.quilt"); // playground's initial source
-  console.log("included the meta-meta playground (/playground.html)");
+  copyInto("dashboard.html.ts.quilt"); // playground's initial source (staged demo)
+  console.log("included the staged dashboard playground (/playground.html)");
 } else {
   console.warn(`! no WASI sdk at ${WASI_SDK} — skipping the playground (#47); set WASI_SDK_PATH to include it`);
 }
