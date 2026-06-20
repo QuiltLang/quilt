@@ -145,13 +145,11 @@ function setHtml(html) {
   $("tick-info").textContent = `frame #${frames} · the loop is codegened`;
 }
 
-// Evaluate the config panel (user-defined `schema` and `opts`) into values.
+// Parse the config panel (raw JSON: { schema, opts }) into values.
 function parseConfig() {
-  const { schema: s, opts: o } = new Function(
-    $("config").value + "\n; return { schema, opts };",
-  )();
-  if (!Array.isArray(s) || !s.length) throw new Error("config must define a non-empty `schema` array");
-  if (!o || typeof o !== "object") throw new Error("config must define an `opts` object");
+  const { schema: s, opts: o } = JSON.parse($("config").value);
+  if (!Array.isArray(s) || !s.length) throw new Error("`schema` must be a non-empty array");
+  if (!o || typeof o !== "object") throw new Error("`opts` must be an object");
   return { schema: s, opts: o };
 }
 
@@ -162,10 +160,10 @@ function loadConfig() {
   let parsed;
   try {
     parsed = parseConfig();
-    $("config").classList.remove("err");
+    $("config").parentElement.classList.remove("err");
   } catch (e) {
-    $("config").classList.add("err");
-    setStatus("config: " + (e.message || e), true);
+    $("config").parentElement.classList.add("err");
+    setStatus("config JSON: " + (e.message || e), true);
     return;
   }
   fullSchema = parsed.schema;
@@ -271,13 +269,24 @@ function setupGlyphs() {
 }
 
 // Regenerate the TypeScript a short while after config edits settle.
+// Keep the config overlay highlighter in sync with its textarea (same trick as
+// the source editor): a coloured <pre> behind a transparent <textarea>.
+function refreshConfig() {
+  const c = $("config");
+  $("config-hl").innerHTML = highlight(c.value) + "\n";
+  $("config-hl").scrollTop = c.scrollTop;
+  $("config-hl").scrollLeft = c.scrollLeft;
+}
 function setupConfig() {
+  const c = $("config");
   let cfgTimer = null;
-  $("config").addEventListener("input", () => {
+  c.addEventListener("input", () => {
+    refreshConfig();
     clearTimeout(cfgTimer);
     setStatus("editing config…");
     cfgTimer = setTimeout(loadConfig, 500);
   });
+  c.addEventListener("scroll", refreshConfig);
 }
 
 async function main() {
@@ -288,6 +297,7 @@ async function main() {
   ]);
   src.value = source;
   refreshSource();
+  refreshConfig();
   expanderModule = await WebAssembly.compile(expanderBytes);
   setExpander(expand); // so `term.reduce()` (↓) can re-expand generated stages
 
