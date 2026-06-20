@@ -56,28 +56,35 @@ writeFileSync(modPath, ts);
 const mod = await import(pathToFileURL(modPath));
 
 // 3. Stage 1 → Stage 2: makeRenderer reduces (↓) to a start() that owns its loop.
+//    The schema/opts now come from the page's config panel; supply them here.
+const schema = [
+  { key: "cpu", label: "CPU", unit: "%", max: 100 },
+  { key: "mem", label: "Memory", unit: "%", max: 100 },
+  { key: "net", label: "Network", unit: " MB/s", max: 50 },
+];
+const opts = { width: 32, intervalMs: 1000, title: "host-01 · live" };
 quilt.clearReduceTrace();
-const start = mod.makeRenderer(mod.schema, mod.opts);
+const start = mod.makeRenderer(schema, opts);
 assert.strictEqual(typeof start, "function", "makeRenderer returns start(sink, read)");
 const stage2 = quilt.reduceTrace.at(-1).generated;
 console.log("=== Stage 2: the start() loop Stage 1 generated ===\n" + stage2 + "\n");
 // It must be unrolled (no schema loop), and codegen the update loop + interval.
 assert(!/\bfor\b/.test(stage2), "Stage 2 is unrolled (no for-loop)");
 assert(stage2.includes("setInterval"), "Stage 2 codegens the update loop");
-assert(stage2.includes(String(mod.opts.intervalMs)), "the update interval is baked in");
-assert((stage2.match(/class="bar"/g) || []).length === mod.schema.length, "one gauge per metric");
+assert(stage2.includes(String(opts.intervalMs)), "the update interval is baked in");
+assert((stage2.match(/class="bar"/g) || []).length === schema.length, "one gauge per metric");
 
 // 4. Stage 3: start() paints once synchronously, then loops. Capture that first
 //    frame and stop the timer; building frames triggers no expansion.
 const before = quilt.reduceTrace.length;
 let html = null;
-const values = { cpu: 37, mem: 64, net: 12.5, disk: 8, gpu: 60 };
+const values = { cpu: 37, mem: 64, net: 12.5 };
 const id = start((h) => { html = h; }, () => values);
 clearInterval(id);
 console.log("=== Stage 3: one frame of the generated loop → HTML ===\n" + html + "\n");
 assert(html, "start() painted a frame immediately");
 assert.strictEqual(quilt.reduceTrace.length, before, "running frames triggers no expansion");
-assert(html.includes("<h1>") && html.includes(mod.opts.title), "title baked in");
+assert(html.includes("<h1>") && html.includes(opts.title), "title baked in");
 assert(html.includes("█"), "ascii meter bars rendered");
 assert(html.includes("37") && html.includes("64"), "live values plugged in");
 assert(!html.includes("↙") && !html.includes("↑"), "no unexpanded glyphs leaked");

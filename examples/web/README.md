@@ -30,15 +30,17 @@ makeRenderer(schema) ──(↓ reduce: re-expand + eval)──▶ Stage 2: star
 start(setHtml, read) ──(its own baked setInterval)───▶ Stage 3: HTML, looping
 ```
 
-`dashboard.html.ts.ts.quilt` is a self-specializing live dashboard. **Stage 1**
-(`makeRenderer`) runs once: it loops over the chosen metrics and *unrolls* them
-into a flat, branch-free **Stage 2** (`start()`) — there is no loop and no schema
-left in the generated code (the metric loop is fully unrolled). `start()` carries
-its own update loop, with the interval baked in from `opts.intervalMs`. **Stage
-3** is the HTML that loop sets every tick — no further expansion, no
-interpretation; the page only supplies the HTML sink and the readings feed.
-Editing the source or pressing *Reconfigure* reruns the expensive Stage 1; the
-codegened loop stays cheap. The page shows the timings so the contrast is visible.
+`dashboard.html.ts.ts.quilt` is a self-specializing live dashboard. The `schema`
+(which metrics) and `opts` (width, interval, title) come from an editable panel
+above the dashboard, not the source. **Stage 1** (`makeRenderer`) runs once: it
+loops over the chosen metrics and *unrolls* them into a flat, branch-free **Stage
+2** (`start()`) — there is no loop and no schema left in the generated code (the
+metric loop is fully unrolled). `start()` carries its own update loop, with the
+interval baked in from `opts.intervalMs`. **Stage 3** is the HTML that loop sets
+every tick — no further expansion, no interpretation; the page only supplies the
+HTML sink and the readings feed. Editing the schema/opts panel (or the source)
+regenerates the TypeScript; the codegened loop stays cheap. The page shows the
+timings so the contrast is visible.
 
 - `quilt-expand.wasm` — the Quilt parser+expander. Unlike the runtime, expansion
   needs the `parse` feature (tree-sitter + the C grammars), which needs a libc,

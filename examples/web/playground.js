@@ -25,8 +25,10 @@ const dec = new TextDecoder();
 const CHAIN = ["ts", "html"]; // ground TypeScript; un-annotated quotes are HTML
 
 let expanderModule; // compiled WebAssembly.Module for the expander
-let demo; // the imported Stage-1 module (makeRenderer, schema, opts)
-let schema; // the active layout (Reconfigure mutates this)
+let demo; // the imported Stage-1 module (just makeRenderer now)
+let fullSchema = []; // the schema parsed from the config panel
+let schema = []; // the active layout (Reconfigure may use a subset of fullSchema)
+let opts = {}; // the opts parsed from the config panel
 let stopLoop = null; // interval id returned by the generated loop (to stop it)
 let sim = {}; // simulated live readings, per metric key
 let frames = 0;
@@ -143,6 +145,36 @@ function setHtml(html) {
   $("tick-info").textContent = `frame #${frames} · the loop is codegened`;
 }
 
+// Evaluate the config panel (user-defined `schema` and `opts`) into values.
+function parseConfig() {
+  const { schema: s, opts: o } = new Function(
+    $("config").value + "\n; return { schema, opts };",
+  )();
+  if (!Array.isArray(s) || !s.length) throw new Error("config must define a non-empty `schema` array");
+  if (!o || typeof o !== "object") throw new Error("config must define an `opts` object");
+  return { schema: s, opts: o };
+}
+
+// Read the config panel and (re)stage. Called on load, on config edits, and
+// after the source is re-expanded.
+function loadConfig() {
+  if (!demo) return;
+  let parsed;
+  try {
+    parsed = parseConfig();
+    $("config").classList.remove("err");
+  } catch (e) {
+    $("config").classList.add("err");
+    setStatus("config: " + (e.message || e), true);
+    return;
+  }
+  fullSchema = parsed.schema;
+  opts = parsed.opts;
+  schema = fullSchema;
+  sim = {};
+  restage();
+}
+
 // Stage 1 → Stage 2: the expensive step, run once. makeRenderer() unrolls the
 // schema and reduces (↓) to a start() that contains its own update loop. Stop
 // any previous loop, stage the new one, and let it drive the preview.
@@ -150,22 +182,23 @@ function restage() {
   if (stopLoop != null) { clearInterval(stopLoop); stopLoop = null; }
   clearReduceTrace();
   const t0 = performance.now();
-  const start = demo.makeRenderer(schema, demo.opts);
+  const start = demo.makeRenderer(schema, opts);
   const ms = performance.now() - t0;
   const stage2 = reduceTrace.length ? reduceTrace[reduceTrace.length - 1].generated : "(no reduce ran)";
   $("stage2").innerHTML = highlight(stage2);
   $("restage-info").textContent =
-    `staged ${schema.length} gauge(s) in ${ms.toFixed(1)} ms · loop @ ${demo.opts.intervalMs} ms baked in`;
+    `staged ${schema.length} gauge(s) in ${ms.toFixed(1)} ms · loop @ ${opts.intervalMs} ms baked in`;
   frames = 0;
   stopLoop = start(setHtml, read); // the GENERATED loop now drives updates
+  setStatus(`live — the generated loop updates every ${opts.intervalMs} ms.`);
 }
 
-// Reconfigure = a user interaction that triggers the expensive outer loop:
-// shuffle and drop/add metrics, then rerun Stage 1.
+// Reconfigure = a user interaction that restages with a shuffled subset of the
+// metrics from the config panel.
 function reconfigure() {
-  const all = demo.schema;
-  const shuffled = [...all].sort(() => Math.random() - 0.5);
-  const n = 2 + Math.floor(Math.random() * (all.length - 1)); // keep 2..all
+  if (!demo || !fullSchema.length) return;
+  const shuffled = [...fullSchema].sort(() => Math.random() - 0.5);
+  const n = 2 + Math.floor(Math.random() * Math.max(1, fullSchema.length - 1));
   schema = shuffled.slice(0, n);
   sim = {};
   restage();
@@ -181,10 +214,7 @@ async function expandAndRun() {
     setStatus("staging…");
     demo = await importModule(ts);
     if (typeof demo.makeRenderer !== "function") throw new Error("source must export makeRenderer()");
-    schema = [...demo.schema];
-    sim = {};
-    restage(); // stages once and starts the generated loop
-    setStatus(`live — the generated loop updates every ${demo.opts.intervalMs} ms.`);
+    loadConfig(); // read the config panel and stage
   } catch (e) {
     setStatus(String(e.message || e), true);
   } finally {
@@ -240,6 +270,16 @@ function setupGlyphs() {
   src.addEventListener("keydown", onKey);
 }
 
+// Regenerate the TypeScript a short while after config edits settle.
+function setupConfig() {
+  let cfgTimer = null;
+  $("config").addEventListener("input", () => {
+    clearTimeout(cfgTimer);
+    setStatus("editing config…");
+    cfgTimer = setTimeout(loadConfig, 500);
+  });
+}
+
 async function main() {
   const [source, , expanderBytes] = await Promise.all([
     fetch("./dashboard.html.ts.ts.quilt").then((r) => r.text()),
@@ -254,6 +294,7 @@ async function main() {
   src.addEventListener("input", refreshSource);
   src.addEventListener("scroll", refreshSource);
   setupGlyphs();
+  setupConfig();
 
   $("run").disabled = false;
   $("run").addEventListener("click", expandAndRun);
