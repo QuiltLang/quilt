@@ -62,7 +62,7 @@ const schema = [
   { key: "mem", label: "Memory", unit: "%", max: 100 },
   { key: "net", label: "Network", unit: " MB/s", max: 50 },
 ];
-const opts = { width: 32, intervalMs: 1000, title: "host-01 · live" };
+const opts = { intervalMs: 1000, title: "host-01 · live" };
 quilt.clearReduceTrace();
 const start = mod.makeRenderer(schema, opts);
 assert.strictEqual(typeof start, "function", "makeRenderer returns start(sink, read)");
@@ -85,7 +85,7 @@ console.log("=== Stage 3: one frame of the generated loop → HTML ===\n" + html
 assert(html, "start() painted a frame immediately");
 assert.strictEqual(quilt.reduceTrace.length, before, "running frames triggers no expansion");
 assert(html.includes("<h1>") && html.includes(opts.title), "title baked in");
-assert(html.includes("█"), "ascii meter bars rendered");
+assert(html.includes('class="fill"') && /style=.{0,2}width:/.test(html), "solid bar fills rendered");
 assert(html.includes("37") && html.includes("64"), "live values plugged in");
 assert(!html.includes("↙") && !html.includes("↑"), "no unexpanded glyphs leaked");
 
