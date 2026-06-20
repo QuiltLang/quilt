@@ -29,10 +29,10 @@
     }
     pre.out { height: 22rem; margin: 0; overflow: auto; background: var(--quilt-bg); color: var(--quilt-text); }
     pre.stage2 { height: 13rem; }
-    /* schema + opts config panel, above the dashboard preview */
-    textarea#config { height: 11rem; background: var(--quilt-bg); color: var(--quilt-text); resize: vertical; display: block; width: 100%; }
-    textarea#config:focus { outline: 2px solid var(--quilt-orange); outline-offset: -1px; }
-    textarea#config.err { outline: 2px solid #b00; outline-offset: -1px; }
+    /* schema + opts (JSON) config editor — same overlay highlighter as the
+       source, at half its height (the left side is the 22rem source editor). */
+    .editor.editor-config { height: 11rem; }
+    .editor.editor-config.err { outline: 2px solid #b00; outline-offset: -1px; }
 
     /* The editor is a highlighted <pre> with a transparent <textarea> on top. */
     .editor { position: relative; height: 22rem; resize: vertical; overflow: hidden; border-radius: 8px; }
@@ -114,18 +114,20 @@
       </div>
     </div>
     <div class="pane">
-      <h2>schema &amp; opts — edit to regenerate the TypeScript</h2>
-      <textarea id="config" class="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">const schema = [
-  { key: "cpu",  label: "CPU",      unit: "%",     max: 100 },
-  { key: "mem",  label: "Memory",   unit: "%",     max: 100 },
-  { key: "net",  label: "Network",  unit: " MB/s", max: 50  },
-  { key: "disk", label: "Disk I/O", unit: " MB/s", max: 40  },
-  { key: "gpu",  label: "GPU",      unit: "%",     max: 100 },
-  // Uncomment a metric to regenerate the dashboard with it:
-  // { key: "temp", label: "Temp", unit: "°C", max: 90 },
-  // { key: "load", label: "Load", unit: "",   max: 8  },
-];
-const opts = { width: 32, intervalMs: 1000, title: "host-01 · live" };</textarea>
+      <h2>schema &amp; opts (JSON) — edit to regenerate the TypeScript</h2>
+      <div class="editor editor-config">
+        <pre id="config-hl" aria-hidden="true"></pre>
+        <textarea id="config" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">{
+  "schema": [
+    { "key": "cpu",  "label": "CPU",      "unit": "%",     "max": 100 },
+    { "key": "mem",  "label": "Memory",   "unit": "%",     "max": 100 },
+    { "key": "net",  "label": "Network",  "unit": " MB/s", "max": 50 },
+    { "key": "disk", "label": "Disk I/O", "unit": " MB/s", "max": 40 },
+    { "key": "gpu",  "label": "GPU",      "unit": "%",     "max": 100 }
+  ],
+  "opts": { "width": 32, "intervalMs": 1000, "title": "host-01 · live" }
+}</textarea>
+      </div>
       <h2 style="margin-top:1rem">Stage 3 — live HTML <span class="meta" id="tick-info"></span></h2>
       <iframe id="preview" sandbox="allow-same-origin" title="rendered output"></iframe>
     </div>
