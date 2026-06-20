@@ -159,6 +159,55 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             .unwrap())
     }
 
+    /// Parse `s` *sky-first*: treat the whole file as the body of a single
+    /// `target↖ … ↗`, entering at [`Stage::Sky(target, 1)`](Stage) instead of
+    /// the usual `Stage::Ground`. This is the inverse of
+    /// [`parse_chain`](Self::parse_chain): there the file is a host *program*
+    /// with templates buried inside; here the file *is* the template and its
+    /// `↙…↘` holes are free variables (the template's parameters). No expansion
+    /// happens — this only parses to the sky-first `QTerm`. See issue #86.
+    ///
+    /// `target`, the language the file's body is written in, is the last element
+    /// of `chain` (the leftmost file extension, e.g. `wgsl` for
+    /// `kernel.wgsl.rs.tmpl.quilt`). The rest of the chain sits below it, so an
+    /// unquote `↙…↘` pops back to the host exactly as it would inside a real
+    /// quote — a single-element chain like `["py"]` makes the host and target
+    /// the same language. The result is a `Quote` whose `cmds` carry no `↖`/`↗`
+    /// markers (the body *is* the file), so coparsing it yields the body source.
+    #[cfg(feature = "parse")]
+    pub fn parse_sky(&mut self, lang: &str, s: &str) -> Result<Arc<QTerm>> {
+        self.parse_template(&[lang], s)
+    }
+
+    /// The language-chain form of [`parse_sky`](Self::parse_sky), mirroring how
+    /// [`parse_chain`](Self::parse_chain) relates to
+    /// [`parse_lang`](Self::parse_lang).
+    #[cfg(feature = "parse")]
+    pub fn parse_template(&mut self, chain: &[&str], s: &str) -> Result<Arc<QTerm>> {
+        let target = chain.last().copied().unwrap_or(DEFAULT_LANG);
+        let nodes = Node::parse(s)
+            .iter()
+            .map(|n| n.clone().into())
+            .collect::<Vec<_>>();
+        // Enter the target language's quote: cons it onto the host chain so the
+        // body parses at sky depth 1 and unquotes pop back to the host.
+        let zipper = zipper_from_chain(chain).cons(target.into());
+        let builder = qb("", 1, target);
+        let builder = self.build_nodes(
+            builder,
+            &Hole::default(),
+            &nodes,
+            &zipper,
+            None,
+            // whole file, not a bracketed body: keep the boundary newlines as
+            // the real source content they are.
+            false,
+            // sky depth: we are inside one (implicit) quote.
+            1,
+        )?;
+        Ok(builder.b())
+    }
+
     /// Build a `QTerm` from quilt `Node`s. `splice_target` is the language the
     /// fragment's value will be spliced into: `Some` only for unquote bodies
     /// (the lang of the enclosing quote), `None` otherwise. It directs `↑` —
@@ -693,6 +742,42 @@ fn pattern_var_name(term: &QTerm) -> Result<Box<str>> {
         "pattern metavariable must be a plain identifier, got {name:?}"
     );
     Ok(name.into())
+}
+
+/// `s` as a plain identifier (the body of a `↙name↘` hole), or `None` if it is
+/// anything richer — whitespace-trimmed, it must start with a letter or `_` and
+/// contain only alphanumerics and `_`.
+fn ident_name(s: &str) -> Option<Box<str>> {
+    let s = s.trim();
+    let mut chars = s.chars();
+    let ok = chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '_');
+    ok.then(|| s.into())
+}
+
+/// The free-variable parameter names of a sky-first template (issue #86): the
+/// plain-identifier bodies of its `↙name↘` holes, in first-seen order with
+/// duplicates removed. This is the template's signature — the set of values an
+/// instantiation must supply. Holes whose body is a richer host expression
+/// (a Tier B concern, issue #89) are not parameters and are skipped.
+pub fn template_params(qterm: &QTerm) -> Vec<Box<str>> {
+    fn walk(t: &QTerm, out: &mut Vec<Box<str>>) {
+        match t {
+            QTerm::Unquote { term, .. } => {
+                if let Some(name) = ident_name(&term.coparse()) {
+                    if !out.contains(&name) {
+                        out.push(name);
+                    }
+                }
+                walk(term, out);
+            }
+            QTerm::Quote { term, .. } => walk(term, out),
+            QTerm::Tuple { terms, .. } => terms.iter().for_each(|c| walk(c, out)),
+        }
+    }
+    let mut out = Vec::new();
+    walk(qterm, &mut out);
+    out
 }
 
 /**************************************************************/
