@@ -1,4 +1,3 @@
-// dashboard.html.ts.ts.quilt: TypeScript that generates TypeScript that generates HTML — a staged live dashboard
 import {
   tb, leaf, sym, quote, unquote, cmd, write, push,
   name, qlift, qlift_html, NL, POP, HOLE,
