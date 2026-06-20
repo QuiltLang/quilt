@@ -29,6 +29,10 @@
     }
     pre.out { height: 22rem; margin: 0; overflow: auto; background: var(--quilt-bg); color: var(--quilt-text); }
     pre.stage2 { height: 13rem; }
+    /* schema + opts config panel, above the dashboard preview */
+    textarea#config { height: 11rem; background: var(--quilt-bg); color: var(--quilt-text); resize: vertical; display: block; width: 100%; }
+    textarea#config:focus { outline: 2px solid var(--quilt-orange); outline-offset: -1px; }
+    textarea#config.err { outline: 2px solid #b00; outline-offset: -1px; }
 
     /* The editor is a highlighted <pre> with a transparent <textarea> on top. */
     .editor { position: relative; height: 22rem; resize: vertical; overflow: hidden; border-radius: 8px; }
@@ -76,13 +80,13 @@
   <p class="lede">
     A self-specializing live dashboard — three staged passes, all in the browser.
     <strong>Stage 1</strong> (<code>makeRenderer</code>) runs once: it unrolls the
-    chosen metrics into a flat, branch-free <strong>Stage 2</strong>
-    (<code>start()</code>) — the generated program shown below-left — whose own
-    loop (interval baked in) repaints the HTML. The <code>↓</code> reduce operator
-    <em>runs</em> that stage; then <strong>Stage 3</strong> is the HTML the loop
-    sets, with no further expansion. Editing the source or pressing
-    <strong>Reconfigure</strong> reruns the expensive Stage 1; the codegened loop
-    stays cheap. The arrow glyphs are hard to type, so use the
+    metrics from the <strong>schema &amp; opts</strong> panel into a flat,
+    branch-free <strong>Stage 2</strong> (<code>start()</code>) — the generated
+    program shown below-left — whose own loop (interval baked in) repaints the
+    HTML. The <code>↓</code> reduce operator <em>runs</em> that stage; then
+    <strong>Stage 3</strong> is the HTML the loop sets, with no further expansion.
+    Editing the schema/opts panel (or the source) regenerates the TypeScript; the
+    codegened loop stays cheap. The arrow glyphs are hard to type, so use the
     buttons — or the VS Code chords: <kbd>⌘/Ctrl</kbd>+<kbd>1</kbd> then a
     direction for a single glyph, <kbd>⌘/Ctrl</kbd>+<kbd>2</kbd> then two for a
     diagonal. <kbd>⌘/Ctrl</kbd>+<kbd>↵</kbd> expands &amp; runs.
@@ -110,7 +114,19 @@
       </div>
     </div>
     <div class="pane">
-      <h2>Stage 3 — live HTML <span class="meta" id="tick-info"></span></h2>
+      <h2>schema &amp; opts — edit to regenerate the TypeScript</h2>
+      <textarea id="config" class="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">const schema = [
+  { key: "cpu",  label: "CPU",      unit: "%",     max: 100 },
+  { key: "mem",  label: "Memory",   unit: "%",     max: 100 },
+  { key: "net",  label: "Network",  unit: " MB/s", max: 50  },
+  { key: "disk", label: "Disk I/O", unit: " MB/s", max: 40  },
+  { key: "gpu",  label: "GPU",      unit: "%",     max: 100 },
+  // Uncomment a metric to regenerate the dashboard with it:
+  // { key: "temp", label: "Temp", unit: "°C", max: 90 },
+  // { key: "load", label: "Load", unit: "",   max: 8  },
+];
+const opts = { width: 32, intervalMs: 1000, title: "host-01 · live" };</textarea>
+      <h2 style="margin-top:1rem">Stage 3 — live HTML <span class="meta" id="tick-info"></span></h2>
       <iframe id="preview" sandbox="allow-same-origin" title="rendered output"></iframe>
     </div>
   </div>
