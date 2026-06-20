@@ -17,6 +17,9 @@
     .pane { display: flex; flex-direction: column; min-height: 0; }
     .pane > h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #666; margin: 0 0 .3rem; }
     .pane > h2 .meta { text-transform: none; letter-spacing: 0; color: #999; font-weight: 400; margin-left: .4rem; }
+    /* filename-style headers (mirror the source/config labels): coloured, no caps */
+    .pane > h2.filehdr { text-transform: none; letter-spacing: 0; color: #555; }
+    .pane > h2.filehdr .fname { color: var(--quilt-orange); font-weight: 600; }
     iframe { border: 1px solid #ccc; border-radius: 8px; width: 100%; height: 22rem; background: #0b0f17; }
 
     /* ── Code surfaces (editor overlay + read-only views) share these metrics ── */
@@ -107,14 +110,14 @@
 
   <div class="grid">
     <div class="pane">
-      <h2>Stage 1 — source <span class="meta">dashboard.html.ts.ts.quilt</span></h2>
+      <h2 class="filehdr"><span class="fname">dashboard.html.ts.ts.quilt</span> — TypeScript that generates TypeScript that generates HTML</h2>
       <div class="editor">
         <pre id="src-hl" aria-hidden="true"></pre>
         <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
       </div>
     </div>
     <div class="pane">
-      <h2>schema &amp; opts (JSON + comments) — edit to regenerate the TypeScript</h2>
+      <h2 class="filehdr"><span class="fname">config.jsonc</span> — edit to regenerate the dashboard</h2>
       <div class="editor editor-config">
         <pre id="config-hl" aria-hidden="true"></pre>
         <textarea id="config" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off">{
