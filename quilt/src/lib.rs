@@ -12,6 +12,7 @@ pub mod qmatch;
 pub mod qterm;
 pub mod strcmd;
 pub mod term;
+pub mod tree;
 #[cfg(feature = "parse")]
 pub mod treesitter;
 pub mod util;
