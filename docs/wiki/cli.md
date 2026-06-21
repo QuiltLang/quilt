@@ -58,6 +58,27 @@ quilt examples/hello.py.quilt
 quilt examples/countdown.rs.quilt 5
 ```
 
+### `quilt scaffold <prog.tree.<host>.quilt> --out <dir> [--set k=v…]`
+
+Run a ground-first program that builds a directory **tree** and materialize it. The program is an ordinary host-language script (`.rs`/`.py`) that assembles a `QTree` with the builders (`tree!`, `dir!`, `file`, `raw`, `.emit(path, node)`) and hands it over by calling `emit_tree(&t)`. Because the tree is built by a *program*, its structure can be data-dependent (conditional or repeated files) — the escape hatch a fixed template directory (`quilt instantiate`) can't express.
+
+`quilt scaffold` reuses the `run` pipeline to expand and run the program, then materializes the emitted tree under `--out` through the filesystem sink, so the write policy stays in the trusted CLI:
+
+| Flag | Meaning |
+|------|---------|
+| `--out <dir>` | Directory to write the tree under (created if absent). Required. |
+| `--set k=v` | Set a parameter (repeatable); the program reads it with `scaffold_param("k")`. Typing matches `instantiate` (int/float/bool/else string). |
+| `--values <toml>` | A TOML file of parameter values, merged under `--set`. |
+| `--on-conflict <error\|overwrite\|skip\|backup>` | What to do when an output path already exists (default `error`). |
+| `--dry-run` | Print the write plan but write nothing. |
+
+```sh
+quilt scaffold examples/cargo_crate.tree.rs.quilt --out mycrate --set name=mycrate
+quilt scaffold examples/cargo_crate.tree.rs.quilt --out mylib  --set name=mylib --set lib=true
+```
+
+The tree is handed back over a sidecar file named by the `QUILT_TREE_OUT` environment variable (postcard-encoded), off the program's own stdout/stderr. Run the program directly (`quilt run`) and `emit_tree` instead prints a listing of what *would* be built.
+
 ### Shebang scripts
 
 `.quilt` files can be used directly as executables with:
@@ -170,3 +191,5 @@ cargo test -p quilt-lsp           # run LSP tests
 | `RUST_LOG`                | `quilt`, `quilt-lsp` | `tracing` log filter (e.g. `debug`, `info`)           |
 | `QUILT_LSP_RUST_ANALYZER` | `quilt-lsp`          | Override rust-analyzer command (whitespace-separated) |
 | `PYTHONPATH`              | `quilt` (Python)     | Extended to include the `quilt-python/` directory     |
+| `QUILT_TREE_OUT`          | `quilt scaffold`     | Sidecar file a scaffold program `emit_tree`s its `QTree` into (set by the CLI) |
+| `QUILT_PARAM_<name>`      | `quilt scaffold`     | One per `--set`/`--values` parameter; read with `scaffold_param("<name>")` |

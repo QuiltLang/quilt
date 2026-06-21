@@ -1,0 +1,41 @@
+#!/usr/bin/env quilt
+//
+// A `quilt scaffold` program (issue #95): a ground-first Rust *host* program
+// that builds a whole directory tree as a `QTree` and hands it to the CLI with
+// `emit_tree`. Unlike a template *directory* (which is fixed on disk), a
+// scaffold program can make the structure *data-dependent* — here, whether the
+// crate is a binary or a library changes which files exist.
+//
+//   quilt scaffold cargo_crate.tree.rs.quilt --out mycrate --set name=mycrate
+//   quilt scaffold cargo_crate.tree.rs.quilt --out mylib   --set name=mylib --set lib=true
+//
+// Parameters arrive as environment variables; read them with `scaffold_param`.
+
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    let name = scaffold_param("name").unwrap_or_else(|| "demo".to_string());
+    // Any non-empty, non-"false" value selects a library crate.
+    let is_lib = scaffold_param("lib").is_some_and(|v| v != "false" && !v.is_empty());
+
+    let cargo_toml = format!(
+        "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n"
+    );
+
+    let mut t = QTree::new();
+    t.emit("Cargo.toml", raw(cargo_toml))?;
+    t.emit(".gitignore", raw("/target\n"))?;
+
+    // Data-dependent structure: a library gets src/lib.rs, a binary src/main.rs.
+    if is_lib {
+        let lib_rs = format!(
+            "//! The `{name}` crate.\n\npub fn greet() -> String {{\n    \"hello from {name}\".to_string()\n}}\n"
+        );
+        t.emit("src/lib.rs", file(leaf("source_file", &lib_rs)))?;
+    } else {
+        let main_rs = format!("fn main() {{\n    println!(\"hello from {name}\");\n}}\n");
+        t.emit("src/main.rs", file(leaf("source_file", &main_rs)))?;
+    }
+
+    emit_tree(&t)
+}
