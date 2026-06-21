@@ -8,8 +8,13 @@
 //!
 //! Because lifting is pure and `lift.rs` is always compiled, this module is too:
 //! a wasm consumer can instantiate templates without the tree-sitter parser.
-//! (The richer Tier B path — host expressions, loops, conditionals — is issue
-//! #89 and goes through the normal expand/run pipeline instead.)
+//!
+//! The richer **Tier B** path (issue #89) handles holes that are real host
+//! expressions — loops, conditionals, computation — instead of bare parameter
+//! names. [`tier_b_program`] source-wraps the template into a host metaprogram
+//! that the normal parse → expand → run pipeline executes; the running program
+//! prints the instantiated output. That run is the CLI's job (`bin.rs`); this
+//! module only generates the wrapper, so it stays parser- and runtime-free.
 
 use crate::multi::ident_name;
 use crate::prelude::*;
@@ -258,4 +263,52 @@ fn hole_error(span: Option<&Span>, msg: impl Into<String>) -> miette::Report {
         ),
         None => miette!("{msg}"),
     }
+}
+
+/**************************************************************/
+// Tier B (issue #89): host-backed holes.
+
+/// Source-wrap a sky-first template `body` into a host-language metaprogram for
+/// Tier B. The body becomes the inside of a `target↖ … ↗` quote with each
+/// declared parameter bound (in scope) to its value, and the program prints the
+/// quote's `coparse()`. Expanding and running the result (the normal
+/// parse → expand → run pipeline) yields the instantiated output — so a hole may
+/// be any host expression over the parameters (`↙↑(greeting if formal else hi)↘`,
+/// `↙↑(", ".join(names))↘`, …), not just a bare name.
+///
+/// Only a **Python host** is supported for now (the simplest: Python allows the
+/// quote at module scope, so the body's own indentation is preserved verbatim).
+/// A Rust host would need the body re-indented into a `fn main` and is left for
+/// later.
+pub fn tier_b_program(
+    host: &str,
+    target: &str,
+    body: &str,
+    params: &[(Box<str>, ParamValue)],
+) -> Result<String> {
+    match host {
+        "python" | "py" => Ok(python_tier_b(target, body, params)),
+        other => Err(miette!(
+            "Tier B currently supports only a Python host; got {other:?} (issue #89)"
+        )),
+    }
+}
+
+/// The Python-host Tier B wrapper. Parameters bind to their Python literals at
+/// module scope; the body sits inside `target↖ … ↗` at column 0 (so no
+/// indentation is added to strip back off); the result is written to stdout.
+fn python_tier_b(target: &str, body: &str, params: &[(Box<str>, ParamValue)]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::from("from quilt import *\n\n");
+    for (name, value) in params {
+        // Python literal == the value lifted into Python, coparsed.
+        let lit = LiftTo::<Python>::lift_to(value).coparse();
+        let _ = writeln!(s, "{name} = {lit}");
+    }
+    let _ = write!(s, "\n__quilt_template__ = {target}↖\n{body}");
+    if !body.ends_with('\n') {
+        s.push('\n');
+    }
+    s.push_str("↗\n\nimport sys\nsys.stdout.write(__quilt_template__.coparse())\n");
+    s
 }

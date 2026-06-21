@@ -7,7 +7,7 @@ use quilt::{
     langs::omni::Omni,
     multi::{template_params, Languages, MetaLanguages, Multi},
     prelude::*,
-    template::{instantiate, ParamEnv, ParamValue},
+    template::{instantiate, tier_b_program, ParamEnv, ParamValue},
     term::STerm,
 };
 use std::collections::hash_map::DefaultHasher;
@@ -292,9 +292,12 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
         .and_then(|s| s.strip_suffix(".tmpl"))
         .ok_or_else(|| miette!("expected a *.tmpl.quilt template file, got {filename:?}"))?;
 
-    let input = fs::read_to_string(filename).into_diagnostic()?;
-    let with_src =
-        |e: miette::Report| e.with_source_code(NamedSource::new(filename, input.clone()));
+    let raw_input = fs::read_to_string(filename).into_diagnostic()?;
+    // A leading `#!tier-b` marker line opts into Tier B (host-backed holes).
+    let (tier_b, input) = match strip_tier_b_marker(&raw_input) {
+        Some(body) => (true, body),
+        None => (false, raw_input),
+    };
 
     // Build the parameter environment: `--values` first, `--set` overrides it.
     let mut env = ParamEnv::new();
@@ -309,21 +312,27 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
         env.insert(key.into(), infer_scalar(value));
     }
 
-    let rendered = match args.multi {
-        MultiOptions::Omni => {
-            let mut multi = Omni::default();
-            let chain = lang_chain(&multi, stem);
-            instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
-        }
-        #[cfg(feature = "bootstrap")]
-        MultiOptions::Bootstrap => {
-            let mut multi = Bootstrap::default();
-            let chain = lang_chain(&multi, stem);
-            instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
-        }
+    let output: String = if tier_b {
+        render_tier_b(stem, &input, &env)?
+    } else {
+        let with_src =
+            |e: miette::Report| e.with_source_code(NamedSource::new(filename, input.clone()));
+        let rendered = match args.multi {
+            MultiOptions::Omni => {
+                let mut multi = Omni::default();
+                let chain = lang_chain(&multi, stem);
+                instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
+            }
+            #[cfg(feature = "bootstrap")]
+            MultiOptions::Bootstrap => {
+                let mut multi = Bootstrap::default();
+                let chain = lang_chain(&multi, stem);
+                instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
+            }
+        };
+        rendered.coparse()
     };
 
-    let output = rendered.coparse();
     match &args.out {
         Some(path) => {
             fs::write(path, output.as_bytes()).into_diagnostic()?;
@@ -332,6 +341,74 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
         None => print!("{output}"),
     }
     Ok(())
+}
+
+/// If `src` opens with a `#!tier-b` marker line, return the template body after
+/// it (the Tier B opt-in, issue #89); otherwise `None`.
+fn strip_tier_b_marker(src: &str) -> Option<String> {
+    let end = src.find('\n').unwrap_or(src.len());
+    (src[..end].trim() == "#!tier-b").then(|| src.get(end + 1..).unwrap_or("").to_owned())
+}
+
+/// Render a Tier B template: source-wrap `body` into a Python-host metaprogram
+/// with the declared parameters in scope, expand it, run it, and return its
+/// stdout — the instantiated output. Holes may be arbitrary host expressions
+/// over the parameters. Tier B always uses the Omni multi (it needs the real
+/// Python runtime) and never touches the expand cache.
+fn render_tier_b(stem: &str, body: &str, env: &ParamEnv) -> Result<String> {
+    let mut multi = Omni::default();
+    let chain = lang_chain(&multi, stem);
+    let host = chain[0];
+    let target = *chain.last().unwrap_or(&host);
+
+    // Wrap first so an unsupported host (e.g. rust) fails fast and clearly.
+    let params: Vec<(Box<str>, ParamValue)> =
+        env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let program = tier_b_program(host, target, body, &params)?;
+
+    // Validate the *bare-name* holes are all supplied (host-expression holes are
+    // checked by the Python runtime when render runs).
+    let template = multi.parse_template(&chain, body)?;
+    let missing: Vec<String> = template_params(&template)
+        .into_iter()
+        .filter(|p| !env.contains_key(p))
+        .map(String::from)
+        .collect();
+    if !missing.is_empty() {
+        bail!("missing template parameter(s): {}", missing.join(", "));
+    }
+
+    // Expand the host metaprogram to plain host code, then run it.
+    let sterm = multi.parse_chain(&[host], &program)?;
+    let expanded = multi.expand_lang(host, &sterm)?;
+    let temp = tempfile::Builder::new()
+        .suffix(".py")
+        .tempfile()
+        .into_diagnostic()?;
+    let path = temp.path().to_str().unwrap();
+    expanded.dump(path)?;
+    run_python_capture(path)
+}
+
+/// Run the expanded Python metaprogram at `path` and capture its stdout, wiring
+/// `PYTHONPATH`/`QUILT` the way `run` does so the `quilt` Python runtime imports.
+fn run_python_capture(path: &str) -> Result<String> {
+    let py_dir = format!("{}/../quilt-python", env!("CARGO_MANIFEST_DIR"));
+    let pythonpath = match std::env::var("PYTHONPATH") {
+        Ok(existing) if !existing.is_empty() => format!("{py_dir}:{existing}"),
+        _ => py_dir,
+    };
+    let mut cmd = std::process::Command::new("python3");
+    cmd.env("PYTHONPATH", pythonpath);
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.env("QUILT", exe);
+    }
+    let out = cmd.arg(path).output().into_diagnostic()?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        bail!("Tier B render failed:\n{stderr}");
+    }
+    String::from_utf8(out.stdout).into_diagnostic()
 }
 
 /// Parse `input` sky-first and instantiate it against `env`. Reports *all*
