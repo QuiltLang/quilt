@@ -1,0 +1,32 @@
+#!/usr/bin/env quilt
+#
+# A `quilt scaffold` program with a *Python* host (issue #96): the directory
+# layer exposed to .py.quilt hosts mirrors the Rust builder, so a Python program
+# assembles a QTree the same way it builds QTerms and hands it back with
+# emit_tree.
+#
+#   quilt scaffold py_pkg.tree.py.quilt --out mypkg --set name=mypkg
+#   quilt scaffold py_pkg.tree.py.quilt --out mypkg --set name=mypkg --set tests=true
+#
+# Run directly (quilt run / quilt py_pkg.tree.py.quilt) it prints the tree it
+# would build, since emit_tree falls back to a listing when not driven by the
+# scaffold CLI.
+from quilt import *
+
+pkg = scaffold_param("name") or "demo"
+want_tests = (scaffold_param("tests") or "") not in ("", "false")
+
+t = QTree()
+t.emit("pyproject.toml", raw(
+    f'[project]\nname = "{pkg}"\nversion = "0.1.0"\n'))
+t.emit(f"{pkg}/__init__.py", file(leaf("module", '__all__ = ["greet"]\n')))
+t.emit(f"{pkg}/core.py", file(leaf(
+    "module", f'def greet() -> str:\n    return "hello from {pkg}"\n')))
+
+# Data-dependent structure: only scaffold a test when asked for one.
+if want_tests:
+    t.emit("tests/test_core.py", file(leaf(
+        "module",
+        f"from {pkg}.core import greet\n\n\ndef test_greet():\n    assert greet()\n")))
+
+emit_tree(t)

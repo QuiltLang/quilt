@@ -10,13 +10,16 @@
 //! source calls into.
 
 use pyo3::prelude::*;
+use pyo3::types::{PyDict, PyList};
 use quilt::prelude::{Arc, QTerm};
 use quilt::qterm::{
     leaf as mk_leaf, quote as mk_quote, sym as mk_sym, tb as mk_tb, unquote as mk_unquote,
     QTermBuilder,
 };
 use quilt::strcmd::{push as mk_push, write as mk_write, StrCmd};
+use quilt::template::{instantiate as mk_instantiate, ParamEnv, ParamValue};
 use quilt::term::{cmd as mk_cmd, CmdOrHole, STerm};
+use quilt::tree::{self, Node, QTree};
 
 /**************************************************************/
 
@@ -257,6 +260,186 @@ fn escape_html(s: &str) -> String {
 }
 
 /**************************************************************/
+// The directory layer (issue #96): `QTree` + node builders + `emit_tree` + Tier
+// A instantiation, mirroring `quilt::tree`/`quilt::template` so a `.py.quilt`
+// host can build whole directory trees the same way it builds `QTerm`s. These
+// live in the always-compiled (no-tree-sitter) part of `quilt`, so the runtime
+// module gets them without linking the parser.
+
+/// A node in a [`QTree`]: a subdirectory, a generated file, a raw blob, or a
+/// symlink. Build one with `file`/`raw`/`link`/`subdir`.
+#[pyclass(name = "Node", from_py_object)]
+#[derive(Clone)]
+struct PyNode(Node);
+
+#[pymethods]
+impl PyNode {
+    fn __repr__(&self) -> String {
+        let kind = match &self.0 {
+            Node::Dir(_) => "dir",
+            Node::File { .. } => "file",
+            Node::Raw { .. } => "raw",
+            Node::Link { .. } => "link",
+        };
+        format!("Node({kind})")
+    }
+}
+
+/// A generated directory tree (the directory analog of `QTerm`). Mirrors the
+/// Rust `QTree`: build it up with `.emit(path, node)`, compose with
+/// `.overlay`/`.merge`, then hand it to `emit_tree` for `quilt scaffold`.
+#[pyclass(name = "QTree", from_py_object)]
+#[derive(Clone)]
+struct PyQTree(QTree);
+
+#[pymethods]
+impl PyQTree {
+    #[new]
+    fn new() -> Self {
+        Self(QTree::new())
+    }
+
+    /// Insert (or replace) a leaf at `path` (a `/`-joined string), creating
+    /// intermediate directories. Errors on an invalid path component.
+    fn emit(&mut self, path: &str, node: &PyNode) -> PyResult<()> {
+        self.0.emit(path, node.0.clone()).map_err(to_value_err)
+    }
+
+    /// Overlay `other` onto this tree (right wins; same-name dirs merge).
+    fn overlay(&self, other: &PyQTree) -> PyQTree {
+        PyQTree(self.0.clone().overlay(other.0.clone()))
+    }
+
+    /// Merge `other` into this tree, erroring on any non-directory collision.
+    fn merge(&self, other: &PyQTree) -> PyResult<PyQTree> {
+        self.0
+            .clone()
+            .merge(other.0.clone())
+            .map(PyQTree)
+            .map_err(to_value_err)
+    }
+
+    /// Number of direct children.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    /// A human-readable listing of every path (walk order), one per line.
+    fn listing(&self) -> String {
+        self.0.listing()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("QTree(len={})", self.0.len())
+    }
+}
+
+/// A generated source-file leaf, its content a `QTerm` (serialized at write
+/// time via `coparse`). The directory analog of emitting a `QTerm`.
+#[pyfunction]
+fn file(content: &PyQTerm) -> PyNode {
+    PyNode(tree::file(content.0.clone()))
+}
+
+/// A verbatim blob leaf — assets copied byte-for-byte. Accepts `bytes` or a
+/// `str` (encoded UTF-8).
+#[pyfunction]
+fn raw(data: &Bound<'_, PyAny>) -> PyResult<PyNode> {
+    if let Ok(b) = data.extract::<Vec<u8>>() {
+        return Ok(PyNode(tree::raw(b)));
+    }
+    if let Ok(s) = data.extract::<String>() {
+        return Ok(PyNode(tree::raw(s.into_bytes())));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "raw: expected bytes or str",
+    ))
+}
+
+/// A symlink leaf pointing at a relative path within the tree.
+#[pyfunction]
+fn link(target: &str) -> PyNode {
+    PyNode(tree::link(target))
+}
+
+/// A subdirectory node wrapping a `QTree` (the runtime analog of Rust's `dir!`).
+/// Named `subdir` rather than `dir` so `from quilt import *` doesn't shadow the
+/// Python builtin `dir`.
+#[pyfunction]
+fn subdir(t: &PyQTree) -> PyNode {
+    PyNode(Node::Dir(t.0.clone()))
+}
+
+/// Hand a `QTree` to `quilt scaffold` (issue #95): writes the postcard-encoded
+/// tree to the file named by `$QUILT_TREE_OUT`, or prints a listing of what
+/// would be built when run standalone.
+#[pyfunction]
+fn emit_tree(t: &PyQTree) -> PyResult<()> {
+    tree::emit_tree(&t.0).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
+/// Read a scaffold parameter set with `quilt scaffold --set name=value`.
+#[pyfunction]
+fn scaffold_param(name: &str) -> Option<String> {
+    tree::scaffold_param(name)
+}
+
+/// Tier A instantiation: fill a sky-first template `QTerm`'s `↙name↘` holes
+/// from `env` (a dict of name -> str/int/float/bool/list), lifting each value
+/// into the hole's object language. Returns the finished `QTerm`. Errors on a
+/// missing parameter or a hole that is a host expression (that needs Tier B).
+#[pyfunction]
+fn instantiate(template: &PyQTerm, env: &Bound<'_, PyDict>) -> PyResult<PyQTerm> {
+    let env = py_dict_to_env(env)?;
+    mk_instantiate(&template.0, &env)
+        .map(PyQTerm)
+        .map_err(to_value_err)
+}
+
+/// Convert a Python dict of parameter values into a [`ParamEnv`].
+fn py_dict_to_env(d: &Bound<'_, PyDict>) -> PyResult<ParamEnv> {
+    let mut env = ParamEnv::new();
+    for (k, v) in d.iter() {
+        let key: String = k.extract()?;
+        env.insert(key.into_boxed_str(), py_to_param(&v)?);
+    }
+    Ok(env)
+}
+
+/// Convert one Python value into a [`ParamValue`]. `bool` is checked before
+/// `int` (Python's `bool` is an `int` subclass) and `int` before `float`.
+fn py_to_param(v: &Bound<'_, PyAny>) -> PyResult<ParamValue> {
+    if let Ok(b) = v.extract::<bool>() {
+        return Ok(ParamValue::Bool(b));
+    }
+    if let Ok(i) = v.extract::<i64>() {
+        return Ok(ParamValue::Int(i));
+    }
+    if let Ok(f) = v.extract::<f64>() {
+        return Ok(ParamValue::Float(f));
+    }
+    if let Ok(s) = v.extract::<String>() {
+        return Ok(ParamValue::Str(s));
+    }
+    if let Ok(list) = v.cast::<PyList>() {
+        let xs = list
+            .iter()
+            .map(|x| py_to_param(&x))
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(ParamValue::List(xs));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "unsupported template parameter type (expected str, int, float, bool, or list)",
+    ))
+}
+
+/// Map a quilt error (any `Display`, e.g. `miette::Report`) to a Python
+/// `ValueError`.
+fn to_value_err<E: std::fmt::Display>(e: E) -> PyErr {
+    pyo3::exceptions::PyValueError::new_err(e.to_string())
+}
+
+/**************************************************************/
 
 /// Deserialize a `QTerm` from postcard bytes (the `rs↓` protocol in Python).
 #[pyfunction]
@@ -274,6 +457,8 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStrCmd>()?;
     m.add_class::<PyCmdOrHole>()?;
     m.add_class::<PyBuilder>()?;
+    m.add_class::<PyNode>()?;
+    m.add_class::<PyQTree>()?;
 
     m.add_function(wrap_pyfunction!(tb, m)?)?;
     m.add_function(wrap_pyfunction!(leaf, m)?)?;
@@ -287,6 +472,14 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(qlift, m)?)?;
     m.add_function(wrap_pyfunction!(qlift_html, m)?)?;
     m.add_function(wrap_pyfunction!(from_postcard_bytes, m)?)?;
+    // Directory layer (issue #96).
+    m.add_function(wrap_pyfunction!(file, m)?)?;
+    m.add_function(wrap_pyfunction!(raw, m)?)?;
+    m.add_function(wrap_pyfunction!(link, m)?)?;
+    m.add_function(wrap_pyfunction!(subdir, m)?)?;
+    m.add_function(wrap_pyfunction!(emit_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(scaffold_param, m)?)?;
+    m.add_function(wrap_pyfunction!(instantiate, m)?)?;
 
     m.add("NL", PyStrCmd(StrCmd::NewLine))?;
     m.add("POP", PyStrCmd(StrCmd::Pop))?;

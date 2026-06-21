@@ -76,6 +76,29 @@ qlift(value)        # lift int/str/QTerm to a Python term (↑ into a py quote)
 qlift_html(value)   # lift int/str/QTerm to HTML text, entity-escaped (↑ into an html quote)
 ```
 
+### Directory layer (`QTree`)
+
+The directory analog of `QTerm`, mirroring Rust's `quilt::tree`/`quilt::template`. A `.py.quilt` host builds a whole directory tree the same way it builds terms, then hands it to `quilt scaffold` with `emit_tree`:
+
+```python
+t = QTree()                      # an empty tree (directory analog of QTerm)
+t.emit(path, node)               # insert a leaf at a "/"-joined path (creates dirs)
+t.overlay(other) / t.merge(other)# compose two trees (right-wins / error-on-collision)
+len(t)                           # number of direct children
+t.listing()                      # a "find"-style listing of every path
+
+file(qterm)                      # a generated source-file leaf (content is a QTerm)
+raw(bytes_or_str)                # a verbatim blob leaf (asset)
+link("rel/target")               # a symlink leaf (target stays within the tree)
+subdir(qtree)                    # a subdirectory node (the dir! analog)
+
+emit_tree(t)                     # hand the tree to `quilt scaffold` (writes $QUILT_TREE_OUT)
+scaffold_param("name")           # read a `quilt scaffold --set name=value` parameter
+instantiate(template, env)       # Tier A: fill a template QTerm's ↙name↘ holes from a dict
+```
+
+See `examples/py_pkg.tree.py.quilt` for a Python scaffold program, and [the CLI docs](cli.md) for `quilt scaffold`.
+
 ### Running generated code
 
 Helpers (in `quilt/__init__.py`) for evaluating a term's `coparse()` output:
