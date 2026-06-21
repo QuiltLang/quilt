@@ -1,0 +1,16 @@
+# A sky-first Python template (issue #88). The file is itself the template:
+# its holes are free variables filled at instantiation time. Run e.g.
+#   quilt instantiate examples/greeting.py.tmpl.quilt --values examples/greeting.values.toml
+# or with inline parameters:
+#   quilt instantiate examples/greeting.py.tmpl.quilt --set greeting=Hi --out /tmp/greet.py
+GREETING = ↙greeting↘
+AUDIENCE = ↙names↘
+
+
+def greet():
+    for name in AUDIENCE:
+        print(GREETING + ", " + name + "!")
+
+
+if __name__ == "__main__":
+    greet()
