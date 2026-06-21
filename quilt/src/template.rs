@@ -280,6 +280,20 @@ fn hole_error(span: Option<&Span>, msg: impl Into<String>) -> miette::Report {
 /// quote at module scope, so the body's own indentation is preserved verbatim).
 /// A Rust host would need the body re-indented into a `fn main` and is left for
 /// later.
+/// The marker line that opts a sky-first template into Tier B (host-backed
+/// holes). It mirrors a shebang so an editor still recognizes the file's
+/// language.
+pub const TIER_B_MARKER: &str = "#!tier-b";
+
+/// If `src` opens with a [`TIER_B_MARKER`] line, return the template body after
+/// it (the Tier B opt-in, issue #89); otherwise `None`. Shared by the
+/// single-file `quilt instantiate` CLI and directory instantiation (issue #90).
+#[must_use]
+pub fn strip_tier_b_marker(src: &str) -> Option<&str> {
+    let end = src.find('\n').unwrap_or(src.len());
+    (src[..end].trim() == TIER_B_MARKER).then(|| src.get(end + 1..).unwrap_or(""))
+}
+
 pub fn tier_b_program(
     host: &str,
     target: &str,

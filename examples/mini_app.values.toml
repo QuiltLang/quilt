@@ -1,0 +1,8 @@
+# Example parameters for the `examples/mini_app/` template directory.
+#   quilt instantiate examples/mini_app --out /tmp/mini_app \
+#       --values examples/mini_app.values.toml
+# `pkg` fills the templated directory name `{{pkg}}/` (issue #91).
+pkg = "app"
+greeting = "hello"
+count = 3
+title = "Mini App"

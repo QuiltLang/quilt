@@ -782,6 +782,32 @@ pub fn template_params(qterm: &QTerm) -> Vec<Box<str>> {
     out
 }
 
+/// Derive the language chain from a `.quilt` file's stem (the name with the
+/// `.quilt` suffix already stripped). Reading right-to-left, peel off each
+/// extension that names a registered language: the rightmost is the host
+/// (ground) language and the rest are the default languages for nested
+/// un-annotated quotes — so `shaders.wgsl.rs` → `["rs", "wgsl"]` and the plain
+/// `main.rs` → `["rs"]`. The basename never counts, even when it looks like a
+/// language (`text.rs` → `["rs"]`). Always yields at least the last part (even
+/// if it isn't a known language) so the downstream parse surfaces a clear
+/// error, as it did before chains existed.
+pub fn lang_chain<'a, LS: Languages, MS: MetaLanguages>(
+    multi: &Multi<LS, MS>,
+    stem: &'a str,
+) -> Vec<&'a str> {
+    let parts: Vec<&str> = stem.split('.').collect();
+    let mut chain: Vec<&str> = parts[1..]
+        .iter()
+        .rev()
+        .copied()
+        .take_while(|part| multi.get_lang(part).is_ok())
+        .collect();
+    if chain.is_empty() {
+        chain.push(parts.last().copied().unwrap_or(""));
+    }
+    chain
+}
+
 /**************************************************************/
 
 /// Resolve `lang` through an alias map; non-aliases pass through unchanged.
