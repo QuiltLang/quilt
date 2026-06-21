@@ -746,8 +746,10 @@ fn pattern_var_name(term: &QTerm) -> Result<Box<str>> {
 
 /// `s` as a plain identifier (the body of a `↙name↘` hole), or `None` if it is
 /// anything richer — whitespace-trimmed, it must start with a letter or `_` and
-/// contain only alphanumerics and `_`.
-fn ident_name(s: &str) -> Option<Box<str>> {
+/// contain only alphanumerics and `_`. Shared by [`template_params`] and Tier A
+/// instantiation (`crate::template`), which both distinguish a bare parameter
+/// name from a host expression.
+pub fn ident_name(s: &str) -> Option<Box<str>> {
     let s = s.trim();
     let mut chars = s.chars();
     let ok = chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')

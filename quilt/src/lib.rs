@@ -11,6 +11,7 @@ pub mod prelude;
 pub mod qmatch;
 pub mod qterm;
 pub mod strcmd;
+pub mod template;
 pub mod term;
 #[cfg(feature = "parse")]
 pub mod treesitter;
