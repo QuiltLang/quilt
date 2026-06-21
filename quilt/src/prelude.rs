@@ -13,7 +13,10 @@ pub use crate::sink::{
 pub use crate::strcmd::{newline, pop, push, write, StrCmd, NL, POP};
 pub use crate::term::STerm;
 pub use crate::term::{cmd, hole, HOLE};
-pub use crate::tree::{file, link, raw, FileMeta, HeaderPolicy, Node, QTree, Segment};
+pub use crate::tree::{
+    emit_tree, file, link, raw, scaffold_param, FileMeta, HeaderPolicy, Node, QTree, Segment,
+    PARAM_ENV_PREFIX, TREE_OUT_ENV,
+};
 // The `tree!` / `dir!` builder macros are `#[macro_export]`ed at the crate root.
 pub use crate::util::{arc, bx, sep, Index, Span, SEP};
 pub use crate::{dir, tree};

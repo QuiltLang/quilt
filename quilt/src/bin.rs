@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use miette::{bail, IntoDiagnostic, NamedSource};
+use miette::{bail, Context, IntoDiagnostic, NamedSource};
 #[cfg(feature = "bootstrap")]
 use quilt::langs::bootstrap::Bootstrap;
 use quilt::{
@@ -42,6 +42,8 @@ enum Commands {
     Check(CheckArgs),
     /// Fill a sky-first template's holes with parameters (single-file Tier A)
     Instantiate(InstantiateArgs),
+    /// Run a program that emits a `QTree` and materialize it to a directory
+    Scaffold(ScaffoldArgs),
     /// Clear the expand cache
     Clean,
 }
@@ -98,6 +100,63 @@ struct InstantiateArgs {
 }
 
 #[derive(Args, Debug)]
+struct ScaffoldArgs {
+    /// Scaffold program: a `*.tree.<host>.quilt` file that builds a `QTree` and
+    /// hands it over with `emit_tree(&t)`.
+    filename: String,
+    /// Directory to materialize the emitted tree under (created if absent).
+    #[clap(short, long)]
+    out: String,
+    /// Set a scaffold parameter: `--set name=value` (repeatable). Each is
+    /// exposed to the program as `QUILT_PARAM_<name>` (read via
+    /// `quilt::scaffold_param`). Typing follows `instantiate`'s rule.
+    #[clap(long = "set", value_name = "KEY=VALUE")]
+    set: Vec<String>,
+    /// A TOML file of parameter values, merged under `--set` (which overrides
+    /// it).
+    #[clap(long)]
+    values: Option<String>,
+    /// What to do when an output path already exists.
+    #[clap(long = "on-conflict", value_enum, default_value_t = ConflictArg::Error)]
+    on_conflict: ConflictArg,
+    /// Compute and print the write plan but write nothing.
+    #[clap(long)]
+    dry_run: bool,
+    /// multi-language to use
+    #[clap(short, long, default_value_t, value_enum)]
+    multi: MultiOptions,
+    /// Arguments passed through to the scaffold program.
+    #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
+    args: Vec<String>,
+}
+
+/// CLI spelling of [`OnConflict`] for `--on-conflict` (clap can't derive
+/// `ValueEnum` on the library type).
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+enum ConflictArg {
+    /// Refuse to touch an existing path (the safe default).
+    #[default]
+    Error,
+    /// Overwrite existing files.
+    Overwrite,
+    /// Leave existing files untouched.
+    Skip,
+    /// Rename the existing file to `<path>.orig`, then write the new one.
+    Backup,
+}
+
+impl From<ConflictArg> for OnConflict {
+    fn from(c: ConflictArg) -> Self {
+        match c {
+            ConflictArg::Error => OnConflict::Error,
+            ConflictArg::Overwrite => OnConflict::Overwrite,
+            ConflictArg::Skip => OnConflict::Skip,
+            ConflictArg::Backup => OnConflict::Backup,
+        }
+    }
+}
+
+#[derive(Args, Debug)]
 struct RunArgs {
     /// .quilt file to run
     filename: String,
@@ -124,6 +183,7 @@ fn main() -> Result<()> {
         (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
         (Some(Commands::Check(args)), _) => check(args),
         (Some(Commands::Instantiate(args)), _) => instantiate_cmd(args),
+        (Some(Commands::Scaffold(args)), _) => scaffold_cmd(args),
         (Some(Commands::Clean), _) => clean(),
         (None, None) => {
             use clap::CommandFactory;
@@ -287,7 +347,7 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
 /// This path never touches the expand cache — the output depends on the
 /// externally-supplied parameters.
 fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
-    let env = build_env(args)?;
+    let env = build_env(&args.set, args.values.as_deref())?;
 
     // A directory input is a template *directory*: walk it into a QTree and
     // materialize that under `--out` (issue #90).
@@ -299,14 +359,14 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
 }
 
 /// Build the parameter environment from `--values` (read first) then `--set`
-/// (which overrides it).
-fn build_env(args: &InstantiateArgs) -> Result<ParamEnv> {
+/// (which overrides it). Shared by `instantiate` and `scaffold`.
+fn build_env(set: &[String], values: Option<&str>) -> Result<ParamEnv> {
     let mut env = ParamEnv::new();
-    if let Some(path) = &args.values {
+    if let Some(path) = values {
         let text = fs::read_to_string(path).into_diagnostic()?;
         merge_toml_values(&mut env, &text)?;
     }
-    for kv in &args.set {
+    for kv in set {
         let (key, value) = kv
             .split_once('=')
             .ok_or_else(|| miette!("--set expects KEY=VALUE, got {kv:?}"))?;
@@ -340,15 +400,78 @@ fn instantiate_dir_cmd(args: &InstantiateArgs, env: &ParamEnv) -> Result<()> {
         }
     };
 
-    let mut sink = FsSink::new(out)?;
-    write_tree(&mut sink, &tree)?;
+    materialize(&tree, out, OnConflict::Error, false)
+}
+
+/// Materialize `tree` under `out` through an [`FsSink`], applying the conflict
+/// policy and dry-run flag, then report what was (or would be) written. Shared
+/// by directory `instantiate` and `scaffold`.
+fn materialize(tree: &QTree, out: &str, on_conflict: OnConflict, dry_run: bool) -> Result<()> {
+    let opts = WriteOptions {
+        on_conflict,
+        dry_run,
+        ..WriteOptions::default()
+    };
+    let mut sink = FsSink::with_options(out, opts)?;
+    write_tree(&mut sink, tree)?;
     let report = sink.report().clone();
     sink.finish()?;
-    eprintln!("wrote {} file(s) under {out}", report.actions.len());
+    let verb = if dry_run { "would write" } else { "wrote" };
+    eprintln!("{verb} {} path(s) under {out}", report.actions.len());
     if !report.is_empty() {
         eprint!("{report}");
     }
     Ok(())
+}
+
+/// Run a scaffold program (`quilt scaffold`, issue #95): expand and run the
+/// `*.tree.<host>.quilt` file with [`prepare_runner`] (the same pipeline as
+/// `run`), but with a sidecar file for it to `emit_tree` into and each parameter
+/// exposed as `QUILT_PARAM_<name>`. Decode the emitted [`QTree`] and materialize
+/// it under `--out`, honoring the write policy. Never touches the expand cache.
+fn scaffold_cmd(args: &ScaffoldArgs) -> Result<()> {
+    let env = build_env(&args.set, args.values.as_deref())?;
+    let (mut cmd, temp_file) = prepare_runner(&args.filename, &args.multi)?;
+
+    // The program hands its tree back over a postcard sidecar file, off its own
+    // stdout/stderr (which it may use for prompts/logging).
+    let tree_out = tempfile::Builder::new()
+        .suffix(".postcard")
+        .tempfile()
+        .into_diagnostic()?;
+    cmd.env(TREE_OUT_ENV, tree_out.path());
+    for (name, value) in &env {
+        cmd.env(format!("{PARAM_ENV_PREFIX}{name}"), param_to_env(value));
+    }
+    cmd.arg(temp_file.path()).args(&args.args);
+
+    let status = cmd.status().into_diagnostic()?;
+    if !status.success() {
+        bail!("scaffold program exited unsuccessfully ({status})");
+    }
+
+    let bytes = fs::read(tree_out.path()).into_diagnostic()?;
+    if bytes.is_empty() {
+        bail!("scaffold program produced no tree — did it call `emit_tree(&t)`?");
+    }
+    let tree: QTree = postcard::from_bytes(&bytes)
+        .into_diagnostic()
+        .wrap_err("decoding the QTree the scaffold program emitted")?;
+
+    materialize(&tree, &args.out, args.on_conflict.into(), args.dry_run)
+}
+
+/// Render a parameter value for the `QUILT_PARAM_<name>` environment variable a
+/// scaffold program reads. Scalars stringify plainly; a list is comma-joined
+/// (best effort — a program needing structured input should read it itself).
+fn param_to_env(value: &ParamValue) -> String {
+    match value {
+        ParamValue::Str(s) => s.clone(),
+        ParamValue::Int(i) => i.to_string(),
+        ParamValue::Float(f) => format!("{f:?}"),
+        ParamValue::Bool(b) => if *b { "true" } else { "false" }.to_owned(),
+        ParamValue::List(xs) => xs.iter().map(param_to_env).collect::<Vec<_>>().join(","),
+    }
 }
 
 /// Instantiate a single-file sky-first template (issue #88): parse the
@@ -538,15 +661,39 @@ fn toml_to_param(value: &toml::Value) -> Result<ParamValue> {
 }
 
 fn run(args: &RunArgs) -> Result<()> {
+    let (mut runner_cmd, temp_file) = prepare_runner(&args.filename, &args.multi)?;
+    runner_cmd.arg(temp_file.path()).args(&args.args);
+    let cmd_str = std::iter::once(runner_cmd.get_program())
+        .chain(runner_cmd.get_args())
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    tracing::info!("running: {cmd_str}");
+    let status = runner_cmd.status().into_diagnostic()?;
+
+    std::process::exit(status.code().unwrap_or(1));
+}
+
+/// Expand a `.quilt` script to a temp host-source file and build the runner
+/// [`Command`](std::process::Command) for it — resolving the runner from the
+/// host language's hashbang and wiring rust-script's cargo manifest or python's
+/// `PYTHONPATH`/`QUILT`. The command is returned *without* the script path or
+/// trailing args, so callers add those (and any extra env): `run` runs it
+/// directly, `scaffold` adds the tree sidecar. The returned temp file holds the
+/// expanded source and must outlive the command run.
+fn prepare_runner(
+    filename: &str,
+    multi: &MultiOptions,
+) -> Result<(std::process::Command, tempfile::NamedTempFile)> {
     // Resolve symlinks so an extension-less entry point (`bin/issues ->
     // ../examples/issue_triage.html.py.quilt`) derives the language chain from
     // the target's name, and use only the file name so dots in directories
     // can't leak into it.
-    let input_path = fs::canonicalize(&args.filename).into_diagnostic()?;
+    let input_path = fs::canonicalize(filename).into_diagnostic()?;
     let file_name = input_path
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| miette!("invalid filename: {}", args.filename))?;
+        .ok_or_else(|| miette!("invalid filename: {filename}"))?;
     let base = file_name.strip_suffix(".quilt").unwrap_or(file_name);
     let lang = base.split('.').next_back().unwrap();
 
@@ -565,7 +712,7 @@ fn run(args: &RunArgs) -> Result<()> {
         .into_diagnostic()?;
     let path = temp_file.path().to_str().unwrap().to_string();
 
-    let hashbang = match &args.multi {
+    let hashbang = match multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
             let chain = lang_chain(&multi, base);
@@ -594,7 +741,7 @@ fn run(args: &RunArgs) -> Result<()> {
         // `rust/quilt`) with the matching feature set: `qlift`/`name` (Omni)
         // live under `rust`, `bs_*` under `bootstrap`.
         let quilt_dir = env!("CARGO_MANIFEST_DIR");
-        let quilt_feature = match args.multi {
+        let quilt_feature = match multi {
             MultiOptions::Omni => "rust",
             #[cfg(feature = "bootstrap")]
             MultiOptions::Bootstrap => "bootstrap",
@@ -624,16 +771,7 @@ fn run(args: &RunArgs) -> Result<()> {
         }
     }
 
-    runner_cmd.arg(&path).args(&args.args);
-    let cmd_str = std::iter::once(runner_cmd.get_program())
-        .chain(runner_cmd.get_args())
-        .map(|s| s.to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join(" ");
-    tracing::info!("running: {cmd_str}");
-    let status = runner_cmd.status().into_diagnostic()?;
-
-    std::process::exit(status.code().unwrap_or(1));
+    Ok((runner_cmd, temp_file))
 }
 
 /// Prepend a rust-script cargo manifest (a `//! ```cargo` doc-comment block)
