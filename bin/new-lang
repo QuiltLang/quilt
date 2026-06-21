@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Scaffold a new Quilt language module under quilt/src/langs/<lang>/ (issue #108).
+#
+# This is a quilt-DEVELOPMENT tool, not a user-facing `quilt` subcommand: adding
+# a language is contributor work. It runs the `new_lang` scaffold program through
+# `quilt scaffold` (issue #95), which materializes the emitted QTree under
+# quilt/src/langs honoring --on-conflict (default: refuse to overwrite).
+#
+# Interactive wizard:
+#   bin/new-lang
+# Non-interactive (CI / scripted):
+#   bin/new-lang --set key=ruby --set display=Ruby --set kind=host \
+#                --set aliases=rb --set hole=__HOLE__ --set tree_sitter=true
+#
+# Any extra `quilt scaffold` flags pass through (e.g. --on-conflict overwrite,
+# --dry-run). After it runs, follow the generated <lang>/INTEGRATION.md to wire
+# the module into omni.rs / langs/mod.rs / Cargo.toml, then fill the todo!()s.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/bin/quilt" scaffold \
+  "$ROOT/quilt/src/langs/new_lang.tree.rs.quilt" \
+  --out "$ROOT/quilt/src/langs" \
+  "$@"

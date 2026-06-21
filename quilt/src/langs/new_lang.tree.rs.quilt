@@ -1,0 +1,78 @@
+#!/usr/bin/env quilt
+//
+// `new-lang` scaffold program (issue #108) — a quilt-DEVELOPMENT tool that stubs
+// out a new language module under `quilt/src/langs/<lang>/`. It is deliberately
+// NOT a `quilt` subcommand (adding a language is contributor work, not something
+// end-users of the `quilt` CLI do): run it through `bin/new-lang`, which invokes
+// `quilt scaffold` (issue #95) on this program. The program builds the module as
+// a QTree and hands it back with `emit_tree`; the scaffold CLI materializes it
+// under `--out` honoring `--on-conflict`.
+//
+// Inputs come from `quilt scaffold --set key=value`; any that are missing are
+// prompted for interactively on stdin. So:
+//
+//   bin/new-lang                                  # interactive wizard
+//   bin/new-lang --set key=ruby --set kind=host   # non-interactive
+//
+use quilt::new_lang::{build_lang_tree, LangSpec};
+use quilt::prelude::*;
+use std::io::{self, Write};
+
+/// A parameter: from `--set <name>=…` if present, else an interactive prompt
+/// (falling back to `default` on an empty answer or no TTY).
+fn ask(name: &str, prompt: &str, default: &str) -> String {
+    if let Some(v) = scaffold_param(name) {
+        return v;
+    }
+    eprint!("{prompt} [{default}]: ");
+    let _ = io::stderr().flush();
+    let mut line = String::new();
+    if io::stdin().read_line(&mut line).unwrap_or(0) == 0 {
+        return default.to_string();
+    }
+    let answer = line.trim();
+    if answer.is_empty() {
+        default.to_string()
+    } else {
+        answer.to_string()
+    }
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+fn truthy(s: &str) -> bool {
+    matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "y" | "1")
+}
+
+fn main() -> Result<()> {
+    let key = ask("key", "Language key (lowercase, e.g. ruby)", "");
+    let display = ask("display", "Display name", &capitalize(&key));
+    let aliases: Vec<String> = ask("aliases", "Aliases (comma-separated, optional)", "")
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect();
+    let kind = ask("kind", "Kind: host or target", "target");
+    let hole = ask("hole", "Hole token", "__HOLE__");
+    let tree_sitter = truthy(&ask("tree_sitter", "Tree-sitter backed? (true/false)", "true"));
+
+    let spec = LangSpec {
+        key,
+        aliases,
+        display,
+        host: matches!(kind.trim().to_lowercase().as_str(), "host" | "h"),
+        hole,
+        tree_sitter,
+    };
+
+    let tree = build_lang_tree(&spec)?;
+    eprintln!("scaffolding langs/{} :\n{}", spec.key, tree.listing());
+    emit_tree(&tree)
+}
