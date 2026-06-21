@@ -19,38 +19,59 @@ in the browser.
   specifier to the runtime (published on npm as `quilt-wasm`); a module script
   initialises the WebAssembly and injects `render().coparse()` into the page.
 
-## 2. Meta-meta playground (`/playground.html`, issue #47)
+## 2. Staged playground (`/playground.html`, issue #47)
 
-The **expansion itself** runs in the browser: edit the `.html.ts.quilt` source,
-press *Expand & run*, and the whole pipeline runs client-side —
+**TypeScript that writes TypeScript that writes HTML** — three staged passes, in
+the browser and driven by a clock. Everything runs client-side:
 
 ```
-source --(WASI shim + quilt-expand.wasm)--> TypeScript --(import + runtime)--> HTML
+source ──(WASI shim + quilt-expand.wasm)──▶ Stage 1: makeRenderer  (TypeScript)
+makeRenderer(schema) ──(↓ reduce: re-expand + eval)──▶ Stage 2: start()  (TypeScript)
+start(setHtml, read) ──(its own baked setInterval)───▶ Stage 3: HTML, looping
 ```
+
+`dashboard.html.ts.ts.quilt` is a self-specializing live dashboard. The `schema`
+(which metrics) and `opts` (width, interval, title) come from an editable panel
+above the dashboard, not the source. **Stage 1** (`makeRenderer`) runs once: it
+loops over the chosen metrics and *unrolls* them into a flat, branch-free **Stage
+2** (`start()`) — there is no loop and no schema left in the generated code (the
+metric loop is fully unrolled). `start()` carries its own update loop, with the
+interval baked in from `opts.intervalMs`. **Stage 3** is the HTML that loop sets
+every tick — no further expansion, no interpretation; the page only supplies the
+HTML sink and the readings feed. Editing the schema/opts panel (or the source)
+regenerates the TypeScript; the codegened loop stays cheap. The page shows the
+timings so the contrast is visible.
 
 - `quilt-expand.wasm` — the Quilt parser+expander. Unlike the runtime, expansion
   needs the `parse` feature (tree-sitter + the C grammars), which needs a libc,
   so it is built for `wasm32-wasip1` (see `bin/build-expand-wasm`, the
-  `quilt-expand-wasm` crate). 
+  `quilt-expand-wasm` crate).
+- `quilt-rt.js` — the reduce-enabled `quilt` wrapper, and the new piece that
+  makes staging work in the browser. The TypeScript meta already spells `↓` as
+  `term.reduce()`, but the wasm runtime has no `reduce()`: reduce must *re-expand*
+  a generated stage (it still quotes HTML), and the expander is a separate WASI
+  module. So, exactly like the Python runtime's `_reduce_src` shells out to the
+  `quilt` binary, `quilt-rt.js` adds `reduce()` in JS — coparse → expand → eval —
+  re-exporting the runtime and accepting the page's expander via `setExpander`.
+  The import map binds the bare `quilt` specifier to it (and `quilt-wasm` to the
+  runtime).
 - `wasi-shim.js` — a tiny hand-rolled WASI preview1 shim (zero deps) that runs
   the expander command, wiring argv / stdin / stdout to in-memory buffers.
-- `playground.js` / `playground.html` — drive the loop: run the expander, show
-  the expanded TypeScript, import it as a module (its bare `quilt` import
-  resolves through the page import map to the runtime), and render the result.
-  The source editor is a zero-dependency highlighter (a coloured `<pre>` behind
-  a transparent `<textarea>`) that also colours the Quilt arrow glyphs. Since
-  those glyphs can't be typed, a button row inserts them (`↖↗` `↙↘` `↑` `↓` `←`),
-  and the keyboard uses the same chord scheme as the VS Code extension
-  (`tools/quilt`): leader `⌘`/`Ctrl`+`1` then a direction (`↑↓←→` or `hjkl`)
-  for a single glyph, leader `⌘`/`Ctrl`+`2` then two directions for a diagonal
-  (e.g. up-then-left → `↖`). `⌘`/`Ctrl`+`Enter` expands & runs.
+- `playground.js` / `playground.html` — host the pipeline: expand Stage 1, import
+  it, call `makeRenderer` (which reduces to `start()`), then hand `start()` the
+  HTML sink + readings feed and let *its* codegened loop drive the preview. The
+  source editor is a zero-dependency highlighter (a
+  coloured `<pre>` behind a transparent `<textarea>`) that also colours the Quilt
+  arrow glyphs. Since those glyphs can't be typed, a button row inserts them
+  (`↖↗` `↙↘` `↑` `↓` `←`), and the keyboard uses the same chord scheme as the VS
+  Code extension (`tools/quilt`): leader `⌘`/`Ctrl`+`1` then a direction (`↑↓←→`
+  or `hjkl`) for a single glyph, leader `⌘`/`Ctrl`+`2` then two directions for a
+  diagonal (e.g. up-then-left → `↖`). `⌘`/`Ctrl`+`Enter` expands & runs.
 - `theme.css` — the shared site theme (brand palette + per-glyph syntax colours,
   mirroring the docs site's `custom.css`). Both demo pages link it, and the
-  playground links it from the *rendered preview* by a relative href, so the
-  generated HTML is themed like the site without any inlined CSS.
-
-The *run* step imports the expansion as a module, so it needs the expansion to
-be valid JS (annotation-free); the default source is.
+  playground links it from the *rendered preview* by a relative href (the live
+  dashboard styles are scoped to `.preview`), so the generated HTML is themed like
+  the site without any inlined CSS.
 
 ## Run them
 
@@ -69,17 +90,20 @@ playground and builds only demo 1.
 ## Verify headlessly
 
 ```sh
-node examples/web/verify.mjs              # demo 1: runtime renders the expansion
-node examples/web/verify-playground.mjs   # demo 2: full source → expand → run loop
+node examples/web/verify.mjs             # demo 1: runtime renders the expansion
+node examples/web/verify-dashboard.mjs   # demo 2: source → expand → ↓ reduce → render → HTML
 ```
 
 Both load the same modules the page does but in Node (initialising the
-WebAssembly from bytes), and assert the rendered HTML — including that lifted
-`<script>`/`"quotes"` come out entity-escaped.
+WebAssembly from bytes). `verify.mjs` asserts the cards demo's escaped output;
+`verify-dashboard.mjs` runs the whole staged pipeline and asserts the generated
+`start()` is unrolled (one gauge per metric, no schema loop), codegens its own
+`setInterval` with the interval baked in, that running frames triggers no
+expansion, and that the live values land in the HTML.
 
 ## Regenerate the committed expansion
 
-After editing `cards.html.ts.quilt`:
+After editing `cards.html.ts.quilt` (the ahead-of-time demo):
 
 ```sh
 quilt expand examples/web/cards.html.ts.quilt

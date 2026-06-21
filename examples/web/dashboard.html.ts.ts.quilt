@@ -1,0 +1,46 @@
+import {
+  tb, leaf, sym, quote, unquote, cmd, write, push,
+  name, qlift, qlift_html, NL, POP, HOLE,
+} from "quilt";
+
+// The schema (which metrics) and opts (interval, title) are supplied by the
+// panel above the dashboard; edit them there to regenerate this stage.
+
+// Stage 1. Unroll the schema into Stage-2 source: one straight-line gauge
+// builder per metric, accumulated in `body`. ↑ bakes a Stage-1 value in as a
+// literal now; a value left under a lone ↙…↘ hole (the live reading) fires later,
+// each time the generated loop runs. The bar fills its column via a CSS width %.
+export function makeRenderer(schema, opts) {
+  let body = ts↖↗;
+  for (const m of schema) {
+    const scale = 100 / m.max; // baked: percent of full width per unit
+    body = ts↖
+      ↙body↘
+      rows = html↖
+        ↙rows↘
+        <div class="bar">
+          <span class="lbl">↙↑(↙↑(m.label)↘)↘</span>
+          <span class="track"><i class="fill" style=↙↑(barStyle(values[↙↑(m.key)↘], ↙↑(scale)↘))↘></i></span>
+          <b class="val">↙↑(values[↙↑(m.key)↘])↘↙↑(↙↑(m.unit)↘)↘</b>
+        </div>
+      ↗;
+    ↗;
+  }
+  // Assemble the Stage-2 program: it runs the update loop itself. frame() reads
+  // fresh values, rebuilds the unrolled dashboard, and hands the HTML to sink();
+  // start() paints once and then loops. The bar's width %, title, and update
+  // interval are baked in — change opts.intervalMs and rerun to regenerate a
+  // loop that ticks at the new rate.
+  const stage2 = ts↖ (sink, read) => {
+    const barStyle = (v, s) => "width:" + Math.min(100, Math.round(v * s)) + "%";
+    const frame = () => {
+      const values = read();
+      let rows = html↖<h1>↙↑(↙↑(opts.title)↘)↘</h1>↗;
+      ↙body↘
+      sink(rows.coparse());
+    };
+    frame();
+    return setInterval(frame, ↙↑(opts.intervalMs)↘);
+  } ↗;
+  return stage2.↓;
+}
