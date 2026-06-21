@@ -5,7 +5,10 @@ pub use crate::langs::rust::ops::{name, qlift, reduce, QLift};
 pub use crate::lift::{Bash, LiftTo, Nix, Python, QLiftTo, Rust, Wgsl, Zsh};
 pub use crate::qmatch::{mvar, qmatch, qmatch_n, sinstantiate, smatch, smvar, SMVAR};
 pub use crate::qterm::{leaf, qb, quote, sym, tb, tuple, ub, unquote, Emit, QTerm};
-pub use crate::sink::{write_tree, FsSink, RelPath, TreeSink};
+pub use crate::sink::{
+    header_line, write_tree, Action, FsSink, OnConflict, RelPath, TreeSink, WriteOptions,
+    WriteReport, GENERATED_MARKER,
+};
 pub use crate::strcmd::{newline, pop, push, write, StrCmd, NL, POP};
 pub use crate::term::STerm;
 pub use crate::term::{cmd, hole, HOLE};
