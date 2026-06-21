@@ -4,7 +4,7 @@
 
 **File:** `quilt/src/bin.rs`
 
-The `quilt` binary has three subcommands; `run` is the default, so `quilt <file> [args…]` is shorthand for `quilt run <file> [args…]`.
+The `quilt` binary has several subcommands (`expand`, `check`, `run`, `instantiate`, `scaffold`, `clean`); `run` is the default, so `quilt <file> [args…]` is shorthand for `quilt run <file> [args…]`.
 
 ### `quilt expand <file.rs.quilt>`
 
@@ -56,6 +56,25 @@ Since `run` is the default subcommand, the `run` keyword can be omitted:
 quilt examples/hello.rs.quilt World
 quilt examples/hello.py.quilt
 quilt examples/countdown.rs.quilt 5
+```
+
+### `quilt instantiate <template> [--out <path>] [--set k=v…]`
+
+Fill a **sky-first template** with parameters: a single `*.tmpl.quilt` file (#88) or a whole template *directory* (#90). Holes are `↙name↘` (path segments also accept `{{name}}`); a `#!tier-b` first line opts a file into host-backed rendering. A single file's result goes to `--out` or stdout; a directory requires `--out`.
+
+| Flag | Meaning |
+|------|---------|
+| `--set k=v` | Set a parameter (repeatable). Typing: int/float/bool, else string. |
+| `--values <toml>` | A TOML file of parameter values (arrays become lists), merged under `--set`. |
+| `--out <path>` | Where to write (file for a single template, directory for a template dir). |
+| `--describe` | List the template's inferred parameters (the free variables of its holes and templated path segments) and exit, without instantiating — needs no `--set`/`--out`. |
+
+```sh
+quilt instantiate greeting.py.tmpl.quilt --set greeting=hi --out greeting.py
+quilt instantiate ./my-template-dir --out ./new-project --set name=widgets
+
+# Inspect what parameters a template expects, without filling it:
+quilt instantiate ./my-template-dir --describe
 ```
 
 ### `quilt scaffold <prog.tree.<host>.quilt> --out <dir> [--set k=v…]`

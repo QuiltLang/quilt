@@ -161,3 +161,30 @@ fn templated_path_segments_both_spellings() {
         "VERSION = 1\n"
     );
 }
+
+#[test]
+fn describe_lists_the_union_including_path_holes() {
+    // `pkg` appears only in a templated directory name; it must still be part of
+    // the described signature (issue #99 over the #91 path-hole params).
+    let tmpl = template_dir(&[
+        ("{{pkg}}/app.py.tmpl.quilt", "tag = ↙who↘\n"),
+        ("{{pkg}}/__init__.py.tmpl.quilt", "VERSION = ↙ver↘\n"),
+    ]);
+    // No --out / --set required for describe.
+    let result = quilt()
+        .args(["instantiate"])
+        .arg(tmpl.path())
+        .arg("--describe")
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let stdout = String::from_utf8(result.stdout).unwrap();
+    for p in ["pkg", "who", "ver"] {
+        assert!(stdout.contains(p), "missing {p} in: {stdout:?}");
+    }
+    assert!(stdout.contains("3 parameter(s)"), "got: {stdout:?}");
+}
