@@ -208,7 +208,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             let mut depth: i32 = 0;
             let mut point = start;
             for i in 0..node.child_count() {
-                let child = node.child(i).unwrap();
+                let child = node.child(u32::try_from(i).unwrap()).unwrap();
                 let crange = child.range();
                 process(
                     &mut builder,

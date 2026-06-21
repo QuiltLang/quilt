@@ -212,7 +212,7 @@ fn inner_window(node: tree_sitter::Node) -> Option<Range<usize>> {
     if count < 2 {
         return None;
     }
-    Some(node.child(0)?.end_byte()..node.child(count - 1)?.start_byte())
+    Some(node.child(0)?.end_byte()..node.child(u32::try_from(count - 1).unwrap())?.start_byte())
 }
 
 /// The language pair driving a ground projection: the host `meta` (how stage-0
