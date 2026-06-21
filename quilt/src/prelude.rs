@@ -7,7 +7,7 @@ pub use crate::manifest::{content_hash, Manifest, ManifestEntry};
 pub use crate::qmatch::{mvar, qmatch, qmatch_n, sinstantiate, smatch, smvar, SMVAR};
 pub use crate::qterm::{leaf, qb, quote, sym, tb, tuple, ub, unquote, Emit, QTerm};
 pub use crate::sink::{
-    has_marker, header_line, write_tree, Action, FsSink, OnConflict, RelPath, TreeSink,
+    has_marker, header_line, write_tree, Action, FsSink, NixSink, OnConflict, RelPath, TreeSink,
     WriteOptions, WriteReport, GENERATED_MARKER,
 };
 pub use crate::strcmd::{newline, pop, push, write, StrCmd, NL, POP};

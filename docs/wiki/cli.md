@@ -71,10 +71,15 @@ Run a ground-first program that builds a directory **tree** and materialize it. 
 | `--values <toml>` | A TOML file of parameter values, merged under `--set`. |
 | `--on-conflict <error\|overwrite\|skip\|backup>` | What to do when an output path already exists (default `error`). |
 | `--dry-run` | Print the write plan but write nothing. |
+| `--sink <fs\|nix>` | Where to materialize the tree: `fs` (default) writes files under `--out`; `nix` lowers it to a Nix `linkFarm` expression written to `--out` (a `.nix` file) that `nix build` turns into a reproducible store directory. |
 
 ```sh
 quilt scaffold examples/cargo_crate.tree.rs.quilt --out mycrate --set name=mycrate
 quilt scaffold examples/cargo_crate.tree.rs.quilt --out mylib  --set name=mylib --set lib=true
+
+# Lower the same tree to a Nix derivation instead of writing files:
+quilt scaffold examples/cargo_crate.tree.rs.quilt --sink nix --out crate.nix --set name=mylib --set lib=true
+nix-build crate.nix   # -> /nix/store/…-cargo_crate (a directory)
 ```
 
 The tree is handed back over a sidecar file named by the `QUILT_TREE_OUT` environment variable (postcard-encoded), off the program's own stdout/stderr. Run the program directly (`quilt run`) and `emit_tree` instead prints a listing of what *would* be built.
