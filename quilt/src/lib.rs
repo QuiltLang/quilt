@@ -10,6 +10,7 @@ pub mod node;
 pub mod prelude;
 pub mod qmatch;
 pub mod qterm;
+pub mod sink;
 pub mod strcmd;
 pub mod term;
 pub mod tree;
