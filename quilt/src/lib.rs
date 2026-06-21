@@ -3,6 +3,7 @@ pub mod grammars;
 pub mod lang;
 pub mod langs;
 pub mod lift;
+pub mod manifest;
 pub mod meta;
 pub mod multi;
 #[cfg(feature = "parse")]

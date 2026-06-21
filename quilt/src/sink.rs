@@ -14,6 +14,7 @@
 //!
 //! See `docs/design/directory-scaffolding.md` §6.5, §10.
 
+use crate::manifest::{content_hash, Manifest, ManifestEntry};
 // `coparse` is a provided method on `STerm`; bring the trait into scope.
 use crate::term::STerm;
 use crate::tree::{FileMeta, HeaderPolicy, Node, QTree, Segment};
@@ -32,6 +33,17 @@ impl RelPath {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Parse a `/`-joined string into a `RelPath`, validating every component
+    /// via [`Segment::new`]. Used to safely re-derive a path from an untrusted
+    /// manifest key before touching the filesystem.
+    pub fn parse(s: &str) -> Result<Self> {
+        if s.is_empty() {
+            return Ok(Self::new());
+        }
+        let segs = s.split('/').map(Segment::new).collect::<Result<Vec<_>>>()?;
+        Ok(Self(segs))
     }
 
     /// Extend the path by one validated segment (returns a new path).
@@ -175,6 +187,14 @@ pub struct WriteOptions {
     /// whose [`FileMeta`] header policy is [`HeaderPolicy::Stamp`]. `args` is the
     /// generator invocation recorded in the header (see [`header_line`]).
     pub stamp: Option<String>,
+    /// Header guard for idempotent regen (issue #94): under
+    /// [`OnConflict::Overwrite`], refuse to overwrite a file the user has taken
+    /// ownership of (marker removed) or hand-edited (manifest hash mismatch) —
+    /// such a file is skipped instead. No effect under other conflict policies.
+    pub guard: bool,
+    /// After writing, delete paths that the previous manifest recorded as
+    /// machine-owned but that are absent from the new tree.
+    pub prune: bool,
 }
 
 /// The action [`FsSink`] took (or, under `dry_run`, *would* take) for one leaf.
@@ -239,6 +259,11 @@ pub struct FsSink {
     root: PathBuf,
     opts: WriteOptions,
     report: WriteReport,
+    /// Manifest from the previous generation (empty on a first run); drives the
+    /// header guard and `--prune`.
+    old: Manifest,
+    /// Manifest accumulated during this run; written by `finish`.
+    next: Manifest,
 }
 
 impl FsSink {
@@ -256,10 +281,13 @@ impl FsSink {
         let out = out.as_ref();
         std::fs::create_dir_all(out).into_diagnostic()?;
         let root = std::fs::canonicalize(out).into_diagnostic()?;
+        let old = Manifest::load(&root);
         Ok(Self {
             root,
             opts,
             report: WriteReport::default(),
+            old,
+            next: Manifest::default(),
         })
     }
 
@@ -292,21 +320,46 @@ impl FsSink {
         }
     }
 
-    /// Classify the action for a leaf at absolute path `full`, given the policy,
-    /// and record it in the report.
-    fn classify(&mut self, path: &RelPath, full: &Path) -> Action {
-        let action = if full.symlink_metadata().is_ok() {
-            match self.opts.on_conflict {
-                OnConflict::Error => Action::Conflict,
-                OnConflict::Overwrite => Action::Overwrite,
-                OnConflict::Skip => Action::Skip,
-                OnConflict::Backup => Action::Backup,
+    /// Classify the action for a leaf at absolute path `full`, given the policy.
+    /// `guarded` enables the idempotent-regen header guard (file leaves only):
+    /// under [`OnConflict::Overwrite`] a user-owned or hand-edited file is
+    /// demoted to [`Action::Skip`] instead of being clobbered.
+    fn plan_action(&self, path: &RelPath, full: &Path, guarded: bool) -> Action {
+        if full.symlink_metadata().is_err() {
+            return Action::Create;
+        }
+        match self.opts.on_conflict {
+            OnConflict::Error => Action::Conflict,
+            OnConflict::Skip => Action::Skip,
+            OnConflict::Backup => Action::Backup,
+            OnConflict::Overwrite => {
+                if guarded && self.opts.guard && !self.may_overwrite(&path.to_string(), full) {
+                    Action::Skip
+                } else {
+                    Action::Overwrite
+                }
             }
-        } else {
-            Action::Create
-        };
-        self.report.actions.push((path.to_string(), action));
-        action
+        }
+    }
+
+    /// May the file at `full` be overwritten under the header guard? Yes when the
+    /// previous manifest recorded it as machine-owned *and* it is unchanged on
+    /// disk (hash matches); for a path unknown to the manifest, only when the
+    /// on-disk file still carries the DO-NOT-EDIT marker. A user-owned or
+    /// hand-edited file returns false.
+    fn may_overwrite(&self, path_str: &str, full: &Path) -> bool {
+        let on_disk = std::fs::read(full).unwrap_or_default();
+        match self.old.get(path_str) {
+            Some(e) if e.managed => content_hash(&on_disk) == e.hash,
+            Some(_) => false,
+            None => has_marker(&on_disk),
+        }
+    }
+
+    /// Whether this leaf is machine-owned: a source-file header policy *and* an
+    /// active stamp option (so a recognizable marker is actually written).
+    fn is_managed(&self, meta: &FileMeta) -> bool {
+        self.opts.stamp.is_some() && matches!(meta.header, HeaderPolicy::Stamp(_))
     }
 
     /// Create the directory chain `rel` *one level at a time*, never following a
@@ -366,6 +419,49 @@ impl FsSink {
         bak.push(".orig");
         std::fs::rename(full, PathBuf::from(bak)).into_diagnostic()
     }
+
+    /// Delete paths the previous manifest recorded as machine-owned that are
+    /// absent from the new tree, then tidy up directories left empty. Only
+    /// managed (stamped) regular files are removed — user assets and links are
+    /// never auto-deleted. Each manifest key is re-validated as a `RelPath`
+    /// before use, so a tampered manifest can't reach outside the root.
+    fn prune(&self) -> Result<()> {
+        for (path_str, entry) in &self.old.entries {
+            if !entry.managed || self.next.get(path_str).is_some() {
+                continue;
+            }
+            let Ok(rel) = RelPath::parse(path_str) else {
+                continue;
+            };
+            if rel.is_empty() {
+                continue;
+            }
+            let full = self.root.join(rel.to_path());
+            // Only remove a plain file (never a symlink or directory).
+            if let Ok(md) = std::fs::symlink_metadata(&full) {
+                if md.file_type().is_file() {
+                    std::fs::remove_file(&full).into_diagnostic()?;
+                    if let Some(parent) = full.parent() {
+                        self.remove_empty_parents(parent);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Remove now-empty directories from `dir` upward, stopping at the root.
+    fn remove_empty_parents(&self, dir: &Path) {
+        let mut cur = dir.to_path_buf();
+        while cur.starts_with(&self.root) && cur != self.root {
+            let empty = std::fs::read_dir(&cur).is_ok_and(|mut d| d.next().is_none());
+            if !empty || std::fs::remove_dir(&cur).is_err() {
+                break;
+            }
+            let Some(parent) = cur.parent() else { break };
+            cur = parent.to_path_buf();
+        }
+    }
 }
 
 impl TreeSink for FsSink {
@@ -384,7 +480,26 @@ impl TreeSink for FsSink {
             .file_name()
             .ok_or_else(|| miette!("cannot write a file at the tree root"))?;
         let full = self.root.join(path.to_path());
-        let action = self.classify(path, &full);
+        let action = self.plan_action(path, &full, true);
+        self.report.actions.push((path.to_string(), action));
+
+        let final_bytes = self.stamped(bytes, meta);
+        let managed = self.is_managed(meta);
+        // Record this path as present in the new tree so `--prune` keeps it. A
+        // skipped (user-owned) file is recorded by its on-disk content and as
+        // not machine-owned, so a later prune/guard leaves it alone.
+        let entry = match action {
+            Action::Skip | Action::Conflict => ManifestEntry {
+                hash: content_hash(&std::fs::read(&full).unwrap_or_default()),
+                managed: false,
+            },
+            _ => ManifestEntry {
+                hash: content_hash(&final_bytes),
+                managed,
+            },
+        };
+        self.next.insert(path.to_string(), entry);
+
         if self.opts.dry_run {
             return Ok(());
         }
@@ -405,7 +520,6 @@ impl TreeSink for FsSink {
         if action == Action::Backup {
             Self::backup(&full)?;
         }
-        let final_bytes = self.stamped(bytes, meta);
         std::fs::write(&full, &final_bytes).into_diagnostic()?;
         Self::apply_mode(&full, meta)?;
         Ok(())
@@ -419,7 +533,19 @@ impl TreeSink for FsSink {
         // lexically that it can never escape the root.
         link_target_within_root(&path.parent(), target)?;
         let full = self.root.join(path.to_path());
-        let action = self.classify(path, &full);
+        // Links carry no DO-NOT-EDIT marker, so the header guard never applies.
+        let action = self.plan_action(path, &full, false);
+        self.report.actions.push((path.to_string(), action));
+        // Record the link as present in the new tree but never machine-owned, so
+        // `--prune` won't delete it and the guard won't touch it.
+        self.next.insert(
+            path.to_string(),
+            ManifestEntry {
+                hash: content_hash(target.to_string_lossy().as_bytes()),
+                managed: false,
+            },
+        );
+
         if self.opts.dry_run {
             return Ok(());
         }
@@ -447,8 +573,24 @@ impl TreeSink for FsSink {
     }
 
     fn finish(self) -> Result<()> {
-        Ok(())
+        if self.opts.dry_run {
+            return Ok(());
+        }
+        if self.opts.prune {
+            self.prune()?;
+        }
+        // Persist the new manifest so the next run can guard/prune against it.
+        self.next.save(&self.root)
     }
+}
+
+/// Whether `bytes` carries the DO-NOT-EDIT marker near its start (a
+/// machine-owned file). Only the head is scanned so a large asset that happens
+/// to contain the phrase deep inside isn't misclassified.
+#[must_use]
+pub fn has_marker(bytes: &[u8]) -> bool {
+    let head = &bytes[..bytes.len().min(512)];
+    String::from_utf8_lossy(head).contains(GENERATED_MARKER)
 }
 
 #[cfg(unix)]
@@ -783,5 +925,145 @@ mod tests {
             "//! DO NOT EDIT. GENERATED BY `quilt expand foo.rs.quilt`."
         );
         assert!(header_line("#", "scaffold").contains(GENERATED_MARKER));
+    }
+
+    // --- #94: idempotent regen (manifest, guard, prune) --------------------
+
+    use crate::manifest::Manifest;
+
+    /// Regen policy: stamp markers, overwrite machine-owned files, header guard.
+    fn regen() -> WriteOptions {
+        WriteOptions {
+            on_conflict: OnConflict::Overwrite,
+            guard: true,
+            stamp: Some("scaffold demo".to_string()),
+            ..WriteOptions::default()
+        }
+    }
+
+    fn gen(out: &Path, t: &QTree, opts: WriteOptions) {
+        let mut sink = FsSink::with_options(out, opts).unwrap();
+        write_tree(&mut sink, t).unwrap();
+        sink.finish().unwrap();
+    }
+
+    fn src_leaf(code: &str) -> Node {
+        file(leaf("source_file", code))
+    }
+
+    #[test]
+    fn manifest_written_and_records_managed_flag() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path();
+        let t = tree! {
+            "main.rs" => src_leaf("fn main() {}"),
+            "data.bin" => raw(b"asset".to_vec()),
+        };
+        let mut sink = FsSink::with_options(
+            out,
+            WriteOptions {
+                stamp: Some("scaffold".to_string()),
+                ..WriteOptions::default()
+            },
+        )
+        .unwrap();
+        let root = sink.root().to_path_buf();
+        write_tree(&mut sink, &t).unwrap();
+        sink.finish().unwrap();
+
+        let m = Manifest::load(&root);
+        assert!(m.get("main.rs").unwrap().managed, "source leaf is managed");
+        assert!(
+            !m.get("data.bin").unwrap().managed,
+            "raw asset is not managed"
+        );
+    }
+
+    #[test]
+    fn guard_skips_user_edited_file() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path();
+        gen(out, &tree! { "main.rs" => src_leaf("v1") }, regen());
+        // User takes over the file.
+        std::fs::write(out.join("main.rs"), "hand written\n").unwrap();
+        // Regen with new content — the guard must not clobber the edit.
+        let mut sink = FsSink::with_options(out, regen()).unwrap();
+        write_tree(&mut sink, &tree! { "main.rs" => src_leaf("v2") }).unwrap();
+        assert_eq!(sink.report().actions[0].1, Action::Skip);
+        sink.finish().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(out.join("main.rs")).unwrap(),
+            "hand written\n"
+        );
+    }
+
+    #[test]
+    fn guard_overwrites_unedited_managed_file() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path();
+        gen(out, &tree! { "main.rs" => src_leaf("v1") }, regen());
+        let mut sink = FsSink::with_options(out, regen()).unwrap();
+        write_tree(&mut sink, &tree! { "main.rs" => src_leaf("v2") }).unwrap();
+        assert_eq!(sink.report().actions[0].1, Action::Overwrite);
+        sink.finish().unwrap();
+        let main = std::fs::read_to_string(out.join("main.rs")).unwrap();
+        assert!(main.contains("v2"));
+        assert!(main.contains(GENERATED_MARKER));
+    }
+
+    #[test]
+    fn guard_uses_marker_when_manifest_absent() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path();
+        // A pre-existing machine-owned file (marker present), no manifest.
+        std::fs::write(
+            out.join("owned.rs"),
+            format!("{}\n\nfn old() {{}}", header_line("//", "x")),
+        )
+        .unwrap();
+        // And a user-owned file (no marker).
+        std::fs::write(out.join("user.rs"), "fn user() {}").unwrap();
+
+        let mut sink = FsSink::with_options(out, regen()).unwrap();
+        write_tree(
+            &mut sink,
+            &tree! { "owned.rs" => src_leaf("new"), "user.rs" => src_leaf("new") },
+        )
+        .unwrap();
+        assert_eq!(sink.report().actions[0].1, Action::Overwrite); // marker -> ok
+        assert_eq!(sink.report().actions[1].1, Action::Skip); // no marker -> skip
+        sink.finish().unwrap();
+        assert!(std::fs::read_to_string(out.join("owned.rs"))
+            .unwrap()
+            .contains("new"));
+        assert_eq!(
+            std::fs::read_to_string(out.join("user.rs")).unwrap(),
+            "fn user() {}"
+        );
+    }
+
+    #[test]
+    fn prune_deletes_managed_absent_keeps_unmanaged() {
+        let d = tempfile::tempdir().unwrap();
+        let out = d.path();
+        // First gen: a managed source file in a subdir + an unmanaged asset.
+        gen(
+            out,
+            &tree! {
+                "src" => dir! { "gen.rs" => src_leaf("generated") },
+                "user.txt" => raw(b"mine".to_vec()),
+            },
+            regen(),
+        );
+        assert!(out.join("src/gen.rs").exists());
+
+        // Second gen drops both leaves; prune should remove only the managed one.
+        let mut opts = regen();
+        opts.prune = true;
+        gen(out, &QTree::new(), opts);
+
+        assert!(!out.join("src/gen.rs").exists(), "managed file pruned");
+        assert!(!out.join("src").exists(), "now-empty dir tidied up");
+        assert!(out.join("user.txt").exists(), "unmanaged asset kept");
     }
 }
