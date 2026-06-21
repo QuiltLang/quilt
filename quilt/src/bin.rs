@@ -1,12 +1,13 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use miette::{IntoDiagnostic, NamedSource};
+use miette::{bail, IntoDiagnostic, NamedSource};
 #[cfg(feature = "bootstrap")]
 use quilt::langs::bootstrap::Bootstrap;
 use quilt::{
     lang::Language,
     langs::omni::Omni,
-    multi::{Languages, MetaLanguages, Multi},
+    multi::{template_params, Languages, MetaLanguages, Multi},
     prelude::*,
+    template::{instantiate, ParamEnv, ParamValue},
     term::STerm,
 };
 use std::collections::hash_map::DefaultHasher;
@@ -37,6 +38,8 @@ enum Commands {
     Run(RunArgs),
     /// Validate .quilt files without writing output
     Check(CheckArgs),
+    /// Fill a sky-first template's holes with parameters (single-file Tier A)
+    Instantiate(InstantiateArgs),
     /// Clear the expand cache
     Clean,
 }
@@ -71,6 +74,28 @@ struct CheckArgs {
 }
 
 #[derive(Args, Debug)]
+struct InstantiateArgs {
+    /// Sky-first template to instantiate (a `*.tmpl.quilt` file)
+    #[clap(index = 1)]
+    filename: String,
+    /// Where to write the output (defaults to stdout)
+    #[clap(short, long)]
+    out: Option<String>,
+    /// Set a parameter: `--set name=value` (repeatable). A value that parses as
+    /// an integer, float, or `true`/`false` is taken as that; otherwise it is a
+    /// string. Use `--values` for lists and explicit typing.
+    #[clap(long = "set", value_name = "KEY=VALUE")]
+    set: Vec<String>,
+    /// A TOML file of parameter values (`name = value`; arrays become lists).
+    /// Merged under `--set`, which overrides it.
+    #[clap(long)]
+    values: Option<String>,
+    /// multi-language to use
+    #[clap(short, long, default_value_t, value_enum)]
+    multi: MultiOptions,
+}
+
+#[derive(Args, Debug)]
 struct RunArgs {
     /// .quilt file to run
     filename: String,
@@ -96,6 +121,7 @@ fn main() -> Result<()> {
         (Some(Commands::Expand(args)), _) => expand(args),
         (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
         (Some(Commands::Check(args)), _) => check(args),
+        (Some(Commands::Instantiate(args)), _) => instantiate_cmd(args),
         (Some(Commands::Clean), _) => clean(),
         (None, None) => {
             use clap::CommandFactory;
@@ -213,6 +239,27 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
         input
     };
 
+    // A `*.tmpl.quilt` file is a sky-first template, not a ground-first program:
+    // checking it ground-first would fail at its first free `↙…↘` hole. Validate
+    // it by parsing sky-first instead (instantiation needs parameters, which
+    // `check` has none of, so parsing is as far as it goes).
+    if let Some(tmpl_stem) = stem.strip_suffix(".tmpl") {
+        match multi {
+            MultiOptions::Omni => {
+                let mut multi = Omni::default();
+                let chain = lang_chain(&multi, tmpl_stem);
+                multi.parse_template(&chain, &input)?;
+            }
+            #[cfg(feature = "bootstrap")]
+            MultiOptions::Bootstrap => {
+                let mut multi = Bootstrap::default();
+                let chain = lang_chain(&multi, tmpl_stem);
+                multi.parse_template(&chain, &input)?;
+            }
+        }
+        return Ok(());
+    }
+
     match multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
@@ -229,6 +276,125 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Instantiate a single-file sky-first template (issue #88): parse the
+/// `*.tmpl.quilt` file sky-first, fill its `↙…↘` holes from the merged
+/// `--values`/`--set` environment via Tier A (`quilt::template::instantiate`),
+/// and write the result to `--out` (or stdout). This path never touches the
+/// expand cache — the output depends on the externally-supplied parameters.
+fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
+    let filename = &args.filename;
+    // The `.tmpl.quilt` marker selects sky-first parsing; the remaining
+    // extensions give the language chain (e.g. `greeting.py` -> `["py"]`).
+    let stem = filename
+        .strip_suffix(".quilt")
+        .and_then(|s| s.strip_suffix(".tmpl"))
+        .ok_or_else(|| miette!("expected a *.tmpl.quilt template file, got {filename:?}"))?;
+
+    let input = fs::read_to_string(filename).into_diagnostic()?;
+    let with_src =
+        |e: miette::Report| e.with_source_code(NamedSource::new(filename, input.clone()));
+
+    // Build the parameter environment: `--values` first, `--set` overrides it.
+    let mut env = ParamEnv::new();
+    if let Some(path) = &args.values {
+        let text = fs::read_to_string(path).into_diagnostic()?;
+        merge_toml_values(&mut env, &text)?;
+    }
+    for kv in &args.set {
+        let (key, value) = kv
+            .split_once('=')
+            .ok_or_else(|| miette!("--set expects KEY=VALUE, got {kv:?}"))?;
+        env.insert(key.into(), infer_scalar(value));
+    }
+
+    let rendered = match args.multi {
+        MultiOptions::Omni => {
+            let mut multi = Omni::default();
+            let chain = lang_chain(&multi, stem);
+            instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
+        }
+        #[cfg(feature = "bootstrap")]
+        MultiOptions::Bootstrap => {
+            let mut multi = Bootstrap::default();
+            let chain = lang_chain(&multi, stem);
+            instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
+        }
+    };
+
+    let output = rendered.coparse();
+    match &args.out {
+        Some(path) => {
+            fs::write(path, output.as_bytes()).into_diagnostic()?;
+            eprintln!("wrote {path}");
+        }
+        None => print!("{output}"),
+    }
+    Ok(())
+}
+
+/// Parse `input` sky-first and instantiate it against `env`. Reports *all*
+/// missing parameters up front (clearer than failing at the first hole), then
+/// fills the holes.
+fn instantiate_template<LS: Languages, MS: MetaLanguages>(
+    multi: &mut Multi<LS, MS>,
+    chain: &[&str],
+    input: &str,
+    env: &ParamEnv,
+) -> Result<Arc<QTerm>> {
+    let template = multi.parse_template(chain, input)?;
+    let missing: Vec<String> = template_params(&template)
+        .into_iter()
+        .filter(|p| !env.contains_key(p))
+        .map(String::from)
+        .collect();
+    if !missing.is_empty() {
+        bail!("missing template parameter(s): {}", missing.join(", "));
+    }
+    instantiate(&template, env)
+}
+
+/// Infer a `--set name=value` scalar's type: integer, then float, then bool,
+/// else string. Lists and explicit typing come from `--values` TOML instead.
+fn infer_scalar(value: &str) -> ParamValue {
+    if let Ok(i) = value.parse::<i64>() {
+        ParamValue::Int(i)
+    } else if let Ok(f) = value.parse::<f64>() {
+        ParamValue::Float(f)
+    } else {
+        match value {
+            "true" => ParamValue::Bool(true),
+            "false" => ParamValue::Bool(false),
+            _ => ParamValue::Str(value.to_owned()),
+        }
+    }
+}
+
+/// Merge a `--values` TOML table into `env`. Top-level keys become parameters;
+/// nested tables and datetimes have no `ParamValue` representation and error.
+fn merge_toml_values(env: &mut ParamEnv, text: &str) -> Result<()> {
+    let table: toml::Table = toml::from_str(text).into_diagnostic()?;
+    for (key, value) in table {
+        env.insert(key.into_boxed_str(), toml_to_param(&value)?);
+    }
+    Ok(())
+}
+
+fn toml_to_param(value: &toml::Value) -> Result<ParamValue> {
+    Ok(match value {
+        toml::Value::String(s) => ParamValue::Str(s.clone()),
+        toml::Value::Integer(i) => ParamValue::Int(*i),
+        toml::Value::Float(f) => ParamValue::Float(*f),
+        toml::Value::Boolean(b) => ParamValue::Bool(*b),
+        toml::Value::Array(xs) => {
+            ParamValue::List(xs.iter().map(toml_to_param).collect::<Result<Vec<_>>>()?)
+        }
+        toml::Value::Table(_) => bail!("nested tables are not supported as template parameters"),
+        toml::Value::Datetime(_) => {
+            bail!("datetime values are not supported as template parameters")
+        }
+    })
 }
 
 /// Derive the language chain from a `.quilt` file's stem (the name with the

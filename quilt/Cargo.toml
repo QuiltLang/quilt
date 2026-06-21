@@ -27,6 +27,9 @@ serde = {workspace = true, features = ["derive", "rc"]}
 tempfile = {workspace = true}
 tracing = {workspace = true}
 tracing-subscriber = {workspace = true, features = ["env-filter"]}
+# Only the `quilt instantiate` CLI reads `--values` TOML files, and the CLI
+# requires `parse`; gate it there so runtime-only/wasm consumers stay toml-free.
+toml = {workspace = true, optional = true}
 # Tree-sitter parsing is only needed to *parse* Quilt sources (the `parse`
 # feature). The runtime that expanded code targets (the `QTerm` builders,
 # `qlift`, `coparse`) is tree-sitter-free, so consumers like nanobots-codegen
@@ -64,6 +67,7 @@ parse = [
   "dep:tree-sitter",
   "dep:tree-sitter-quilt",
   "dep:tree-sitter-language",
+  "dep:toml",
 ]
 bash = ["parse"]
 html = ["parse"]
