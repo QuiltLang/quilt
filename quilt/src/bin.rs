@@ -122,12 +122,27 @@ struct ScaffoldArgs {
     /// Compute and print the write plan but write nothing.
     #[clap(long)]
     dry_run: bool,
+    /// Where to materialize the tree: `fs` writes files under `--out`; `nix`
+    /// lowers the tree to a Nix `linkFarm` expression written to `--out` (a
+    /// `.nix` file) that `nix build` turns into a store directory (issue #98).
+    #[clap(long, value_enum, default_value_t = SinkArg::Fs)]
+    sink: SinkArg,
     /// multi-language to use
     #[clap(short, long, default_value_t, value_enum)]
     multi: MultiOptions,
     /// Arguments passed through to the scaffold program.
     #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<String>,
+}
+
+/// Which sink `quilt scaffold` materializes the emitted tree through.
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+enum SinkArg {
+    /// Write files to the filesystem under `--out` (the default).
+    #[default]
+    Fs,
+    /// Lower the tree to a Nix derivation written to `--out`.
+    Nix,
 }
 
 /// CLI spelling of [`OnConflict`] for `--on-conflict` (clap can't derive
@@ -458,7 +473,40 @@ fn scaffold_cmd(args: &ScaffoldArgs) -> Result<()> {
         .into_diagnostic()
         .wrap_err("decoding the QTree the scaffold program emitted")?;
 
-    materialize(&tree, &args.out, args.on_conflict.into(), args.dry_run)
+    match args.sink {
+        SinkArg::Fs => materialize(&tree, &args.out, args.on_conflict.into(), args.dry_run),
+        SinkArg::Nix => emit_nix(&tree, &args.filename, &args.out, args.dry_run),
+    }
+}
+
+/// Lower `tree` to a Nix derivation (issue #98) and write it to `out` (a `.nix`
+/// file). The derivation is named after the scaffold program's stem. Under
+/// `dry_run` the Nix is printed to stdout instead.
+fn emit_nix(tree: &QTree, program: &str, out: &str, dry_run: bool) -> Result<()> {
+    // Name the derivation after the program file's stem (e.g. `cargo_crate` from
+    // `cargo_crate.tree.rs.quilt`), falling back to `scaffold`.
+    let name = Path::new(program)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.split('.').next())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("scaffold");
+    let mut sink = NixSink::new(name);
+    write_tree(&mut sink, tree)?;
+    let source = sink.into_source();
+
+    if dry_run {
+        print!("{source}");
+        return Ok(());
+    }
+    if let Some(parent) = Path::new(out).parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).into_diagnostic()?;
+        }
+    }
+    fs::write(out, source.as_bytes()).into_diagnostic()?;
+    eprintln!("wrote {out} (nix derivation `{name}`)");
+    Ok(())
 }
 
 /// Render a parameter value for the `QUILT_PARAM_<name>` environment variable a
