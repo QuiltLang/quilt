@@ -3,16 +3,18 @@ use miette::{bail, IntoDiagnostic, NamedSource};
 #[cfg(feature = "bootstrap")]
 use quilt::langs::bootstrap::Bootstrap;
 use quilt::{
+    dir_template::instantiate_dir_with,
     lang::Language,
     langs::omni::Omni,
-    multi::{template_params, Languages, MetaLanguages, Multi},
+    multi::{lang_chain, template_params, Languages, MetaLanguages, Multi},
     prelude::*,
-    template::{instantiate, tier_b_program, ParamEnv, ParamValue},
+    template::{instantiate, strip_tier_b_marker, tier_b_program, ParamEnv, ParamValue},
     term::STerm,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
+use std::path::Path;
 
 /**************************************************************/
 
@@ -278,28 +280,27 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
     Ok(())
 }
 
-/// Instantiate a single-file sky-first template (issue #88): parse the
-/// `*.tmpl.quilt` file sky-first, fill its `↙…↘` holes from the merged
-/// `--values`/`--set` environment via Tier A (`quilt::template::instantiate`),
-/// and write the result to `--out` (or stdout). This path never touches the
-/// expand cache — the output depends on the externally-supplied parameters.
+/// Instantiate a sky-first template (`quilt instantiate`): a single
+/// `*.tmpl.quilt` file (issue #88) or a whole template *directory* (issue #90).
+/// Fills `↙…↘` holes from the merged `--values`/`--set` environment via Tier A
+/// (`quilt::template::instantiate`), with Tier B behind a `#!tier-b` marker.
+/// This path never touches the expand cache — the output depends on the
+/// externally-supplied parameters.
 fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
-    let filename = &args.filename;
-    // The `.tmpl.quilt` marker selects sky-first parsing; the remaining
-    // extensions give the language chain (e.g. `greeting.py` -> `["py"]`).
-    let stem = filename
-        .strip_suffix(".quilt")
-        .and_then(|s| s.strip_suffix(".tmpl"))
-        .ok_or_else(|| miette!("expected a *.tmpl.quilt template file, got {filename:?}"))?;
+    let env = build_env(args)?;
 
-    let raw_input = fs::read_to_string(filename).into_diagnostic()?;
-    // A leading `#!tier-b` marker line opts into Tier B (host-backed holes).
-    let (tier_b, input) = match strip_tier_b_marker(&raw_input) {
-        Some(body) => (true, body),
-        None => (false, raw_input),
-    };
+    // A directory input is a template *directory*: walk it into a QTree and
+    // materialize that under `--out` (issue #90).
+    if Path::new(&args.filename).is_dir() {
+        return instantiate_dir_cmd(args, &env);
+    }
 
-    // Build the parameter environment: `--values` first, `--set` overrides it.
+    instantiate_file_cmd(args, &env)
+}
+
+/// Build the parameter environment from `--values` (read first) then `--set`
+/// (which overrides it).
+fn build_env(args: &InstantiateArgs) -> Result<ParamEnv> {
     let mut env = ParamEnv::new();
     if let Some(path) = &args.values {
         let text = fs::read_to_string(path).into_diagnostic()?;
@@ -311,6 +312,67 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
             .ok_or_else(|| miette!("--set expects KEY=VALUE, got {kv:?}"))?;
         env.insert(key.into(), infer_scalar(value));
     }
+    Ok(env)
+}
+
+/// Instantiate a template *directory* (issue #90): walk it into a `QTree` —
+/// each `*.tmpl.quilt` file filled against `env`, every other file copied
+/// verbatim — and materialize that tree under `--out` through an `FsSink`. A
+/// directory can't go to stdout, so `--out` is required.
+fn instantiate_dir_cmd(args: &InstantiateArgs, env: &ParamEnv) -> Result<()> {
+    let out = args.out.as_ref().ok_or_else(|| {
+        miette!("instantiating a directory needs an output directory: pass --out <dir>")
+    })?;
+    let dir = Path::new(&args.filename);
+
+    // Tier B files run the Python host, exactly as the single-file path does.
+    let mut render =
+        |chain: &[&str], body: &str, env: &ParamEnv| render_tier_b_chain(chain, body, env);
+    let tree = match args.multi {
+        MultiOptions::Omni => {
+            let mut multi = Omni::default();
+            instantiate_dir_with(&mut multi, dir, env, &mut render)?
+        }
+        #[cfg(feature = "bootstrap")]
+        MultiOptions::Bootstrap => {
+            let mut multi = Bootstrap::default();
+            instantiate_dir_with(&mut multi, dir, env, &mut render)?
+        }
+    };
+
+    let mut sink = FsSink::new(out)?;
+    write_tree(&mut sink, &tree)?;
+    let report = sink.report().clone();
+    sink.finish()?;
+    eprintln!("wrote {} file(s) under {out}", report.actions.len());
+    if !report.is_empty() {
+        eprint!("{report}");
+    }
+    Ok(())
+}
+
+/// Instantiate a single-file sky-first template (issue #88): parse the
+/// `*.tmpl.quilt` file sky-first and write the filled result to `--out` (or
+/// stdout).
+fn instantiate_file_cmd(args: &InstantiateArgs, env: &ParamEnv) -> Result<()> {
+    let filename = &args.filename;
+    // The `.tmpl.quilt` marker selects sky-first parsing; the remaining
+    // extensions give the language chain (e.g. `greeting.py` -> `["py"]`).
+    let stem = filename
+        .strip_suffix(".quilt")
+        .and_then(|s| s.strip_suffix(".tmpl"))
+        .ok_or_else(|| {
+            miette!(
+                "expected a *.tmpl.quilt template file or a template directory, got {filename:?}"
+            )
+        })?;
+
+    let raw_input = fs::read_to_string(filename).into_diagnostic()?;
+    // A leading `#!tier-b` marker line opts into Tier B (host-backed holes).
+    let (tier_b, input) = match strip_tier_b_marker(&raw_input) {
+        Some(body) => (true, body.to_owned()),
+        None => (false, raw_input),
+    };
 
     let output: String = if tier_b {
         render_tier_b(stem, &input, &env)?
@@ -343,21 +405,22 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
     Ok(())
 }
 
-/// If `src` opens with a `#!tier-b` marker line, return the template body after
-/// it (the Tier B opt-in, issue #89); otherwise `None`.
-fn strip_tier_b_marker(src: &str) -> Option<String> {
-    let end = src.find('\n').unwrap_or(src.len());
-    (src[..end].trim() == "#!tier-b").then(|| src.get(end + 1..).unwrap_or("").to_owned())
+/// Render a Tier B template (single-file path): derive the language chain from
+/// `stem`, then [`render_tier_b_chain`].
+fn render_tier_b(stem: &str, body: &str, env: &ParamEnv) -> Result<String> {
+    let multi = Omni::default();
+    let chain = lang_chain(&multi, stem);
+    render_tier_b_chain(&chain, body, env)
 }
 
 /// Render a Tier B template: source-wrap `body` into a Python-host metaprogram
 /// with the declared parameters in scope, expand it, run it, and return its
 /// stdout — the instantiated output. Holes may be arbitrary host expressions
 /// over the parameters. Tier B always uses the Omni multi (it needs the real
-/// Python runtime) and never touches the expand cache.
-fn render_tier_b(stem: &str, body: &str, env: &ParamEnv) -> Result<String> {
+/// Python runtime) and never touches the expand cache. The directory path
+/// (issue #90) calls this per `#!tier-b` file with its own chain.
+fn render_tier_b_chain(chain: &[&str], body: &str, env: &ParamEnv) -> Result<String> {
     let mut multi = Omni::default();
-    let chain = lang_chain(&multi, stem);
     let host = chain[0];
     let target = *chain.last().unwrap_or(&host);
 
@@ -368,7 +431,7 @@ fn render_tier_b(stem: &str, body: &str, env: &ParamEnv) -> Result<String> {
 
     // Validate the *bare-name* holes are all supplied (host-expression holes are
     // checked by the Python runtime when render runs).
-    let template = multi.parse_template(&chain, body)?;
+    let template = multi.parse_template(chain, body)?;
     let missing: Vec<String> = template_params(&template)
         .into_iter()
         .filter(|p| !env.contains_key(p))
@@ -472,32 +535,6 @@ fn toml_to_param(value: &toml::Value) -> Result<ParamValue> {
             bail!("datetime values are not supported as template parameters")
         }
     })
-}
-
-/// Derive the language chain from a `.quilt` file's stem (the name with the
-/// `.quilt` suffix already stripped). Reading right-to-left, peel off each
-/// extension that names a registered language: the rightmost is the host
-/// (ground) language and the rest are the default languages for nested
-/// un-annotated quotes — so `shaders.wgsl.rs` → `["rs", "wgsl"]` and the plain
-/// `main.rs` → `["rs"]`. The basename never counts, even when it looks like a
-/// language (`text.rs` → `["rs"]`). Always yields at least the last part (even
-/// if it isn't a known language) so the downstream parse surfaces a clear
-/// error, as it did before chains existed.
-fn lang_chain<'a, LS: Languages, MS: MetaLanguages>(
-    multi: &Multi<LS, MS>,
-    stem: &'a str,
-) -> Vec<&'a str> {
-    let parts: Vec<&str> = stem.split('.').collect();
-    let mut chain: Vec<&str> = parts[1..]
-        .iter()
-        .rev()
-        .copied()
-        .take_while(|part| multi.get_lang(part).is_ok())
-        .collect();
-    if chain.is_empty() {
-        chain.push(parts.last().copied().unwrap_or(""));
-    }
-    chain
 }
 
 fn run(args: &RunArgs) -> Result<()> {

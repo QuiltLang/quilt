@@ -1,4 +1,6 @@
 #[cfg(feature = "parse")]
+pub mod dir_template;
+#[cfg(feature = "parse")]
 pub mod grammars;
 pub mod lang;
 pub mod langs;

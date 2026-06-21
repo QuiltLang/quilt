@@ -1,0 +1,3 @@
+A verbatim asset: this file has no template holes, so directory instantiation
+copies it through unchanged (a Raw leaf). Real templates would put their actual
+license text here.

@@ -1,0 +1,11 @@
+greeting = ↙greeting↘
+count = ↙count↘
+
+
+def main():
+    for _ in range(count):
+        print(greeting)
+
+
+if __name__ == "__main__":
+    main()
