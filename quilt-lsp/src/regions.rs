@@ -234,7 +234,7 @@ fn collect(text: &str, node: Node, zipper: &LangZipper, parent_stage: i32, out: 
     }
     let open = node.child(0).expect("bracket node has an opening token");
     let close = node
-        .child(count - 1)
+        .child(u32::try_from(count - 1).unwrap())
         .expect("bracket node has a closing token");
 
     let anno = node_anno(text, node).to_string();

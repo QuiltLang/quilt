@@ -56,7 +56,10 @@ impl Node {
 
         let mut nodes = Vec::new();
         for i in 0..root.child_count() {
-            nodes.push(Self::from_ts(&root.child(i).unwrap(), code));
+            nodes.push(Self::from_ts(
+                &root.child(u32::try_from(i).unwrap()).unwrap(),
+                code,
+            ));
         }
         nodes.into()
     }
@@ -78,7 +81,9 @@ impl Node {
                 let anno = code[range.start_byte..range.end_byte - ARROW_LEN].into();
                 let mut nodes = Vec::new();
                 for i in 1..node.child_count() - 1 {
-                    nodes.push(Self::from_ts(&node.child(i).unwrap(), code).into());
+                    nodes.push(
+                        Self::from_ts(&node.child(u32::try_from(i).unwrap()).unwrap(), code).into(),
+                    );
                 }
                 let nodes = nodes.into();
                 let span = node.start_byte()..node.end_byte();
@@ -89,7 +94,9 @@ impl Node {
                 let anno = code[range.start_byte..range.end_byte - ARROW_LEN].into();
                 let mut nodes = Vec::new();
                 for i in 1..node.child_count() - 1 {
-                    nodes.push(Self::from_ts(&node.child(i).unwrap(), code).into());
+                    nodes.push(
+                        Self::from_ts(&node.child(u32::try_from(i).unwrap()).unwrap(), code).into(),
+                    );
                 }
                 let nodes = nodes.into();
                 let span = node.start_byte()..node.end_byte();
