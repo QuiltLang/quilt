@@ -1,0 +1,3 @@
+greeting = "Hello"
+names = ["Ada", "Linus", "Grace"]
+formal = false

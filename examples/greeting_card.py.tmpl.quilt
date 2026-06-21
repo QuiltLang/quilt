@@ -1,0 +1,17 @@
+#!tier-b
+# Generated greeting card — do not edit; regenerate from greeting_card.py.tmpl.quilt.
+# Tier B: each hole is a host (Python) expression over the parameters, evaluated
+# at instantiation time. greeting (str), names (list of str), formal (bool):
+#   quilt instantiate examples/greeting_card.py.tmpl.quilt --values examples/greeting_card.values.toml
+GREETING = ↙↑(greeting)↘
+ROSTER = ↙↑(", ".join(names))↘
+COUNT = ↙↑(len(names))↘
+TONE = ↙↑("formal" if formal else "casual")↘
+
+
+def card():
+    print(f"{GREETING} to {COUNT} guests ({TONE}): {ROSTER}")
+
+
+if __name__ == "__main__":
+    card()
