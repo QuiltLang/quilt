@@ -62,6 +62,26 @@ Mirrors the Python runtime one-for-one where the ABIs allow:
 | `NL`, `POP`, `HOLE` (constants)    | `NL()`, `POP()`, `HOLE()` (functions — wasm-bindgen can't export struct-valued constants) |
 | `qlift`, `qlift_html`              | same; lift `number`/`string`/`boolean` (no `QTerm` pass-through yet) |
 | `term.coparse()`                   | `term.coparse()` / `term.toString()` |
+| `QTree` + `file/raw/subdir/link`   | `new WasmQTree()`, `.emit(path, node)`, `file/raw/rawBytes/subdir/link` |
+| (sinks — issue #97)                | `tree.zip()` / `tree.tar()` → `Uint8Array` to download with no backend |
+
+### Directory layer (issue #97)
+
+Build a directory tree in the browser and pack it into an archive — so the
+playground can instantiate a template and offer the result as a download with no
+server:
+
+```js
+const t = new q.WasmQTree();
+t.emit("README.md", q.raw("# hi\n"));
+t.emit("src/main.ts", q.file(generatedTerm));   // a QTerm leaf
+const zip = t.zip();                            // Uint8Array (store-only ZIP)
+const blob = new Blob([zip], { type: "application/zip" });
+// → URL.createObjectURL(blob) on an <a download> to save it.
+```
+
+`tar()` returns a ustar archive instead. Both run entirely in wasm (no
+filesystem, no dependencies).
 
 Builder and term methods that take `self`/a child by value **consume** the JS
 object (wasm-bindgen move semantics), so chain in one expression and don't reuse

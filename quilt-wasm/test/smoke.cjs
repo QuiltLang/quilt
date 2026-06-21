@@ -51,4 +51,24 @@ const quoted = q.quote("element", 0, "html", q.leaf("text", "x"), [
 const out = quoted.coparse();
 assert.ok(typeof out === "string" && out.includes("x"), `quote coparse: ${out}`);
 
+// 7. Directory layer (issue #97): build a QTree and pack it as a .zip / .tar,
+//    the no-backend "download the result" path for the playground.
+const t = new q.WasmQTree();
+t.emit("README.md", q.raw("# hi\n"));
+t.emit("src/main.rs", q.file(q.leaf("source_file", "fn main() {}")));
+t.emit("logo.bin", q.rawBytes(Uint8Array.from([1, 2, 3])));
+
+const zip = t.zip();
+assert.ok(zip instanceof Uint8Array && zip.length > 0, "zip is a non-empty Uint8Array");
+// ZIP local file header signature "PK\x03\x04".
+assert.deepStrictEqual([zip[0], zip[1], zip[2], zip[3]], [0x50, 0x4b, 0x03, 0x04]);
+
+const tar = t.tar();
+assert.ok(tar instanceof Uint8Array && tar.length % 512 === 0, "tar is block-aligned");
+// ustar magic at offset 257.
+assert.strictEqual(Buffer.from(tar.slice(257, 262)).toString(), "ustar");
+
+const listing = t.listing();
+assert.ok(listing.includes("src/main.rs (file)"), `listing: ${listing}`);
+
 console.log("quilt-wasm smoke test: all assertions passed");
