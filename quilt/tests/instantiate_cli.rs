@@ -127,3 +127,43 @@ fn non_template_file_is_rejected() {
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(stderr.contains("tmpl.quilt"), "got: {stderr:?}");
 }
+
+// --- #99: `--describe` -------------------------------------------------------
+
+#[test]
+fn describe_lists_inferred_parameters() {
+    let t = tmpl("x = ↙n↘\ny = ↙name↘\nz = ↙n↘\n");
+    // No --set / --out needed: describe only inspects the signature.
+    let out = quilt()
+        .args(["instantiate"])
+        .arg(t.path())
+        .arg("--describe")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // Each free variable is listed once (deduped), and nothing is instantiated.
+    assert!(stdout.contains("2 parameter(s)"), "got: {stdout:?}");
+    assert!(
+        stdout.contains('n') && stdout.contains("name"),
+        "got: {stdout:?}"
+    );
+}
+
+#[test]
+fn describe_reports_no_parameters_for_a_holeless_template() {
+    let t = tmpl("x = 1\n");
+    let out = quilt()
+        .args(["instantiate"])
+        .arg(t.path())
+        .arg("--describe")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("no parameters"), "got: {stdout:?}");
+}

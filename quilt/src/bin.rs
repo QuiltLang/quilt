@@ -3,7 +3,7 @@ use miette::{bail, Context, IntoDiagnostic, NamedSource};
 #[cfg(feature = "bootstrap")]
 use quilt::langs::bootstrap::Bootstrap;
 use quilt::{
-    dir_template::instantiate_dir_with,
+    dir_template::{dir_params, instantiate_dir_with},
     lang::Language,
     langs::omni::Omni,
     multi::{lang_chain, template_params, Languages, MetaLanguages, Multi},
@@ -94,6 +94,11 @@ struct InstantiateArgs {
     /// Merged under `--set`, which overrides it.
     #[clap(long)]
     values: Option<String>,
+    /// List the template's inferred parameters (the free variables of its holes
+    /// and templated path segments) and exit, without instantiating. Needs no
+    /// `--set`/`--out`. Works for a single `*.tmpl.quilt` file or a template dir.
+    #[clap(long)]
+    describe: bool,
     /// multi-language to use
     #[clap(short, long, default_value_t, value_enum)]
     multi: MultiOptions,
@@ -362,6 +367,12 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
 /// This path never touches the expand cache — the output depends on the
 /// externally-supplied parameters.
 fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
+    // `--describe` inspects the template's parameter signature without filling
+    // it, so it needs neither parameters nor an output target (issue #99).
+    if args.describe {
+        return describe_cmd(args);
+    }
+
     let env = build_env(&args.set, args.values.as_deref())?;
 
     // A directory input is a template *directory*: walk it into a QTree and
@@ -371,6 +382,70 @@ fn instantiate_cmd(args: &InstantiateArgs) -> Result<()> {
     }
 
     instantiate_file_cmd(args, &env)
+}
+
+/// `quilt instantiate --describe` (issue #99): print the inferred parameter
+/// signature of a template — the union of the free variables of every hole and
+/// templated path segment — without instantiating. The same inference the fill
+/// path uses (`dir_params` for a directory, `parse_template` + `template_params`
+/// for a single file), so what is listed is exactly what an instantiation must
+/// supply.
+fn describe_cmd(args: &InstantiateArgs) -> Result<()> {
+    let path = Path::new(&args.filename);
+    let params = if path.is_dir() {
+        match args.multi {
+            MultiOptions::Omni => dir_params(&mut Omni::default(), path)?,
+            #[cfg(feature = "bootstrap")]
+            MultiOptions::Bootstrap => dir_params(&mut Bootstrap::default(), path)?,
+        }
+    } else {
+        describe_file_params(args)?
+    };
+
+    if params.is_empty() {
+        println!("{}: no parameters", args.filename);
+    } else {
+        println!("{}: {} parameter(s)", args.filename, params.len());
+        for p in &params {
+            println!("  {p}");
+        }
+    }
+    Ok(())
+}
+
+/// The inferred parameters of a single `*.tmpl.quilt` template file: parse it
+/// sky-first (stripping any `#!tier-b` marker, whose bare-name holes still
+/// count) and collect its free variables.
+fn describe_file_params(args: &InstantiateArgs) -> Result<Vec<Box<str>>> {
+    let filename = &args.filename;
+    let stem = filename
+        .strip_suffix(".quilt")
+        .and_then(|s| s.strip_suffix(".tmpl"))
+        .ok_or_else(|| {
+            miette!(
+                "expected a *.tmpl.quilt template file or a template directory, got {filename:?}"
+            )
+        })?;
+    let raw_input = fs::read_to_string(filename).into_diagnostic()?;
+    let body = match strip_tier_b_marker(&raw_input) {
+        Some(b) => b.to_owned(),
+        None => raw_input,
+    };
+
+    let template = match args.multi {
+        MultiOptions::Omni => {
+            let mut multi = Omni::default();
+            let chain = lang_chain(&multi, stem);
+            multi.parse_template(&chain, &body)?
+        }
+        #[cfg(feature = "bootstrap")]
+        MultiOptions::Bootstrap => {
+            let mut multi = Bootstrap::default();
+            let chain = lang_chain(&multi, stem);
+            multi.parse_template(&chain, &body)?
+        }
+    };
+    Ok(template_params(&template))
 }
 
 /// Build the parameter environment from `--values` (read first) then `--set`
