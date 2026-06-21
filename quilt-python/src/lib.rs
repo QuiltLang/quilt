@@ -8,6 +8,14 @@
 //! functions, the `NL`/`POP`/`HOLE` constants, and the fluent `Builder`
 //! (`.c`/`.w`/`.n`/`.p`/`.x`/`.e`/`.b`) and `QTerm` (`.coparse()`) classes that
 //! source calls into.
+//!
+//! They also mirror the **directory layer** (issue #96): `QTree`, the
+//! `file`/`raw`/`link`/`subdir` node builders, `QTree.emit(path, node)`, and
+//! `write_tree(tree, out, …)` to materialize a tree under a directory — the
+//! Python parity of `quilt::tree` / `quilt::sink`. Both are tree-sitter-free, so
+//! a `.py.quilt` host can build and write a whole directory structure. Sky-first
+//! template instantiation (Tier A) is provided by the `quilt` package's
+//! `instantiate(...)` helper, which shells out to the `quilt` binary's parser.
 
 use pyo3::prelude::*;
 use quilt::prelude::{Arc, QTerm};
@@ -15,8 +23,10 @@ use quilt::qterm::{
     leaf as mk_leaf, quote as mk_quote, sym as mk_sym, tb as mk_tb, unquote as mk_unquote,
     QTermBuilder,
 };
+use quilt::sink::{write_tree as mk_write_tree, FsSink, OnConflict, TreeSink, WriteOptions};
 use quilt::strcmd::{push as mk_push, write as mk_write, StrCmd};
 use quilt::term::{cmd as mk_cmd, CmdOrHole, STerm};
+use quilt::tree::{file as mk_file, link as mk_link, raw as mk_raw, Node, QTree};
 
 /**************************************************************/
 
@@ -266,6 +276,158 @@ fn from_postcard_bytes(data: &[u8]) -> PyResult<PyQTerm> {
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
 }
 
+/**************************************************************/
+// The directory layer (issue #96): the Python mirror of `quilt::tree` /
+// `quilt::sink`. A `.py.quilt` host builds a `QTree` of generated-source leaves
+// the same way Rust does, then materializes it under a directory. Both the tree
+// builder and the filesystem sink are tree-sitter-free, so they are available in
+// this parser-free runtime exactly as the `QTerm` builder is.
+
+/// A node in a [`QTree`]: a generated-source file, a verbatim blob, a symlink,
+/// or a subdirectory. Build one with [`file`], [`raw`], [`link`], or [`subdir`].
+#[pyclass(name = "Node", from_py_object)]
+#[derive(Clone)]
+struct PyNode(Node);
+
+#[pymethods]
+impl PyNode {
+    /// Set unix permission bits (e.g. `0o755`) on a file/raw leaf. A no-op for
+    /// directories and links. Returns a new node.
+    fn mode(&self, mode: u32) -> Self {
+        Self(self.0.clone().mode(mode))
+    }
+
+    fn __repr__(&self) -> String {
+        let kind = match &self.0 {
+            Node::Dir(_) => "dir",
+            Node::File { .. } => "file",
+            Node::Raw { .. } => "raw",
+            Node::Link { .. } => "link",
+        };
+        format!("Node({kind})")
+    }
+}
+
+/// A directory tree whose leaves are [`PyNode`]s — the directory analog of a
+/// `QTerm`. Mirrors the Rust [`QTree`] builder.
+#[pyclass(name = "QTree", skip_from_py_object)]
+#[derive(Clone, Default)]
+struct PyQTree(QTree);
+
+#[pymethods]
+impl PyQTree {
+    /// An empty tree.
+    #[new]
+    fn new() -> Self {
+        Self(QTree::new())
+    }
+
+    /// Insert (or replace) a leaf at `path`, creating intermediate directories.
+    /// `path` is `/`-joined and split into validated components; the final one
+    /// is set (right wins). The directory analog of `←`.
+    fn emit(&mut self, path: &str, node: &PyNode) -> PyResult<()> {
+        self.0
+            .emit(path, node.0.clone())
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    }
+
+    /// Number of direct children.
+    fn __len__(&self) -> usize {
+        self.0.len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("QTree({} entries)", self.0.len())
+    }
+}
+
+/// A generated-source file leaf (its `QTerm` is serialized via `coparse` at
+/// write time). The header-stamp default mirrors the Rust builder.
+#[pyfunction]
+fn file(term: &PyQTerm) -> PyNode {
+    PyNode(mk_file(term.0.clone()))
+}
+
+/// A verbatim byte-blob leaf (an asset, copied through untouched). Accepts
+/// `bytes` or `str`.
+#[pyfunction]
+fn raw(data: &Bound<'_, PyAny>) -> PyResult<PyNode> {
+    if let Ok(bytes) = data.extract::<Vec<u8>>() {
+        return Ok(PyNode(mk_raw(bytes)));
+    }
+    if let Ok(s) = data.extract::<String>() {
+        return Ok(PyNode(mk_raw(s.into_bytes())));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "raw: expected bytes or str",
+    ))
+}
+
+/// A symlink leaf pointing at a relative path within the tree (the sink rejects
+/// targets that escape the output root).
+#[pyfunction]
+fn link(target: &str) -> PyNode {
+    PyNode(mk_link(target))
+}
+
+/// Wrap a subtree as a directory node — for nesting a prebuilt [`PyQTree`] (an
+/// empty `QTree()` makes an empty directory). The common case, nesting by path,
+/// is handled by `emit("a/b/c", …)` directly.
+#[pyfunction]
+fn subdir(tree: &PyQTree) -> PyNode {
+    PyNode(Node::Dir(tree.0.clone()))
+}
+
+/// Materialize `tree` under the directory `out`, returning the per-leaf plan as
+/// a list of `(path, action)` pairs (`create`/`overwrite`/`skip`/…). Writes go
+/// through the sandboxed `FsSink`. `on_conflict` is one of
+/// `error` (default), `overwrite`, `skip`, `backup`; `dry_run` plans without
+/// writing; `stamp` (a `quilt …` invocation string) stamps the DO-NOT-EDIT
+/// header onto source leaves and enables the idempotent-regen guard.
+#[pyfunction]
+#[pyo3(signature = (tree, out, on_conflict="error", dry_run=false, stamp=None))]
+fn write_tree(
+    tree: &PyQTree,
+    out: &str,
+    on_conflict: &str,
+    dry_run: bool,
+    stamp: Option<String>,
+) -> PyResult<Vec<(String, String)>> {
+    let on_conflict = match on_conflict {
+        "error" => OnConflict::Error,
+        "overwrite" => OnConflict::Overwrite,
+        "skip" => OnConflict::Skip,
+        "backup" => OnConflict::Backup,
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "on_conflict must be error|overwrite|skip|backup, got {other:?}"
+            )))
+        }
+    };
+    let opts = WriteOptions {
+        on_conflict,
+        dry_run,
+        guard: stamp.is_some(),
+        stamp,
+        prune: false,
+    };
+    let mut sink = FsSink::with_options(out, opts)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    mk_write_tree(&mut sink, &tree.0)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    let report: Vec<(String, String)> = sink
+        .report()
+        .actions
+        .iter()
+        .map(|(path, action)| (path.clone(), action.to_string()))
+        .collect();
+    sink.finish()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    Ok(report)
+}
+
+/**************************************************************/
+
 /// quilt's core IR, exposed to Python as the native `quilt._quilt` module
 /// (re-exported by the `quilt` package's `__init__.py`).
 #[pymodule]
@@ -274,6 +436,8 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStrCmd>()?;
     m.add_class::<PyCmdOrHole>()?;
     m.add_class::<PyBuilder>()?;
+    m.add_class::<PyNode>()?;
+    m.add_class::<PyQTree>()?;
 
     m.add_function(wrap_pyfunction!(tb, m)?)?;
     m.add_function(wrap_pyfunction!(leaf, m)?)?;
@@ -287,6 +451,11 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(qlift, m)?)?;
     m.add_function(wrap_pyfunction!(qlift_html, m)?)?;
     m.add_function(wrap_pyfunction!(from_postcard_bytes, m)?)?;
+    m.add_function(wrap_pyfunction!(file, m)?)?;
+    m.add_function(wrap_pyfunction!(raw, m)?)?;
+    m.add_function(wrap_pyfunction!(link, m)?)?;
+    m.add_function(wrap_pyfunction!(subdir, m)?)?;
+    m.add_function(wrap_pyfunction!(write_tree, m)?)?;
 
     m.add("NL", PyStrCmd(StrCmd::NewLine))?;
     m.add("POP", PyStrCmd(StrCmd::Pop))?;

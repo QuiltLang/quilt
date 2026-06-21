@@ -1,0 +1,47 @@
+#!/usr/bin/env quilt
+from quilt import *
+import os
+import sys
+import tempfile
+
+# The directory layer in Python (issue #96): a `.py.quilt` host builds a `QTree`
+# of generated source the same way Rust does, then materializes it under a
+# directory. The structure here is *data-dependent* — a configurable list of
+# modules, each a generated file — which is what a program (not a fixed template
+# directory) is for.
+
+modules = ["shapes", "colors"]
+version = "0.1.0"
+
+tree = QTree()
+
+# A generated package __init__.py that re-exports every module. Plain generated
+# text wrapped as a leaf term.
+init_src = "".join(f"from .{m} import *\n" for m in modules)
+tree.emit("mypkg/__init__.py", file(leaf("module", init_src)))
+
+# A generated _version.py built with a py quote, splicing a *lifted* string
+# literal — coparse() serializes it to `__version__ = "0.1.0"`.
+ver = py↖__version__ = ↙qlift(version)↘↗
+tree.emit("mypkg/_version.py", file(ver))
+
+# One stub module per name (repeated structure from a host loop).
+for m in modules:
+    stub = f"def hello():\n    return {m!r}\n"
+    tree.emit(f"mypkg/{m}.py", file(leaf("module", stub)))
+
+# A verbatim asset, copied through untouched.
+tree.emit("mypkg/py.typed", raw(b""))
+
+# Materialize. With an output directory argument write there; otherwise preview
+# into a throwaway temp dir so the example runs headless.
+out = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="quilt-scaffold-")
+report = write_tree(tree, out, on_conflict="overwrite")
+
+print(f"wrote {len(report)} file(s) under {out}:")
+for path, action in report:
+    print(f"  {action:>9}  {path}")
+print()
+print("--- mypkg/_version.py ---")
+with open(os.path.join(out, "mypkg/_version.py")) as f:
+    print(f.read(), end="")

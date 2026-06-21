@@ -69,3 +69,86 @@ def test_str_and_repr():
     e = leaf("integer", "9")
     assert str(e) == "9"
     assert repr(e) == 'QTerm("9")'
+
+
+# --- #96: the directory layer (QTree + sinks) ------------------------------
+
+import os
+import shutil
+
+import pytest
+from quilt import QTree, file, raw, link, subdir, write_tree
+
+
+def test_qtree_emit_and_len():
+    t = QTree()
+    t.emit("Cargo.toml", raw(b"[package]\n"))
+    t.emit("src/main.rs", file(leaf("source_file", "fn main() {}")))
+    # "src" is created once; the tree has two top-level entries.
+    assert len(t) == 2
+
+
+def test_qtree_rejects_bad_path():
+    t = QTree()
+    with pytest.raises(ValueError):
+        t.emit("a/../b", raw("x"))
+
+
+def test_raw_accepts_bytes_or_str():
+    # Both spellings round-trip to the same bytes on disk.
+    assert repr(raw(b"x")) == "Node(raw)"
+    assert repr(raw("x")) == "Node(raw)"
+    assert repr(file(leaf("module", "x = 1"))) == "Node(file)"
+    assert repr(subdir(QTree())) == "Node(dir)"
+    assert repr(link("other.txt")) == "Node(link)"
+
+
+def test_write_tree(tmp_path):
+    t = QTree()
+    t.emit("README.md", raw("# hi\n"))
+    t.emit("src/app.py", file(leaf("module", "x = 1\n")))
+    t.emit("empty", subdir(QTree()))  # empty dir is kept
+    out = str(tmp_path / "proj")
+    report = dict(write_tree(t, out))
+    assert report["README.md"] == "create"
+    assert report["src/app.py"] == "create"
+    assert open(os.path.join(out, "README.md")).read() == "# hi\n"
+    assert open(os.path.join(out, "src/app.py")).read() == "x = 1\n"
+    assert os.path.isdir(os.path.join(out, "empty"))
+
+
+def test_write_tree_conflict_policy(tmp_path):
+    out = str(tmp_path / "proj")
+    os.makedirs(out)
+    with open(os.path.join(out, "a.txt"), "w") as f:
+        f.write("old")
+    t = QTree()
+    t.emit("a.txt", raw("new"))
+    # The default policy refuses to clobber an existing file.
+    with pytest.raises(Exception):
+        write_tree(t, out)
+    assert open(os.path.join(out, "a.txt")).read() == "old"
+    # ... overwrite replaces it.
+    report = dict(write_tree(t, out, on_conflict="overwrite"))
+    assert report["a.txt"] == "overwrite"
+    assert open(os.path.join(out, "a.txt")).read() == "new"
+
+
+def test_write_tree_dry_run_writes_nothing(tmp_path):
+    out = str(tmp_path / "proj")
+    t = QTree()
+    t.emit("a.txt", raw("hi"))
+    report = dict(write_tree(t, out, dry_run=True))
+    assert report["a.txt"] == "create"
+    assert not os.path.exists(os.path.join(out, "a.txt"))
+
+
+def test_tier_a_instantiate():
+    # The Tier A helper shells out to the `quilt` binary; skip when it is absent.
+    if not (os.environ.get("QUILT") or shutil.which("quilt")):
+        pytest.skip("no quilt binary on PATH (set $QUILT)")
+    from quilt import instantiate
+
+    out = instantiate("greeting = ↙who↘\nn = ↙count↘\n", lang="py", who="bob", count=3)
+    assert 'greeting = "bob"' in out
+    assert "n = 3" in out

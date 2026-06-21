@@ -67,6 +67,27 @@ def expand(src, lang="py"):
         lines.pop(0)
     return "\n".join(lines).lstrip("\n")
 
+def instantiate(template, lang="py", **params):
+    """Tier A: fill a sky-first template's `↙name↘` holes with parameters.
+
+    `template` is the template *source* — the body of one `target↖…↗`, with
+    `↙name↘` holes — and each keyword argument supplies a hole's value. Returns
+    the filled source. Like expand()/run(), this shells out to the `quilt`
+    binary (sky-first parsing lives there, not in this tree-sitter-free runtime),
+    so nothing is compiled. For a whole template *directory*, use the
+    `quilt instantiate <dir> --out <dir>` CLI.
+    """
+    qbin = _quilt_bin()
+    with tempfile.TemporaryDirectory() as d:
+        inp = os.path.join(d, f"frag.{lang}.tmpl.quilt")
+        with open(inp, "w") as f:
+            f.write(template)
+        argv = [qbin, "instantiate", inp]
+        for key, value in params.items():
+            argv += ["--set", f"{key}={value}"]
+        result = subprocess.run(argv, check=True, capture_output=True, text=True)
+        return result.stdout
+
 def run(term, lang="py"):
     """Run a generated *stage* — Quilt source that may still contain glyphs — by
     expanding it and exec-ing it as a module. Returns the resulting namespace.
