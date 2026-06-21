@@ -13,9 +13,16 @@
 //! language chain. Every other file is copied **verbatim** into a [`Raw`] leaf,
 //! so binary assets pass through untouched.
 //!
+//! File and directory **names** may themselves carry parameter holes (issue
+//! #91), in either spelling: the glyph `↙name↘` (uniform with content holes) or
+//! the ASCII `{{name}}` (byte-safe for filesystems and tooling — e.g. git's
+//! `core.quotePath` octal-escapes glyph filenames). A path hole is a bare
+//! parameter reference; after substitution each segment is validated (no `/`,
+//! `.`/`..`, etc.).
+//!
 //! The template's parameter signature is the *union* of the free variables of
-//! all its template files ([`dir_params`]); an instantiation must supply every
-//! one. Templated file/dir *names* (path-segment holes) are issue #91.
+//! all its template files *and* path-segment holes ([`dir_params`]); an
+//! instantiation must supply every one.
 //!
 //! Materialization is the sinks' job ([`crate::sink`]): build the `QTree` here,
 //! then `write_tree` it through an [`FsSink`](crate::sink::FsSink). This module
@@ -23,9 +30,9 @@
 //!
 //! [`Raw`]: crate::tree::Node::Raw
 
-use crate::multi::{lang_chain, template_params, Languages, MetaLanguages, Multi};
+use crate::multi::{ident_name, lang_chain, template_params, Languages, MetaLanguages, Multi};
 use crate::prelude::*;
-use crate::template::{instantiate, strip_tier_b_marker, ParamEnv};
+use crate::template::{instantiate, strip_tier_b_marker, ParamEnv, ParamValue};
 use miette::{bail, Context, IntoDiagnostic};
 use std::path::Path;
 
@@ -38,8 +45,9 @@ const TEMPLATE_SUFFIX: &str = ".tmpl.quilt";
 /// pending tree first lets [`instantiate_dir_with`] report *every* missing
 /// parameter up front (across all files) before doing any work.
 enum Pending {
-    /// A subdirectory and its (already-pending) children.
-    Dir(Vec<(Segment, Pending)>),
+    /// A subdirectory and its (already-pending) children, each keyed by its
+    /// pre-substitution output name.
+    Dir(Vec<(String, Pending)>),
     /// A Tier A template: its sky-first parse, instantiated against the env in
     /// the build phase. `display` is the on-disk path, for error context.
     TierA {
@@ -123,14 +131,19 @@ fn no_tier_b(_chain: &[&str], _body: &str, _env: &ParamEnv) -> Result<String> {
 }
 
 /// Recursively parse `dir` into a [`Pending`] tree, accumulating the free-var
-/// `params` of every template file (deduped, first-seen order). Directory
-/// entries are sorted by name so the resulting tree — and any materialized
-/// output — is deterministic regardless of `read_dir` order.
+/// `params` of every template file *and* path-segment hole (deduped, first-seen
+/// order). Directory entries are sorted by name so the resulting tree — and any
+/// materialized output — is deterministic regardless of `read_dir` order.
+///
+/// Each entry is paired with its *pre-substitution* output name (the on-disk
+/// name with the `.tmpl.quilt` marker dropped for files). Path holes (issue #91)
+/// are substituted later, in [`build_tree`], because [`dir_params`] walks
+/// without an env.
 fn walk_dir<LS: Languages, MS: MetaLanguages>(
     multi: &mut Multi<LS, MS>,
     dir: &Path,
     params: &mut Vec<Box<str>>,
-) -> Result<Vec<(Segment, Pending)>> {
+) -> Result<Vec<(String, Pending)>> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .into_diagnostic()
         .wrap_err_with(|| format!("reading template directory {}", dir.display()))?
@@ -145,15 +158,30 @@ fn walk_dir<LS: Languages, MS: MetaLanguages>(
             .to_str()
             .ok_or_else(|| miette!("non-UTF-8 file name in template dir: {raw_name:?}"))?;
         let path = entry.path();
-        let ftype = entry.file_type().into_diagnostic()?;
+        let is_dir = entry.file_type().into_diagnostic()?.is_dir();
 
-        if ftype.is_dir() {
-            let children = walk_dir(multi, &path, params)?;
-            out.push((path_segment(name)?, Pending::Dir(children)));
+        // The output name drops the `.tmpl.quilt` marker from a template file;
+        // a directory (or verbatim asset) keeps its name. Either may carry path
+        // holes, whose parameter names join the signature.
+        let out_name = if is_dir {
+            name.to_owned()
         } else {
-            let pending = file_pending(multi, &path, name, params)?;
-            out.push((output_segment(name)?, pending));
+            name.strip_suffix(TEMPLATE_SUFFIX)
+                .unwrap_or(name)
+                .to_owned()
+        };
+        for p in path_hole_params(&out_name)? {
+            if !params.contains(&p) {
+                params.push(p);
+            }
         }
+
+        let pending = if is_dir {
+            Pending::Dir(walk_dir(multi, &path, params)?)
+        } else {
+            file_pending(multi, &path, name, params)?
+        };
+        out.push((out_name, pending));
     }
     Ok(out)
 }
@@ -213,12 +241,13 @@ fn file_pending<LS: Languages, MS: MetaLanguages>(
 /// against `env`, render Tier B ones through `render_tier_b`, and pass raw files
 /// through.
 fn build_tree(
-    pending: Vec<(Segment, Pending)>,
+    pending: Vec<(String, Pending)>,
     env: &ParamEnv,
     render_tier_b: &mut TierBRender<'_>,
 ) -> Result<QTree> {
     let mut tree = QTree::new();
-    for (seg, node) in pending {
+    for (name, node) in pending {
+        let seg = subst_path_segment(&name, env)?;
         let node = match node {
             Pending::Dir(children) => Node::Dir(build_tree(children, env, render_tier_b)?),
             Pending::TierA { template, display } => {
@@ -245,17 +274,102 @@ fn build_tree(
     Ok(tree)
 }
 
-/// The output path segment for a non-template entry (a directory or a verbatim
-/// file): the name as-is, validated. Issue #91 layers `↙name↘`/`{{name}}` hole
-/// substitution on top of this.
-fn path_segment(name: &str) -> Result<Segment> {
-    Segment::new(name)
+/**************************************************************/
+// Templated path segments (issue #91): file/dir names carrying parameter holes.
+
+/// Substitute every path-segment hole in `name` with its parameter value
+/// (string-rendered), then validate the result as a single [`Segment`]. Both
+/// spellings are accepted — `↙name↘` and `{{name}}` — and a hole is a *bare*
+/// parameter reference (a path can't host a Tier-B expression).
+fn subst_path_segment(name: &str, env: &ParamEnv) -> Result<Segment> {
+    let filled = map_path_holes(name, |inner| {
+        let id = ident_name(inner).ok_or_else(|| hole_name_error(name, inner))?;
+        let value = env
+            .get(&*id)
+            .ok_or_else(|| miette!("missing template parameter `{id}` in path segment {name:?}"))?;
+        render_path_value(value).wrap_err_with(|| format!("in path segment {name:?}"))
+    })?;
+    // Post-substitution validation: a value can't smuggle in a `/`, `.`/`..`, …
+    Segment::new(filled).wrap_err_with(|| format!("instantiating path segment {name:?}"))
 }
 
-/// The output path segment for a file, stripping the `.tmpl.quilt` template
-/// marker (`main.py.tmpl.quilt` → `main.py`) before validating.
-fn output_segment(name: &str) -> Result<Segment> {
-    path_segment(name.strip_suffix(TEMPLATE_SUFFIX).unwrap_or(name))
+/// The bare parameter names referenced by `name`'s path-segment holes (both
+/// spellings), in first-seen order, deduped. These join the template's
+/// signature so a name-only parameter is still required and checked up front.
+fn path_hole_params(name: &str) -> Result<Vec<Box<str>>> {
+    let mut names = Vec::new();
+    map_path_holes(name, |inner| {
+        let id = ident_name(inner).ok_or_else(|| hole_name_error(name, inner))?;
+        if !names.contains(&id) {
+            names.push(id);
+        }
+        Ok(String::new())
+    })?;
+    Ok(names)
+}
+
+/// Rewrite `name` by replacing each path-segment hole with `f(inner)`, copying
+/// literal text through. Recognizes both the glyph form `↙inner↘` and the ASCII
+/// form `{{inner}}`; an unterminated opener is an error. `inner` is the hole's
+/// raw (untrimmed) body — `f` decides what counts as a valid name.
+fn map_path_holes(name: &str, mut f: impl FnMut(&str) -> Result<String>) -> Result<String> {
+    const OPEN: char = '↙';
+    const CLOSE: char = '↘';
+    let mut out = String::new();
+    let mut rest = name;
+    loop {
+        // The next hole starts at whichever opener comes first: ASCII `{{` or `↙`.
+        let (at, braced) = match (rest.find("{{"), rest.find(OPEN)) {
+            (None, None) => {
+                out.push_str(rest);
+                return Ok(out);
+            }
+            (Some(b), None) => (b, true),
+            (None, Some(g)) => (g, false),
+            (Some(b), Some(g)) => {
+                if b < g {
+                    (b, true)
+                } else {
+                    (g, false)
+                }
+            }
+        };
+        out.push_str(&rest[..at]);
+        let body = &rest[at + if braced { "{{".len() } else { OPEN.len_utf8() }..];
+        let (inner, after) = if braced {
+            let end = body
+                .find("}}")
+                .ok_or_else(|| miette!("unterminated `{{{{…}}}}` path hole in {name:?}"))?;
+            (&body[..end], &body[end + "}}".len()..])
+        } else {
+            let end = body
+                .find(CLOSE)
+                .ok_or_else(|| miette!("unterminated `↙…↘` path hole in {name:?}"))?;
+            (&body[..end], &body[end + CLOSE.len_utf8()..])
+        };
+        out.push_str(&f(inner)?);
+        rest = after;
+    }
+}
+
+/// Render a parameter value as a path-segment string. Scalars stringify
+/// plainly; a list has no path spelling, so it errors.
+fn render_path_value(value: &ParamValue) -> Result<String> {
+    Ok(match value {
+        ParamValue::Str(s) => s.clone(),
+        ParamValue::Int(i) => i.to_string(),
+        ParamValue::Float(f) => format!("{f:?}"),
+        ParamValue::Bool(b) => if *b { "true" } else { "false" }.to_owned(),
+        ParamValue::List(_) => bail!("a list parameter has no path-segment spelling"),
+    })
+}
+
+/// Error for a path hole whose body is not a bare parameter name.
+fn hole_name_error(name: &str, inner: &str) -> miette::Report {
+    miette!(
+        "a path-segment hole must be a bare parameter name; `{}` in {name:?} is not",
+        inner.trim()
+    )
 }
 
 /**************************************************************/
@@ -411,5 +525,105 @@ mod tests {
         )
         .unwrap();
         assert_eq!(leaf_text(&tree, "t.py"), "g = rendered\n");
+    }
+
+    /**********************************************************/
+    // Templated path segments (issue #91).
+
+    #[test]
+    fn ascii_path_hole_in_a_file_name() {
+        let dir = template_dir(&[("{{module}}.py.tmpl.quilt", "x = ↙v↘\n")]);
+        let mut multi = Omni::default();
+        let tree = instantiate_dir(
+            &mut multi,
+            dir.path(),
+            &env(&[("module", "widgets".into()), ("v", 1.into())]),
+        )
+        .unwrap();
+        assert_eq!(leaf_text(&tree, "widgets.py"), "x = 1\n");
+    }
+
+    #[test]
+    fn glyph_path_hole_round_trips() {
+        // A file literally named with the `↙name↘` glyph spelling on disk.
+        let dir = template_dir(&[("↙module↘.py.tmpl.quilt", "x = ↙v↘\n")]);
+        let mut multi = Omni::default();
+        let tree = instantiate_dir(
+            &mut multi,
+            dir.path(),
+            &env(&[("module", "shapes".into()), ("v", 2.into())]),
+        )
+        .unwrap();
+        assert_eq!(leaf_text(&tree, "shapes.py"), "x = 2\n");
+    }
+
+    #[test]
+    fn templated_directory_name() {
+        let dir = template_dir(&[("{{pkg}}/app.py.tmpl.quilt", "n = ↙v↘\n")]);
+        let mut multi = Omni::default();
+        let tree = instantiate_dir(
+            &mut multi,
+            dir.path(),
+            &env(&[("pkg", "myapp".into()), ("v", 3.into())]),
+        )
+        .unwrap();
+        assert_eq!(leaf_text(&tree, "myapp/app.py"), "n = 3\n");
+    }
+
+    #[test]
+    fn hole_mixed_with_literal_text_and_an_int_value() {
+        // A hole need not be the whole segment, and a non-string value (int)
+        // stringifies into the name.
+        let dir = template_dir(&[("{{name}}_v↙ver↘.py.tmpl.quilt", "x = ↙v↘\n")]);
+        let mut multi = Omni::default();
+        let tree = instantiate_dir(
+            &mut multi,
+            dir.path(),
+            &env(&[("name", "core".into()), ("ver", 2.into()), ("v", 0.into())]),
+        )
+        .unwrap();
+        assert_eq!(leaf_text(&tree, "core_v2.py"), "x = 0\n");
+    }
+
+    #[test]
+    fn path_hole_param_joins_the_signature() {
+        // `module` appears only in a file *name*, never in content — it is still
+        // a required parameter, reported up front when missing.
+        let dir = template_dir(&[("{{module}}.py.tmpl.quilt", "x = 1\n")]);
+        let mut multi = Omni::default();
+        assert_eq!(
+            dir_params(&mut multi, dir.path())
+                .unwrap()
+                .iter()
+                .map(|p| &**p)
+                .collect::<Vec<_>>(),
+            vec!["module"]
+        );
+        let err = instantiate_dir(&mut multi, dir.path(), &env(&[]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("module"), "got: {err}");
+    }
+
+    #[test]
+    fn substituted_value_with_a_slash_is_rejected() {
+        // A value can't smuggle path structure past segment validation.
+        let dir = template_dir(&[("{{module}}.py.tmpl.quilt", "x = 1\n")]);
+        let mut multi = Omni::default();
+        let err = instantiate_dir(&mut multi, dir.path(), &env(&[("module", "a/b".into())]))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("path segment") || err.contains('/'),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn non_bare_path_hole_is_rejected() {
+        let dir = template_dir(&[("{{a.b}}.py.tmpl.quilt", "x = 1\n")]);
+        let mut multi = Omni::default();
+        let err = dir_params(&mut multi, dir.path()).unwrap_err().to_string();
+        assert!(err.contains("bare parameter name"), "got: {err}");
     }
 }

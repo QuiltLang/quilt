@@ -375,7 +375,7 @@ fn instantiate_file_cmd(args: &InstantiateArgs, env: &ParamEnv) -> Result<()> {
     };
 
     let output: String = if tier_b {
-        render_tier_b(stem, &input, &env)?
+        render_tier_b(stem, &input, env)?
     } else {
         let with_src =
             |e: miette::Report| e.with_source_code(NamedSource::new(filename, input.clone()));
@@ -383,13 +383,13 @@ fn instantiate_file_cmd(args: &InstantiateArgs, env: &ParamEnv) -> Result<()> {
             MultiOptions::Omni => {
                 let mut multi = Omni::default();
                 let chain = lang_chain(&multi, stem);
-                instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
+                instantiate_template(&mut multi, &chain, &input, env).map_err(with_src)?
             }
             #[cfg(feature = "bootstrap")]
             MultiOptions::Bootstrap => {
                 let mut multi = Bootstrap::default();
                 let chain = lang_chain(&multi, stem);
-                instantiate_template(&mut multi, &chain, &input, &env).map_err(with_src)?
+                instantiate_template(&mut multi, &chain, &input, env).map_err(with_src)?
             }
         };
         rendered.coparse()

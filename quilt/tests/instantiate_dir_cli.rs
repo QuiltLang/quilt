@@ -118,3 +118,46 @@ fn existing_conflict_is_refused_by_default() {
         "mine\n"
     );
 }
+
+#[test]
+fn templated_path_segments_both_spellings() {
+    // A templated directory name (`↙pkg↘` glyph) and a templated file name
+    // (`{{module}}` ASCII), filled from one shared parameter set (issue #91).
+    let tmpl = template_dir(&[
+        ("↙pkg↘/{{module}}.py.tmpl.quilt", "tag = ↙who↘\n"),
+        ("↙pkg↘/__init__.py.tmpl.quilt", "VERSION = ↙ver↘\n"),
+    ]);
+    let out = TempDir::new().unwrap();
+
+    let result = quilt()
+        .args(["instantiate"])
+        .arg(tmpl.path())
+        .arg("--out")
+        .arg(out.path())
+        .args([
+            "--set",
+            "pkg=widgets",
+            "--set",
+            "module=core",
+            "--set",
+            "who=bob",
+            "--set",
+            "ver=1",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(out.path().join("widgets/core.py")).unwrap(),
+        "tag = \"bob\"\n"
+    );
+    assert_eq!(
+        fs::read_to_string(out.path().join("widgets/__init__.py")).unwrap(),
+        "VERSION = 1\n"
+    );
+}
