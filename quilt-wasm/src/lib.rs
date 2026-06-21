@@ -15,8 +15,10 @@ use quilt::qterm::{
     leaf as mk_leaf, quote as mk_quote, sym as mk_sym, tb as mk_tb, unquote as mk_unquote,
     QTermBuilder,
 };
+use quilt::sink::{write_tree as mk_write_tree, TarSink, ZipSink};
 use quilt::strcmd::{push as mk_push, write as mk_write, StrCmd};
 use quilt::term::{cmd as mk_cmd, CmdOrHole, STerm};
+use quilt::tree::{self, Node, QTree};
 use wasm_bindgen::prelude::*;
 
 /**************************************************************/
@@ -281,4 +283,89 @@ fn escape_html(s: &str) -> String {
         }
     }
     out
+}
+
+/**************************************************************/
+// The directory layer (issue #97): build a `QTree` in the browser and pack it
+// into a `.zip`/`.tar` `Uint8Array` — so the playground can instantiate a
+// template and offer the result as a download with no backend. The archive
+// sinks touch no filesystem, so they are safe and dependency-free on wasm.
+
+/// A node in a [`QTree`]: a subdirectory, a file, or a verbatim blob. Build one
+/// with `file`/`raw`/`rawBytes`/`subdir`/`link`.
+#[wasm_bindgen]
+pub struct WasmNode(Node);
+
+/// A generated directory tree, the directory analog of `QTerm`. Build it with
+/// `.emit(path, node)`, then pack it with `.zip()` / `.tar()` to download.
+#[wasm_bindgen]
+#[derive(Default, Clone)]
+pub struct WasmQTree(QTree);
+
+#[wasm_bindgen]
+impl WasmQTree {
+    /// An empty tree.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> WasmQTree {
+        WasmQTree(QTree::new())
+    }
+
+    /// Insert (or replace) a leaf at `path` (a `/`-joined string), creating
+    /// intermediate directories. Throws on an invalid path component.
+    pub fn emit(&mut self, path: &str, node: &WasmNode) -> Result<(), JsError> {
+        self.0
+            .emit(path, node.0.clone())
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+
+    /// A "find"-style listing of every path, for debugging.
+    pub fn listing(&self) -> String {
+        self.0.listing()
+    }
+
+    /// Pack the tree into a store-only ZIP archive (a `Uint8Array` in JS) —
+    /// wrap in a `Blob` to download.
+    pub fn zip(&self) -> Result<Vec<u8>, JsError> {
+        let mut sink = ZipSink::new();
+        mk_write_tree(&mut sink, &self.0).map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(sink.into_bytes())
+    }
+
+    /// Pack the tree into a ustar TAR archive (a `Uint8Array` in JS).
+    pub fn tar(&self) -> Result<Vec<u8>, JsError> {
+        let mut sink = TarSink::new();
+        mk_write_tree(&mut sink, &self.0).map_err(|e| JsError::new(&e.to_string()))?;
+        Ok(sink.into_bytes())
+    }
+}
+
+/// A generated source-file leaf whose content is a `QTerm` (serialized via
+/// `coparse` when packed).
+#[wasm_bindgen]
+pub fn file(content: &WasmQTerm) -> WasmNode {
+    WasmNode(tree::file(content.0.clone()))
+}
+
+/// A verbatim text-file leaf (the common case for instantiated templates).
+#[wasm_bindgen]
+pub fn raw(text: &str) -> WasmNode {
+    WasmNode(tree::raw(text.as_bytes().to_vec()))
+}
+
+/// A verbatim binary-file leaf (a `Uint8Array` from JS).
+#[wasm_bindgen(js_name = rawBytes)]
+pub fn raw_bytes(bytes: &[u8]) -> WasmNode {
+    WasmNode(tree::raw(bytes.to_vec()))
+}
+
+/// A subdirectory node wrapping a `QTree` (the `dir!` analog).
+#[wasm_bindgen]
+pub fn subdir(t: &WasmQTree) -> WasmNode {
+    WasmNode(Node::Dir(t.0.clone()))
+}
+
+/// A symlink leaf pointing at a relative path within the tree.
+#[wasm_bindgen]
+pub fn link(target: &str) -> WasmNode {
+    WasmNode(tree::link(target))
 }

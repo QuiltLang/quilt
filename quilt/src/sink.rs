@@ -639,6 +639,267 @@ fn link_target_within_root(link_dir: &RelPath, target: &Path) -> Result<()> {
 }
 
 /**************************************************************/
+// Archive sinks (issue #97): materialize a `QTree` into an in-memory archive
+// instead of the filesystem. No paths are touched, so there is no traversal
+// risk to guard against — the bytes are self-contained. Both are hand-rolled
+// (store-only ZIP, ustar TAR), so they pull in no dependencies and build for
+// `wasm32-unknown-unknown` — letting the browser (`quilt-wasm`) instantiate a
+// template and offer the result as a `.zip` download with no backend.
+
+/// CRC-32 (IEEE, the ZIP/PNG polynomial), computed bytewise. Small and
+/// dependency-free; ZIP needs it per entry.
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc: u32 = 0xFFFF_FFFF;
+    for &b in bytes {
+        crc ^= u32::from(b);
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+/// One central-directory record the [`ZipSink`] accumulates as it writes each
+/// local entry, replayed into the central directory by [`ZipSink::into_bytes`].
+struct ZipEntry {
+    name: String,
+    crc: u32,
+    size: u32,
+    offset: u32,
+    external_attrs: u32,
+}
+
+/// A [`TreeSink`] that builds a **store-only** (uncompressed) ZIP archive in
+/// memory. Unix mode bits are recorded in each entry's external attributes
+/// (`unzip -X` restores them); directories get an explicit entry so empty ones
+/// survive; a symlink leaf is stored as a small entry whose content is the
+/// target, tagged with the symlink mode. Call [`into_bytes`](Self::into_bytes)
+/// after [`write_tree`] to get the archive.
+#[derive(Default)]
+pub struct ZipSink {
+    out: Vec<u8>,
+    entries: Vec<ZipEntry>,
+}
+
+// ZIP32 sizes and offsets are 32-bit and counts are 16-bit by format, so these
+// `as` casts are the format's own limits (archives over 4 GiB / 65 535 entries
+// are out of scope), not accidental truncation.
+#[allow(clippy::cast_possible_truncation)]
+impl ZipSink {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Append one stored entry (local header + name + data) and remember its
+    /// central-directory record. `mode` includes the unix type bits (e.g.
+    /// `0o100644` for a file, `0o040755` for a dir, `0o120777` for a symlink);
+    /// `dir` adds the MS-DOS directory attribute.
+    fn add(&mut self, name: &str, data: &[u8], mode: u32, dir: bool) {
+        let crc = crc32(data);
+        let size = data.len() as u32;
+        let offset = self.out.len() as u32;
+        self.out.extend_from_slice(&0x0403_4b50u32.to_le_bytes()); // local file header sig
+        self.out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // flags
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // method: 0 = store
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // mod date
+        self.out.extend_from_slice(&crc.to_le_bytes());
+        self.out.extend_from_slice(&size.to_le_bytes()); // compressed == uncompressed
+        self.out.extend_from_slice(&size.to_le_bytes());
+        self.out
+            .extend_from_slice(&(name.len() as u16).to_le_bytes());
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // extra len
+        self.out.extend_from_slice(name.as_bytes());
+        self.out.extend_from_slice(data);
+        let external_attrs = (mode << 16) | (u32::from(dir) * 0x10);
+        self.entries.push(ZipEntry {
+            name: name.to_string(),
+            crc,
+            size,
+            offset,
+            external_attrs,
+        });
+    }
+
+    /// Finalize the archive: emit the central directory and end-of-central-
+    /// directory record, then return the complete ZIP bytes.
+    #[must_use]
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        let cd_offset = self.out.len() as u32;
+        for e in &self.entries {
+            self.out.extend_from_slice(&0x0201_4b50u32.to_le_bytes()); // central dir sig
+            self.out.extend_from_slice(&0x0314u16.to_le_bytes()); // version made by: unix, 2.0
+            self.out.extend_from_slice(&20u16.to_le_bytes()); // version needed
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // flags
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // method
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // mod time
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // mod date
+            self.out.extend_from_slice(&e.crc.to_le_bytes());
+            self.out.extend_from_slice(&e.size.to_le_bytes());
+            self.out.extend_from_slice(&e.size.to_le_bytes());
+            self.out
+                .extend_from_slice(&(e.name.len() as u16).to_le_bytes());
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // extra len
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // disk number start
+            self.out.extend_from_slice(&0u16.to_le_bytes()); // internal attrs
+            self.out.extend_from_slice(&e.external_attrs.to_le_bytes());
+            self.out.extend_from_slice(&e.offset.to_le_bytes());
+            self.out.extend_from_slice(e.name.as_bytes());
+        }
+        let cd_size = self.out.len() as u32 - cd_offset;
+        let n = self.entries.len() as u16;
+        self.out.extend_from_slice(&0x0605_4b50u32.to_le_bytes()); // EOCD sig
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // disk number
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // cd start disk
+        self.out.extend_from_slice(&n.to_le_bytes()); // records this disk
+        self.out.extend_from_slice(&n.to_le_bytes()); // total records
+        self.out.extend_from_slice(&cd_size.to_le_bytes());
+        self.out.extend_from_slice(&cd_offset.to_le_bytes());
+        self.out.extend_from_slice(&0u16.to_le_bytes()); // comment len
+        self.out
+    }
+}
+
+// The unix `st_mode` constants below (type bits OR'd with permissions) are
+// conventionally written without digit separators.
+#[allow(clippy::unreadable_literal)]
+impl TreeSink for ZipSink {
+    fn dir(&mut self, path: &RelPath) -> Result<()> {
+        self.add(&format!("{path}/"), &[], 0o040755, true);
+        Ok(())
+    }
+
+    fn file(&mut self, path: &RelPath, bytes: &[u8], meta: &FileMeta) -> Result<()> {
+        // Default to a regular file with 0o644; if the caller set only
+        // permission bits, add the regular-file type bits.
+        let mut mode = meta.mode.unwrap_or(0o644);
+        if mode & 0o170000 == 0 {
+            mode |= 0o100000;
+        }
+        self.add(&path.to_string(), bytes, mode, false);
+        Ok(())
+    }
+
+    fn link(&mut self, path: &RelPath, target: &Path) -> Result<()> {
+        let target = target.to_string_lossy();
+        self.add(&path.to_string(), target.as_bytes(), 0o120777, false);
+        Ok(())
+    }
+
+    fn finish(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// A [`TreeSink`] that builds a **ustar** TAR archive in memory. Each entry is a
+/// 512-byte header plus its (512-padded) data; the stream ends with two zero
+/// blocks. Names and link targets are capped at 100 bytes (the ustar field
+/// width) — long paths error rather than silently truncate. Call
+/// [`into_bytes`](Self::into_bytes) after [`write_tree`].
+#[derive(Default)]
+pub struct TarSink {
+    out: Vec<u8>,
+}
+
+impl TarSink {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Write one 512-byte ustar header. `typeflag` is `b'0'` (file), `b'5'`
+    /// (dir), or `b'2'` (symlink); `linkname` is the target for a symlink.
+    fn header(
+        &mut self,
+        name: &str,
+        size: u64,
+        mode: u32,
+        typeflag: u8,
+        linkname: &str,
+    ) -> Result<()> {
+        if name.len() > 100 {
+            return Err(miette!(
+                "tar: path exceeds the 100-byte ustar limit: {name}"
+            ));
+        }
+        if linkname.len() > 100 {
+            return Err(miette!(
+                "tar: symlink target exceeds the 100-byte ustar limit: {linkname}"
+            ));
+        }
+        let mut h = [0u8; 512];
+        h[0..name.len()].copy_from_slice(name.as_bytes());
+        octal_field(&mut h[100..108], u64::from(mode & 0o7777));
+        octal_field(&mut h[108..116], 0); // uid
+        octal_field(&mut h[116..124], 0); // gid
+        octal_field(&mut h[124..136], size);
+        octal_field(&mut h[136..148], 0); // mtime
+        for b in &mut h[148..156] {
+            *b = b' '; // checksum field is spaces while summing
+        }
+        h[156] = typeflag;
+        h[157..157 + linkname.len()].copy_from_slice(linkname.as_bytes());
+        h[257..263].copy_from_slice(b"ustar\0");
+        h[263..265].copy_from_slice(b"00");
+        // Checksum: 6 octal digits, a NUL, then a space.
+        let sum: u32 = h.iter().map(|&b| u32::from(b)).sum();
+        let cks = format!("{sum:06o}");
+        h[148..154].copy_from_slice(cks.as_bytes());
+        h[154] = 0;
+        h[155] = b' ';
+        self.out.extend_from_slice(&h);
+        Ok(())
+    }
+
+    /// Finalize: append the two zero blocks that mark end-of-archive.
+    #[must_use]
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        self.out.extend_from_slice(&[0u8; 1024]);
+        self.out
+    }
+}
+
+impl TreeSink for TarSink {
+    fn dir(&mut self, path: &RelPath) -> Result<()> {
+        self.header(&format!("{path}/"), 0, 0o755, b'5', "")
+    }
+
+    fn file(&mut self, path: &RelPath, bytes: &[u8], meta: &FileMeta) -> Result<()> {
+        let mode = meta.mode.unwrap_or(0o644);
+        self.header(&path.to_string(), bytes.len() as u64, mode, b'0', "")?;
+        self.out.extend_from_slice(bytes);
+        let rem = bytes.len() % 512;
+        if rem != 0 {
+            self.out.resize(self.out.len() + (512 - rem), 0);
+        }
+        Ok(())
+    }
+
+    fn link(&mut self, path: &RelPath, target: &Path) -> Result<()> {
+        self.header(&path.to_string(), 0, 0o777, b'2', &target.to_string_lossy())
+    }
+
+    fn finish(self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Write `value` as right-justified, zero-padded octal into a ustar numeric
+/// field (`field.len() - 1` digits followed by a NUL terminator).
+fn octal_field(field: &mut [u8], value: u64) {
+    let digits = field.len() - 1;
+    let s = format!("{value:0digits$o}");
+    let bytes = s.as_bytes();
+    // Keep the low `digits` digits (values are small here, so no real overflow).
+    field[..digits].copy_from_slice(&bytes[bytes.len() - digits..]);
+    field[digits] = 0;
+}
+
+/**************************************************************/
 
 /// A [`TreeSink`] that lowers a [`QTree`] to a **Nix expression** instead of
 /// writing files: a `pkgs.linkFarm` that materializes the tree as a derivation
@@ -1307,5 +1568,145 @@ mod tests {
         assert_eq!(store_name("src/main.rs"), "main.rs");
         assert_eq!(store_name(".gitignore"), "q.gitignore"); // never starts with '.'
         assert_eq!(store_name("a b!c"), "a_b_c");
+    }
+
+    // --- #97: archive sinks ------------------------------------------------
+
+    fn sample_tree() -> QTree {
+        tree! {
+            "Cargo.toml" => raw(b"[package]\nname = \"x\"\n".to_vec()),
+            "run.sh" => raw(b"#!/bin/sh\necho hi\n".to_vec()).mode(0o755),
+            "src" => dir! { "main.rs" => file(leaf("source_file", "fn main() {}")) },
+            "empty" => dir! {},   // an empty dir must survive into the archive
+        }
+    }
+
+    /// Whether `name` is an executable on PATH (so round-trip tests can skip
+    /// rather than fail where the extractor isn't installed).
+    fn tool_available(name: &str) -> bool {
+        std::process::Command::new(name)
+            .arg("--help")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok()
+    }
+
+    #[test]
+    fn zip_has_expected_structure() {
+        let mut s = ZipSink::new();
+        write_tree(&mut s, &sample_tree()).unwrap();
+        let bytes = s.into_bytes();
+        // Local file header signature at the start.
+        assert_eq!(&bytes[0..4], &[0x50, 0x4b, 0x03, 0x04]);
+        // End-of-central-directory record, with the right total entry count:
+        // Cargo.toml, run.sh, src/, src/main.rs, empty/.
+        let eocd = bytes
+            .windows(4)
+            .rposition(|w| w == [0x50, 0x4b, 0x05, 0x06])
+            .expect("EOCD present");
+        let total = u16::from_le_bytes([bytes[eocd + 10], bytes[eocd + 11]]);
+        assert_eq!(total, 5);
+        for name in ["Cargo.toml", "run.sh", "src/", "src/main.rs", "empty/"] {
+            assert!(
+                bytes.windows(name.len()).any(|w| w == name.as_bytes()),
+                "missing entry {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn zip_round_trips_through_unzip() {
+        if !tool_available("unzip") {
+            eprintln!("skip zip_round_trips_through_unzip: `unzip` not found");
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let zip = d.path().join("a.zip");
+        let mut s = ZipSink::new();
+        write_tree(&mut s, &sample_tree()).unwrap();
+        std::fs::write(&zip, s.into_bytes()).unwrap();
+
+        let out = d.path().join("ex");
+        std::fs::create_dir(&out).unwrap();
+        // unzip verifies each entry's CRC, so a clean extraction also checks it.
+        let status = std::process::Command::new("unzip")
+            .arg("-q")
+            .arg(&zip)
+            .arg("-d")
+            .arg(&out)
+            .status()
+            .unwrap();
+        assert!(status.success(), "unzip failed");
+        assert_eq!(
+            std::fs::read_to_string(out.join("src/main.rs")).unwrap(),
+            "fn main() {}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(out.join("Cargo.toml")).unwrap(),
+            "[package]\nname = \"x\"\n"
+        );
+        assert!(out.join("empty").is_dir(), "empty dir preserved");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(out.join("run.sh"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o111, 0o111, "exec bits preserved through the zip");
+        }
+    }
+
+    #[test]
+    fn tar_has_ustar_magic_and_trailer() {
+        let mut s = TarSink::new();
+        write_tree(&mut s, &sample_tree()).unwrap();
+        let bytes = s.into_bytes();
+        assert!(
+            bytes[0..100].starts_with(b"Cargo.toml\0"),
+            "first entry name"
+        );
+        assert_eq!(&bytes[257..262], b"ustar", "ustar magic");
+        assert_eq!(bytes.len() % 512, 0, "block-aligned");
+        assert!(
+            bytes[bytes.len() - 1024..].iter().all(|&b| b == 0),
+            "two zero blocks at the end"
+        );
+    }
+
+    #[test]
+    fn tar_round_trips_through_tar() {
+        if !tool_available("tar") {
+            eprintln!("skip tar_round_trips_through_tar: `tar` not found");
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let tarf = d.path().join("a.tar");
+        let mut s = TarSink::new();
+        write_tree(&mut s, &sample_tree()).unwrap();
+        std::fs::write(&tarf, s.into_bytes()).unwrap();
+
+        let out = d.path().join("ex");
+        std::fs::create_dir(&out).unwrap();
+        let status = std::process::Command::new("tar")
+            .arg("-xf")
+            .arg(&tarf)
+            .arg("-C")
+            .arg(&out)
+            .status()
+            .unwrap();
+        assert!(status.success(), "tar -xf failed");
+        assert_eq!(
+            std::fs::read_to_string(out.join("src/main.rs")).unwrap(),
+            "fn main() {}"
+        );
+        assert!(out.join("empty").is_dir(), "empty dir preserved");
+    }
+
+    #[test]
+    fn crc32_matches_known_value() {
+        // The IEEE CRC-32 of "123456789" is 0xCBF43926 (the standard check value).
+        assert_eq!(crc32(b"123456789"), 0xCBF4_3926);
     }
 }
