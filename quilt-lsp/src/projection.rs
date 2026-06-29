@@ -184,6 +184,79 @@ pub fn project_fragments(
     out
 }
 
+/// Project a **sky-first template** (`*.tmpl.quilt`) into its target-language
+/// virtual document. Unlike [`project`], which treats the file as a ground-first
+/// program, a template *is* the body of an implicit `target↖ … ↗`: the whole
+/// file is target-language source and every `↙name↘` is a parameter hole (a free
+/// variable filled at instantiation), not a ground splice. So the entire
+/// document is projected as one target-language fragment with each construct
+/// (`↙…↘` holes, nested quotes, glyphs) masked to the target's placeholder —
+/// keeping the body parseable so its server tokenizes / analyzes it. `chain` is
+/// the template's language chain (host-first; the target is its last element);
+/// it mirrors `Multi::parse_template` entering at the target's quote.
+pub fn project_sky(text: &str, lang: &dyn LanguageAdapter, chain: &[&str]) -> Projection {
+    let mut parser = regions::parser();
+    let tree = regions::parse(&mut parser, text, None);
+    // Enter the target's implicit quote, so a nested `↙…↘` pops back to the host
+    // exactly as inside a real quote (the holes' bodies are host expressions).
+    let zipper = LangZipper::from_chain(chain).quote("");
+    let mut sink = Vec::new(); // nested quotes are masked here, not re-projected
+    let mut b = Builder::new();
+    emit_fragment(
+        &mut b,
+        text,
+        tree.root_node(),
+        0..text.len(),
+        lang,
+        &zipper,
+        &mut sink,
+    );
+    let (vtext, map) = b.finish();
+    let line_index = LineIndex::new(&vtext);
+    Projection {
+        text: vtext,
+        line_index,
+        map,
+        fragment_ranges: Vec::new(),
+    }
+}
+
+/// The parameter holes of a sky-first template: each `↙name↘` whose body is a
+/// bare identifier is a free variable the instantiation must supply (mirroring
+/// quilt's `template_params`). Returns `(name, quilt byte range of the `↙…↘`)`
+/// in first-seen order, de-duplicated by name. Holes whose body is a richer host
+/// expression (a Tier B concern) are not parameters and are skipped.
+pub fn sky_param_holes(text: &str) -> Vec<(String, Range<usize>)> {
+    let mut parser = regions::parser();
+    let tree = regions::parse(&mut parser, text, None);
+    let mut out = Vec::new();
+    collect_param_holes(text, tree.root_node(), &mut out);
+    out
+}
+
+fn collect_param_holes(text: &str, node: tree_sitter::Node, out: &mut Vec<(String, Range<usize>)>) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "unquote" {
+            if let Some(window) = inner_window(child) {
+                let body = text[window].trim();
+                if is_ident(body) && !out.iter().any(|(n, _)| n == body) {
+                    out.push((body.to_string(), child.byte_range()));
+                }
+            }
+        }
+        collect_param_holes(text, child, out);
+    }
+}
+
+/// Whether `s` is a plain identifier — the body of a `↙name↘` parameter hole.
+/// Mirrors quilt's `multi::ident_name`: a letter or `_` then alphanumerics/`_`.
+fn is_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '_')
+}
+
 /// Walk the whole quilt CST collecting every `↖…↗` quote with its resolved
 /// language zipper, threading quote/unquote nesting (see [`LangZipper`]).
 fn collect_quotes<'a>(
@@ -814,5 +887,56 @@ mod tests {
         // Positions are identity-mapped.
         assert_eq!(p.map.quilt_to_virtual(0), Some(0));
         assert_eq!(p.map.quilt_to_virtual(2), Some(2));
+    }
+
+    #[test]
+    fn sky_param_holes_are_listed_in_order() {
+        // Bare-identifier `↙name↘` holes are the template's parameters, in
+        // first-seen order with duplicates removed; a richer host expression is
+        // not a parameter.
+        let src = "GREETING = ↙greeting↘\nAUDIENCE = ↙names↘\nX = ↙greeting↘\nY = ↙a + b↘\n";
+        let names: Vec<String> = sky_param_holes(src).into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["greeting", "names"]);
+    }
+
+    #[test]
+    #[cfg(feature = "html")]
+    fn sky_template_projects_body_as_target_language() {
+        // An `index.html.tmpl.quilt` body is HTML with `↙title↘` parameter holes;
+        // it projects as one HTML document with each hole masked to a placeholder.
+        let lang = language_adapter("html").unwrap();
+        let src = "<head><title>↙title↘</title></head>\n";
+        let p = project_sky(src, lang, &["html"]);
+        assert!(
+            p.text
+                .contains(&format!("<title>{}</title>", lang.splice_placeholder())),
+            "masked body: {:?}",
+            p.text
+        );
+        assert!(!p.text.contains('↙'), "no quilt glyphs leak: {:?}", p.text);
+        // A position on `head` (target-language text) round-trips quilt↔virtual.
+        let enc = Encoding::Utf16;
+        let qi = LineIndex::new(src);
+        let head_q = qi.position(src, src.find("head").unwrap(), enc);
+        let head_v = p.to_virtual(src, &qi, enc, head_q).expect("head maps in");
+        assert_eq!(p.to_quilt(src, &qi, enc, head_v), head_q);
+    }
+
+    #[test]
+    #[cfg(feature = "python")]
+    fn sky_template_python_body_is_valid_python() {
+        // A `greeting.py.tmpl.quilt` body projects to valid Python: the holes
+        // become `__q__` placeholders, and the rest (incl. a `#` comment line)
+        // copies through verbatim so the body still parses as a Python module.
+        let lang = language_adapter("py").unwrap();
+        let src = "# greet\nGREETING = ↙greeting↘\nAUDIENCE = ↙names↘\n";
+        let p = project_sky(src, lang, &["py"]);
+        assert_eq!(p.text, "# greet\nGREETING = __q__\nAUDIENCE = __q__\n");
+        // A position on `GREETING` (target-language text) round-trips both ways.
+        let enc = Encoding::Utf16;
+        let qi = LineIndex::new(src);
+        let g_q = qi.position(src, src.find("GREETING").unwrap(), enc);
+        let g_v = p.to_virtual(src, &qi, enc, g_q).expect("GREETING maps in");
+        assert_eq!(p.to_quilt(src, &qi, enc, g_v), g_q);
     }
 }

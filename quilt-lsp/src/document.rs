@@ -9,6 +9,16 @@ use crate::regions::{self, Region, SyntaxError};
 use tower_lsp::lsp_types::Url;
 use tree_sitter::Tree;
 
+/// Sky-first template (`*.tmpl.quilt`) metadata: the file is the body of an
+/// implicit `target↖ … ↗` rather than a ground-first program. Present only for
+/// template documents (see [`crate::adapters::template_chain`]).
+#[derive(Debug, Clone)]
+pub struct Template {
+    /// Target language key (`wgsl`, `py`, `html`, …) — the language the template
+    /// body is written in, and the one its virtual document is analyzed as.
+    pub target: String,
+}
+
 #[derive(Debug)]
 pub struct Document {
     pub text: String,
@@ -16,11 +26,15 @@ pub struct Document {
     pub line_index: LineIndex,
     /// Language-extension chain from the filename, ground language first —
     /// `shaders.wgsl.rs.quilt` → `["rs", "wgsl"]` (see
-    /// [`crate::adapters::lang_chain`]).
+    /// [`crate::adapters::lang_chain`]). For a `*.tmpl.quilt` template this is
+    /// the sky chain (the `.tmpl` marker stripped), so its last element is the
+    /// target language.
     pub chain: Vec<String>,
     /// Ground-language key from the filename (`rs`, `py`, …), if any; the
     /// first element of `chain`.
     pub ground: Option<String>,
+    /// Sky-first template metadata, `Some` iff this is a `*.tmpl.quilt` file.
+    pub template: Option<Template>,
     /// Region tree (root is the whole-file ground region).
     pub region: Region,
     /// Quilt-level syntax errors.
@@ -32,7 +46,16 @@ pub struct Document {
 
 impl Document {
     pub fn new(uri: &Url, text: String, version: i32, old_tree: Option<&Tree>) -> Self {
-        let chain = crate::adapters::lang_chain(uri);
+        // A `*.tmpl.quilt` file is a sky-first template: its chain comes from the
+        // stem with the `.tmpl` marker stripped, and its body is the target
+        // language (the chain's last element). A normal file uses the plain chain.
+        let (chain, template) = match crate::adapters::template_chain(uri) {
+            Some(chain) => {
+                let target = chain.last().cloned().map(|target| Template { target });
+                (chain, target)
+            }
+            None => (crate::adapters::lang_chain(uri), None),
+        };
         let ground = chain.first().cloned();
         let mut parser = regions::parser();
         let tree = regions::parse(&mut parser, &text, old_tree);
@@ -45,6 +68,7 @@ impl Document {
             line_index,
             chain,
             ground,
+            template,
             region,
             errors,
             ts_tree: tree,

@@ -104,22 +104,18 @@ pub fn is_known_lang(key: &str) -> bool {
     )
 }
 
-/// Language-extension chain from a `.quilt` URL, ground (host) language first,
-/// mirroring `lang_chain` in quilt's `bin.rs`: peel known-language extensions
-/// off the stem right-to-left — the rightmost is the ground language and the
-/// rest are the default languages for successively deeper un-annotated quotes.
-/// `shaders.wgsl.rs.quilt` → `["rs", "wgsl"]`, `foo.rs.quilt` → `["rs"]`,
-/// `foo.quilt` → `[]`. The basename never counts, even when it looks like a
-/// language; an unknown rightmost extension is kept (`a.b.quilt` → `["b"]`) so
-/// callers discover it resolves no adapter.
-pub fn lang_chain(uri: &Url) -> Vec<String> {
-    let Some(seg) = uri.path_segments().and_then(|mut s| s.next_back()) else {
-        return Vec::new();
-    };
+/// The filename stem of a `.quilt` URL — the basename with the `.quilt` suffix
+/// stripped (`shaders.wgsl.rs.quilt` → `shaders.wgsl.rs`), or `None` if the URL
+/// has no path segment or `.quilt` suffix.
+fn quilt_stem(uri: &Url) -> Option<String> {
+    let seg = uri.path_segments().and_then(|mut s| s.next_back())?;
     let name = seg.replace("%20", " ");
-    let Some(stem) = name.strip_suffix(".quilt") else {
-        return Vec::new();
-    };
+    name.strip_suffix(".quilt").map(str::to_string)
+}
+
+/// The language-extension chain of a stem (the basename minus `.quilt`), ground
+/// language first. The shared core of [`lang_chain`] and [`template_chain`].
+fn chain_from_stem(stem: &str) -> Vec<String> {
     let parts: Vec<&str> = stem.split('.').collect();
     let exts = &parts[1..];
     let mut chain: Vec<String> = exts
@@ -132,6 +128,48 @@ pub fn lang_chain(uri: &Url) -> Vec<String> {
         chain.extend(exts.last().map(|s| (*s).to_string()));
     }
     chain
+}
+
+/// Language-extension chain from a `.quilt` URL, ground (host) language first,
+/// mirroring `lang_chain` in quilt's `bin.rs`: peel known-language extensions
+/// off the stem right-to-left — the rightmost is the ground language and the
+/// rest are the default languages for successively deeper un-annotated quotes.
+/// `shaders.wgsl.rs.quilt` → `["rs", "wgsl"]`, `foo.rs.quilt` → `["rs"]`,
+/// `foo.quilt` → `[]`. The basename never counts, even when it looks like a
+/// language; an unknown rightmost extension is kept (`a.b.quilt` → `["b"]`) so
+/// callers discover it resolves no adapter.
+pub fn lang_chain(uri: &Url) -> Vec<String> {
+    match quilt_stem(uri) {
+        Some(stem) => chain_from_stem(&stem),
+        None => Vec::new(),
+    }
+}
+
+/// The language chain of a **sky-first template** (`*.tmpl.quilt`), or `None`
+/// for a normal `.quilt` file. A template is the body of an implicit
+/// `target↖ … ↗` rather than a ground-first program (see issue #84 and
+/// `Multi::parse_template`): strip the `.tmpl` marker from the stem and read the
+/// remaining extension chain host-first, exactly as [`lang_chain`] does. The
+/// **target** language — the one the body is written in — is the chain's last
+/// element (the leftmost file extension), so `kernel.wgsl.rs.tmpl.quilt` →
+/// `["rs", "wgsl"]` (target `wgsl`) and `greeting.py.tmpl.quilt` → `["py"]`
+/// (target `py`). A bare `foo.tmpl.quilt` carries no language extension, so it
+/// names no target language and is *not* treated as a sky-first template.
+pub fn template_chain(uri: &Url) -> Option<Vec<String>> {
+    let base = quilt_stem(uri)?;
+    let base = base.strip_suffix(".tmpl")?;
+    // Needs at least one language extension after the basename to have a target.
+    if !base.contains('.') {
+        return None;
+    }
+    Some(chain_from_stem(base))
+}
+
+/// The target language key of a sky-first template (`*.tmpl.quilt`) — the
+/// language its body is written in — or `None` for a normal `.quilt` file.
+/// `kernel.wgsl.rs.tmpl.quilt` → `Some("wgsl")`.
+pub fn template_target(uri: &Url) -> Option<String> {
+    template_chain(uri)?.last().cloned()
 }
 
 /// Extract the ground-language key from a `.quilt` URL.
@@ -593,6 +631,38 @@ mod tests {
             ground_lang(&url("file:///x/shaders.wgsl.rs.quilt")).as_deref(),
             Some("rs")
         );
+    }
+
+    #[test]
+    fn detects_sky_first_templates() {
+        // A `*.tmpl.quilt` file is a sky-first template; its chain comes from the
+        // stem with `.tmpl` stripped, and the target is the chain's last element.
+        assert_eq!(
+            template_chain(&url("file:///x/kernel.wgsl.rs.tmpl.quilt")),
+            Some(vec!["rs".to_string(), "wgsl".to_string()])
+        );
+        assert_eq!(
+            template_target(&url("file:///x/kernel.wgsl.rs.tmpl.quilt")).as_deref(),
+            Some("wgsl")
+        );
+        assert_eq!(
+            template_chain(&url("file:///x/greeting.py.tmpl.quilt")),
+            Some(vec!["py".to_string()])
+        );
+        assert_eq!(
+            template_target(&url("file:///x/index.html.tmpl.quilt")).as_deref(),
+            Some("html")
+        );
+    }
+
+    #[test]
+    fn non_templates_have_no_template_chain() {
+        // A normal `.quilt` file is not a template.
+        assert_eq!(template_chain(&url("file:///x/foo.rs.quilt")), None);
+        assert_eq!(template_target(&url("file:///x/foo.rs.quilt")), None);
+        // A bare `foo.tmpl.quilt` names no target language, so it is not treated
+        // as a sky-first template (degrades to ordinary handling).
+        assert_eq!(template_chain(&url("file:///x/foo.tmpl.quilt")), None);
     }
 
     #[test]
