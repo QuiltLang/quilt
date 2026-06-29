@@ -2,6 +2,28 @@
 
 This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `nix`, `text`).
 
+## Quick start: `bin/new-lang`
+
+Rather than hand-copying an existing language, scaffold the module with the
+**`bin/new-lang`** dev tool (issue #108). It is a quilt-*development* helper — not
+a `quilt` CLI subcommand — that runs a scaffold program through `quilt scaffold`
+and writes a new `quilt/src/langs/<lang>/` module of `todo!()` stubs:
+
+```sh
+bin/new-lang                                   # interactive wizard
+bin/new-lang --set key=ruby --set kind=host \
+             --set aliases=rb --set tree_sitter=true   # non-interactive
+```
+
+It prompts for the language key + aliases, display name, kind (**host** → gets
+`meta.rs` + `ops.rs`; **target-only** → just `lang.rs`), the hole token, and
+whether it is tree-sitter-backed. It then writes the module (refusing to
+overwrite existing files unless you pass `--on-conflict overwrite`) plus an
+`INTEGRATION.md` listing the exact `omni.rs` / `langs/mod.rs` / `Cargo.toml`
+edits that register it. Once those are applied the crate compiles with the stubs
+in place; replace each `todo!()` with real behavior. The rest of this guide
+explains what each generated file does.
+
 ## 1. Decide the role
 
 A language can be:
