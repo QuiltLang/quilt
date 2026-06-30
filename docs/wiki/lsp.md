@@ -91,6 +91,21 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
   in-process whenever the downstream server can't answer
   `semanticTokens/full`.
 - **Folding** — quilt regions + ground server folds.
+- **Sky-first templates** (`*.tmpl.quilt`) — a directory-scaffolding template
+  (issue #84) is the body of an implicit `target↖ … ↗`, not a ground-first
+  program: the whole file is target-language source and each `↙name↘` is a
+  *parameter hole* (a free variable filled at instantiation), not a ground
+  splice. `template_chain` recognizes these files (strip the `.tmpl` marker, then
+  read the extension chain — the target is its last element); `project_sky`
+  projects the whole body as one target-language document with every hole masked
+  to the target's placeholder, mirroring `Multi::parse_template`. The body is
+  then driven exactly like an embedded `target↖…↗` quote (one whole-file
+  `EmbeddedFragment`): in-process tree-sitter highlighting, and downstream
+  analysis where the target has a per-file server (`*.wgsl.tmpl.quilt` →
+  wgsl-analyzer). `document_symbol` lists the template's parameters
+  (`sky_param_holes`). Routing *host* targets (`*.py.tmpl.quilt` → pyright,
+  `*.rs.tmpl.quilt` → rust-analyzer) and directory-level awareness remain
+  follow-ups (issue #117).
 
 ### Design notes — semantic tokens
 
@@ -148,6 +163,10 @@ Constraints learned while building the token pipeline (June 2026):
 - Hover/definition for ground code spliced into quotes via `↙…↘`.
 - `↙name↘` → go-to-definition in the ground language.
 - Python ground diagnostics (needs a type-aware quote placeholder; see above).
+- Sky-first templates whose target is a *host* language (`*.py.tmpl.quilt`,
+  `*.rs.tmpl.quilt`) are highlighted in-process but not yet routed to a
+  downstream ground server, and `*.tree.<host>.quilt` scaffold programs / whole
+  template *directories* have no special awareness (issue #117).
 
 ## Configuration
 

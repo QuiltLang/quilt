@@ -29,6 +29,16 @@ Implemented:
   Pylance-only feature) the whole ground projection is highlighted in-process
   with tree-sitter instead, so `.py.quilt` files still get code coloring.
 - **Folding** for quilt regions plus the ground server's folds.
+- **Sky-first templates** (`*.tmpl.quilt`): a directory-scaffolding template is
+  the body of an implicit `target↖ … ↗`, not a ground-first program — the whole
+  file is target-language source and each `↙name↘` is a *parameter hole*. Such a
+  file is projected sky-first as one target-language document (holes masked) so
+  it edits with the target language: in-process tree-sitter highlighting for the
+  body, downstream analysis where the target has a per-file server (e.g.
+  `*.wgsl.tmpl.quilt` → wgsl-analyzer), and document symbols listing the
+  template's parameters. (Routing host targets like `*.py.tmpl.quilt` to their
+  ground servers, and directory-level awareness, are the remaining follow-ups —
+  see issue #117.)
 
 The ground language is projected by copying its bytes verbatim and replacing
 each quilt construct (`↖…↗`, `↙…↘`, and the `↑↓←⟨T⟩⟨N⟩` glyphs) with a small

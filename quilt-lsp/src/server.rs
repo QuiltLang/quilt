@@ -22,9 +22,9 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::adapters::{embedded_adapters, ground_lang, language_adapter, meta_adapter};
 use crate::child::{ChildNotification, ChildServer};
-use crate::document::Document;
+use crate::document::{Document, Template};
 use crate::lineindex::{Encoding, LineIndex};
-use crate::projection::{project, project_fragments, Projection};
+use crate::projection::{project, project_fragments, project_sky, Projection};
 use crate::regions::Region;
 use crate::translate::{self, Mapper};
 
@@ -316,26 +316,43 @@ impl Inner {
         old_tree: Option<&tree_sitter::Tree>,
     ) {
         let doc = Document::new(&uri, text, version, old_tree);
-        // Project only if the ground language is a host; otherwise quilt-only.
-        if let Some(key) = doc.ground.as_deref() {
-            if let (Some(meta), Some(lang)) = (meta_adapter(key), language_adapter(key)) {
-                let chain = crate::document::chain_refs(&doc.chain);
-                let proj = project(&doc.text, meta, lang, &chain);
-                self.projections.insert(uri.clone(), proj);
-                // A host with an in-process tree-sitter highlighter may never
-                // see a downstream legend (pyright provides no semantic tokens;
-                // the server may not even be installed), so make sure the
-                // capability is registered with the editor regardless — off the
-                // sync path, since it awaits a reply from the editor.
-                if crate::tshl::highlighter(lang.language_id()).is_some() {
-                    let this = self.clone();
-                    tokio::spawn(async move { this.register_legend(None).await });
+        if let Some(tmpl) = doc.template.clone() {
+            // A `*.tmpl.quilt` file is sky-first: the whole body is one
+            // target-language virtual document (not a ground-first program), so
+            // it bypasses the ground projection and is opened to the target's
+            // server (where one exists) as a single standalone fragment.
+            self.build_template(&uri, &doc, &tmpl);
+            // The target server may provide no semantic tokens (wgsl-analyzer) or
+            // not exist (html/bash/zsh); register the legend so the editor still
+            // requests tokens for the in-process highlighter.
+            if language_adapter(&tmpl.target)
+                .is_some_and(|a| crate::tshl::highlighter(a.language_id()).is_some())
+            {
+                let this = self.clone();
+                tokio::spawn(async move { this.register_legend(None).await });
+            }
+        } else {
+            // Project only if the ground language is a host; otherwise quilt-only.
+            if let Some(key) = doc.ground.as_deref() {
+                if let (Some(meta), Some(lang)) = (meta_adapter(key), language_adapter(key)) {
+                    let chain = crate::document::chain_refs(&doc.chain);
+                    let proj = project(&doc.text, meta, lang, &chain);
+                    self.projections.insert(uri.clone(), proj);
+                    // A host with an in-process tree-sitter highlighter may never
+                    // see a downstream legend (pyright provides no semantic tokens;
+                    // the server may not even be installed), so make sure the
+                    // capability is registered with the editor regardless — off the
+                    // sync path, since it awaits a reply from the editor.
+                    if crate::tshl::highlighter(lang.language_id()).is_some() {
+                        let this = self.clone();
+                        tokio::spawn(async move { this.register_legend(None).await });
+                    }
                 }
             }
+            // Embedded target-language fragments (e.g. WGSL → wgsl-analyzer), each
+            // a standalone quote opened to its own per-language server.
+            self.build_embedded(&uri, &doc);
         }
-        // Embedded target-language fragments (e.g. WGSL → wgsl-analyzer), each a
-        // standalone quote opened to its own per-language server.
-        self.build_embedded(&uri, &doc);
         // When quilt structure is broken the projection is unreliable; clear
         // any stale downstream diagnostics immediately so old rust-analyzer
         // noise doesn't linger while the user fixes the bracket.
@@ -427,6 +444,41 @@ impl Inner {
                 .await;
             self.virt_to_quilt.insert(virt, uri.clone());
         }
+    }
+
+    /// (Re)build the single whole-body fragment for a sky-first template
+    /// (`*.tmpl.quilt`): the entire file projected as one target-language
+    /// document (see [`project_sky`]). It is stored in the same `embedded_frags`
+    /// map as a `wgsl↖…↗` quote would be, so the existing standalone-server
+    /// machinery (`embedded_sync`, `forward_embedded`, diagnostics) drives it —
+    /// wgsl-analyzer for a `.wgsl` target, the in-process highlighter for
+    /// highlight-only / host targets. Does not talk to any server.
+    fn build_template(&self, uri: &Url, doc: &Document, tmpl: &Template) {
+        // Drop the previous build's mappings + diagnostics for this document.
+        if let Some((_, old)) = self.embedded_frags.remove(uri) {
+            for f in old {
+                self.embedded_virt_to_quilt.remove(&f.virt_uri);
+                self.embedded_diags.remove(&f.virt_uri);
+            }
+        }
+        let (Some(base), Some(lang)) = (dequilt_uri(uri), language_adapter(&tmpl.target)) else {
+            return;
+        };
+        let chain = crate::document::chain_refs(&doc.chain);
+        let proj = project_sky(&doc.text, lang, &chain);
+        // `base` already ends in the template's extension chain (e.g.
+        // `greeting.py.tmpl`); append the target extension so the server sees a
+        // file of the right language.
+        let virt_uri = format!("{base}.{}", lang.virtual_extension());
+        self.embedded_virt_to_quilt
+            .insert(virt_uri.clone(), uri.clone());
+        let frag = EmbeddedFragment {
+            lang: lang.language_id(),
+            quilt_range: 0..doc.text.len(),
+            proj,
+            virt_uri,
+        };
+        self.embedded_frags.insert(uri.clone(), vec![frag]);
     }
 
     /// (Re)build the embedded target-language fragments for `doc` (e.g. each
@@ -1150,6 +1202,13 @@ impl Inner {
     /// Document symbols from the downstream server, remapped to quilt coords and
     /// with the synthetic `_quilt_qN` wrapper functions filtered out.
     async fn document_symbols(self: &Arc<Self>, uri: &Url) -> Option<Value> {
+        // A sky-first template's "symbols" are its parameters (the `↙name↘`
+        // holes); surface them so the template's signature is navigable.
+        if let Some(doc) = self.docs.get(uri) {
+            if doc.template.is_some() {
+                return Some(self.template_symbols(&doc));
+            }
+        }
         let (text, line_index, proj, virt) = {
             let doc = self.docs.get(uri)?;
             if !is_host_ground(doc.ground.as_deref()) {
@@ -1187,6 +1246,31 @@ impl Inner {
         ))
     }
 
+    /// Document symbols for a sky-first template: one entry per parameter (the
+    /// bare-name `↙name↘` holes), realizing "treat bare-name holes as
+    /// parameters". Self-contained — no downstream server involved.
+    fn template_symbols(&self, doc: &Document) -> Value {
+        let enc = self.enc();
+        #[allow(deprecated)] // `DocumentSymbol::deprecated` is a required field.
+        let syms: Vec<DocumentSymbol> = crate::projection::sky_param_holes(&doc.text)
+            .into_iter()
+            .map(|(name, range)| {
+                let r = doc.line_index.range(&doc.text, range, enc);
+                DocumentSymbol {
+                    name,
+                    detail: Some("template parameter".to_string()),
+                    kind: SymbolKind::VARIABLE,
+                    tags: None,
+                    deprecated: None,
+                    range: r,
+                    selection_range: r,
+                    children: None,
+                }
+            })
+            .collect();
+        serde_json::to_value(DocumentSymbolResponse::Nested(syms)).unwrap_or(Value::Null)
+    }
+
     /// Whole-document semantic tokens: forward to the downstream server (which
     /// sees the ground projection *and* the appended quote fragments) and remap
     /// every token back to quilt coordinates. When the downstream server can't
@@ -1196,6 +1280,11 @@ impl Inner {
     /// in (their own servers may provide none — wgsl-analyzer advertises no
     /// semantic tokens).
     async fn semantic_tokens(self: &Arc<Self>, uri: &Url) -> Option<Vec<u32>> {
+        // A sky-first template has no ground projection; highlight its whole body
+        // in the target language with the in-process tree-sitter highlighter.
+        if self.docs.get(uri).is_some_and(|d| d.template.is_some()) {
+            return self.template_semantic_tokens(uri).await;
+        }
         let (text, line_index, proj, virt, frags, ground_id) = {
             let doc = self.docs.get(uri)?;
             if !is_host_ground(doc.ground.as_deref()) {
@@ -1272,6 +1361,41 @@ impl Inner {
                     &type_index,
                 ));
             }
+        }
+        Some(crate::semtok::encode(toks))
+    }
+
+    /// Semantic tokens for a sky-first template (`*.tmpl.quilt`): highlight its
+    /// whole-body fragment in the target language with the in-process tree-sitter
+    /// highlighter ([`crate::tshl`]). `None` for a target with no highlighter
+    /// (e.g. a Rust template), which falls back to quilt-only highlighting.
+    async fn template_semantic_tokens(self: &Arc<Self>, uri: &Url) -> Option<Vec<u32>> {
+        let (text, line_index, frags) = {
+            let doc = self.docs.get(uri)?;
+            let frags: Vec<(&'static str, Projection)> = self
+                .embedded_frags
+                .get(uri)
+                .map(|fs| fs.iter().map(|f| (f.lang, f.proj.clone())).collect())
+                .unwrap_or_default();
+            (doc.text.clone(), doc.line_index.clone(), frags)
+        };
+        let enc = self.enc();
+        let type_index = self.semtok.lock().await.type_index.clone();
+        let mut toks = Vec::new();
+        for (lang, fproj) in &frags {
+            if let Some(hl) = crate::tshl::highlighter(lang) {
+                toks.extend(crate::tshl::projection_tokens(
+                    hl,
+                    fproj,
+                    &text,
+                    &line_index,
+                    enc,
+                    &type_index,
+                ));
+            }
+        }
+        if toks.is_empty() {
+            return None;
         }
         Some(crate::semtok::encode(toks))
     }
