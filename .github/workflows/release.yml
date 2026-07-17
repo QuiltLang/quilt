@@ -89,7 +89,7 @@ jobs:
       # (`v1.2.3` → `1.2.3`), matching the ci.yml publish, so vsce's default
       # output name (quiltlang-<version>.vsix) tracks the release tag rather than
       # tools/quilt/package.json.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
       - name: Build VS Code extension (.vsix)
