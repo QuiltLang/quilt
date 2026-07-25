@@ -172,6 +172,22 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
             })
             .as_ref()
         }
+        #[cfg(feature = "lean")]
+        "lean4" => {
+            static LEAN: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            LEAN.get_or_init(|| {
+                // The fork's query uses nvim capture names but upstream
+                // ordering: it opens with the `(identifier) @variable`
+                // catch-all and overrides with later, more specific patterns
+                // (`(def name: (identifier) @function)`), so last wins.
+                Highlighter::new(
+                    quilt::grammars::lean::LANGUAGE.into(),
+                    quilt::grammars::lean::HIGHLIGHTS_QUERY,
+                    Order::LastWins,
+                )
+            })
+            .as_ref()
+        }
         #[cfg(feature = "nix")]
         "nix" => {
             static NIX: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
@@ -607,6 +623,27 @@ mod tests {
         // `builtins.toString x` is an apply: `toString` captures as `@function`.
         assert!(got.contains(&("toString", "function")), "{got:?}");
         assert!(got.contains(&("# done", "comment")), "{got:?}");
+    }
+
+    /// Guards the vendored Lean query against grammar drift: `Highlighter::new`
+    /// logs and returns `None` on a query that fails to compile, which would
+    /// silently disable Lean highlighting rather than fail a request.
+    #[test]
+    #[cfg(feature = "lean")]
+    fn highlights_basic_lean() {
+        let src = "def double (n : Nat) : Nat := 2 * n -- twice\n";
+        let got = span_text(
+            src,
+            &highlighter("lean4")
+                .expect("lean query compiles")
+                .spans(src),
+        );
+        assert!(got.contains(&("def", "keyword")), "{got:?}");
+        // A declaration name captures as `@function`, overriding the
+        // `(identifier) @variable` catch-all the query opens with.
+        assert!(got.contains(&("double", "function")), "{got:?}");
+        assert!(got.contains(&("2", "number")), "{got:?}");
+        assert!(got.contains(&("-- twice", "comment")), "{got:?}");
     }
 
     #[test]

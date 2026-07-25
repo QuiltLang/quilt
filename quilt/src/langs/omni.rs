@@ -8,6 +8,11 @@
 use super::bash::lang::{BashLanguage, DynBashLanguage};
 #[cfg(feature = "html")]
 use super::html::lang::{DynHtmlLanguage, HtmlLanguage};
+#[cfg(feature = "lean")]
+use super::lean::{
+    lang::{DynLeanLanguage, LeanLanguage},
+    meta::LeanMetaLanguage,
+};
 #[cfg(feature = "nix")]
 use super::nix::{
     lang::{DynNixLanguage, NixLanguage},
@@ -483,18 +488,28 @@ mod tests {
             // text is target-only: the alias exists but has no meta entry
             assert!(dict.get_meta("txt").is_err());
         }
+        #[cfg(feature = "lean")]
+        {
+            // Lean is both a target and a (string-based) host, under either
+            // spelling.
+            assert!(dict.get_lang("lean").is_ok());
+            assert!(dict.get_lang("lean4").is_ok());
+            assert!(dict.get_meta("lean").is_ok());
+            assert!(dict.get_meta("lean4").is_ok());
+        }
         assert!(dict.get_lang("nope").is_err());
     }
 }
 
 // Languages absent from `metas` (text, wgsl, html, zsh, bash) are target
-// languages only — the host's MetaLanguage drives expansion. Nix is both: a
-// quotable target *and* a string-based host (its meta generates code as Nix
-// strings, see `langs::nix::meta`).
+// languages only — the host's MetaLanguage drives expansion. Nix and Lean are
+// both: quotable targets *and* string-based hosts (their metas generate code as
+// strings, see `langs::nix::meta` / `langs::lean::meta`).
 define_omni! {
     languages {
         bash if "bash"   => Bash(BashLanguage, DynBashLanguage):       ["bash"];
         html if "html"   => Html(HtmlLanguage, DynHtmlLanguage):       ["html"];
+        lean if "lean"   => Lean(LeanLanguage, DynLeanLanguage):       ["lean", "lean4"];
         nix  if "nix"    => Nix(NixLanguage, DynNixLanguage):          ["nix"];
         py   if "python" => Python(PythonLanguage, DynPythonLanguage): ["python", "py"];
         rs   if "rust"   => Rust(RustLanguage, DynRustLanguage):       ["rust", "rs"];
@@ -504,6 +519,7 @@ define_omni! {
         zsh  if "zsh"    => Zsh(ZshLanguage, DynZshLanguage):          ["zsh"];
     }
     metas {
+        lean if "lean"   => Lean(LeanMetaLanguage):                    ["lean", "lean4"];
         nix  if "nix"    => Nix(NixMetaLanguage):                      ["nix"];
         py   if "python" => Python(PythonMetaLanguage):                ["python", "py"];
         rs   if "rust"   => Rust(RustMetaLanguage):                    ["rust", "rs"];

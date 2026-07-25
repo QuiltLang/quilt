@@ -53,7 +53,7 @@ workspace = true
 
 [features]
 bootstrap = ["parse"]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix", "lean"]
 # `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
 # the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
 # the runtime-only consumers (e.g. nanobots-codegen on wasm). It also pulls in
@@ -67,6 +67,10 @@ parse = [
 ]
 bash = ["parse"]
 html = ["parse"]
+# Lean's vendored `parser.c` is ~44MB — by far the largest grammar we carry —
+# so this feature is the one worth turning off first if package size or C
+# compile time becomes a problem. See issue #134.
+lean = ["parse"]
 nix = ["parse"]
 python = []
 rust = []

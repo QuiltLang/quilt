@@ -35,7 +35,8 @@
         "meta.embedded.block.python": "python",
         "meta.embedded.block.wgsl": "wgsl",
         "meta.embedded.block.html": "html",
-        "meta.embedded.block.shellscript": "shellscript"
+        "meta.embedded.block.shellscript": "shellscript",
+        "meta.embedded.block.lean4": "lean4"
       }
     }],
     "configuration": {
@@ -60,6 +61,11 @@
           "type": "string",
           "default": "",
           "description": "Override the downstream WGSL language server command for wgsl↖…↗ quotes (whitespace-separated, e.g. an absolute path to wgsl-analyzer). Sets QUILT_LSP_WGSL_SERVER for the server."
+        },
+        "quilt-lsp.leanServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override the downstream Lean language server command for lean↖…↗ quotes (whitespace-separated; defaults to `lean --server`, but inside a Lake package `lake serve` is usually better). Sets QUILT_LSP_LEAN_SERVER for the server."
         },
         "quilt-lsp.trace.server": {
           "type": "string",

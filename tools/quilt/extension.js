@@ -18,6 +18,7 @@ function activate(context) {
     rustAnalyzerPath: "QUILT_LSP_RUST_ANALYZER",
     pythonServerPath: "QUILT_LSP_PYTHON_SERVER",
     wgslServerPath: "QUILT_LSP_WGSL_SERVER",
+    leanServerPath: "QUILT_LSP_LEAN_SERVER",
   };
   for (const [setting, envVar] of Object.entries(overrides)) {
     const val = config.get(setting);

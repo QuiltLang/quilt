@@ -168,6 +168,47 @@ expands to the Nix metaprogram `let … in "{\n  ${attr} = true;\n  default = ${
 
 ---
 
+## Lean (`lean`, `lean4`) — target *and* host
+
+**Files:** `langs/lean/lang.rs`, `langs/lean/meta.rs`, `langs/lean/ops.rs`, `langs/lean/mod.rs`
+
+[Lean 4](https://lean-lang.org), parsed via the forked `tree-sitter-lean` grammar. Lean's grammar is layered `module` → command → term, and tactics and do-elements are modeled as ordinary terms inside a `by` / `do` body — so one hole rule reaches term, tactic *and* do-element position.
+
+The hole token is `__QUILT_HOLE__`, and — as with Nix — the grammar needs **no patch at all**: it already matches Lean's identifier regex (`[a-zA-Z_][a-zA-Z_0-9'!?]*`), so it parses as an `identifier`, hence a `_term_atom`, in every term, tactic, do-element, declaration-name and binder position. The range-based hole detection in `treesitter.rs` recognises it by byte range.
+
+The one position it does *not* reach is a bare hole as a whole top-level **command** (`namespace D ↙decl↘ end D`), since no Lean command starts with a bare identifier. Splice the enclosing construct instead, or build a declaration sequence functionally. This also means emit (`←`) cannot append to a top-level command sequence — it works into `by` / `do` bodies, which are the `Variadic` containers. See issue #133 for the grammar change that would lift it.
+
+Because a hole's spelling is the same everywhere it appears, `LeanProvider` classifies it by its **parent** (`hole_kind`): under a `by` / `do` body it is a `Stmt`, directly under `module` an `Item`, and anywhere else an `Expr`.
+
+Lean's `module` holds *commands*, not terms, so a bare term fragment (`lean↖n + 1↗`) would not parse on its own — unlike Rust or Python, whose `source_file` accepts a bare expression. `LeanLanguage` therefore retries a failed parse inside `#check …`, the smallest command taking an arbitrary term, and strips the wrapper back off, which is what makes term-level composition (`lean↖↙acc↘ * x↗`) work.
+
+### As a target
+
+Quote and splice Lean fragments inside another host (`lean↖…↗`). Lean has a `LiftTo` marker type (`Lean` in `lift.rs`): integers lift to `num_lit`s (negatives as a `unary_op`, since `num_lit` is unsigned), floats to `scientific_lit`s, booleans to Lean's `true`/`false` constants, strings to `str_lit`s, and slices/`Vec`s to comma-separated `list_lit`s.
+
+```rust
+let thm = lean↖theorem add_zero (n : Nat) : n + ↙zero.↑↘ = n := by
+  ↙tactic↘↗;
+```
+
+### As a host (string-based meta)
+
+`LeanMetaLanguage` makes Lean drive generation. Like the Nix host — and unlike the Rust/Python hosts, which emit builder calls into a `QTerm` runtime — the Lean host has **no runtime library**: `meta.rs`/`ops.rs` represent generated code as plain **Lean strings**. A quote `↖…↗` becomes an interpolated string literal `s!"…"`, a host unquote `↙x↘` becomes Lean's own `{x}` interpolation, and `↑` spells `toString`. So a `.lean.quilt` file expands to a Lean metaprogram that, evaluated, yields the generated code as a `String`. Static sub-structure is flattened inline, so a literal fragment is one flat string, not a tower of `{s!"…"}`.
+
+Braces in the *generated* code are escaped as `\{`, which matters constantly in Lean — implicit binders `{α : Type}`, structure instances, set-builders. A closing `}` needs no escape.
+
+The string model is language-agnostic (a Lean host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`List.map`, `String.intercalate`). See issue #132 for the rationale and the path to a real `QTerm` runtime for Lean.
+
+```lean
+def attr := "simp"
+def name := "add_zero"
+#eval lean↖@[↙attr↘] theorem ↙name↘ (n : Nat) : n + 0 = n := by simp↗
+```
+
+expands to the Lean metaprogram `… s!"@[{attr}] theorem {name} (n : Nat) : n + 0 = n := by simp"`.
+
+---
+
 ## Text (`txt`) — target only
 
 **Files:** `langs/text/lang.rs`, `langs/text/mod.rs`, `langs/text/meta.rs`

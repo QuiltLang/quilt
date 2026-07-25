@@ -44,7 +44,7 @@ quilt-lsp  (server.rs)
 | `server.rs`     | The editor-facing server, LSP method handlers, merged diagnostics             |
 | `adapters.rs`   | Language-specific placeholders and comment syntax                             |
 | `semtok.rs`     | Semantic token merging and remap                                              |
-| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (WGSL, HTML, bash, zsh, Nix) |
+| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (WGSL, HTML, bash, zsh, Nix, Lean) |
 
 ## The projection
 
@@ -80,7 +80,7 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
     consumes a quoted value, so pyright's errors would be spurious
     (`PythonAdapter::publishes_diagnostics` is `false`).
 - **Semantic tokens** — including inside `↖…↗` quotes. Embedded-language
-  quotes (`wgsl↖…↗`, `html↖…↗`, `bash↖…↗`, `zsh↖…↗`, `nix↖…↗`) are highlighted
+  quotes (`wgsl↖…↗`, `html↖…↗`, `bash↖…↗`, `zsh↖…↗`, `nix↖…↗`, `lean↖…↗`) are highlighted
   by the server itself with tree-sitter highlight queries (`tshl.rs`), since
   their downstream servers may provide no semantic tokens (wgsl-analyzer
   advertises none) or not exist at all (html/bash/zsh/nix are highlight-only:
@@ -158,6 +158,7 @@ Constraints learned while building the token pipeline (June 2026):
 | `QUILT_LSP_RUST_ANALYZER` | Override the downstream Rust server command (whitespace-separated). Default: `rust-analyzer` on `PATH`. |
 | `QUILT_LSP_PYTHON_SERVER` | Override the downstream Python server command. Default: `pyright-langserver --stdio` on `PATH`.         |
 | `QUILT_LSP_WGSL_SERVER`   | Override the downstream WGSL server command. Default: `wgsl-analyzer` on `PATH`.                        |
+| `QUILT_LSP_LEAN_SERVER`   | Override the downstream Lean server command. Default: `lean --server` on `PATH` (use `lake serve` inside a Lake package). |
 | `RUST_LOG`                | `tracing` log filter; logs go to stderr.                                                                |
 
 ### VS Code settings

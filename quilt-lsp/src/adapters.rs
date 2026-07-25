@@ -100,7 +100,17 @@ pub trait MetaLanguageAdapter: Send + Sync {
 pub fn is_known_lang(key: &str) -> bool {
     matches!(
         key,
-        "rs" | "rust" | "py" | "python" | "txt" | "text" | "wgsl" | "html" | "bash" | "zsh"
+        "rs" | "rust"
+            | "py"
+            | "python"
+            | "txt"
+            | "text"
+            | "wgsl"
+            | "html"
+            | "bash"
+            | "zsh"
+            | "lean"
+            | "lean4"
     )
 }
 
@@ -155,6 +165,8 @@ pub fn language_adapter(key: &str) -> Option<&'static dyn LanguageAdapter> {
         "bash" => Some(&BASH),
         #[cfg(feature = "zsh")]
         "zsh" => Some(&ZSH),
+        #[cfg(feature = "lean")]
+        "lean" | "lean4" => Some(&LEAN),
         _ => None,
     }
 }
@@ -188,6 +200,8 @@ pub fn embedded_adapters() -> Vec<&'static dyn LanguageAdapter> {
         &BASH,
         #[cfg(feature = "zsh")]
         &ZSH,
+        #[cfg(feature = "lean")]
+        &LEAN,
     ];
     adapters.to_vec()
 }
@@ -555,12 +569,99 @@ impl LanguageAdapter for ShellAdapter {
     }
 }
 
+/* --------------------------------- Lean --------------------------------- */
+
+#[cfg(feature = "lean")]
+static LEAN: LeanAdapter = LeanAdapter;
+
+/// The Lean 4 adapter — target-only, like [`WgslAdapter`], but with a real
+/// downstream server (`lean --server`).
+///
+/// Lean *is* a host in quilt proper (`langs::lean::meta` drives expansion of a
+/// `.lean.quilt` file), so unlike WGSL it is not inherently target-only. It
+/// implements only [`LanguageAdapter`] here because the host side needs a
+/// ground projection — reabsorbing stage-0 splices as Lean code — which the
+/// string-based meta doesn't yet give us a clean mapping for. See issue #135.
+#[cfg(feature = "lean")]
+pub struct LeanAdapter;
+
+#[cfg(feature = "lean")]
+impl LanguageAdapter for LeanAdapter {
+    fn language_id(&self) -> &'static str {
+        "lean4"
+    }
+    fn virtual_extension(&self) -> &'static str {
+        "lean"
+    }
+    fn server_command(&self) -> Option<(String, Vec<String>)> {
+        // Overridable via `QUILT_LSP_LEAN_SERVER` (whitespace-separated).
+        // Defaults to `lean --server`; inside a Lake package `lake serve` is
+        // usually the better choice, which is what the override is for.
+        let cmd = match std::env::var("QUILT_LSP_LEAN_SERVER") {
+            Ok(s) if !s.trim().is_empty() => {
+                let mut parts = s.split_whitespace().map(str::to_string);
+                let program = parts.next().unwrap_or_else(|| "lean".to_string());
+                (program, parts.collect())
+            }
+            _ => ("lean".to_string(), vec!["--server".to_string()]),
+        };
+        Some(cmd)
+    }
+    fn splice_placeholder(&self) -> &'static str {
+        // A nested `↙…↘` splice sits in term position. Lean's own `_`
+        // placeholder is the natural fit: it elaborates anywhere a term is
+        // expected, so the fragment stays parseable (and usually typeable).
+        "_"
+    }
+    fn wrap_fragment(&self, _n: usize) -> (String, String) {
+        // A Lean quote is already a sequence of commands or a term; there is no
+        // enclosing declaration to place it in, so no wrapper is added.
+        (String::new(), String::new())
+    }
+    fn comment_syntax(&self) -> CommentSyntax {
+        CommentSyntax {
+            line: "--",
+            block_open: "/-",
+            block_close: "-/",
+        }
+    }
+    fn publishes_diagnostics(&self) -> bool {
+        // A quoted Lean fragment is analyzed without the imports and
+        // `variable`s of the module it will land in, so `unknown identifier`
+        // noise would swamp anything real. Highlighting and hover still work.
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn url(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    #[test]
+    #[cfg(feature = "lean")]
+    fn lean_is_an_embedded_target() {
+        // Both spellings resolve, and the chain parser accepts them so
+        // `thm.lean.rs.quilt` projects its Lean quotes.
+        assert!(language_adapter("lean").is_some());
+        assert!(language_adapter("lean4").is_some());
+        assert_eq!(language_adapter("lean").unwrap().language_id(), "lean4");
+        assert_eq!(
+            language_adapter("lean").unwrap().virtual_extension(),
+            "lean"
+        );
+        assert!(embedded_adapters()
+            .iter()
+            .any(|a| a.language_id() == "lean4"));
+        // Target-only for now: no host/ground capability (issue #135).
+        assert!(meta_adapter("lean").is_none());
+        assert_eq!(
+            lang_chain(&url("file:///x/thm.lean.rs.quilt")),
+            ["rs", "lean"]
+        );
     }
 
     #[test]
