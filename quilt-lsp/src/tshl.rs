@@ -634,7 +634,9 @@ mod tests {
         let src = "def double (n : Nat) : Nat := 2 * n -- twice\n";
         let got = span_text(
             src,
-            &highlighter("lean4").expect("lean query compiles").spans(src),
+            &highlighter("lean4")
+                .expect("lean query compiles")
+                .spans(src),
         );
         assert!(got.contains(&("def", "keyword")), "{got:?}");
         // A declaration name captures as `@function`, overriding the

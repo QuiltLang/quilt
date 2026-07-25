@@ -117,7 +117,7 @@ Two trait families:
 
 **Nix** is both a quotable target *and* a host: `langs/nix/meta.rs` + `ops.rs` implement a **string-based** `MetaLanguage` — instead of emitting builder calls into a `QTerm` runtime (which Nix has none of), it reconstructs each fragment as a Nix string literal, mapping a host unquote `↙x↘` onto Nix's own `${x}` antiquotation and `↑` onto `toString`. A `.nix.quilt` file therefore expands to a plain Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. The string model is language-agnostic (a Nix host can generate any target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`).
 
-**Bootstrap** (`langs/bootstrap/`) is internal-only: it implements `Language` directly without tree-sitter, and its meta uses `strlift.rs`, which lifts to a string and re-parses it — a slower shortcut used only for bootstrapping.
+**Bootstrap** (`langs/bootstrap/`) is internal-only: its `lang.rs` re-exports the tree-sitter `RustLanguage` unchanged, and only its *meta* is special — `strlift.rs` lifts to a string and re-parses it, a slower shortcut used only for bootstrapping. (No language currently implements `Language` without tree-sitter; `langs/text/lang.rs` is a `todo!()` stub. The trait itself has no tree-sitter dependency, so one could.)
 
 `langs/omni.rs` defines `Omni` (the default `Multi` used by the CLI) using enum-dispatch over all enabled languages. Registry keys: `rust`/`rs`, `python`/`py`, `text`/`txt`, `wgsl`, `html`, `zsh`, `bash`, `nix`, `lean`/`lean4`.
 
