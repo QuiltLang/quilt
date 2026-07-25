@@ -4,6 +4,8 @@ pub mod bash;
 pub mod bootstrap;
 #[cfg(feature = "html")]
 pub mod html;
+#[cfg(feature = "lean")]
+pub mod lean;
 #[cfg(feature = "nix")]
 pub mod nix;
 #[cfg(feature = "parse")]

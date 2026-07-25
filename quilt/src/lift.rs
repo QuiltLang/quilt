@@ -36,6 +36,9 @@ pub struct Bash;
 /// Marker: the Nix object language.
 pub struct Nix;
 
+/// Marker: the Lean 4 object language.
+pub struct Lean;
+
 /**************************************************************/
 
 /// Lift a value to a `QTerm` of the object language `L` (the `↑` operator).
@@ -324,6 +327,129 @@ impl<T: LiftTo<Nix>> LiftTo<Nix> for Vec<T> {
 }
 
 /**************************************************************/
+// Lean lifts. Lean's `Nat`/`Int` are arbitrary-precision, so every Rust integer
+// width lifts losslessly to a `num_lit`. Negative values lift as a `unary_op`
+// (`-3`), since `num_lit` itself is unsigned. Floats lift to `scientific_lit`,
+// booleans to Lean's `true`/`false` constants, strings to `str_lit`s, and
+// slices/`Vec`s to comma-separated `list_lit`s.
+
+/// Escape a string for inclusion in a Lean double-quoted literal. Lean's string
+/// escapes are the familiar C-like set; note `{` is *not* escaped here — that is
+/// only special inside an interpolated `s!"…"`, which a lifted literal is not.
+fn lean_dquote_escape(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => write!(out, "\\u{:04x}", c as u32).unwrap(),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+impl LiftTo<Lean> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        leaf("str_lit", &format!("\"{}\"", lean_dquote_escape(self)))
+    }
+}
+
+impl LiftTo<Lean> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        LiftTo::<Lean>::lift_to(self.as_str())
+    }
+}
+
+macro_rules! lean_lift_uint {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Lean> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                leaf("num_lit", &self.to_string())
+            }
+        }
+    )*};
+}
+
+lean_lift_uint!(u8, u16, u32, u64, u128, usize);
+
+macro_rules! lean_lift_int {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Lean> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                // `num_lit` is unsigned in the grammar, so a negative value is
+                // the `unary_op` `-` applied to its magnitude.
+                if *self < 0 {
+                    return tb("unary_op")
+                        .w("-")
+                        .c(&leaf("num_lit", &self.unsigned_abs().to_string()))
+                        .b();
+                }
+                leaf("num_lit", &self.to_string())
+            }
+        }
+    )*};
+}
+
+lean_lift_int!(i8, i16, i32, i64, i128, isize);
+
+macro_rules! lean_lift_float {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Lean> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                // `{:?}` keeps the decimal point (`1.0`, not `1`), so the lifted
+                // literal stays a Lean float rather than a `Nat`.
+                let s = format!("{self:?}");
+                if *self < 0.0 {
+                    return tb("unary_op")
+                        .w("-")
+                        .c(&leaf("scientific_lit", s.trim_start_matches('-')))
+                        .b();
+                }
+                leaf("scientific_lit", &s)
+            }
+        }
+    )*};
+}
+
+lean_lift_float!(f32, f64);
+
+impl LiftTo<Lean> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        if *self {
+            leaf("true_const", "true")
+        } else {
+            leaf("false_const", "false")
+        }
+    }
+}
+
+impl<T: LiftTo<Lean>> LiftTo<Lean> for [T] {
+    fn lift_to(&self) -> Arc<QTerm> {
+        let mut b = tb("list_lit").w("[");
+        for (i, x) in self.iter().enumerate() {
+            if i > 0 {
+                b = b.w(", ");
+            }
+            b = b.c(&x.lift_to());
+        }
+        b.w("]").b()
+    }
+}
+
+impl<T: LiftTo<Lean>> LiftTo<Lean> for Vec<T> {
+    fn lift_to(&self) -> Arc<QTerm> {
+        self.as_slice().lift_to()
+    }
+}
+
+/**************************************************************/
 
 #[cfg(test)]
 mod tests {
@@ -460,6 +586,58 @@ mod tests {
         assert_eq!(squares.qlift_to::<Nix>().coparse(), "[ 1 4 9 ]");
         let empty: Vec<u8> = Vec::new();
         assert_eq!(empty.qlift_to::<Nix>().coparse(), "[ ]");
+    }
+
+    #[test]
+    fn lean_ints() {
+        assert_eq!(3u32.qlift_to::<Lean>().coparse(), "3");
+        assert_eq!(7usize.qlift_to::<Lean>().coparse(), "7");
+        // `num_lit` is unsigned, so a negative lifts as a `unary_op`.
+        assert_eq!((-2i32).qlift_to::<Lean>().coparse(), "-2");
+        assert_eq!(i32::MIN.qlift_to::<Lean>().coparse(), "-2147483648");
+    }
+
+    #[test]
+    fn lean_floats_and_bools() {
+        assert_eq!(1.5f64.qlift_to::<Lean>().coparse(), "1.5");
+        // Keeps the decimal point so it stays a float, not a `Nat`.
+        assert_eq!(2.0f32.qlift_to::<Lean>().coparse(), "2.0");
+        assert_eq!((-0.5f64).qlift_to::<Lean>().coparse(), "-0.5");
+        assert_eq!(true.qlift_to::<Lean>().coparse(), "true");
+        assert_eq!(false.qlift_to::<Lean>().coparse(), "false");
+    }
+
+    #[test]
+    fn lean_strings() {
+        let owned = String::from("Nat.succ");
+        assert_eq!(owned.qlift_to::<Lean>().coparse(), "\"Nat.succ\"");
+        assert_eq!(
+            "say \"hi\"\n".qlift_to::<Lean>().coparse(),
+            r#""say \"hi\"\n""#
+        );
+        // A brace is *not* escaped: a lifted literal is a plain string, not an
+        // interpolated `s!"…"`.
+        assert_eq!("{x}".qlift_to::<Lean>().coparse(), "\"{x}\"");
+    }
+
+    #[test]
+    fn lean_lists() {
+        let squares: Vec<u64> = (1..=3).map(|n| n * n).collect();
+        assert_eq!(squares.qlift_to::<Lean>().coparse(), "[1, 4, 9]");
+        let empty: Vec<u8> = Vec::new();
+        assert_eq!(empty.qlift_to::<Lean>().coparse(), "[]");
+    }
+
+    #[test]
+    fn lean_tags() {
+        let QTerm::Tuple { tag, .. } = &*3u32.qlift_to::<Lean>() else {
+            panic!("expected tuple");
+        };
+        assert_eq!(&**tag, "num_lit");
+        let QTerm::Tuple { tag, .. } = &*vec![1u8].qlift_to::<Lean>() else {
+            panic!("expected tuple");
+        };
+        assert_eq!(&**tag, "list_lit");
     }
 
     #[test]

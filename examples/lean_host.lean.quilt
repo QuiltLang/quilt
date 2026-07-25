@@ -1,0 +1,27 @@
+-- Lean 4 as a *host* (meta) language: this whole file is a Lean metaprogram.
+--
+-- Where the Rust and Python hosts emit builder calls into a QTerm runtime, the
+-- Lean host has no runtime library -- it represents generated code as plain
+-- Lean strings. Quilt expands each lean quote below into an interpolated string
+-- literal, and each host unquote becomes Lean's own {..} interpolation. So
+-- `quilt expand` turns this file into an ordinary Lean program; running that
+-- program (`lean lean_host.lean`) prints the generated code.
+--
+-- Everything outside the quotes is ordinary Lean that runs at generation time.
+def attr : String := "simp"
+
+-- `add_zero` is already in Lean's core, so the generated theorem takes a fresh
+-- name and is compilable as-is.
+def name : String := "my_add_zero"
+
+def theorem_decl : String := lean↖@[↙attr↘] theorem ↙name↘ (n : Nat) : n + 0 = n := by
+  simp↗
+
+-- Braces are the interesting case: Lean code is full of them (structure
+-- instances, implicit binders), and Quilt escapes each one as \{ in the
+-- expanded s!"..." so it stays literal instead of opening an interpolation.
+def instance_decl : String := lean↖instance : Inhabited Nat := { default := 0 }↗
+
+def generated : String := theorem_decl ++ "\n\n" ++ instance_decl
+
+#eval IO.println generated

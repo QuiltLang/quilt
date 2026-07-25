@@ -1,6 +1,6 @@
 # Adding a Language
 
-This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `nix`, `text`).
+This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `nix`, `lean`, `text`).
 
 ## 1. Decide the role
 
@@ -8,15 +8,33 @@ A language can be:
 
 - **Host language** — the ground language in a `.quilt` file. Requires both a `Language` *and* a `MetaLanguage` implementation. Example: Rust, Python.
 - **Target language** — only appears inside `lang↖…↗` quotes. Requires only a `Language`. Example: HTML, WGSL.
+- **Both.** Nix and Lean are quotable targets *and* hosts.
+
+If you want a host, decide which kind of `MetaLanguage` it is:
+
+- **Runtime-backed** (Rust, Python) — the expanded code calls into a `QTerm` builder library that Quilt ships for that language. Highest fidelity (structural manipulation, pattern matching), but you have to *write and distribute that runtime*.
+- **String-based** (Nix, Lean) — no runtime at all: `meta.rs`/`ops.rs` reconstruct each fragment as a string expression in the host, mapping Quilt's unquote onto the host's own string interpolation. Far less work, language-agnostic in what it can generate, but there is no `b_` accumulator, so emit/splice in *ground* loops is unsupported — sequences must be built functionally. See `langs/nix/ops.rs` and `langs/lean/ops.rs`.
 
 ## 2. Grammar
 
 If the language needs tree-sitter parsing (recommended):
 
 1. Fork or adapt an existing tree-sitter grammar for the language.
-2. Add a **hole node** to the grammar. Rust uses `{}` and Python uses `__HOLE__` as hole tokens; your grammar needs a token that is syntactically valid in expression/statement position and uniquely recognizable.
-3. Host the grammar as its own repo under the [QuiltLang](https://github.com/QuiltLang) GitHub org, following the same structure as the existing forks (Cargo bindings in `bindings/rust/`).
-4. Add it to `[workspace.dependencies]` in the root `Cargo.toml` as a git dependency, like the existing `tree-sitter-*` forks.
+2. Add a **hole node** to the grammar. Rust uses `{}` and Python uses `__HOLE__` as hole tokens; your grammar needs a token that is syntactically valid in expression/statement position and uniquely recognizable. Most forks spell it `__QUILT_HOLE__`.
+
+   **Check first whether you need a patch at all.** Nix and Lean both spell the hole `__QUILT_HOLE__`, which already matches their identifier regexes, so it parses in every position an identifier may appear — no grammar change, and the range-based hole detection in `treesitter.rs` recognises it by byte range regardless of node kind. This is much the cheapest option; see issue #133 for exactly how far it gets you in Lean (everywhere except top-level command position).
+
+   If you do patch, where you *reference* the token is the real design decision. Reaching it from more positions is more expressive, but a hole viable in two different roles at once creates genuine parse ambiguity — the first Lean attempt made the hole both an identifier operand and a command, which conflicted with every command ending in a greedy identifier list, cost `prec.right` on eight rules, and blew the parse table past 2.5 GB during generation. Prefer the smallest set of positions that covers your use cases.
+
+   Also check whether your language's *root* node accepts the fragments you want to quote. Lean's `module` holds commands, not terms, so a bare term (`lean↖n + 1↗`) does not parse as a whole file the way it does in Rust or Python. `LeanLanguage` handles this by retrying a failed parse inside a synthetic `#check …` command and stripping the wrapper off the resulting `QTerm` — worth copying if your language has the same shape.
+3. Host the grammar as its own repo under the [QuiltLang](https://github.com/QuiltLang) GitHub org, following the same structure as the existing forks.
+4. Add it to `[workspace.dependencies]` in the root `Cargo.toml`, pinned to an explicit `rev`, like the existing `tree-sitter-*` forks.
+5. **Vendor the generated parser.** `quiltlang` does not depend on the forks as crates — that would pull git dependencies crates.io rejects (issue #32). Instead it compiles the generated C directly:
+   - Add the language to the loop in `bin/sync-grammars` (and to its `highlights.scm` case list if `quilt-lsp` should highlight it), then run it. This clones the fork at its pinned rev and copies `parser.c`/`scanner.c` into `quilt/grammars/<lang>/`. Commit that directory.
+   - Add the language to the feature loop in `quilt/build.rs`, which compiles it.
+   - Add a `grammar!` line in `quilt/src/grammars.rs` exposing `LANGUAGE` (add the `highlights` variant to also expose `HIGHLIGHTS_QUERY`).
+
+   `bin/check-grammars` (CI) fails if the vendored copies drift from the pins.
 
 If the language doesn't need tree-sitter, implement `Language` directly (see the `bootstrap/lang.rs` approach).
 

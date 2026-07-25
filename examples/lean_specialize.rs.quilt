@@ -1,0 +1,79 @@
+#!/usr/bin/env quilt
+//! Generate Lean 4 definitions, their correctness theorems, and a `main` that
+//! exercises them -- all from one Rust table.
+//!
+//! Lean is a *target* language here: it only appears inside lean quote
+//! brackets embedded in a host language (Rust). Quilt parses each fragment
+//! into a QTerm, the Rust host splices values in at generation time, and
+//! .coparse() serializes the tree back to plain Lean source.
+//!
+//! The point is staging. Specializing `x ^ n` for a fixed `n` is exactly the
+//! sort of thing you do not want to write by hand once per exponent -- and in
+//! Lean you also want the accompanying simp lemma for each one. The loop runs
+//! at *generation* time, so the emitted Lean has no recursion left in it.
+//!
+//! Three ways of crossing the language boundary show up here:
+//!
+//!   * the lift operator (a postfix between the unquote brackets) turns a Rust
+//!     integer into a Lean numeric literal;
+//!   * a *name* is spliced as an ordinary Lean identifier term. Note it cannot
+//!     be written `pow↙n.↑↘`: an identifier immediately before an unquote
+//!     bracket is read as a language annotation, so the whole name is built on
+//!     the Rust side and spliced as one term; and
+//!   * emitting (the postfix arrow) appends into a *variadic* container. In
+//!     Lean those are `module`, `by` and `do`, so `main`'s do-block below is
+//!     built by emitting one statement per exponent.
+//!
+//! The declarations themselves are joined functionally rather than emitted,
+//! because a bare hole at Lean *command* position does not currently parse --
+//! see issue #133.
+use quilt::prelude::*;
+
+/// A Lean identifier term, for splicing into name position.
+fn ident(s: &str) -> Arc<QTerm> {
+    leaf("identifier", s)
+}
+
+/// The body of `pow<n>`: `x * x * ... * x`, with n factors. Folded at
+/// generation time, so the emitted term is already flat.
+fn body(n: u32) -> Arc<QTerm> {
+    let mut acc = lean↖x↗;
+    for _ in 1..n {
+        acc = lean↖↙acc↘ * x↗;
+    }
+    acc
+}
+
+fn main() -> Result<()> {
+    // The exponents to specialize, fixed at generation time.
+    let exponents = [2u32, 3, 4];
+
+    // One `def` plus its `simp` lemma per exponent.
+    let mut decls: Vec<String> = Vec::new();
+    for n in exponents {
+        let name = ident(&format!("pow{n}"));
+        let lemma = ident(&format!("pow{n}_eq"));
+
+        decls.push(lean↖def ↙name↘ (x : Nat) : Nat := ↙body(n)↘↗.coparse());
+        decls.push(
+            lean↖@[simp] theorem ↙lemma↘ (x : Nat) : ↙name↘ x = x ^ ↙n.↑↘ := by
+              simp [↙name↘, Nat.pow_succ, Nat.pow_zero, Nat.one_mul]↗
+            .coparse(),
+        );
+    }
+
+    // `main`, built by emitting one statement per exponent into the do-block.
+    // A do-block is variadic, so the emitted statements become its children.
+    let main = lean↖def main : IO Unit := do
+        ↙{
+            for n in exponents {
+                let name = ident(&format!("pow{n}"));
+                lean↖IO.println (↙name↘ 5)↗.←;
+                NL.←;
+            }
+        }↘↗;
+    decls.push(main.coparse());
+
+    println!("{}", decls.join("\n\n"));
+    Ok(())
+}
