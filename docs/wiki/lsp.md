@@ -2,7 +2,7 @@
 
 **Crate:** `quilt-lsp/`
 
-`quilt-lsp` is a multiplexing Language Server for `.quilt` files. It sits between the editor and the language-specific downstream servers (`rust-analyzer` for Rust, pyright for Python, wgsl-analyzer for WGSL), handling:
+`quilt-lsp` is a multiplexing Language Server for `.quilt` files. It sits between the editor and the language-specific downstream servers (`rust-analyzer` for Rust, pyright for Python, wgsl-analyzer for WGSL, `lean --server` for Lean), handling:
 
 1. Quilt-level syntax diagnostics (bracket errors, structure problems).
 2. Ground-language features (hover, go-to-definition, completion, diagnostics) by projecting the `.quilt` file into a virtual plain-language document and proxying to the downstream server.
