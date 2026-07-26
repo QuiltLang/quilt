@@ -232,6 +232,112 @@ fn strip_check(qterm: &QTerm) -> Result<Arc<QTerm>> {
     Ok(terms[1].clone())
 }
 
+/// Ordinals (into the fragment's hole sequence) of holes that sit **alone on
+/// their own line** — the shape a hole spliced at *command* position takes:
+///
+/// ```text
+/// namespace Demo
+/// ↙decl↘
+/// end Demo
+/// ```
+///
+/// A bare hole is not a valid Lean command (no command starts with an
+/// identifier), so such a fragment fails to parse. Prefixing just these holes
+/// with [`CHECK_PREFIX`] makes them commands; [`strip_wrapped_checks`] then
+/// removes the wrapper again. See issue #133 for the grammar change that would
+/// make this unnecessary.
+fn line_hole_ordinals(code: &[FlatNode]) -> Vec<usize> {
+    let blank = |n: &FlatNode| match n {
+        FlatNode::Str(s) => s.trim().is_empty(),
+        _ => false,
+    };
+    let mut out = Vec::new();
+    let mut ordinal = 0usize;
+    for (i, node) in code.iter().enumerate() {
+        if !matches!(node, FlatNode::Hole) {
+            continue;
+        }
+        // Only whitespace may separate the hole from the line break on each
+        // side (or from the start/end of the fragment).
+        let alone_before = code[..i]
+            .iter()
+            .rev()
+            .take_while(|n| !matches!(n, FlatNode::NewLine))
+            .all(blank);
+        let alone_after = code[i + 1..]
+            .iter()
+            .take_while(|n| !matches!(n, FlatNode::NewLine))
+            .all(blank);
+        if alone_before && alone_after {
+            out.push(ordinal);
+        }
+        ordinal += 1;
+    }
+    out
+}
+
+/// Rebuild `code` with [`CHECK_PREFIX`] inserted before each hole whose ordinal
+/// is in `targets`.
+fn wrap_line_holes<'a>(code: &[FlatNode<'a>], targets: &[usize]) -> Vec<FlatNode<'a>> {
+    let mut out = Vec::with_capacity(code.len() + targets.len());
+    let mut ordinal = 0usize;
+    for node in code {
+        if matches!(node, FlatNode::Hole) {
+            if targets.contains(&ordinal) {
+                out.push(FlatNode::Str(CHECK_PREFIX));
+            }
+            ordinal += 1;
+        }
+        out.push(node.clone());
+    }
+    out
+}
+
+/// Undo [`wrap_line_holes`] in the parsed tree: replace each `check` tuple that
+/// wraps one of the holes we wrapped with that hole itself.
+///
+/// Only the wrappers *we* introduced are removed — holes are counted in tree
+/// order and matched against `targets` — so a genuine `#check ↙x↘` written by
+/// the author survives untouched.
+fn strip_wrapped_checks(term: &Arc<QTerm>, hole_str: &str, targets: &[usize]) -> Arc<QTerm> {
+    fn walk(
+        term: &Arc<QTerm>,
+        hole_str: &str,
+        targets: &[usize],
+        ordinal: &mut usize,
+    ) -> Arc<QTerm> {
+        let QTerm::Tuple { tag, terms, cmds } = &**term else {
+            // Quotes/unquotes cannot appear inside a freshly parsed fragment.
+            return term.clone();
+        };
+
+        // A `check` we introduced: `seq('#check', <hole>)`, two children whose
+        // second is the hole at a targeted ordinal.
+        if &**tag == "check" && terms.len() == 2 {
+            if let QTerm::Tuple { tag: inner, .. } = &*terms[1] {
+                if &**inner == hole_str && targets.contains(ordinal) {
+                    *ordinal += 1;
+                    return terms[1].clone();
+                }
+            }
+        }
+
+        if &**tag == hole_str {
+            *ordinal += 1;
+            return term.clone();
+        }
+
+        let children: Vec<Arc<QTerm>> = terms
+            .iter()
+            .map(|t| walk(t, hole_str, targets, ordinal))
+            .collect();
+        tuple(tag, &children, cmds)
+    }
+
+    let mut ordinal = 0usize;
+    walk(term, hole_str, targets, &mut ordinal)
+}
+
 /// The Lean `Language`: [`TSLanguage<LeanProvider>`] plus the bare-term retry
 /// described on [`CHECK_PREFIX`].
 #[derive(Default)]
@@ -259,7 +365,8 @@ impl Language for LeanLanguage {
         // that is not a term at all (`#check` followed by several commands
         // still parses as a module), which is why the shape is re-checked here
         // rather than trusted.
-        self.0
+        if let Some(post) = self
+            .0
             .parse_pre(Some(InnerKind::Expr), &wrapped)
             .ok()
             .and_then(|post| {
@@ -269,7 +376,29 @@ impl Language for LeanLanguage {
                     ..post
                 })
             })
-            .ok_or(err)
+        {
+            return Ok(post);
+        }
+
+        // Last resort: holes at *command* position, which a bare identifier
+        // cannot occupy. Wrap only the holes that sit alone on their own line
+        // and strip the wrappers back out of the tree.
+        let targets = line_hole_ordinals(code);
+        if !targets.is_empty() {
+            let wrapped = wrap_line_holes(code, &targets);
+            if let Some(post) = self.0.parse_pre(ikind, &wrapped).ok().map(|post| {
+                let hole_str = post.hole_str;
+                let qterm = strip_wrapped_checks(&arc(post.qterm.clone()), hole_str, &targets);
+                TSLanguagePost {
+                    qterm: (*qterm).clone(),
+                    ..post
+                }
+            }) {
+                return Ok(post);
+            }
+        }
+
+        Err(err)
     }
 
     fn arity(&self, tag: &str) -> Arity {

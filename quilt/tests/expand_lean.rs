@@ -71,27 +71,47 @@ fn expand_term_unquote() -> Result<()> {
     Ok(())
 }
 
-/// **Known limitation** (issue #133): a bare `↙…↘` at Lean *command* position
-/// does not parse.
+/// A `↙…↘` at Lean *command* position splices a whole declaration.
 ///
-/// The hole is spelled `__QUILT_HOLE__`, which is a plain Lean identifier — and
-/// no Lean command starts with a bare identifier, so `module` rejects it. Every
-/// other position works, because an identifier is a term. Lifting this needs a
-/// `quilt_hole` alternative in the grammar's `_command`, which needs the fork
-/// regenerated.
-///
-/// Splice the enclosing construct instead, or emit into a `by` / `do` body.
-///
-/// If this test starts failing, the limitation has been lifted — replace it
-/// with the positive assertion that the splice works.
+/// The hole is spelled `__QUILT_HOLE__`, a plain Lean identifier, and no Lean
+/// command starts with a bare identifier — so `module` rejects it and the
+/// fragment does not parse as written. `LeanLanguage::parse_pre` recovers by
+/// wrapping each hole that sits alone on its own line in `#check …` (the
+/// smallest command taking a term) and stripping the wrapper back out of the
+/// parsed tree. See issue #133 for the grammar change that makes this
+/// unnecessary.
 #[test]
-fn command_position_hole_is_unsupported() {
-    let err = expand(indoc! {r#"
+fn expand_command_unquote() -> Result<()> {
+    let out = expand(indoc! {r#"
         let m = lean↖namespace Demo
         ↙decl↘
-        end Demo↗;"#})
-    .expect_err("a bare hole at command position should not parse");
-    assert!(format!("{err:?}").contains("Parsed with errors"), "{err:?}");
+        end Demo↗;"#})?;
+    assert!(out.contains("decl"), "{out}");
+    // The synthetic wrapper must not survive into the generated code.
+    assert!(!out.contains("#check"), "{out}");
+    Ok(())
+}
+
+/// The command fragment round-trips: the `#check` wrapper is invisible in the
+/// serialized output, so `coparse` still reproduces the source exactly.
+#[test]
+fn roundtrip_command_hole() -> Result<()> {
+    roundtrip(indoc! {r#"
+        let m = lean↖namespace Demo
+        ↙decl↘
+        end Demo↗;"#})?;
+    Ok(())
+}
+
+/// Only the wrappers Quilt introduces are stripped — a `#check ↙x↘` the author
+/// actually wrote survives, because that fragment parses on the first attempt
+/// and never reaches the recovery path.
+#[test]
+fn genuine_check_command_is_preserved() -> Result<()> {
+    roundtrip("let c = lean↖#check ↙e↘↗;")?;
+    let out = expand("let c = lean↖#check ↙e↘↗;")?;
+    assert!(out.contains("#check"), "{out}");
+    Ok(())
 }
 
 /// The supported way to generate a declaration: quote the whole thing, with

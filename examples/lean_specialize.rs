@@ -26,9 +26,12 @@
 //!     Lean those are `module`, `by` and `do`, so `main`'s do-block below is
 //!     built by emitting one statement per exponent.
 //!
-//! The declarations themselves are joined functionally rather than emitted,
-//! because a bare hole at Lean *command* position does not currently parse --
-//! see issue #133.
+//! The declarations themselves are joined functionally rather than emitted.
+//! Splicing a whole declaration at command position does work (`namespace D
+//! ↙decl↘ end D`), but emitting a *sequence* of them needs a variadic module
+//! container, which a bare-hole quote does not currently produce -- see issue
+//! #133. Building the list in Rust and joining is the idiomatic alternative,
+//! and is what the Nix host does too.
 use quilt::prelude::*;
 
 /// A Lean identifier term, for splicing into name position.
