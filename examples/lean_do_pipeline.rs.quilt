@@ -1,0 +1,79 @@
+#!/usr/bin/env quilt
+//! Generate a Lean 4 `IO` program: a pipeline runner whose do-block is built
+//! one statement at a time from a Rust-side table of stages.
+//!
+//! Lean is a *target* here, quoted inside a Rust host. The interesting part is
+//! do-notation, which the other Lean examples do not reach: a `do` block is a
+//! Variadic container, so statements can be *emitted* into it, and the binds
+//! themselves are generated -- one `let <name> <- stage ...` per row.
+//!
+//! ## Monadic bind must be written `<-`, not `←`
+//!
+//! Lean spells monadic bind `←`, which is also Quilt's *emit* glyph. Inside a
+//! quote, a bare `←` is consumed by Quilt as an emit and never reaches the Lean
+//! parser, leaving a stray hole behind. Lean's ASCII alias `<-` means exactly
+//! the same thing and has no meaning to Quilt, so it passes through untouched.
+//! That is what this file uses, and it is the recommended spelling for
+//! generated monadic Lean. (`\←` also works -- see issue #141.)
+//!
+//! Note the two kinds of `let` in the generated do-block are both here: `<-`
+//! binds an `IO Nat`, while `:=` binds a pure term. The pure one is the folded
+//! sum of every stage, built at *generation* time, so the emitted Lean contains
+//! a flat `a + b + c` with no loop left in it.
+//!
+//! Run `quilt expand` on this file to see the Rust it becomes, or run it
+//! directly (`quilt examples/lean_do_pipeline.rs.quilt`) to print the Lean.
+use quilt::prelude::*;
+
+/// A Lean identifier term, for splicing into name position.
+fn ident(s: &str) -> Arc<QTerm> {
+    leaf("identifier", s)
+}
+
+fn main() -> Result<()> {
+    // The pipeline, fixed at generation time: (stage name, cost in ms).
+    let stages = [("fetch", 12u32), ("parse", 30), ("render", 8)];
+    // Generated into the emitted `if`, so the budget check is baked in too.
+    let budget = 40u32;
+
+    // The helper every generated bind calls. Plain quoted Lean, no splices.
+    let helper = lean↖def stage (name : String) (cost : Nat) : IO Nat := do
+        IO.println s!"  {name}: {cost}ms"
+        pure cost↗;
+
+    // The sum of every stage's binding, folded now so the emitted Lean is a
+    // flat `fetch + parse + render` rather than anything recursive.
+    let mut total = ident(stages[0].0);
+    for (name, _) in &stages[1..] {
+        let next = ident(name);
+        total = lean↖↙total↘ + ↙next↘↗;
+    }
+
+    // `main`, whose do-block is emitted statement by statement. A do-block is
+    // Variadic, so each emitted term becomes one of its children; `NL.←`
+    // emits the line break between them.
+    let main = lean↖def main : IO Unit := do
+        ↙{
+            lean↖IO.println "stages:"↗.←;
+            NL.←;
+            // One monadic bind per stage. `<-`, not `←` -- see the note above.
+            for (name, cost) in stages {
+                let var = ident(name);
+                lean↖let ↙var↘ <- stage ↙name.↑↘ ↙cost.↑↘↗.←;
+                NL.←;
+            }
+            // A *pure* let, bound to the generation-time fold.
+            lean↖let total := ↙total↘↗.←;
+            NL.←;
+            lean↖IO.println s!"total: {total}ms"↗.←;
+            NL.←;
+            // Kept on one line: an emitted fragment's own line breaks are
+            // indented relative to the *enclosing* quote, so a multi-line
+            // emit into an already-indented block needs care. A single-line
+            // `if … then … else …` sidesteps it and is idiomatic Lean anyway.
+            lean↖if total > ↙budget.↑↘ then IO.println "over budget" else IO.println "within budget"↗.←;
+        }↘↗;
+
+    println!("{}\n\n{}", helper.coparse(), main.coparse());
+    Ok(())
+}

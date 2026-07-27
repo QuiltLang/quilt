@@ -180,6 +180,20 @@ A hole at whole-**command** position (`namespace D ↙decl↘ end D`) is not dir
 
 What remains unavailable is emit (`←`) into a top-level **sequence** of commands, which needs a variadic `module` container that a bare-hole quote does not produce. Emit works into `by` / `do` bodies, which are the `Variadic` containers; for declaration sequences, build the list in the host and join it (as `examples/lean_specialize.rs.quilt` does). Issue #133 covers the grammar change that would make both direct.
 
+The same limit applies within a declaration: an `inductive`'s constructor list and a `structure`'s field list are variable-length but are not `Variadic` containers, and neither `lean↖| Color.red => 0↗` nor `lean↖red : Nat↗` parses standalone — a bare arm or binder is neither a command nor a term. Those lines are assembled host-side too. Variable-length **terms** have no such problem: fold them, as `examples/lean_datatypes.rs.quilt` does for its `if`/`else` chain and its `+` chain.
+
+### Examples
+
+| File | Covers |
+|------|--------|
+| `examples/lean_specialize.rs.quilt` | Rust host, Lean target: specialized `def`s, their `simp` lemmas, emit into `do` |
+| `examples/lean_do_pipeline.rs.quilt` | do-notation — generated `<-` binds, pure `let`, emit into a `do` block |
+| `examples/lean_datatypes.rs.quilt` | `inductive` and `structure` declarations, folded term bodies, theorems whose bound is generation-time data |
+| `examples/lean_tactics.rs.quilt` | tactic proofs — emit into a `by` block, proof-script length driven by the schema |
+| `examples/lean_host.lean.quilt` | Lean as a *host* (string-based meta) |
+
+Each of the target examples prints Lean to stdout; the generated code compiles and its theorems prove under Lean 4 (`quilt examples/lean_tactics.rs.quilt > out.lean && lean out.lean`).
+
 Because a hole's spelling is the same everywhere it appears, `LeanProvider` classifies it by its **parent** (`hole_kind`): under a `by` / `do` body it is a `Stmt`, directly under `module` an `Item`, and anywhere else an `Expr`.
 
 Lean's `module` holds *commands*, not terms, so a bare term fragment (`lean↖n + 1↗`) would not parse on its own — unlike Rust or Python, whose `source_file` accepts a bare expression. `LeanLanguage` therefore retries a failed parse inside `#check …`, the smallest command taking an arbitrary term, and strips the wrapper back off, which is what makes term-level composition (`lean↖↙acc↘ * x↗`) work.
@@ -192,6 +206,60 @@ Quote and splice Lean fragments inside another host (`lean↖…↗`). Lean has 
 let thm = lean↖theorem add_zero (n : Nat) : n + ↙zero.↑↘ = n := by
   ↙tactic↘↗;
 ```
+
+#### Gotcha: monadic bind is `←`, which is also Quilt's emit glyph
+
+Lean spells monadic bind `←` — the same character Quilt uses for **emit**. Inside a quote, a bare `←` is consumed by Quilt as an emit operator and never reaches the Lean parser, so the whole `do` block fails to parse with a stray `__QUILT_HOLE__` where the bind was:
+
+```rust
+// WRONG — the ← below is consumed by Quilt as an emit:
+let p = lean↖def m : IO Unit := do
+    let x ← IO.getStdout
+    pure ()↗;
+```
+
+```
+Error: Parsed with errors: ["def m : IO Unit := do\n", "    let x __QUILT_HOLE__ IO.getStdout\n", …]
+```
+
+Write Lean's ASCII alias `<-` instead. It means exactly the same thing to Lean, has no meaning to Quilt, and passes through untouched:
+
+```rust
+let p = lean↖def m : IO Unit := do
+    let x <- IO.getStdout
+    pure ()↗;
+```
+
+This is what `examples/lean_do_pipeline.rs.quilt` uses throughout, and it is the recommended spelling for generated monadic Lean — it needs no Quilt knowledge from the reader. (Issue #141 adds `\←` as an escaped alternative; until it lands, `<-` is the only spelling that works.)
+
+`↑` and `↓` are the same kind of hazard — they are Lean's coercion and lowering notation as well as Quilt's lift and reduce — but those have always been escapable as `\↑` and `\↓`.
+
+#### Gotcha: a hole cannot go inside a string literal
+
+Lean lexes a whole string literal as one token, so a `__QUILT_HOLE__` inside `"…"` or `s!"…"` never becomes a node and the splice fails with *"Ran out of holes for unquote"*:
+
+```rust
+lean↖IO.println s!"↙name↘ -> done"↗   // WRONG: hole inside a string literal
+```
+
+Lift the value into a Lean string and concatenate instead:
+
+```rust
+lean↖IO.println (↙name.↑↘ ++ " -> done")↗
+```
+
+Lean's *own* `{…}` interpolation over a Lean binder is unaffected — that is evaluated at Lean runtime, not a Quilt splice, so `s!"total = {total}"` inside a quote is fine as long as `total` is a Lean name.
+
+#### Splices carry a term, not a precedence level
+
+Application in Lean is left-associative, so splicing an application where an atom is expected silently reassociates:
+
+```rust
+lean↖IO.println (toString ↙chain↘)↗    // WRONG: toString applied to two arguments
+lean↖IO.println (toString (↙chain↘))↗  // right
+```
+
+Parenthesise in the surrounding quote whenever the spliced term may not be atomic.
 
 ### As a host (string-based meta)
 
