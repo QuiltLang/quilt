@@ -57,10 +57,16 @@ pub trait LanguageAdapter: Send + Sync {
     /// How this language spells comments, used to translate quilt's `⟨//⟩` /
     /// `⟨/*⟩…⟨*/⟩` glyphs into something the downstream parser accepts.
     fn comment_syntax(&self) -> CommentSyntax;
-    /// Whether downstream diagnostics for this language should be surfaced.
-    /// Default `true`; a language whose ground projection uses lossy placeholders
-    /// (so ground code that consumes a quoted value mistypes) may opt out to
-    /// avoid spurious errors until it has proper type information.
+    /// Whether downstream diagnostics for this language should be surfaced —
+    /// consulted both for a ground projection (keyed on the file's ground
+    /// language) and for each per-fragment embedded document.
+    ///
+    /// Default `true`. A language opts out when its projection cannot be made
+    /// faithful enough for the downstream server's errors to mean anything. The
+    /// bar is deliberately high: placeholders that merely *mistype* are fixable
+    /// with [`MetaLanguageAdapter::ground_prologue`] (see [`PythonAdapter`]),
+    /// so the remaining honest reason to opt out is a projection whose missing
+    /// context cannot be reconstructed statically at all (see [`LeanAdapter`]).
     fn publishes_diagnostics(&self) -> bool {
         true
     }
@@ -74,6 +80,24 @@ pub trait MetaLanguageAdapter: Send + Sync {
     fn splice_block(&self) -> SpliceBlock;
     /// Discover the project root for the overlay (e.g. nearest `Cargo.toml`).
     fn find_root(&self, file: &Path) -> Option<PathBuf>;
+    /// Synthetic text prepended to the ground projection, declaring whatever the
+    /// projection's placeholders need in order to *typecheck* rather than merely
+    /// parse. Default empty (Rust needs nothing: `__q__` is an unresolved name,
+    /// and any diagnostic on it lands on synthetic text and is dropped).
+    ///
+    /// This is the general answer to "the placeholder mistypes the ground line
+    /// that consumes it": give the placeholder a type the downstream server
+    /// accepts everywhere. Python binds `__q__` to `Any`, so that `q.coparse()`,
+    /// `q.↓` and `↑(x)` all check out.
+    ///
+    /// The prologue occupies leading lines of the virtual document with no quilt
+    /// counterpart. Positions map correctly by construction (it is emitted as one
+    /// synthetic span), and diagnostics landing inside it are dropped — see
+    /// [`crate::projection::Projection::is_in_prologue`]. Must end in a newline
+    /// when non-empty.
+    fn ground_prologue(&self) -> &'static str {
+        ""
+    }
     /// Downstream initialization options for a freshly-spawned server rooted at a
     /// project. `file` is the de-quilted overlay path; `detached` is true when the
     /// root has no project manifest and the file is analyzed standalone — in which
@@ -344,13 +368,18 @@ static PYTHON: PythonAdapter = PythonAdapter;
 /// to a standalone Python language server (pyright), which analyzes a single file
 /// regardless of project layout — matching how `.py.quilt` scripts live anywhere.
 ///
-/// The ground projection replaces each quote with a placeholder *expression*
-/// (`()`), so Python is navigation-only for now: hover / go-to-definition /
-/// completion work on the host Python, but diagnostics are suppressed (the
-/// placeholder mistypes any ground line that consumes a quoted value). See
-/// [`LanguageAdapter::publishes_diagnostics`]. Semantic tokens come from the
-/// server's in-process tree-sitter highlighter ([`crate::tshl`]), since pyright
-/// provides no semantic tokens (a Pylance-only feature).
+/// The ground projection replaces each quote with a call to `__q__`, which
+/// [`MetaLanguageAdapter::ground_prologue`] binds to `Any`. That is what lets
+/// diagnostics stay on: an earlier version used a bare `()` tuple, which parsed
+/// but *mistyped* every ground line consuming a quoted value (pyright:
+/// `Cannot access attribute "coparse" for class "tuple[()]"`), so diagnostics had
+/// to be suppressed wholesale. `Any` is the honest type — a quote's value is a
+/// `QTerm` the projection cannot model — and it silences exactly the lines that
+/// touch a quote while leaving the rest of the file checked.
+///
+/// Semantic tokens come from the server's in-process tree-sitter highlighter
+/// ([`crate::tshl`]), since pyright provides no semantic tokens (a Pylance-only
+/// feature).
 #[cfg(feature = "python")]
 pub struct PythonAdapter;
 
@@ -401,25 +430,46 @@ impl LanguageAdapter for PythonAdapter {
             block_close: "\"\"\"",
         }
     }
-    fn publishes_diagnostics(&self) -> bool {
-        false
-    }
 }
 
 #[cfg(feature = "python")]
 impl MetaLanguageAdapter for PythonAdapter {
     fn glyph_placeholder(&self) -> &'static str {
+        // The same `__q__` the prologue binds to `Any`. Python spells `↑` and
+        // `⟨N⟩` prefix (`↙↑(x)↘` → `__q__(x)`) and `↓` postfix (`t.↓` →
+        // `t.__q__`), so one `Any` name covers every glyph position.
         "__q__"
     }
     fn splice_block(&self) -> SpliceBlock {
-        // A parenthesized tuple, valid in expression position: `()` for a quote
-        // with no ground splices, `(a, b, )` when stage-0 `↙…↘` splices are
-        // reabsorbed (so pyright resolves the ground names they reference).
+        // A call to the prologue's `__q__`, valid in expression position:
+        // `__q__()` for a quote with no ground splices, `__q__(a, b, )` when
+        // stage-0 `↙…↘` splices are reabsorbed (so pyright resolves the ground
+        // names they reference). `__q__` is `Any`, so calling it accepts any
+        // spliced body and mistypes no line that consumes the result.
         SpliceBlock {
-            open: "(",
+            open: "__q__(",
             terminator: ", ",
             close: ")",
         }
+    }
+    fn ground_prologue(&self) -> &'static str {
+        // Declares the one name every Python placeholder resolves to, bound to
+        // `Any`. The binding must be *assigned* (`= ...`), not merely annotated:
+        // a bare `__q__: Any` leaves pyright treating every use as `Unbound`,
+        // which is worse than the tuple it replaced. `Any` also has to carry all
+        // four positions the placeholder appears in — called (`↑(x)`, `⟨N⟩(…)`,
+        // and the `__q__(…)` splice block), attribute base (`t.↓`), operand
+        // (a masked construct inside a fragment), and bare name — which `Any`
+        // does and a `def` does not (a function object rejects `x * __q__`).
+        //
+        // The `# pyright:` line turns off one check the *projection* provokes
+        // rather than the user: `.py.quilt` files import the runtime with
+        // `from quilt import *`, which is the documented idiom, but
+        // `quilt._quilt` is a stub-less native module so pyright flags the
+        // wildcard. Left on, it warned on line 1 of every `.py.quilt` file.
+        "# pyright: reportWildcardImportFromLibrary=false\n\
+         import typing as _quilt_typing\n\
+         __q__: _quilt_typing.Any = ...\n"
     }
     fn find_root(&self, file: &Path) -> Option<PathBuf> {
         // pyright analyzes a file standalone; root at its own directory so several
@@ -617,9 +667,15 @@ impl LanguageAdapter for LeanAdapter {
         "_"
     }
     fn wrap_fragment(&self, _n: usize) -> (String, String) {
-        // A Lean quote is already a sequence of commands or a term; there is no
-        // enclosing declaration to place it in, so no wrapper is added.
-        (String::new(), String::new())
+        // A Lean quote is already a sequence of commands or a term, and there is
+        // no enclosing declaration to place it in — but a *separator* is still
+        // required. In a `.lean.quilt` ground projection Lean is the host, so its
+        // quotes are appended into the one virtual document; with an empty
+        // wrapper two adjacent fragments ran together (`by\n  simp` followed by
+        // `instance : …` tokenized as the single identifier `simpinstance`),
+        // corrupting the highlighting of both. Newlines keep them distinct
+        // without claiming to know their syntactic category.
+        ("\n".to_string(), "\n".to_string())
     }
     fn comment_syntax(&self) -> CommentSyntax {
         CommentSyntax {
@@ -629,11 +685,40 @@ impl LanguageAdapter for LeanAdapter {
         }
     }
     fn publishes_diagnostics(&self) -> bool {
-        // A quoted Lean fragment is analyzed without the imports and
-        // `variable`s of the module it will land in, so `unknown identifier`
-        // noise would swamp anything real. Highlighting and hover still work.
-        // The same applies to the ground projection, whose quotes are replaced
-        // by the placeholder lists of `splice_block`.
+        // Lean stays opted out, but *not* for the reason first assumed (missing
+        // `import`s / `variable`s, which a synthetic prologue could supply).
+        // Measured against `examples/lean_specialize.rs.quilt` — 6 Lean quotes,
+        // Lean 4.32.1 — all 6 fragments error and **none** of the errors is an
+        // unresolved import. They split into three causes:
+        //
+        //  1. A quoted *term* is not a valid Lean file (`x` → "unexpected
+        //     identifier; expected command"). Fixable: wrap by syntactic
+        //     category, as `langs::lean::LeanLanguage::parse_pre` already does
+        //     with its `#check …` retry.
+        //  2. `_` as the splice placeholder is illegal in name position
+        //     ("expected identifier") and unsolvable in term position ("don't
+        //     know how to synthesize placeholder"). Fixable: a fresh identifier
+        //     for names, `sorry` for terms (it elaborates to anything, costing
+        //     only a "declaration uses `sorry`" warning).
+        //  3. The two that are *not* fixable, and which decide this:
+        //     - **Free variables bound by the generated context.** `body()`
+        //       returns `lean↖x↗`; `x` is bound by the `def ↙name↘ (x : Nat)`
+        //       built in a *different* function. Nothing in the file says the
+        //       fragment lands inside that binder — Rust control flow decides it
+        //       at generation time. A `variable (x : Nat)` prologue does fix it
+        //       (verified), but deriving one requires running the metaprogram.
+        //     - **Spliced names in applied-head position.** `↙name↘ x` needs a
+        //       placeholder Lean will apply. No type-agnostic term works:
+        //       `sorry`, `axiom q : ∀ {α : Sort u}, α` and an `opaque` all give
+        //       "Function expected at q but this term has type ?m". Only
+        //       declaring the *exact* arrow type (`variable {q : Nat → Nat}`)
+        //       works — and that type is produced by the host program, not the
+        //       source.
+        //
+        // Fixing 1 and 2 alone leaves 4 of the 6 fragments spuriously red, so
+        // the placeholder-typing route that re-enabled Python's diagnostics
+        // (`PythonAdapter::ground_prologue`) does not carry over here.
+        // Highlighting, hover and go-to-definition are unaffected.
         false
     }
 }
@@ -805,6 +890,49 @@ mod tests {
         assert!(language_adapter("rs").is_some());
         assert!(meta_adapter("rust").is_some());
         assert_eq!(language_adapter("rs").unwrap().language_id(), "rust");
+    }
+
+    /// Python publishes diagnostics: its placeholder is `Any`-typed via the
+    /// prologue, so ground lines that consume a quote no longer mistype.
+    #[test]
+    #[cfg(feature = "python")]
+    fn python_publishes_diagnostics_via_a_typed_placeholder() {
+        let lang = language_adapter("py").unwrap();
+        assert!(lang.publishes_diagnostics());
+
+        let meta = meta_adapter("py").unwrap();
+        // The splice block is a call to the declared name, not a bare tuple.
+        let b = meta.splice_block();
+        assert_eq!((b.open, b.terminator, b.close), ("__q__(", ", ", ")"));
+        // …and the prologue declares exactly that name.
+        assert!(meta.ground_prologue().contains("__q__"));
+        assert!(meta.ground_prologue().ends_with('\n'));
+    }
+
+    /// Lean stays opted out — see `LeanAdapter::publishes_diagnostics` for the
+    /// measurements. The opt-out has to hold for the *fragment* language too,
+    /// which is how `lean↖…↗` inside a `.rs.quilt` file is analyzed.
+    #[test]
+    #[cfg(feature = "lean")]
+    fn lean_opts_out_of_diagnostics() {
+        assert!(!language_adapter("lean").unwrap().publishes_diagnostics());
+        assert!(!language_adapter("lean4").unwrap().publishes_diagnostics());
+        // It is reachable as an embedded target, which is the path that needs to
+        // honour the opt-out.
+        assert!(embedded_adapters()
+            .iter()
+            .any(|a| a.language_id() == "lean4" && !a.publishes_diagnostics()));
+    }
+
+    /// Lean quotes ride the merged ground projection in a `.lean.quilt` file, so
+    /// adjacent fragments must not run together (`by simp` + `instance : …` once
+    /// tokenized as `simpinstance`).
+    #[test]
+    #[cfg(feature = "lean")]
+    fn lean_fragments_are_separated() {
+        let (pre, post) = language_adapter("lean").unwrap().wrap_fragment(0);
+        assert!(pre.starts_with('\n'), "pre: {pre:?}");
+        assert!(post.ends_with('\n'), "post: {post:?}");
     }
 
     #[test]

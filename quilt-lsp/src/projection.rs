@@ -28,6 +28,10 @@ pub struct Projection {
     /// (for highlighting) but their diagnostics are suppressed (wrapping makes
     /// them unreliable).
     pub fragment_ranges: Vec<Range<usize>>,
+    /// Byte length of the synthetic prologue at the head of `text` (see
+    /// [`MetaLanguageAdapter::ground_prologue`]); `0` when there is none.
+    /// Diagnostics inside it are dropped — it is our own scaffolding.
+    pub prologue_len: usize,
 }
 
 /// Build the projection of `text` for ground language `meta`, with quoted
@@ -61,6 +65,13 @@ pub fn project(
 
     let mut b = Builder::new();
     let mut quotes: Vec<(tree_sitter::Node, LangZipper)> = Vec::new();
+
+    // Scaffolding the placeholders need in order to typecheck, emitted as one
+    // synthetic span so every real byte still maps exactly (shifted by its
+    // length, which `LineIndex` accounts for).
+    let prologue = meta.ground_prologue();
+    b.synth(prologue);
+    let prologue_len = prologue.len();
 
     let env = Ground { meta, lang };
     let zipper = LangZipper::from_chain(chain);
@@ -108,12 +119,14 @@ pub fn project(
     // preserves all positions) so the downstream server treats it as a comment.
     // Languages whose line comment already starts with `#` (e.g. Python) need no
     // rewrite — the shebang is a comment to them as-is.
-    if vtext.starts_with("#!") && !lang.comment_syntax().line.starts_with('#') {
+    // The shebang is the first *source* byte, which the prologue (if any) sits
+    // in front of — so test and patch at `prologue_len`, not at 0.
+    if vtext[prologue_len..].starts_with("#!") && !lang.comment_syntax().line.starts_with('#') {
         // SAFETY: `#!` are ASCII (0x23, 0x21); we overwrite with `//` (0x2F,
         // 0x2F), also ASCII single-byte. The string stays valid UTF-8.
         let bytes = unsafe { vtext.as_bytes_mut() };
-        bytes[0] = b'/';
-        bytes[1] = b'/';
+        bytes[prologue_len] = b'/';
+        bytes[prologue_len + 1] = b'/';
     }
     let line_index = LineIndex::new(&vtext);
     Projection {
@@ -121,6 +134,7 @@ pub fn project(
         line_index,
         map,
         fragment_ranges,
+        prologue_len,
     }
 }
 
@@ -178,6 +192,9 @@ pub fn project_fragments(
                 line_index,
                 map,
                 fragment_ranges: Vec::new(),
+                // A standalone fragment doc gets no prologue: it is not a ground
+                // projection, and there is nothing to declare for it.
+                prologue_len: 0,
             },
         });
     }
@@ -496,6 +513,15 @@ impl Projection {
             .iter()
             .any(|fr| start >= fr.start && start < fr.end)
     }
+
+    /// Whether a virtual range falls inside the synthetic prologue. Checked
+    /// separately from [`Self::is_synthetic`], which only catches *non-empty*
+    /// spans — a zero-width diagnostic in the prologue would otherwise survive
+    /// and be remapped onto the first line of the user's file.
+    pub fn is_in_prologue(&self, enc: Encoding, r: LspRange) -> bool {
+        let start = self.line_index.offset(&self.text, r.start, enc);
+        start < self.prologue_len
+    }
 }
 
 #[cfg(test)]
@@ -737,14 +763,105 @@ mod tests {
         let lang = language_adapter("py").unwrap();
         let src = "expr = ↖1 + 2↗\nscaled = ↖↙ten↘ * 100↗\n";
         let p = project(src, meta, lang, &["py"]);
-        // A quote with no ground splices → empty-tuple placeholder.
-        assert!(p.text.contains("expr = ()"), "ground: {:?}", p.text);
-        // A stage-0 `↙ten↘` splice is reabsorbed as a ground tuple referencing
+        // A quote with no ground splices → a bare call to the prologue's `__q__`,
+        // which is typed `Any` so `expr.coparse()` on the next line checks out.
+        // (It used to project to `()`, whose `tuple` type made every such line an
+        // error and forced diagnostics off entirely.)
+        assert!(p.text.contains("expr = __q__()"), "ground: {:?}", p.text);
+        // A stage-0 `↙ten↘` splice is reabsorbed as an argument referencing
         // `ten`, so pyright resolves it against the ground binding.
-        assert!(p.text.contains("scaled = (ten, )"), "ground: {:?}", p.text);
+        assert!(
+            p.text.contains("scaled = __q__(ten, )"),
+            "ground: {:?}",
+            p.text
+        );
         // Each Python quote is appended as a parenthesized fragment for tokens.
         assert!(p.text.contains("_quilt_q0 = ("), "fragment: {:?}", p.text);
         assert_eq!(p.fragment_ranges.len(), 2);
+    }
+
+    /// The ground prologue is emitted ahead of the source, `prologue_len` covers
+    /// exactly it, and it declares the `__q__` every placeholder resolves to.
+    #[test]
+    #[cfg(feature = "python")]
+    fn python_prologue_declares_the_placeholder() {
+        let meta = meta_adapter("py").unwrap();
+        let lang = language_adapter("py").unwrap();
+        let p = project("x = ↖1↗\n", meta, lang, &["py"]);
+
+        let prologue = meta.ground_prologue();
+        assert!(!prologue.is_empty(), "python must declare a prologue");
+        assert!(prologue.ends_with('\n'), "prologue must end in a newline");
+        assert_eq!(p.prologue_len, prologue.len());
+        assert!(p.text.starts_with(prologue), "text: {:?}", p.text);
+        // The source begins immediately after it, unmodified.
+        assert!(p.text[p.prologue_len..].starts_with("x = __q__()"));
+        // `__q__` is bound (not merely annotated) — an unassigned annotation
+        // makes pyright report every use as `Unbound`.
+        assert!(prologue.contains("__q__: _quilt_typing.Any = ..."));
+    }
+
+    /// Positions round-trip across the prologue: it shifts every virtual line
+    /// down by its own line count, and nothing else.
+    #[test]
+    #[cfg(feature = "python")]
+    fn prologue_shifts_lines_but_positions_round_trip() {
+        let meta = meta_adapter("py").unwrap();
+        let lang = language_adapter("py").unwrap();
+        let src = "first = 1\nsecond = ↖2↗\nthird = 3\n";
+        let p = project(src, meta, lang, &["py"]);
+        let enc = Encoding::Utf16;
+        let qi = LineIndex::new(src);
+
+        let shift = u32::try_from(meta.ground_prologue().lines().count()).unwrap();
+        assert!(shift > 0);
+
+        for (line, needle) in [(0u32, "first"), (2, "third")] {
+            let q = qi.position(src, src.find(needle).unwrap(), enc);
+            assert_eq!(q.line, line);
+            let v = p.to_virtual(src, &qi, enc, q).expect("ground maps");
+            assert_eq!(v.line, line + shift, "{needle} shifted by the prologue");
+            // …and back to exactly where it started.
+            assert_eq!(p.to_quilt(src, &qi, enc, v), q, "{needle} round-trips");
+        }
+    }
+
+    /// A diagnostic landing in the prologue is recognized as ours, including a
+    /// zero-width one (which `is_synthetic` cannot catch) — otherwise it would be
+    /// remapped onto the first line of the user's file.
+    #[test]
+    #[cfg(feature = "python")]
+    fn prologue_diagnostics_are_identified() {
+        let meta = meta_adapter("py").unwrap();
+        let lang = language_adapter("py").unwrap();
+        let p = project("x = 1\n", meta, lang, &["py"]);
+        let enc = Encoding::Utf16;
+
+        let at = |line, character| Position { line, character };
+        // Zero-width, inside the prologue: `is_synthetic` misses it by design.
+        let empty = LspRange {
+            start: at(0, 3),
+            end: at(0, 3),
+        };
+        assert!(!p.is_synthetic(enc, empty));
+        assert!(p.is_in_prologue(enc, empty));
+
+        // A real position in the user's code is not in the prologue.
+        let shift = u32::try_from(meta.ground_prologue().lines().count()).unwrap();
+        let user = LspRange {
+            start: at(shift, 0),
+            end: at(shift, 1),
+        };
+        assert!(!p.is_in_prologue(enc, user));
+    }
+
+    /// Rust declares no prologue, so its projection is untouched — the identity
+    /// property `pure_rust_is_identity` relies on.
+    #[test]
+    #[cfg(feature = "rust")]
+    fn rust_has_no_prologue() {
+        assert_eq!(meta_adapter("rs").unwrap().ground_prologue(), "");
+        assert_eq!(proj("fn main() {}\n").prologue_len, 0);
     }
 
     #[test]
@@ -793,11 +910,73 @@ mod tests {
         let src = "#!/usr/bin/env quilt\nx = ↖1↗\n";
         let p = project(src, meta, lang, &["py"]);
         // `#!` is already a comment in Python — it must stay, not become `//`.
+        // It now sits just after the prologue rather than at byte 0.
         assert!(
-            p.text.starts_with("#!/usr/bin/env"),
+            p.text[p.prologue_len..].starts_with("#!/usr/bin/env"),
             "shebang: {:?}",
             p.text
         );
+    }
+
+    /// The shebang rewrite is applied at the *source* start, not byte 0, so a
+    /// language that has both a prologue and `//` comments patches the shebang
+    /// rather than a byte of its own prologue. No shipped adapter combines the
+    /// two (Python has a prologue but `#` comments; Rust the reverse), so the
+    /// interaction is covered with a stub host.
+    #[test]
+    fn shebang_rewrite_accounts_for_the_prologue() {
+        struct Stub;
+        impl LanguageAdapter for Stub {
+            fn language_id(&self) -> &'static str {
+                "rust"
+            }
+            fn virtual_extension(&self) -> &'static str {
+                "rs"
+            }
+            fn server_command(&self) -> Option<(String, Vec<String>)> {
+                None
+            }
+            fn splice_placeholder(&self) -> &'static str {
+                "__q__"
+            }
+            fn wrap_fragment(&self, _n: usize) -> (String, String) {
+                (String::new(), String::new())
+            }
+            fn comment_syntax(&self) -> CommentSyntax {
+                CommentSyntax {
+                    line: "//",
+                    block_open: "/*",
+                    block_close: "*/",
+                }
+            }
+        }
+        impl MetaLanguageAdapter for Stub {
+            fn glyph_placeholder(&self) -> &'static str {
+                "__q__"
+            }
+            fn splice_block(&self) -> crate::adapters::SpliceBlock {
+                crate::adapters::SpliceBlock {
+                    open: "{ ",
+                    terminator: "; ",
+                    close: "}",
+                }
+            }
+            fn find_root(&self, _file: &std::path::Path) -> Option<std::path::PathBuf> {
+                None
+            }
+            fn ground_prologue(&self) -> &'static str {
+                "// prologue\n"
+            }
+        }
+
+        let src = "#!/usr/bin/env quilt\nfn main() {}\n";
+        let p = project(src, &Stub, &Stub, &["rs"]);
+        // The prologue survives intact...
+        assert!(p.text.starts_with("// prologue\n"), "text: {:?}", p.text);
+        // ...and the shebang after it became a comment, byte length preserved.
+        assert_eq!(&p.text[p.prologue_len..p.prologue_len + 2], "//");
+        assert_eq!(&p.text[p.prologue_len + 2..], &src[2..]);
+        assert_eq!(p.text.len(), p.prologue_len + src.len());
     }
 
     #[test]
