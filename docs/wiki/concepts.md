@@ -27,10 +27,26 @@ All Quilt operators are Unicode characters. The VS Code extension provides chord
 | `←`   | emit          | Append a term into the surrounding variadic block |
 | `⟨T⟩` | type          | Placeholder for `Arc<QTerm>` in bootstrap source  |
 | `⟨N⟩` | name          | Create an identifier node                         |
-| `\↑`  | escape-lift   | Literal `↑` in source (not a Quilt operator)      |
-| `\↓`  | escape-reduce | Literal `↓` in source (not a Quilt operator)      |
 
 Quilt-level line comments are written `⟨//⟩ ...` and block comments `⟨/*⟩ ... ⟨*/⟩`. They are stripped during parsing and never appear in the output.
+
+### Escaping a glyph
+
+Prefixing any operator glyph with `\` makes it literal text rather than a Quilt
+operator: `\↖ \↗ \↙ \↘ \↑ \↓ \← \⟨ \⟩`. This matters when the target language
+uses one of these characters itself — Lean spells monadic bind `←` and coercion
+`↑`, so a `do` block inside a `lean↖…↗` quote needs `\←` (or Lean's ASCII alias
+`<-`, which Quilt does not touch). The set lives in `node::GLYPHS` and must stay
+in sync with the character classes in `tree-sitter-quilt/grammar.js`.
+
+A backslash before anything else is *not* an escape and passes through verbatim,
+so a target-language `"\n"` needs no special handling.
+
+The escape belongs to Quilt's surface syntax and is consumed when the file is
+parsed: `\←` produces a real `←` in the `QTerm`, so the expanded output contains
+the bare glyph — which is exactly what the target language wants. Re-escaping on
+output happens only on the `Node` (Quilt-source) path, never on the `QTerm`
+(target-source) one. See `node::escape`.
 
 ## Quote and unquote
 

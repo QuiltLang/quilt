@@ -309,7 +309,8 @@ static bool ts_lex(TSLexer *lexer, TSStateId state) {
       if (lookahead != 0) ADVANCE(10);
       END_STATE();
     case 16:
-      if (lookahead == 0x2191 ||
+      if (lookahead == 0x2190 ||
+          lookahead == 0x2191 ||
           lookahead == 0x2193 ||
           (0x2196 <= lookahead && lookahead <= 0x2199) ||
           lookahead == 0x27e8 ||

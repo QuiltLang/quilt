@@ -132,6 +132,72 @@ fn expand_tactic_unquote() -> Result<()> {
     Ok(())
 }
 
+/* ------------------------------ do-notation ------------------------------ */
+
+/// Lean spells monadic bind `←`, which is also Quilt's *emit* glyph, so a bare
+/// `←` in a quote is consumed as an operator and never reaches the Lean parser
+/// (issue #141). Escaping it as `\←` hands the Lean parser a real bind.
+///
+/// Note this is *not* a source-level round-trip: `coparse` of a `QTerm` emits
+/// **target** source (Lean), where the bind must be a literal `←`. The escape
+/// belongs to Quilt's surface syntax and is consumed when it is parsed — see
+/// `node::escape`, which re-escapes only on the `Node` (Quilt-source) path.
+#[test]
+fn do_block_escaped_bind() -> Result<()> {
+    let mut omni = Omni::default();
+    let src = indoc! {r#"
+        let m = lean↖def main : IO Unit := do
+          let stdout \← IO.getStdout
+          stdout.putStrLn "hi"↗;"#};
+    let q = omni.parse(src)?;
+    let out = q.coparse();
+    // The escape is gone and a genuine Lean bind is in the tree.
+    assert!(out.contains("let stdout ← IO.getStdout"), "{out}");
+    assert!(!out.contains(r"\←"), "{out}");
+    // The bind was not swallowed as an emit, so no hole was left behind.
+    assert!(!out.contains("__QUILT_HOLE__"), "{out}");
+    Ok(())
+}
+
+/// The same fragment expands to Rust builder calls carrying the real `←`, and
+/// the `do` block survives as a `do` block rather than collapsing into a hole.
+#[test]
+fn expand_do_block_escaped_bind() -> Result<()> {
+    let out = expand(indoc! {r#"
+        let m = lean↖def main : IO Unit := do
+          let x \← readInput
+          pure ()↗;"#})?;
+    assert!(out.contains(r#"sym("←")"#), "{out}");
+    assert!(out.contains("do_block"), "{out}");
+    assert!(!out.contains("__QUILT_HOLE__"), "{out}");
+    Ok(())
+}
+
+/// Lean's ASCII alias `<-` needs no escape — it holds no special meaning to
+/// Quilt — so a do block written with it round-trips through the Quilt layer
+/// byte for byte. This is the spelling the examples use.
+#[test]
+fn roundtrip_do_block_ascii_bind() -> Result<()> {
+    roundtrip(indoc! {r#"
+        let m = lean↖def main : IO Unit := do
+          let stdout <- IO.getStdout
+          stdout.putStrLn "hi"↗;"#})?;
+    Ok(())
+}
+
+/// A hole inside a `do` block: do-elements are ordinary terms, so `↙…↘` reaches
+/// the bound expression alongside an escaped bind.
+#[test]
+fn expand_do_block_unquote() -> Result<()> {
+    let out = expand(indoc! {r#"
+        let m = lean↖def main : IO Unit := do
+          let x \← ↙action↘
+          pure ()↗;"#})?;
+    assert!(out.contains("action"), "{out}");
+    assert!(out.contains(r#"sym("←")"#), "{out}");
+    Ok(())
+}
+
 /* ------------------------------ lifting `↑` ------------------------------ */
 
 /// `↑` inside a Lean quote lifts a Rust value into a *Lean* literal via

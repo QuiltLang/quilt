@@ -88,15 +88,15 @@
     },
     "_char": {
       "type": "PATTERN",
-      "value": "[^\\\\↖↗↙↘↑↓⟨⟩\\n]"
+      "value": "[^\\\\↖↗↙↘↑↓←⟨⟩\\n]"
     },
     "_non_escape": {
       "type": "PATTERN",
-      "value": "\\\\[^↖↗↙↘↑↓⟨⟩]"
+      "value": "\\\\[^↖↗↙↘↑↓←⟨⟩]"
     },
     "escape": {
       "type": "PATTERN",
-      "value": "\\\\[↖↗↙↘↑↓⟨⟩]"
+      "value": "\\\\[↖↗↙↘↑↓←⟨⟩]"
     },
     "newline": {
       "type": "PATTERN",
