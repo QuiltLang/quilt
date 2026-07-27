@@ -72,7 +72,7 @@ fn main() {
     build("rust");
     build("python");
 
-    for lang in ["typescript", "wgsl", "bash", "html", "zsh", "nix"] {
+    for lang in ["typescript", "wgsl", "bash", "html", "zsh", "nix", "lean"] {
         if feature(lang) {
             build(lang);
         }

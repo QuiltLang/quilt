@@ -7,9 +7,9 @@
 //!   WGSL). It knows how to wrap a fragment so its server can parse it, what
 //!   server to talk to, and how to mask holes inside a fragment.
 //! * [`MetaLanguageAdapter`] — a language strong enough to be the **ground /
-//!   host** that drives a whole `.quilt` file (Rust, Python — *not* WGSL). It
-//!   knows how to reabsorb stage-0 splices as ground code and where the project
-//!   root is.
+//!   host** that drives a whole `.quilt` file (Rust, Python, Lean — *not*
+//!   WGSL). It knows how to reabsorb stage-0 splices as ground code and where
+//!   the project root is.
 //!
 //! A host language (Rust) implements both and is registered in both registries;
 //! a target-only language (WGSL) implements only [`LanguageAdapter`]. A file's
@@ -100,7 +100,17 @@ pub trait MetaLanguageAdapter: Send + Sync {
 pub fn is_known_lang(key: &str) -> bool {
     matches!(
         key,
-        "rs" | "rust" | "py" | "python" | "txt" | "text" | "wgsl" | "html" | "bash" | "zsh"
+        "rs" | "rust"
+            | "py"
+            | "python"
+            | "txt"
+            | "text"
+            | "wgsl"
+            | "html"
+            | "bash"
+            | "zsh"
+            | "lean"
+            | "lean4"
     )
 }
 
@@ -155,6 +165,8 @@ pub fn language_adapter(key: &str) -> Option<&'static dyn LanguageAdapter> {
         "bash" => Some(&BASH),
         #[cfg(feature = "zsh")]
         "zsh" => Some(&ZSH),
+        #[cfg(feature = "lean")]
+        "lean" | "lean4" => Some(&LEAN),
         _ => None,
     }
 }
@@ -166,6 +178,8 @@ pub fn meta_adapter(key: &str) -> Option<&'static dyn MetaLanguageAdapter> {
         "rs" | "rust" => Some(&RUST),
         #[cfg(feature = "python")]
         "py" | "python" => Some(&PYTHON),
+        #[cfg(feature = "lean")]
+        "lean" | "lean4" => Some(&LEAN),
         _ => None,
     }
 }
@@ -178,6 +192,11 @@ pub fn meta_adapter(key: &str) -> Option<&'static dyn MetaLanguageAdapter> {
 /// Languages with no downstream server (html, bash, zsh) are still listed:
 /// their fragments are projected so the in-process tree-sitter highlighter
 /// ([`crate::tshl`]) can produce semantic tokens, but nothing is `didOpen`ed.
+///
+/// Lean is listed *despite* being a host, because `lean↖…↗` most often appears
+/// inside a Rust or Python ground file, where it is a genuine embedded target.
+/// When Lean is itself the ground language the caller skips it here, so its
+/// quotes ride the merged ground projection like any other host's.
 pub fn embedded_adapters() -> Vec<&'static dyn LanguageAdapter> {
     let adapters: &[&'static dyn LanguageAdapter] = &[
         #[cfg(feature = "wgsl")]
@@ -188,6 +207,8 @@ pub fn embedded_adapters() -> Vec<&'static dyn LanguageAdapter> {
         &BASH,
         #[cfg(feature = "zsh")]
         &ZSH,
+        #[cfg(feature = "lean")]
+        &LEAN,
     ];
     adapters.to_vec()
 }
@@ -555,12 +576,195 @@ impl LanguageAdapter for ShellAdapter {
     }
 }
 
+/* --------------------------------- Lean --------------------------------- */
+
+#[cfg(feature = "lean")]
+static LEAN: LeanAdapter = LeanAdapter;
+
+/// The Lean 4 adapter — a *host* language like Rust and Python, so it
+/// implements both traits: `lean↖…↗` quotes are analyzed as embedded
+/// fragments, and a `.lean.quilt` file gets a ground projection driven by
+/// `langs::lean::meta`.
+#[cfg(feature = "lean")]
+pub struct LeanAdapter;
+
+#[cfg(feature = "lean")]
+impl LanguageAdapter for LeanAdapter {
+    fn language_id(&self) -> &'static str {
+        "lean4"
+    }
+    fn virtual_extension(&self) -> &'static str {
+        "lean"
+    }
+    fn server_command(&self) -> Option<(String, Vec<String>)> {
+        // Overridable via `QUILT_LSP_LEAN_SERVER` (whitespace-separated).
+        // Defaults to `lean --server`; inside a Lake package `lake serve` is
+        // usually the better choice, which is what the override is for.
+        let cmd = match std::env::var("QUILT_LSP_LEAN_SERVER") {
+            Ok(s) if !s.trim().is_empty() => {
+                let mut parts = s.split_whitespace().map(str::to_string);
+                let program = parts.next().unwrap_or_else(|| "lean".to_string());
+                (program, parts.collect())
+            }
+            _ => ("lean".to_string(), vec!["--server".to_string()]),
+        };
+        Some(cmd)
+    }
+    fn splice_placeholder(&self) -> &'static str {
+        // A nested `↙…↘` splice sits in term position. Lean's own `_`
+        // placeholder is the natural fit: it elaborates anywhere a term is
+        // expected, so the fragment stays parseable (and usually typeable).
+        "_"
+    }
+    fn wrap_fragment(&self, _n: usize) -> (String, String) {
+        // A Lean quote is already a sequence of commands or a term; there is no
+        // enclosing declaration to place it in, so no wrapper is added.
+        (String::new(), String::new())
+    }
+    fn comment_syntax(&self) -> CommentSyntax {
+        CommentSyntax {
+            line: "--",
+            block_open: "/-",
+            block_close: "-/",
+        }
+    }
+    fn publishes_diagnostics(&self) -> bool {
+        // A quoted Lean fragment is analyzed without the imports and
+        // `variable`s of the module it will land in, so `unknown identifier`
+        // noise would swamp anything real. Highlighting and hover still work.
+        // The same applies to the ground projection, whose quotes are replaced
+        // by the placeholder lists of `splice_block`.
+        false
+    }
+}
+
+#[cfg(feature = "lean")]
+impl MetaLanguageAdapter for LeanAdapter {
+    fn glyph_placeholder(&self) -> &'static str {
+        // A ground-level `↑ ↓ ← ⟨T⟩ ⟨N⟩` is masked by this identifier, which is
+        // a plain Lean identifier and so parses in any term position.
+        "__q__"
+    }
+
+    fn splice_block(&self) -> SpliceBlock {
+        // A list literal, valid in term position: `[]` for a quote with no
+        // ground splices, `[a, b, ]` when stage-0 `↙…↘` splices are reabsorbed
+        // (so the Lean server resolves the ground names they reference). Lean
+        // accepts the trailing comma.
+        //
+        // A list is also the honest shape for this meta-language: the string
+        // model makes every spliced body a `String`, so what the expander
+        // really builds is a `List String` joined by `String.intercalate` —
+        // unlike Rust, whose splices are statements in a block.
+        SpliceBlock {
+            open: "[",
+            terminator: ", ",
+            close: "]",
+        }
+    }
+
+    fn find_root(&self, file: &Path) -> Option<PathBuf> {
+        // Root at the enclosing Lake package so the server picks up the
+        // package's `lakefile` and build environment; otherwise at the file's
+        // own directory, which `is_detached_root` then reports as detached.
+        let mut dir = file.parent()?.to_path_buf();
+        let fallback = dir.clone();
+        loop {
+            if is_lake_package(&dir) {
+                return Some(dir);
+            }
+            if !dir.pop() {
+                return Some(fallback);
+            }
+        }
+    }
+
+    fn is_detached_root(&self, root: &Path) -> bool {
+        // No lakefile: the file is analyzed standalone. `lean --server` copes,
+        // but only Lean's own core library will resolve — no Mathlib, no
+        // package deps.
+        !is_lake_package(root)
+    }
+}
+
+/// Whether `dir` is the root of a Lake package (Lean's build tool). Lake
+/// accepts either the TOML or the Lean-DSL spelling of its manifest.
+#[cfg(feature = "lean")]
+fn is_lake_package(dir: &Path) -> bool {
+    dir.join("lakefile.toml").exists() || dir.join("lakefile.lean").exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn url(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    #[test]
+    #[cfg(feature = "lean")]
+    fn lean_is_an_embedded_target() {
+        // Both spellings resolve, and the chain parser accepts them so
+        // `thm.lean.rs.quilt` projects its Lean quotes.
+        assert!(language_adapter("lean").is_some());
+        assert!(language_adapter("lean4").is_some());
+        assert_eq!(language_adapter("lean").unwrap().language_id(), "lean4");
+        assert_eq!(
+            language_adapter("lean").unwrap().virtual_extension(),
+            "lean"
+        );
+        assert!(embedded_adapters()
+            .iter()
+            .any(|a| a.language_id() == "lean4"));
+        assert_eq!(
+            lang_chain(&url("file:///x/thm.lean.rs.quilt")),
+            ["rs", "lean"]
+        );
+    }
+
+    /// Lean is also a *host*: a `.lean.quilt` file resolves a
+    /// `MetaLanguageAdapter`, so it gets a ground projection rather than
+    /// degrading to quilt-only syntactic features.
+    #[test]
+    #[cfg(feature = "lean")]
+    fn lean_is_a_host() {
+        assert!(meta_adapter("lean").is_some());
+        assert!(meta_adapter("lean4").is_some());
+        assert_eq!(
+            ground_lang(&url("file:///x/gen.lean.quilt")).as_deref(),
+            Some("lean")
+        );
+
+        // The splice block is a Lean list literal — the honest shape for a
+        // string-based meta, and valid in term position both empty and filled.
+        let b = meta_adapter("lean").unwrap().splice_block();
+        assert_eq!((b.open, b.terminator, b.close), ("[", ", ", "]"));
+    }
+
+    /// `find_root` walks up to the enclosing Lake package, and reports a
+    /// directory without a lakefile as detached.
+    #[test]
+    #[cfg(feature = "lean")]
+    fn lean_roots_at_the_lake_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = tmp.path().join("pkg");
+        let nested = pkg.join("Pkg").join("Sub");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        let adapter = meta_adapter("lean").unwrap();
+        let file = nested.join("Thing.lean.quilt");
+
+        // No lakefile anywhere: root at the file's own directory, detached.
+        let root = adapter.find_root(&file).unwrap();
+        assert_eq!(root, nested);
+        assert!(adapter.is_detached_root(&root));
+
+        // With a lakefile at the package root, root there and not detached.
+        std::fs::write(pkg.join("lakefile.toml"), "name = \"pkg\"\n").unwrap();
+        let root = adapter.find_root(&file).unwrap();
+        assert_eq!(root, pkg);
+        assert!(!adapter.is_detached_root(&root));
     }
 
     #[test]

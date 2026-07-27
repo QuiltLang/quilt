@@ -71,6 +71,7 @@ grammar!(
     LANGUAGE_TYPESCRIPT,
     tree_sitter_typescript
 );
+grammar!("lean", lean, LANGUAGE, tree_sitter_lean, highlights);
 grammar!("wgsl", wgsl, LANGUAGE, tree_sitter_wgsl);
 grammar!("bash", bash, LANGUAGE, tree_sitter_bash, highlights);
 grammar!("html", html, LANGUAGE, tree_sitter_html, highlights);

@@ -401,6 +401,7 @@ fn header_comment(filename: &str) -> &'static str {
         .and_then(|e| e.to_str())
     {
         Some("py" | "nix" | "bash" | "zsh" | "sh") => "#",
+        Some("lean") => "--",
         _ => "//!",
     }
 }
