@@ -1,0 +1,123 @@
+#!/usr/bin/env quilt
+//! Generate Lean 4 *proofs*: theorems whose tactic scripts are emitted one
+//! tactic at a time, with the number of steps decided at generation time.
+//!
+//! A `by` block is a Variadic container -- like `do`, and unlike a `match`'s
+//! arms or an `inductive`'s constructors -- so tactics can be *emitted* into
+//! it with the postfix arrow. That is the whole point of this example: the
+//! proof script is not a string being concatenated, it is a sequence of parsed
+//! Lean tactic terms becoming children of the `by` node.
+//!
+//! What makes it worth doing is that both halves of each theorem come from the
+//! same Rust data:
+//!
+//!   * the **statement** -- the chain `bump4 (bump3 (bump2 (bump1 x)))` and
+//!     the constant `x + 10` it collapses to -- is folded over the increment
+//!     table, with the total summed in Rust and lifted into a Lean literal; and
+//!   * the **proof** -- one `unfold` per generated definition, closed by a
+//!     single `omega` -- is emitted from that same table.
+//!
+//! So the script length tracks the schema. Add a row to `increments` and the
+//! chain grows, the constant changes, and the proof grows by one `unfold`,
+//! with no line edited by hand. If the lifted constant and the definitions
+//! ever disagreed, `omega` would fail and the generated file would not
+//! compile -- the generator cannot quietly emit a false theorem.
+//!
+//! `unfold` rather than `simp only` is deliberate: `simp` normalises the
+//! arithmetic as it goes and closes the goal early, which would leave the
+//! final `omega` with no goals ("No goals to be solved"). `unfold` does the
+//! rewriting and nothing else, so the closing tactic stays meaningful.
+//!
+//! Verify with the real toolchain: run this file, then `lean` the output.
+use quilt::prelude::*;
+
+/// A Lean identifier term, for splicing into name position.
+fn ident(s: &str) -> Arc<QTerm> {
+    leaf("identifier", s)
+}
+
+/// Fold `names` into the nested application `last (… (first arg))`.
+///
+/// The innermost call takes `arg` bare -- it is an atom, so parenthesising it
+/// would only add noise -- and each wrap after that parenthesises the
+/// application it wraps, which is what Lean's left-associative application
+/// requires.
+fn apply_chain(names: &[String], arg: Arc<QTerm>) -> Arc<QTerm> {
+    let first = ident(&names[0]);
+    let mut chain = lean↖↙first↘ ↙arg↘↗;
+    for name in &names[1..] {
+        let f = ident(name);
+        chain = lean↖↙f↘ (↙chain↘)↗;
+    }
+    chain
+}
+
+fn main() -> Result<()> {
+    // The chain to generate, fixed at generation time: bump1 adds 1, and so on.
+    let increments = [1u32, 2, 3, 4];
+
+    let names: Vec<String> = (1..=increments.len()).map(|i| format!("bump{i}")).collect();
+    let total: u32 = increments.iter().sum();
+
+    let mut decls: Vec<String> = Vec::new();
+
+    // One `def` per increment.
+    for (name, k) in names.iter().zip(increments) {
+        let f = ident(name);
+        decls.push(lean↖def ↙f↘ (x : Nat) : Nat := x + ↙k.↑↘↗.coparse());
+    }
+
+    // The nested application `bumpN (… (bump1 x))`, folded outward from the
+    // argument so the emitted statement is already flat. The innermost call
+    // takes a bare atom, so it is built without parentheses; every wrap after
+    // that parenthesises the application it is wrapping.
+    let chain = apply_chain(&names, lean↖x↗);
+
+    // The proof script, emitted into the `by` block: one `unfold` per
+    // definition, in the order they must be peeled, then `omega` to finish.
+    // Building it twice (once per theorem) keeps each `by` block's children
+    // distinct -- a term is emitted into exactly one parent.
+    let value_thm = lean↖theorem bump_chain (x : Nat) : ↙chain↘ = x + ↙total.↑↘ := by
+        ↙{
+            for name in &names {
+                let f = ident(name);
+                lean↖unfold ↙f↘↗.←;
+                NL.←;
+            }
+            lean↖omega↗.←;
+        }↘↗;
+    decls.push(value_thm.coparse());
+
+    // The same emitted script proving a different statement -- the chain is
+    // increasing. Same tactics, so the generator reuses the shape verbatim.
+    let bound_thm = lean↖theorem bump_chain_ge (x : Nat) : x ≤ ↙chain↘ := by
+        ↙{
+            for name in &names {
+                let f = ident(name);
+                lean↖unfold ↙f↘↗.←;
+                NL.←;
+            }
+            lean↖omega↗.←;
+        }↘↗;
+    decls.push(bound_thm.coparse());
+
+    // A `main` that exercises the chain, so the generated file is runnable as
+    // well as checkable. `x` is not in scope here, so the same fold is run
+    // again rooted at a literal `0` -- cheaper and clearer than substituting
+    // into the finished term.
+    //
+    // The splice is parenthesised: `applied` is an application, and Lean's
+    // application is left-associative, so a bare `toString ↙applied↘` would
+    // read as `toString bump4 (…)` -- two arguments to `toString` -- rather
+    // than `toString` of the whole chain. Quilt splices a term, not a
+    // precedence level, so the surrounding syntax has to say what it means.
+    let applied = apply_chain(&names, lean↖0↗);
+    let main = lean↖def main : IO Unit := do
+        ↙{
+            lean↖IO.println ("chain 0 = " ++ toString (↙applied↘))↗.←;
+        }↘↗;
+    decls.push(main.coparse());
+
+    println!("{}", decls.join("\n\n"));
+    Ok(())
+}
