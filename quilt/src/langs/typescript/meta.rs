@@ -69,12 +69,12 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         }
     }
 
-    fn name_str(&self) -> &'static str {
-        "name"
+    fn name_str(&self) -> Result<&'static str> {
+        Ok("name")
     }
 
-    fn type_str(&self) -> &'static str {
-        "QTerm"
+    fn type_str(&self) -> Result<&'static str> {
+        Ok("QTerm")
     }
 
     fn emit_str(&self) -> Result<&'static str> {

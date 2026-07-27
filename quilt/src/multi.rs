@@ -80,10 +80,10 @@ pub trait MetaLanguages {
         self.get(lang)?.emit_str()
     }
     fn type_str(&self, lang: &str) -> Result<&'static str> {
-        Ok(self.get(lang)?.type_str())
+        self.get(lang)?.type_str()
     }
     fn name_str(&self, lang: &str) -> Result<&'static str> {
-        Ok(self.get(lang)?.name_str())
+        self.get(lang)?.name_str()
     }
 }
 

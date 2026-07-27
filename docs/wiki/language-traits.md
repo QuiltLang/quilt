@@ -145,6 +145,15 @@ The five special glyphs in `.quilt` source are translated to language-specific s
 
 The Bootstrap meta-language has its own spellings for bootstrapping `meta.rs`.
 
+All five accessors return `Result`, because not every meta-language has a
+spelling for every glyph: a **string-based** meta (nix, lean) has no `b_`
+accumulator and no `QTerm` runtime, so `←` and `↓` have none, and untyped Nix
+has none for `⟨T⟩`. Returning an error there is what keeps the default
+`__EMIT__`/`__REDUCE__`/`__TYPE__` placeholders from leaking into generated
+code. A meta that *does* have a meaning for a glyph should spell it rather than
+fail — in the string model a fragment is a string, so lean's `⟨T⟩` is `String`
+and `⟨N⟩` is the host's identity (`id`, and `toString` for nix).
+
 ---
 
 ## `TSLanguage` — the tree-sitter helper

@@ -117,13 +117,19 @@ pub trait MetaLanguage {
     fn emit_str(&self) -> Result<&'static str> {
         Ok(EMIT)
     }
+    /// The spelling `⟨T⟩` expands to: the type of a quilt term in this host's
+    /// meta-code (`Arc<QTerm>` for Rust). `Result` because a host language
+    /// without a way to write types has no spelling for it.
     #[inline]
-    fn type_str(&self) -> &'static str {
-        TYPE
+    fn type_str(&self) -> Result<&'static str> {
+        Ok(TYPE)
     }
+    /// The spelling `⟨N⟩` expands to: the function taking a string to an
+    /// identifier term (`name` for Rust). In a string-based meta a name is its
+    /// own text, so this is the host's identity function.
     #[inline]
-    fn name_str(&self) -> &'static str {
-        NAME
+    fn name_str(&self) -> Result<&'static str> {
+        Ok(NAME)
     }
 }
 
@@ -198,11 +204,11 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
         (**self).emit_str()
     }
 
-    fn type_str(&self) -> &'static str {
+    fn type_str(&self) -> Result<&'static str> {
         (**self).type_str()
     }
 
-    fn name_str(&self) -> &'static str {
+    fn name_str(&self) -> Result<&'static str> {
         (**self).name_str()
     }
 }

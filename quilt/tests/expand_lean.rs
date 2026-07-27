@@ -267,3 +267,50 @@ fn host_emit_deferred_in_quote() -> Result<()> {
     );
     Ok(())
 }
+
+/// `⟨T⟩` names the type of a generated fragment. In the string model that is
+/// the host's own `String` — the annotation `examples/lean_host.lean.quilt`
+/// currently writes by hand.
+#[test]
+fn host_type_is_string() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : ⟨T⟩ := lean↖x↗")?,
+        r#"def gen : String := s!"x""#
+    );
+    Ok(())
+}
+
+/// `⟨N⟩` builds an identifier from a string. A fragment *is* a string here, so
+/// the spelling is Lean's identity. Application is juxtaposition, exactly as
+/// for `↑`/`toString` — `⟨N⟩ v`, not `⟨N⟩(v)`.
+#[test]
+fn host_name_is_identity() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : String := lean↖def ↙⟨N⟩ v↘ : Nat := 0↗")?,
+        r#"def gen : String := s!"def {id v} : Nat := 0""#
+    );
+    Ok(())
+}
+
+/// `↓` compiles a term and deserializes the result back, which needs the
+/// `QTerm` runtime this host doesn't have — so a *ground* `↓` fails loudly
+/// instead of leaking `__REDUCE__`, pointing at ordinary Lean evaluation.
+#[test]
+fn host_reduce_unsupported() {
+    let msg = host_expand("def gen : String := ↓lean↖1 + 1↗")
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("lean can't reduce"), "{msg}");
+    assert!(msg.contains("↙…↘"), "{msg}");
+}
+
+/// Like `←`, a `↓` at sky depth belongs to a later stage and is still deferred
+/// as its glyph.
+#[test]
+fn host_reduce_deferred_in_quote() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : String := lean↖def f := ↓↗")?,
+        r#"def gen : String := s!"def f := ↓""#
+    );
+    Ok(())
+}

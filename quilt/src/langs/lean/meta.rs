@@ -93,4 +93,26 @@ impl MetaLanguage for LeanMetaLanguage {
              build sequences functionally instead (`List.map` + `String.intercalate`)"
         )
     }
+
+    /// No spelling: `↓` compiles a term and deserializes the result back, which
+    /// needs the `QTerm` runtime this host doesn't have. Generation-time
+    /// evaluation is ordinary Lean — run it outside the quote and splice the
+    /// value with `↙…↘`.
+    fn reduce_str(&self, target: &str) -> Result<&'static str> {
+        miette::bail!(
+            "lean can't reduce `{target}↓`: the string-based meta has no `QTerm` runtime to \
+             evaluate a fragment — compute the value in ordinary Lean and splice it with `↙…↘`"
+        )
+    }
+
+    /// A generated fragment *is* a `String` here, so that is the type `⟨T⟩`
+    /// names — the annotation `examples/lean_host.lean.quilt` writes by hand.
+    fn type_str(&self) -> Result<&'static str> {
+        Ok("String")
+    }
+
+    /// In the string model a name is its own text, so `⟨N⟩` is Lean's identity.
+    fn name_str(&self) -> Result<&'static str> {
+        Ok("id")
+    }
 }
