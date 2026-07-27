@@ -547,13 +547,31 @@ mod tests {
         // Quote-body tokens land back inside `↖1 + 2↗` on line 3.
         assert!(texts.contains(&(3, "1".to_string())), "{texts:?}");
         assert!(texts.contains(&(3, "2".to_string())), "{texts:?}");
-        // Nothing maps onto the quote glyphs or the synthetic `()` placeholder.
+        // Nothing maps onto the quote glyphs or the synthetic placeholder.
         assert!(
             !texts
                 .iter()
                 .any(|(_, s)| s.contains('↖') || s.contains('↗')),
             "{texts:?}"
         );
+        // The synthetic ground prologue must contribute no tokens. Its keywords
+        // (`import`, `typing`) highlight in the virtual document, but both ends
+        // of every such span collapse to the same quilt anchor, so `push_tok`
+        // drops them. Were they kept they would all pile onto quilt line 0.
+        assert!(proj.prologue_len > 0, "python declares a prologue");
+        assert!(
+            !texts.iter().any(|(_, s)| s == "import" || s == "typing"),
+            "prologue leaked tokens: {texts:?}"
+        );
+        // Line 0 carries only the tokens of the real first line (`def f(x):`).
+        let line0: Vec<&String> = texts
+            .iter()
+            .filter(|(l, _)| *l == 0)
+            .map(|(_, s)| s)
+            .collect();
+        assert!(line0
+            .iter()
+            .all(|s| src.lines().next().unwrap().contains(*s)));
     }
 
     #[test]

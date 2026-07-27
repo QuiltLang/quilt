@@ -276,6 +276,11 @@ struct EmbeddedFragment {
     proj: Projection,
     /// Synthetic file URI this fragment is opened under to the embedded server.
     virt_uri: String,
+    /// The fragment language's [`LanguageAdapter::publishes_diagnostics`],
+    /// captured when the fragment is built. Recorded here rather than looked up
+    /// later because `lang` is a `language_id`, which is not always a registry
+    /// key `language_adapter` accepts.
+    publishes_diagnostics: bool,
 }
 
 /// Look up the running server for `uri`'s workspace without spawning.
@@ -466,6 +471,7 @@ impl Inner {
                     quilt_range: fd.quilt_range,
                     proj: fd.proj,
                     virt_uri,
+                    publishes_diagnostics: lang.publishes_diagnostics(),
                 });
             }
         }
@@ -682,6 +688,13 @@ impl Inner {
 
     /// Remap a fragment's raw downstream diagnostics into quilt coordinates,
     /// dropping any that fall on a masked splice placeholder.
+    ///
+    /// A fragment language that opts out of diagnostics reports an empty list
+    /// rather than `None`, so any diagnostics published for it before the opt-out
+    /// applied are cleared instead of left stale. This check used to be missing
+    /// here, which meant `LanguageAdapter::publishes_diagnostics` was honoured
+    /// only for a file's *ground* language: a `lean↖…↗` quote inside a
+    /// `.rs.quilt` file still published its (spurious) fragment diagnostics.
     fn translate_embedded_diags(
         &self,
         quilt_uri: &Url,
@@ -692,6 +705,9 @@ impl Inner {
         let doc = self.docs.get(quilt_uri)?;
         let frags = self.embedded_frags.get(quilt_uri)?;
         let frag = frags.iter().find(|f| f.virt_uri == virt)?;
+        if !frag.publishes_diagnostics {
+            return Some(Vec::new());
+        }
         let mut out = Vec::with_capacity(raw.len());
         for d in raw {
             let Ok(mut diag) = serde_json::from_value::<Diagnostic>(d) else {
@@ -980,9 +996,8 @@ impl Inner {
         let Some(quilt_uri) = self.virt_to_quilt.get(virt).map(|r| r.clone()) else {
             return;
         };
-        // A language whose ground projection uses lossy placeholders opts out of
-        // diagnostics (e.g. Python: `()` placeholders mistype quote-consuming
-        // lines, so pyright errors would be spurious).
+        // A language whose projection can't be made faithful enough opts out of
+        // diagnostics entirely (see `LanguageAdapter::publishes_diagnostics`).
         let publishes = self
             .docs
             .get(&quilt_uri)
@@ -1021,9 +1036,13 @@ impl Inner {
                 let Ok(mut diag) = serde_json::from_value::<Diagnostic>(d) else {
                     continue;
                 };
-                // Drop diagnostics on placeholder text or inside appended quote
-                // fragments (their wrapping makes diagnostics unreliable).
-                if proj.is_synthetic(enc, diag.range) || proj.is_in_fragment(enc, diag.range) {
+                // Drop diagnostics on placeholder text, inside appended quote
+                // fragments (their wrapping makes diagnostics unreliable), or
+                // inside the synthetic prologue (our own scaffolding).
+                if proj.is_synthetic(enc, diag.range)
+                    || proj.is_in_fragment(enc, diag.range)
+                    || proj.is_in_prologue(enc, diag.range)
+                {
                     continue;
                 }
                 diag.range = proj.to_quilt_range(&doc.text, &doc.line_index, enc, diag.range);

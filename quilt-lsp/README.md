@@ -19,9 +19,9 @@ Implemented:
   between the `.quilt` file and the projected `.rs` virtual document.
 - **Python as a ground language** via a downstream Python server (pyright by
   default, overridable with `QUILT_LSP_PYTHON_SERVER`): hover, go-to-definition,
-  and completion for `.py.quilt` files. Downstream diagnostics are suppressed
-  for now — the projection's `()` quote placeholders mistype ground lines that
-  consume a quoted value, so pyright errors would be spurious.
+  completion, and diagnostics for `.py.quilt` files. Quote placeholders are
+  typed by a synthetic *ground prologue* (see below), so ground lines that
+  consume a quoted value no longer mistype.
 - **Semantic-token highlighting**, including inside `↖…↗` quotes: each quoted
   Rust fragment is appended to the virtual document (wrapped in `fn _quilt_qN`)
   so rust-analyzer tokenizes it; tokens are remapped back onto the quote. When
@@ -40,9 +40,66 @@ file URI (`foo.rs`) as an overlay, so it resolves inside the real cargo project.
 Diagnostics inside appended quote fragments are suppressed (their wrapping makes
 them unreliable); their tokens are kept for highlighting.
 
+### The ground prologue
+
+A placeholder that merely *parses* is not enough for diagnostics: the downstream
+server still has to accept the ground lines that consume it.
+`MetaLanguageAdapter::ground_prologue` prepends synthetic declarations to the
+virtual document for exactly that. Python declares
+
+```python
+# pyright: reportWildcardImportFromLibrary=false
+import typing as _quilt_typing
+__q__: _quilt_typing.Any = ...
+```
+
+and projects each quote to `__q__(…)`, carrying any stage-0 `↙…↘` splices as
+arguments. `Any` covers every position a placeholder appears in — called
+(`↑(x)`, `⟨N⟩(…)`, the splice block), attribute base (`t.↓`), operand, and bare
+name. Rust needs no prologue (its `__q__` is an unresolved name, and diagnostics
+on it land on synthetic text and are dropped).
+
+The prologue is one synthetic span at the head of the document, so positions map
+correctly by construction: it shifts virtual lines by its own length and nothing
+else. Diagnostics landing inside it are dropped
+(`Projection::is_in_prologue` — checked separately from `is_synthetic`, which by
+design only catches non-empty spans).
+
+Measured on the seven `.py.quilt` files in `examples/` (pyright 1.1.x, `quilt`
+module built): zero published diagnostics, down from one mistype per
+quote-consuming line, while genuine ground errors still surface.
+
+### Why Lean opts out
+
+`LeanAdapter::publishes_diagnostics` is `false`, and unlike Python this is not a
+placeholder-typing problem that a prologue can fix. Measured against
+`examples/lean_specialize.rs.quilt` (6 Lean quotes, Lean 4.32.1), all 6
+fragments error and none of the errors is a missing `import` — so supplying the
+enclosing module's imports/`variable`s, the obvious first guess, addresses none
+of the real causes. Two of the causes are tractable (a quoted *term* is not a
+valid Lean file; `_` is illegal in name position and unsolvable in term
+position). Two are not:
+
+- **Free variables bound by the generated context.** `body()` returns
+  `lean↖x↗`, where `x` is bound by the `def ↙name↘ (x : Nat)` assembled in a
+  *different* function. A `variable (x : Nat)` prologue does fix it, but nothing
+  in the source says the fragment lands in that binder — host control flow
+  decides at generation time.
+- **Spliced names in applied-head position.** `↙name↘ x` needs a placeholder
+  Lean will apply, and no type-agnostic term works: `sorry`, an
+  `axiom q : ∀ {α : Sort u}, α`, and an `opaque` all give *"Function expected at
+  q but this term has type ?m"*. Only the exact arrow type
+  (`variable {q : Nat → Nat}`) works, and that type comes from the host program.
+
+Fixing only the tractable two leaves 4 of 6 fragments spuriously red, so Lean
+stays opted out. Highlighting, hover and go-to-definition are unaffected.
+
 Not yet implemented (designed-for extension points): hover/definition for ground
 code *spliced into* quotes via `↙…↘`, the `↙name↘`→ground go-to-definition, and
-Python ground diagnostics (needs a type-aware quote placeholder).
+diagnostics for a `.lean.quilt` *ground* projection (its `[…]` quote placeholder
+mistypes where a `String` is wanted — the same class of problem the Python
+prologue solved, but the fix needs a per-body wrapper so the placeholder can
+mirror Lean's `s!"{a}{b}"` interpolation rather than a list).
 
 ## Architecture
 
