@@ -447,7 +447,7 @@ impl MetaLanguage for OmniMetaLanguage {
         self.inner().reduce_str(target)
     }
 
-    fn emit_str(&self) -> &'static str {
+    fn emit_str(&self) -> Result<&'static str> {
         self.inner().emit_str()
     }
 

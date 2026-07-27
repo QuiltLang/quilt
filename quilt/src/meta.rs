@@ -109,9 +109,13 @@ pub trait MetaLanguage {
         let _ = target;
         Ok(REDUCE)
     }
+    /// The spelling `←` expands to. Like [`Self::lift_str`] this returns a
+    /// `Result` because not every meta-language *has* an emit: a string-based
+    /// meta (nix, lean) has no `b_` accumulator to emit into, and must fail
+    /// loudly rather than leak the [`EMIT`] placeholder into generated code.
     #[inline]
-    fn emit_str(&self) -> &'static str {
-        EMIT
+    fn emit_str(&self) -> Result<&'static str> {
+        Ok(EMIT)
     }
     #[inline]
     fn type_str(&self) -> &'static str {
@@ -190,7 +194,7 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
         (**self).reduce_str(target)
     }
 
-    fn emit_str(&self) -> &'static str {
+    fn emit_str(&self) -> Result<&'static str> {
         (**self).emit_str()
     }
 

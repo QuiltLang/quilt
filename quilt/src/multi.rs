@@ -77,7 +77,7 @@ pub trait MetaLanguages {
         self.get(lang)?.reduce_str(target)
     }
     fn emit_str(&self, lang: &str) -> Result<&'static str> {
-        Ok(self.get(lang)?.emit_str())
+        self.get(lang)?.emit_str()
     }
     fn type_str(&self, lang: &str) -> Result<&'static str> {
         Ok(self.get(lang)?.type_str())

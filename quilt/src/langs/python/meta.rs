@@ -79,7 +79,7 @@ impl MetaLanguage for PythonMetaLanguage {
         "QTerm"
     }
 
-    fn emit_str(&self) -> &'static str {
-        "emit(b_)"
+    fn emit_str(&self) -> Result<&'static str> {
+        Ok("emit(b_)")
     }
 }

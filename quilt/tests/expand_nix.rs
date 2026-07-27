@@ -211,3 +211,34 @@ fn chain_default_quote_lang() -> Result<()> {
     assert_eq!(out, explicit);
     Ok(())
 }
+
+/// Nix-as-host has no `b_` accumulator to emit into (see `wrap_child` in
+/// `langs::nix::meta`), so a *ground* `←` fails loudly instead of leaking the
+/// `__EMIT__` placeholder into the generated Nix, and the message points at the
+/// functional alternative.
+#[test]
+fn host_emit_unsupported() {
+    for code in [
+        // Inside a host unquote — the case that used to expand to
+        // `"a ${v.__EMIT__} b"` with no error at all.
+        r#"let v = "x"; in nix↖a ↙v.←↘ b↗"#,
+        // …and at plain ground position.
+        "let gen = ←; in gen",
+    ] {
+        let msg = host_expand(code).unwrap_err().to_string();
+        assert!(msg.contains("nix can't emit"), "{msg}");
+        assert!(msg.contains("concatStringsSep"), "{msg}");
+    }
+}
+
+/// A `←` at sky depth belongs to a *later* stage, so it is still deferred as
+/// its glyph — rejecting emit for this host must not over-fire on quoted code
+/// the host merely passes through.
+#[test]
+fn host_emit_deferred_in_quote() -> Result<()> {
+    assert_eq!(
+        host_expand("let gen = nix↖{ a = ←; }↗; in gen")?,
+        r#"let gen = "{ a = ←; }"; in gen"#
+    );
+    Ok(())
+}

@@ -96,8 +96,8 @@ impl MetaLanguage for RustMetaLanguage {
         "Arc<QTerm>"
     }
 
-    fn emit_str(&self) -> &'static str {
-        "emit(&mut b_)"
+    fn emit_str(&self) -> Result<&'static str> {
+        Ok("emit(&mut b_)")
     }
 }
 

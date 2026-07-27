@@ -151,7 +151,7 @@ let drv = nix↖
 
 `NixMetaLanguage` makes Nix drive generation. Unlike the Rust/Python hosts, which emit builder calls into a `QTerm` runtime, the Nix host has **no runtime library**: `meta.rs`/`ops.rs` represent generated code as plain **Nix strings**. A quote `↖…↗` becomes a Nix string literal, a host unquote `↙x↘` becomes Nix's own `${x}` antiquotation, and `↑` spells `toString`. So a `.nix.quilt` file expands to a Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. Static sub-structure is flattened inline, so a literal fragment is one flat string, not a tower of `${"…"}`.
 
-The string model is language-agnostic (a Nix host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`). See `examples/nix_host.nix.quilt`:
+The string model is language-agnostic (a Nix host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`). A ground `←` is a hard error saying exactly that (`NixMetaLanguage::emit_str`); a `←` at sky depth still defers to the next stage, as always. See `examples/nix_host.nix.quilt`:
 
 ```nix
 let
@@ -199,7 +199,7 @@ let thm = lean↖theorem add_zero (n : Nat) : n + ↙zero.↑↘ = n := by
 
 Braces in the *generated* code are escaped as `\{`, which matters constantly in Lean — implicit binders `{α : Type}`, structure instances, set-builders. A closing `}` needs no escape.
 
-The string model is language-agnostic (a Lean host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`List.map`, `String.intercalate`). See issue #132 for the rationale and the path to a real `QTerm` runtime for Lean.
+The string model is language-agnostic (a Lean host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`List.map`, `String.intercalate`). A ground `←` is a hard error saying exactly that (`LeanMetaLanguage::emit_str`); a `←` at sky depth still defers to the next stage, as always. See issue #132 for the rationale and the path to a real `QTerm` runtime for Lean.
 
 ```lean
 def attr := "simp"

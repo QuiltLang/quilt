@@ -13,7 +13,7 @@ A language can be:
 If you want a host, decide which kind of `MetaLanguage` it is:
 
 - **Runtime-backed** (Rust, Python) — the expanded code calls into a `QTerm` builder library that Quilt ships for that language. Highest fidelity (structural manipulation, pattern matching), but you have to *write and distribute that runtime*.
-- **String-based** (Nix, Lean) — no runtime at all: `meta.rs`/`ops.rs` reconstruct each fragment as a string expression in the host, mapping Quilt's unquote onto the host's own string interpolation. Far less work, language-agnostic in what it can generate, but there is no `b_` accumulator, so emit/splice in *ground* loops is unsupported — sequences must be built functionally. See `langs/nix/ops.rs` and `langs/lean/ops.rs`.
+- **String-based** (Nix, Lean) — no runtime at all: `meta.rs`/`ops.rs` reconstruct each fragment as a string expression in the host, mapping Quilt's unquote onto the host's own string interpolation. Far less work, language-agnostic in what it can generate, but there is no `b_` accumulator, so emit/splice in *ground* loops is unsupported — sequences must be built functionally. A string-based meta should therefore override `emit_str` to return an error naming that alternative, so a ground `←` is rejected rather than leaking the `__EMIT__` placeholder into the output. See `langs/nix/ops.rs` and `langs/lean/ops.rs`.
 
 ## 2. Grammar
 

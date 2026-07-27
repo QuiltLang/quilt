@@ -83,4 +83,14 @@ impl MetaLanguage for LeanMetaLanguage {
             _ => miette::bail!("lean can't lift into {target:?}: only homogeneous `toString`"),
         }
     }
+
+    /// No spelling: `←` needs a `b_` accumulator to emit into, which the string
+    /// model doesn't have (see [`Self::wrap_child`]). Fail here rather than let
+    /// the `__EMIT__` placeholder leak into the generated Lean.
+    fn emit_str(&self) -> Result<&'static str> {
+        miette::bail!(
+            "lean can't emit `←`: the string-based meta has no `b_` accumulator to emit into — \
+             build sequences functionally instead (`List.map` + `String.intercalate`)"
+        )
+    }
 }

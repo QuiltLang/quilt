@@ -237,9 +237,9 @@ impl MetaLanguage for BootstrapMetaLanguage {
         "bs_name"
     }
 
-    fn emit_str(&self) -> &'static str {
+    fn emit_str(&self) -> Result<&'static str> {
         // "b_.emit"
-        "emit(&mut b_)"
+        Ok("emit(&mut b_)")
     }
 }
 
