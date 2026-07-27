@@ -135,12 +135,52 @@ impl Node {
     }
 }
 
+/// The characters Quilt gives special meaning to, and hence the ones `\` can
+/// escape: the four quote/unquote arrows, lift, reduce, emit, and the `⟨…⟩`
+/// delimiters. Must stay in sync with the `_char` / `_non_escape` / `escape`
+/// character classes in `tree-sitter-quilt/grammar.js`.
+pub const GLYPHS: [char; 9] = ['↖', '↗', '↙', '↘', '↑', '↓', '←', '⟨', '⟩'];
+
+/// Escape every Quilt glyph in `s` with a leading `\`.
+///
+/// This is the inverse of the grammar's `escape` rule and exists so that
+/// [`Node::coparse`] round-trips: a `Node::Content` can only hold a glyph if it
+/// came from a `\`-escape in the source (the grammar's `_char` class excludes
+/// all of them), so writing the glyph bare would make it re-parse as the
+/// operator instead of as content.
 pub fn escape(s: &str) -> Box<str> {
-    s.replace('↑', "\\↑").replace('↓', "\\↓").into()
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if GLYPHS.contains(&c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.into()
 }
 
+/// Strip the `\` from every escaped Quilt glyph in `s` — the inverse of
+/// [`escape`]. Parsing does this structurally (via the grammar's `escape` rule),
+/// so this is for callers holding raw source text.
 pub fn unescape(s: &str) -> Box<str> {
-    s.replace("\\↑", "↑").replace("\\↓", "↓").into()
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            // Only a glyph is consumed by the backslash; anything else (`\n` in
+            // a string literal, say) is `_non_escape` and stays verbatim.
+            match chars.clone().next() {
+                Some(g) if GLYPHS.contains(&g) => {
+                    out.push(g);
+                    chars.next();
+                }
+                _ => out.push(c),
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out.into()
 }
 
 /**************************************************************/
@@ -274,6 +314,46 @@ mod tests {
         assert!(matches!(&nodes[4], Node::Reduce { anno } if &**anno == "rs"));
         let roundtrip = &*Node::coparse(&nodes);
         assert_eq!(roundtrip, source_code);
+    }
+
+    /// Every glyph in [`GLYPHS`] is escapable: `\<glyph>` parses to plain
+    /// content holding the bare glyph, and `coparse` puts the `\` back, so the
+    /// source round-trips. Before issue #141 only `↑` and `↓` were re-escaped
+    /// on output (and `←` was not escapable at all), so `\⟨` and friends were
+    /// lossy.
+    #[test]
+    fn every_glyph_round_trips() {
+        for g in GLYPHS {
+            let glyph = g.to_string();
+            let source_code = format!("a \\{g} b");
+            let nodes = Node::parse(&source_code);
+            assert!(
+                nodes
+                    .iter()
+                    .any(|n| matches!(n, Node::Content(s) if **s == *glyph)),
+                "`\\{g}` did not parse to content holding `{g}`: {nodes:?}"
+            );
+            assert_eq!(
+                &*Node::coparse(&nodes),
+                source_code,
+                "`\\{g}` lost its escape"
+            );
+        }
+    }
+
+    /// `escape` and `unescape` are inverses over the whole glyph set, and a
+    /// backslash before a *non*-glyph (`_non_escape` in the grammar) is left
+    /// alone in both directions.
+    #[test]
+    fn escape_unescape_are_inverses() {
+        let raw = "x ← y ↑ z ⟨ w ↖ v";
+        let escaped = "x \\← y \\↑ z \\⟨ w \\↖ v";
+        assert_eq!(&*escape(raw), escaped);
+        assert_eq!(&*unescape(escaped), raw);
+        // `\n` here is a literal backslash-n, not a newline: not a glyph, so it
+        // survives unescaping verbatim rather than losing its backslash.
+        assert_eq!(&*unescape("a \\n b"), "a \\n b");
+        assert_eq!(&*escape("no glyphs here"), "no glyphs here");
     }
 
     #[test]

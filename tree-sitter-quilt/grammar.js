@@ -21,9 +21,13 @@ module.exports = grammar({
     ),
 
     content: $ => prec.right(repeat1(choice($._char, $._non_escape))),
-    _char: $ => /[^\\↖↗↙↘↑↓⟨⟩\n]/,
-    _non_escape: $ => /\\[^↖↗↙↘↑↓⟨⟩]/,
-    escape: $ => /\\[↖↗↙↘↑↓⟨⟩]/,
+    // NOTE: the three classes below must list the same glyphs, and must match
+    // GLYPHS in quilt/src/node.rs — they are the set of characters Quilt gives
+    // special meaning to, and hence the set `\` can escape. `←` is included
+    // because it is the emit glyph *and* Lean's monadic bind (issue #141).
+    _char: $ => /[^\\↖↗↙↘↑↓←⟨⟩\n]/,
+    _non_escape: $ => /\\[^↖↗↙↘↑↓←⟨⟩]/,
+    escape: $ => /\\[↖↗↙↘↑↓←⟨⟩]/,
 
     newline: $ => /\n/,
     left_quote: $ => /[a-z]*↖/,
