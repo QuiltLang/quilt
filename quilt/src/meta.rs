@@ -109,17 +109,27 @@ pub trait MetaLanguage {
         let _ = target;
         Ok(REDUCE)
     }
+    /// The spelling `←` expands to. Like [`Self::lift_str`] this returns a
+    /// `Result` because not every meta-language *has* an emit: a string-based
+    /// meta (nix, lean) has no `b_` accumulator to emit into, and must fail
+    /// loudly rather than leak the [`EMIT`] placeholder into generated code.
     #[inline]
-    fn emit_str(&self) -> &'static str {
-        EMIT
+    fn emit_str(&self) -> Result<&'static str> {
+        Ok(EMIT)
     }
+    /// The spelling `⟨T⟩` expands to: the type of a quilt term in this host's
+    /// meta-code (`Arc<QTerm>` for Rust). `Result` because a host language
+    /// without a way to write types has no spelling for it.
     #[inline]
-    fn type_str(&self) -> &'static str {
-        TYPE
+    fn type_str(&self) -> Result<&'static str> {
+        Ok(TYPE)
     }
+    /// The spelling `⟨N⟩` expands to: the function taking a string to an
+    /// identifier term (`name` for Rust). In a string-based meta a name is its
+    /// own text, so this is the host's identity function.
     #[inline]
-    fn name_str(&self) -> &'static str {
-        NAME
+    fn name_str(&self) -> Result<&'static str> {
+        Ok(NAME)
     }
 }
 
@@ -190,15 +200,15 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
         (**self).reduce_str(target)
     }
 
-    fn emit_str(&self) -> &'static str {
+    fn emit_str(&self) -> Result<&'static str> {
         (**self).emit_str()
     }
 
-    fn type_str(&self) -> &'static str {
+    fn type_str(&self) -> Result<&'static str> {
         (**self).type_str()
     }
 
-    fn name_str(&self) -> &'static str {
+    fn name_str(&self) -> Result<&'static str> {
         (**self).name_str()
     }
 }

@@ -284,3 +284,99 @@ fn host_multiline() -> Result<()> {
     );
     Ok(())
 }
+
+/// Emit into a Lean fragment still works when the *host* is Rust: `←` is then
+/// the Rust meta's `b_` accumulator, so a generation-time loop can append
+/// lifted values to a variadic Lean list (`[ … ]`).
+#[test]
+fn expand_list_emit() -> Result<()> {
+    let out = expand(indoc! {r#"
+        fn names(items: &[String]) -> Arc<QTerm> {
+            lean↖[ ↙{ for s in items { s.↑.←; } }↘ ]↗
+        }
+    "#})?;
+    println!("{out}");
+    assert!(out.contains("qlift_to::<Lean>()"));
+    assert!(out.contains(".emit(&mut b_)"));
+    Ok(())
+}
+
+/// Lean-as-host has no `b_` accumulator to emit into (see `wrap_child` in
+/// `langs::lean::meta`), so a *ground* `←` fails loudly instead of leaking the
+/// `__EMIT__` placeholder into the generated Lean, and the message points at
+/// the functional alternative.
+#[test]
+fn host_emit_unsupported() {
+    for code in [
+        // Inside a host unquote — the case that used to expand to
+        // `s!"a {v.__EMIT__} b"` with no error at all.
+        indoc! {r#"
+            def v : String := "x"
+            def gen : String := lean↖a ↙v.←↘ b↗"#},
+        // …and at plain ground position.
+        "def gen : String := ←",
+    ] {
+        let msg = host_expand(code).unwrap_err().to_string();
+        assert!(msg.contains("lean can't emit"), "{msg}");
+        assert!(msg.contains("String.intercalate"), "{msg}");
+    }
+}
+
+/// A `←` at sky depth belongs to a *later* stage, so it is still deferred as
+/// its glyph — rejecting emit for this host must not over-fire on quoted code
+/// the host merely passes through.
+#[test]
+fn host_emit_deferred_in_quote() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : String := lean↖def f := ←↗")?,
+        r#"def gen : String := s!"def f := ←""#
+    );
+    Ok(())
+}
+
+/// `⟨T⟩` names the type of a generated fragment. In the string model that is
+/// the host's own `String` — the annotation `examples/lean_host.lean.quilt`
+/// currently writes by hand.
+#[test]
+fn host_type_is_string() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : ⟨T⟩ := lean↖x↗")?,
+        r#"def gen : String := s!"x""#
+    );
+    Ok(())
+}
+
+/// `⟨N⟩` builds an identifier from a string. A fragment *is* a string here, so
+/// the spelling is Lean's identity. Application is juxtaposition, exactly as
+/// for `↑`/`toString` — `⟨N⟩ v`, not `⟨N⟩(v)`.
+#[test]
+fn host_name_is_identity() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : String := lean↖def ↙⟨N⟩ v↘ : Nat := 0↗")?,
+        r#"def gen : String := s!"def {id v} : Nat := 0""#
+    );
+    Ok(())
+}
+
+/// `↓` compiles a term and deserializes the result back, which needs the
+/// `QTerm` runtime this host doesn't have — so a *ground* `↓` fails loudly
+/// instead of leaking `__REDUCE__`, pointing at ordinary Lean evaluation.
+#[test]
+fn host_reduce_unsupported() {
+    let msg = host_expand("def gen : String := ↓lean↖1 + 1↗")
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("lean can't reduce"), "{msg}");
+    assert!(msg.contains("↙…↘"), "{msg}");
+}
+
+/// Like `←`, a `↓` at sky depth belongs to a later stage and is still deferred
+/// as its glyph.
+#[test]
+fn host_reduce_deferred_in_quote() -> Result<()> {
+    assert_eq!(
+        host_expand("def gen : String := lean↖def f := ↓↗")?,
+        r#"def gen : String := s!"def f := ↓""#
+    );
+    Ok(())
+}

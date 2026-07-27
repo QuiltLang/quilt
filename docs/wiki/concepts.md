@@ -170,6 +170,11 @@ These are used internally in bootstrap source:
 - `⟨T⟩` expands to `Arc<QTerm>` — the canonical type of a quilt term in Rust meta-code.
 - `⟨N⟩` creates an `identifier` node from a string — useful when building code that references a named variable.
 
+Each host answers for itself: a string-based host (nix, lean) represents a
+fragment as a plain string, so lean's `⟨T⟩` is `String` and `⟨N⟩` is the
+identity. Where a host has no answer at all — `⟨T⟩` in untyped Nix — expansion
+fails with a message saying so rather than emitting a placeholder.
+
 ## Why the arrows?
 
 The quote glyphs `↖↗` and unquote glyphs `↙↘` are a synthesis of the two historical notations for quasi-quotation:

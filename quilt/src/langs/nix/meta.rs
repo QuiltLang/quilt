@@ -78,4 +78,40 @@ impl MetaLanguage for NixMetaLanguage {
             _ => miette::bail!("nix can't lift into {target:?}: only homogeneous `toString`"),
         }
     }
+
+    /// No spelling: `←` needs a `b_` accumulator to emit into, which the string
+    /// model doesn't have (see [`Self::wrap_child`]). Fail here rather than let
+    /// the `__EMIT__` placeholder leak into the generated Nix.
+    fn emit_str(&self) -> Result<&'static str> {
+        miette::bail!(
+            "nix can't emit `←`: the string-based meta has no `b_` accumulator to emit into — \
+             build sequences functionally instead (`map` + `concatStringsSep`)"
+        )
+    }
+
+    /// No spelling: `↓` compiles a term and deserializes the result back, which
+    /// needs the `QTerm` runtime this host doesn't have. Generation-time
+    /// evaluation is ordinary Nix — compute the value in a `let` and splice it
+    /// with `↙…↘`.
+    fn reduce_str(&self, target: &str) -> Result<&'static str> {
+        miette::bail!(
+            "nix can't reduce `{target}↓`: the string-based meta has no `QTerm` runtime to \
+             evaluate a fragment — compute the value in ordinary Nix and splice it with `↙…↘`"
+        )
+    }
+
+    /// No spelling: Nix is untyped and has no annotation syntax, so there is
+    /// nowhere for `⟨T⟩` to go. (Lean, the other string host, answers `String`.)
+    fn type_str(&self) -> Result<&'static str> {
+        miette::bail!(
+            "nix has no type for `⟨T⟩`: Nix is untyped, and a generated fragment is just a \
+             string — drop the annotation"
+        )
+    }
+
+    /// In the string model a name is its own text, so `⟨N⟩` is the identity —
+    /// which for a Nix string is what `toString` already does.
+    fn name_str(&self) -> Result<&'static str> {
+        Ok("toString")
+    }
 }

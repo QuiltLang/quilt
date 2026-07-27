@@ -229,17 +229,17 @@ impl MetaLanguage for BootstrapMetaLanguage {
         Ok("bs_reduce()")
     }
 
-    fn type_str(&self) -> &'static str {
-        "Arc<QTerm>"
+    fn type_str(&self) -> Result<&'static str> {
+        Ok("Arc<QTerm>")
     }
 
-    fn name_str(&self) -> &'static str {
-        "bs_name"
+    fn name_str(&self) -> Result<&'static str> {
+        Ok("bs_name")
     }
 
-    fn emit_str(&self) -> &'static str {
+    fn emit_str(&self) -> Result<&'static str> {
         // "b_.emit"
-        "emit(&mut b_)"
+        Ok("emit(&mut b_)")
     }
 }
 

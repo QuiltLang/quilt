@@ -88,16 +88,16 @@ impl MetaLanguage for RustMetaLanguage {
         reduce_spelling(target)
     }
 
-    fn name_str(&self) -> &'static str {
-        "name"
+    fn name_str(&self) -> Result<&'static str> {
+        Ok("name")
     }
 
-    fn type_str(&self) -> &'static str {
-        "Arc<QTerm>"
+    fn type_str(&self) -> Result<&'static str> {
+        Ok("Arc<QTerm>")
     }
 
-    fn emit_str(&self) -> &'static str {
-        "emit(&mut b_)"
+    fn emit_str(&self) -> Result<&'static str> {
+        Ok("emit(&mut b_)")
     }
 }
 

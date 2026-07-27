@@ -211,3 +211,83 @@ fn chain_default_quote_lang() -> Result<()> {
     assert_eq!(out, explicit);
     Ok(())
 }
+
+/// Nix-as-host has no `b_` accumulator to emit into (see `wrap_child` in
+/// `langs::nix::meta`), so a *ground* `←` fails loudly instead of leaking the
+/// `__EMIT__` placeholder into the generated Nix, and the message points at the
+/// functional alternative.
+#[test]
+fn host_emit_unsupported() {
+    for code in [
+        // Inside a host unquote — the case that used to expand to
+        // `"a ${v.__EMIT__} b"` with no error at all.
+        r#"let v = "x"; in nix↖a ↙v.←↘ b↗"#,
+        // …and at plain ground position.
+        "let gen = ←; in gen",
+    ] {
+        let msg = host_expand(code).unwrap_err().to_string();
+        assert!(msg.contains("nix can't emit"), "{msg}");
+        assert!(msg.contains("concatStringsSep"), "{msg}");
+    }
+}
+
+/// A `←` at sky depth belongs to a *later* stage, so it is still deferred as
+/// its glyph — rejecting emit for this host must not over-fire on quoted code
+/// the host merely passes through.
+#[test]
+fn host_emit_deferred_in_quote() -> Result<()> {
+    assert_eq!(
+        host_expand("let gen = nix↖{ a = ←; }↗; in gen")?,
+        r#"let gen = "{ a = ←; }"; in gen"#
+    );
+    Ok(())
+}
+
+/// Nix is untyped and has no annotation syntax, so `⟨T⟩` has nowhere to go and
+/// fails loudly rather than leaking `__TYPE__`. Unlike `↑↓←` it is not staged,
+/// so this holds inside a quote too. (Lean, the other string host, answers
+/// `String`.)
+#[test]
+fn host_type_unsupported() {
+    for code in [
+        "let gen = ⟨T⟩; in gen",
+        "let gen = nix↖{ a = ⟨T⟩; }↗; in gen",
+    ] {
+        let msg = host_expand(code).unwrap_err().to_string();
+        assert!(msg.contains("nix has no type for"), "{msg}");
+    }
+}
+
+/// `⟨N⟩` builds an identifier from a string. A fragment *is* a string here, so
+/// the spelling is the identity — which for a Nix string is `toString`.
+#[test]
+fn host_name_is_identity() -> Result<()> {
+    assert_eq!(
+        host_expand(r#"let pkg = "hello"; in nix↖{ ↙⟨N⟩ pkg↘ = true; }↗"#)?,
+        r#"let pkg = "hello"; in "{ ${toString pkg} = true; }""#
+    );
+    Ok(())
+}
+
+/// `↓` compiles a term and deserializes the result back, which needs the
+/// `QTerm` runtime this host doesn't have — so a *ground* `↓` fails loudly
+/// instead of leaking `__REDUCE__`, pointing at ordinary Nix evaluation.
+#[test]
+fn host_reduce_unsupported() {
+    let msg = host_expand("let gen = ↓nix↖1↗; in gen")
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("nix can't reduce"), "{msg}");
+    assert!(msg.contains("↙…↘"), "{msg}");
+}
+
+/// Like `←`, a `↓` at sky depth belongs to a later stage and is still deferred
+/// as its glyph.
+#[test]
+fn host_reduce_deferred_in_quote() -> Result<()> {
+    assert_eq!(
+        host_expand("let gen = nix↖{ a = ↓; }↗; in gen")?,
+        r#"let gen = "{ a = ↓; }"; in gen"#
+    );
+    Ok(())
+}
