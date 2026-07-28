@@ -43,16 +43,16 @@ Columns:
 
 | Language | Host | Lift out | Reduce ↓ | Emit ← | Patterns | Runnable | Runtime |
 |---|---|---|---|---|---|---|---|
-| **Bash** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | 🟡 | ⬜* |
-| **HTML** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜* |
+| **Bash** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | 🟡 | ⬜* |
+| **HTML** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
 | **Lean 4** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
 | **Nix** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
 | **Python** | ✅ | ✅ | ✅ | 🟡 | ⬜ | ✅ | ✅* |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* |
-| **Plain text** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜* |
+| **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
 | **TypeScript** | ✅ | ✅ | 🟡 | 🟡 | ⬜ | ✅ | ✅* |
-| **WGSL** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜* |
-| **Zsh** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | 🟡 | ⬜* |
+| **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
+| **Zsh** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | 🟡 | ⬜* |
 
 Columns:
 
@@ -96,6 +96,7 @@ Columns:
 - ⬜ **Host** — target-only: no `MetaLanguage`, so the host's meta drives expansion
 - ⬜ **Lift out** — target-only: nothing to lift from
 - ⬜ **Reduce ↓** — target-only: no meta-language to reduce with
+- ⬜ **Emit ←** — target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis
 - ⬜ **Patterns** — target-only; bash fragments can still be destructured by a Rust host
 - 🟡 **Runnable** — `hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run` ([#144](https://github.com/QuiltLang/quilt/issues/144))
 - ⬜ **Runtime** — target-only: no runtime library
@@ -109,6 +110,7 @@ Columns:
 - ⬜ **Host** — target-only: no `MetaLanguage`, so the host's meta drives expansion
 - ⬜ **Lift out** — target-only: nothing to lift from
 - ⬜ **Reduce ↓** — target-only: no meta-language to reduce with
+- ⬜ **Emit ←** — target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis
 - ⬜ **Patterns** — target-only; HTML fragments can still be destructured by a Rust host
 - ⬜ **Runnable** — a document is rendered by a browser, not executed
 - ⬜ **Runtime** — target-only: no runtime library
@@ -150,6 +152,7 @@ Columns:
 - ⬜ **Host** — the `TextMetaLanguage` exists but is identity-only and is not registered as a host in `Omni`
 - ⬜ **Lift out** — not a host: nothing to lift from
 - ⬜ **Reduce ↓** — not a host: no meta-language to reduce with
+- ⬜ **Emit ←** — target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis
 - ⬜ **Patterns** — target-only; text fragments can still be destructured by a Rust host
 - ⬜ **Runnable** — plain text is not executable
 - ⬜ **Runtime** — target-only: no runtime library
@@ -173,6 +176,7 @@ Columns:
 - ⬜ **Host** — target-only: no `MetaLanguage`, so the host's meta drives expansion
 - ⬜ **Lift out** — target-only: nothing to lift from
 - ⬜ **Reduce ↓** — target-only: no meta-language to reduce with
+- ⬜ **Emit ←** — target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis
 - ⬜ **Patterns** — target-only; WGSL fragments can still be destructured by a Rust host
 - ⬜ **Runnable** — a shader is compiled by the host application, not executed directly
 - ⬜ **Runtime** — target-only: no runtime library
@@ -187,6 +191,7 @@ Columns:
 - ⬜ **Host** — target-only: no `MetaLanguage`, so the host's meta drives expansion
 - ⬜ **Lift out** — target-only: nothing to lift from
 - ⬜ **Reduce ↓** — target-only: no meta-language to reduce with
+- ⬜ **Emit ←** — target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis
 - ⬜ **Patterns** — target-only; zsh fragments can still be destructured by a Rust host
 - 🟡 **Runnable** — `hashbang()` returns `#!/usr/bin/env zsh`, but zsh has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run` ([#144](https://github.com/QuiltLang/quilt/issues/144))
 - ⬜ **Runtime** — target-only: no runtime library

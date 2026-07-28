@@ -37,7 +37,7 @@ highlights = {status = "supported"}
 host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
 lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
 reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
-emit = {status = "supported", note = "`program` and `compound_statement` are variadic, so a host can emit into them"}
+emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
 pattern-match = {status = "unsupported", note = "target-only; zsh fragments can still be destructured by a Rust host"}
 runnable = {status = "partial", note = "`hashbang()` returns `#!/usr/bin/env zsh`, but zsh has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`", issue = 144}
 runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}

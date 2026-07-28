@@ -102,8 +102,8 @@
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`program` and `compound_statement` are variadic, so a host can emit into them",
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
           "verified_by": "emit/bash"
         },
         {
@@ -232,8 +232,8 @@
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`element` is variadic, so a host can emit children into it",
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
           "verified_by": "emit/html"
         },
         {
@@ -965,8 +965,8 @@
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "the single `text` tag is variadic, so a host can emit into it",
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
           "verified_by": "emit/text"
         },
         {
@@ -1236,8 +1236,8 @@
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`source_file` and `compound_statement` are variadic, so a host can emit into them",
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
           "verified_by": "emit/wgsl"
         },
         {
@@ -1377,8 +1377,8 @@
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`program` and `compound_statement` are variadic, so a host can emit into them",
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
           "verified_by": "emit/zsh"
         },
         {

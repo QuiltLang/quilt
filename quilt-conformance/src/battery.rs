@@ -777,9 +777,12 @@ fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
 fn probe_emit(ctx: &mut Ctx) {
     let axis = Axis::Emit;
     let Some(meta) = registry::meta(&ctx.spec.name) else {
-        // Target-only: emit is the *host's* operator. What matters for a target
-        // is that it has variadic containers to emit into, which
-        // `probe_variadic` already pins.
+        // Target-only. `←` is the *host's* operator, so a target has no emit of
+        // its own — the property that matters for a target is having variadic
+        // containers to receive emitted children, and that is the `Variadic`
+        // axis. Letting this cell read ✅ for a target made the host table say
+        // "Bash can emit" one column away from "Bash is not a host".
+        ctx.check_status(axis, false, "an emit spelling (target-only language)");
         ctx.verified(axis, Vec::new());
         return;
     };

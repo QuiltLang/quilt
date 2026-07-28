@@ -24,7 +24,7 @@ highlights = {status = "unsupported", note = "plain text has no grammar to highl
 host = {status = "unsupported", note = "the `TextMetaLanguage` exists but is identity-only and is not registered as a host in `Omni`"}
 lift-from = {status = "unsupported", note = "not a host: nothing to lift from"}
 reduce = {status = "unsupported", note = "not a host: no meta-language to reduce with"}
-emit = {status = "supported", note = "the single `text` tag is variadic, so a host can emit into it"}
+emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
 pattern-match = {status = "unsupported", note = "target-only; text fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "plain text is not executable"}
 runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
