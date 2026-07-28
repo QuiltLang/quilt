@@ -62,6 +62,19 @@ jobs:
           - os: ubuntu-latest
             name: Support matrix (no drift)
             run: bin/check-matrix
+          # The feature combinations that are contracts rather than defaults
+          # (issue #162): `quiltlang` with default-features = false must stay a
+          # runtime-only crate with no tree-sitter, because quilt-wasm and the
+          # sibling nanobots-codegen both build it that way for
+          # wasm32-unknown-unknown. Nothing verified that before, so a refactor
+          # reaching for tree-sitter from the runtime path broke two downstreams
+          # and was found by someone else's CI. Also builds each language
+          # feature alone, which is what catches a missing #[cfg] gate in Omni.
+          - os: ubuntu-latest
+            name: Feature matrix (runtime-only contract)
+            run: |
+              rustup target add wasm32-unknown-unknown
+              bin/check-features
           # Verify the vendored tree-sitter parsers (quilt/grammars/) still match
           # the pinned forks — i.e. nobody hand-edited a parser or forgot to run
           # bin/sync-grammars after a rev bump. Clones the forks, so needs network.

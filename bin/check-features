@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Verify the Cargo feature combinations that are actually contracts, not just
+# the default one CI otherwise builds (issue #162).
+#
+# The contract that matters: `quiltlang` with `default-features = false` is a
+# *runtime-only* crate — the `QTerm` builders, `qlift`, `coparse` — with no
+# tree-sitter and no C grammars, so it builds for `wasm32-unknown-unknown`.
+# Two downstream consumers depend on exactly that:
+#
+#   * `quilt-wasm`      (this repo)  — features = ["rust"]
+#   * `nanobots-codegen` (sibling repo) — features = ["rust"]
+#
+# Nothing verified it. A refactor that reaches for tree-sitter from the runtime
+# path compiles fine under the default features and breaks both downstreams,
+# and we find out from someone else's CI.
+#
+# Deliberately NOT a powerset: 11 features would be 2048 builds to catch
+# approximately nothing. These are the combinations with a consumer or a
+# documented meaning behind them.
+#
+# For CI and pre-commit. Needs the wasm32-unknown-unknown target for the
+# runtime-only checks; skips them with a notice if it is missing.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+MANIFEST=(--manifest-path "$ROOT/Cargo.toml")
+WASM=wasm32-unknown-unknown
+fail=0
+
+step() { printf '\n==> %s\n' "$*"; }
+
+# --- 1. The runtime-only dependency contract --------------------------------
+#
+# The sharpest form of the check: assert tree-sitter is absent from the
+# *dependency graph*, not merely that the build happens to succeed. A build can
+# succeed while silently pulling the C grammars in and blowing up compile time
+# and wasm size for every downstream.
+step "runtime-only build pulls no tree-sitter"
+for feats in "" "rust" "python" "rust,python,text"; do
+  desc="--no-default-features${feats:+ --features $feats}"
+  args=(-p quiltlang --no-default-features)
+  [ -n "$feats" ] && args+=(--features "$feats")
+  if tree=$(cargo tree "${MANIFEST[@]}" "${args[@]}" -e normal 2>/dev/null); then
+    if grep -qi 'tree-sitter' <<<"$tree"; then
+      echo "error: $desc pulls tree-sitter into the runtime-only graph:" >&2
+      grep -i 'tree-sitter' <<<"$tree" | sed 's/^/    /' >&2
+      fail=1
+    else
+      echo "    ok  $desc"
+    fi
+  else
+    echo "error: cargo tree failed for $desc" >&2
+    fail=1
+  fi
+done
+
+# --- 2. The runtime-only build, on the target that motivates it -------------
+if rustup target list --installed 2>/dev/null | grep -qx "$WASM"; then
+  step "runtime-only lib builds for $WASM"
+  for feats in "" "rust"; do
+    desc="--no-default-features${feats:+ --features $feats}"
+    args=(-p quiltlang --lib --no-default-features --target "$WASM")
+    [ -n "$feats" ] && args+=(--features "$feats")
+    if cargo check "${MANIFEST[@]}" "${args[@]}" --quiet; then
+      echo "    ok  $desc"
+    else
+      echo "error: $desc does not build for $WASM" >&2
+      fail=1
+    fi
+  done
+else
+  echo
+  echo "note: $WASM target not installed — skipping the wasm build checks."
+  echo "      install it with: rustup target add $WASM"
+fi
+
+# --- 3. Each language feature in isolation ----------------------------------
+#
+# A language must not depend on another language being enabled. `Omni` is
+# assembled from #[cfg(feature = …)] arms, so a missing gate only shows up when
+# some *other* language is switched off.
+step "each language feature builds alone"
+for feat in bash html lean nix python rust text typescript wgsl zsh bootstrap parse; do
+  if cargo check "${MANIFEST[@]}" -p quiltlang --lib \
+       --no-default-features --features "$feat" --quiet; then
+    echo "    ok  --features $feat"
+  else
+    echo "error: -p quiltlang --no-default-features --features $feat failed" >&2
+    fail=1
+  fi
+done
+
+# --- 4. Everything on ------------------------------------------------------
+step "all features"
+if cargo check "${MANIFEST[@]}" -p quiltlang --all-features --quiet; then
+  echo "    ok  --all-features"
+else
+  echo "error: --all-features failed" >&2
+  fail=1
+fi
+
+echo
+if [ "$fail" -ne 0 ]; then
+  echo "feature matrix FAILED" >&2
+  exit 1
+fi
+echo "feature matrix OK ✓"
