@@ -142,6 +142,30 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       - run: ${{ matrix.run }}
+      # Expander output is snapshotted (issue #157). On a mismatch insta writes
+      # the new value beside the old one as `*.snap.new` rather than
+      # overwriting, so the change can be reviewed instead of silently accepted.
+      #
+      # By default insta stops at the first failing snapshot in a binary, which
+      # would surface exactly one `.snap.new` — useless for the case this
+      # exists for, where a deliberate spelling change moves dozens at once.
+      # INSTA_FORCE_PASS makes every assertion record instead of panicking, so
+      # one extra run materialises the complete set. It cannot mask a real
+      # failure: the job has already failed by the time this runs, and `|| true`
+      # only keeps the collection step itself from erroring.
+      - name: Collect all changed snapshots
+        if: failure() && startsWith(matrix.name, 'Test')
+        run: INSTA_FORCE_PASS=1 cargo test --quiet || true
+      # Uploading them turns "CI says 47 snapshots changed" into a downloadable
+      # diff reviewable as a unit. Locally the same review is `cargo insta
+      # review` (cargo-insta is in the devShell).
+      - name: Upload changed snapshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshots-${{ matrix.name }}-${{ matrix.os }}
+          path: "**/*.snap.new"
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Publish jobs (issue #33). These run ONLY when a `v*` tag is pushed to

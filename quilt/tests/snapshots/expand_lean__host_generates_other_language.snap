@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_lean.rs
+expression: "host_expand(\"def e := bash↖echo ↙msg↘↗\")?"
+---
+def e := s!"echo {msg}"

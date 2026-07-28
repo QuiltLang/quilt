@@ -9,6 +9,7 @@ pub mod multi;
 pub mod node;
 pub mod prelude;
 pub mod qmatch;
+pub mod qsnap;
 pub mod qterm;
 pub mod strcmd;
 pub mod term;

@@ -226,7 +226,7 @@ fn expand_lift_spelling() -> Result<()> {
 #[test]
 fn host_term_splice() -> Result<()> {
     let out = host_expand("def e := lean↖n + ↙rhs↘↗")?;
-    assert_eq!(out, r#"def e := s!"n + {rhs}""#);
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -246,7 +246,7 @@ fn host_literal_flattens() -> Result<()> {
 #[test]
 fn host_escapes_braces() -> Result<()> {
     let out = host_expand("def s := lean↖instance : Foo := { n := 1 }↗")?;
-    assert_eq!(out, r#"def s := s!"instance : Foo := \{ n := 1 }""#);
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -254,7 +254,7 @@ fn host_escapes_braces() -> Result<()> {
 #[test]
 fn host_lift_to_string() -> Result<()> {
     let out = host_expand("def e := lean↖x + ↙↑ n↘↗")?;
-    assert_eq!(out, r#"def e := s!"x + {toString n}""#);
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -262,10 +262,7 @@ fn host_lift_to_string() -> Result<()> {
 /// target, reconstructing it the same way.
 #[test]
 fn host_generates_other_language() -> Result<()> {
-    assert_eq!(
-        host_expand("def e := bash↖echo ↙msg↘↗")?,
-        r#"def e := s!"echo {msg}""#
-    );
+    insta::assert_snapshot!(host_expand("def e := bash↖echo ↙msg↘↗")?);
     Ok(())
 }
 
@@ -327,10 +324,7 @@ fn host_emit_unsupported() {
 /// the host merely passes through.
 #[test]
 fn host_emit_deferred_in_quote() -> Result<()> {
-    assert_eq!(
-        host_expand("def gen : String := lean↖def f := ←↗")?,
-        r#"def gen : String := s!"def f := ←""#
-    );
+    insta::assert_snapshot!(host_expand("def gen : String := lean↖def f := ←↗")?);
     Ok(())
 }
 
@@ -339,10 +333,7 @@ fn host_emit_deferred_in_quote() -> Result<()> {
 /// currently writes by hand.
 #[test]
 fn host_type_is_string() -> Result<()> {
-    assert_eq!(
-        host_expand("def gen : ⟨T⟩ := lean↖x↗")?,
-        r#"def gen : String := s!"x""#
-    );
+    insta::assert_snapshot!(host_expand("def gen : ⟨T⟩ := lean↖x↗")?);
     Ok(())
 }
 
@@ -351,10 +342,9 @@ fn host_type_is_string() -> Result<()> {
 /// for `↑`/`toString` — `⟨N⟩ v`, not `⟨N⟩(v)`.
 #[test]
 fn host_name_is_identity() -> Result<()> {
-    assert_eq!(
-        host_expand("def gen : String := lean↖def ↙⟨N⟩ v↘ : Nat := 0↗")?,
-        r#"def gen : String := s!"def {id v} : Nat := 0""#
-    );
+    insta::assert_snapshot!(host_expand(
+        "def gen : String := lean↖def ↙⟨N⟩ v↘ : Nat := 0↗"
+    )?);
     Ok(())
 }
 
@@ -374,9 +364,6 @@ fn host_reduce_unsupported() {
 /// as its glyph.
 #[test]
 fn host_reduce_deferred_in_quote() -> Result<()> {
-    assert_eq!(
-        host_expand("def gen : String := lean↖def f := ↓↗")?,
-        r#"def gen : String := s!"def f := ↓""#
-    );
+    insta::assert_snapshot!(host_expand("def gen : String := lean↖def f := ↓↗")?);
     Ok(())
 }

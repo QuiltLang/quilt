@@ -23,6 +23,10 @@
       {
         devShells.default = pkgs.mkShellNoCC {
           packages = [
+            # `cargo insta review` — the interactive accept/reject pass over
+            # changed expander snapshots (issue #157). Tests themselves need
+            # only the `insta` crate; this is the review UI.
+            pkgs.cargo-insta
             pkgs.cargo-nextest
             pkgs.lolcat
             # maturin builds the quilt_python PyO3 module (`bin/build-py`).

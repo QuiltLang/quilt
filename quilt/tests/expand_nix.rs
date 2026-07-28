@@ -39,7 +39,7 @@ fn host_expand(code: &str) -> Result<String> {
 #[test]
 fn host_attrset_splice() -> Result<()> {
     let out = host_expand("let key = \"enabled\"; in nix↖{ ↙key↘ = true; }↗")?;
-    assert_eq!(out, "let key = \"enabled\"; in \"{ ${key} = true; }\"");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -47,11 +47,8 @@ fn host_attrset_splice() -> Result<()> {
 /// `${\"…\"}` from the nested tuple structure.
 #[test]
 fn host_literal_flattens() -> Result<()> {
-    assert_eq!(
-        host_expand("nix↖{ x = 1; y = 2; }↗")?,
-        "\"{ x = 1; y = 2; }\""
-    );
-    assert_eq!(host_expand("nix↖[ 1 2 ↙x↘ ]↗")?, "\"[ 1 2 ${x} ]\"");
+    insta::assert_snapshot!(host_expand("nix↖{ x = 1; y = 2; }↗")?);
+    insta::assert_snapshot!(host_expand("nix↖[ 1 2 ↙x↘ ]↗")?);
     Ok(())
 }
 
@@ -60,7 +57,7 @@ fn host_literal_flattens() -> Result<()> {
 #[test]
 fn host_lift_to_string() -> Result<()> {
     let out = host_expand("let n = 3; in nix↖x + ↙↑ n↘↗")?;
-    assert_eq!(out, "let n = 3; in \"x + ${toString n}\"");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -68,7 +65,7 @@ fn host_lift_to_string() -> Result<()> {
 /// (here Bash), reconstructing it the same way.
 #[test]
 fn host_generates_other_language() -> Result<()> {
-    assert_eq!(host_expand("bash↖echo ↙msg↘↗")?, "\"echo ${msg}\"");
+    insta::assert_snapshot!(host_expand("bash↖echo ↙msg↘↗")?);
     Ok(())
 }
 
@@ -236,10 +233,7 @@ fn host_emit_unsupported() {
 /// the host merely passes through.
 #[test]
 fn host_emit_deferred_in_quote() -> Result<()> {
-    assert_eq!(
-        host_expand("let gen = nix↖{ a = ←; }↗; in gen")?,
-        r#"let gen = "{ a = ←; }"; in gen"#
-    );
+    insta::assert_snapshot!(host_expand("let gen = nix↖{ a = ←; }↗; in gen")?);
     Ok(())
 }
 
@@ -262,10 +256,9 @@ fn host_type_unsupported() {
 /// the spelling is the identity — which for a Nix string is `toString`.
 #[test]
 fn host_name_is_identity() -> Result<()> {
-    assert_eq!(
-        host_expand(r#"let pkg = "hello"; in nix↖{ ↙⟨N⟩ pkg↘ = true; }↗"#)?,
-        r#"let pkg = "hello"; in "{ ${toString pkg} = true; }""#
-    );
+    insta::assert_snapshot!(host_expand(
+        r#"let pkg = "hello"; in nix↖{ ↙⟨N⟩ pkg↘ = true; }↗"#
+    )?);
     Ok(())
 }
 
@@ -285,9 +278,6 @@ fn host_reduce_unsupported() {
 /// as its glyph.
 #[test]
 fn host_reduce_deferred_in_quote() -> Result<()> {
-    assert_eq!(
-        host_expand("let gen = nix↖{ a = ↓; }↗; in gen")?,
-        r#"let gen = "{ a = ↓; }"; in gen"#
-    );
+    insta::assert_snapshot!(host_expand("let gen = nix↖{ a = ↓; }↗; in gen")?);
     Ok(())
 }

@@ -2,6 +2,21 @@
 //! code as the reference `BootstrapMetaLanguage` (via `Bootstrap`). These tests
 //! expand the same inputs through both engines and assert identical output, so we
 //! get a fast feedback loop without invoking `rust-script`.
+//!
+//! Two oracles, doing different jobs (#157):
+//!
+//! * **The differential check** in `expand_both` — Omni against Bootstrap — is a
+//!   real assertion. It validates *semantics* while being indifferent to
+//!   spelling, so it keeps working across a refactor that invalidates every
+//!   snapshot below.
+//! * **The snapshots** pin the exact generated code. They are what makes a
+//!   deliberate change to builder spelling a bulk `cargo insta review` instead
+//!   of N hand-edited string literals — and they gave the four tests that
+//!   previously only `println!`ed their output a real assertion for free.
+//!
+//! Semantic results (a reduced value, a `qmatch` binding) and negative
+//! invariants ("this must *not* emit") stay as ordinary assertions: they state
+//! something that must be true, not something that merely is true today.
 
 use indoc::indoc;
 use quilt::langs::bootstrap::Bootstrap;
@@ -29,18 +44,13 @@ fn expand_both(code: &str) -> Result<String> {
 
 #[test]
 fn simple() -> Result<()> {
-    let out = expand_both("let expr = ↖1 + 2↗;")?;
-    assert_eq!(
-        out,
-        r#"let expr = tb("binary_expression").c(&leaf("integer_literal", "1")).w(" ").c(&sym("+")).w(" ").c(&leaf("integer_literal", "2")).b();"#
-    );
+    insta::assert_snapshot!(expand_both("let expr = ↖1 + 2↗;")?);
     Ok(())
 }
 
 #[test]
 fn quote_expr() -> Result<()> {
-    let out = expand_both("↖1 + 2↗")?;
-    println!("{out}");
+    insta::assert_snapshot!(expand_both("↖1 + 2↗")?);
     Ok(())
 }
 
@@ -52,7 +62,7 @@ fn variadic() -> Result<()> {
             println!("World");
         }↗
     "#})?;
-    println!("{out}");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -71,7 +81,7 @@ fn splicing() -> Result<()> {
         }
         mk(3).unwrap()
     }"#})?;
-    println!("{out}");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -88,6 +98,7 @@ fn ground_stmt_quote_emits() -> Result<()> {
         }↗;
     "#})?;
     assert!(out.contains(".b().emit(&mut b_);"), "{out}");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -98,6 +109,7 @@ fn ground_tail_quote_stays_value() -> Result<()> {
     // expression: it must remain the block's value, not get emitted.
     let out = expand_both("fn f() -> Arc<QTerm> {\n    ↖1 + 2↗\n}")?;
     assert!(!out.contains(".emit("), "{out}");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -116,6 +128,7 @@ fn ground_unit_unquote_spliced() -> Result<()> {
         }↗;
     "#})?;
     assert!(!out.contains("}.emit(&mut b_);"), "{out}");
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
@@ -124,11 +137,7 @@ fn pattern_let() -> Result<()> {
     // A quote in the binding position of a `let` is a pattern (issue #18):
     // its ground unquotes become metavariables and the statement destructures
     // the value by matching its shape.
-    let out = expand_both("let ↖1 + ↙x↘↗ = rhs;")?;
-    assert_eq!(
-        out,
-        r#"let [x] = qmatch_n(&tb("binary_expression").c(&leaf("integer_literal", "1")).w(" ").c(&sym("+")).w(" ").c(&mvar("x")).b(), &rhs);"#
-    );
+    insta::assert_snapshot!(expand_both("let ↖1 + ↙x↘↗ = rhs;")?);
     Ok(())
 }
 
@@ -203,6 +212,6 @@ fn splicing_nested() -> Result<()> {
         }
         mk(3).unwrap()
     }"#})?;
-    println!("{out}");
+    insta::assert_snapshot!(out);
     Ok(())
 }

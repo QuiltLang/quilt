@@ -14,8 +14,12 @@
 //! `bin/check-bootstrap` and `bin/check-grammars`.
 
 pub mod battery;
+
+/// Structural `QTerm` rendering now lives in the `quilt` crate, where the
+/// expander's own snapshot tests need it too (#157).
+pub use quilt::qsnap;
+
 pub mod matrix;
-pub mod qsnap;
 pub mod registry;
 pub mod spec;
 

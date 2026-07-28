@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_python.rs
+expression: out
+---
+x = tb("binary_operator").c(leaf("integer", "1")).w(" ").c(sym("+")).w(" ").c(leaf("integer", "2")).b()

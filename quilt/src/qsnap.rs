@@ -21,7 +21,7 @@
 //! Spans are deliberately omitted — they are diagnostic metadata excluded from
 //! `PartialEq`, so including them would make snapshots churn on unrelated edits.
 
-use quilt::{
+use crate::{
     prelude::*,
     strcmd::StrCmd,
     term::{CmdOrHole, Term as _},

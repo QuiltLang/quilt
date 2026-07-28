@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: "host_expand(\"nix↖[ 1 2 ↙x↘ ]↗\")?"
+---
+"[ 1 2 ${x} ]"

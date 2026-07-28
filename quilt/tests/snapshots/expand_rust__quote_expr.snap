@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_both(\"↖1 + 2↗\")?"
+---
+tb("binary_expression").c(&leaf("integer_literal", "1")).w(" ").c(&sym("+")).w(" ").c(&leaf("integer_literal", "2")).b()

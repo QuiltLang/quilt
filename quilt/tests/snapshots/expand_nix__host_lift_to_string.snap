@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: out
+---
+let n = 3; in "x + ${toString n}"

@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: out
+---
+let key = "enabled"; in "{ ${key} = true; }"

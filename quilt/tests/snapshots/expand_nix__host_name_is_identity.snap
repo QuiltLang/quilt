@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: "host_expand(r#\"let pkg = \"hello\"; in nix↖{ ↙⟨N⟩ pkg↘ = true; }↗\"#)?"
+---
+let pkg = "hello"; in "{ ${toString pkg} = true; }"

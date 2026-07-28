@@ -1,0 +1,19 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: out
+---
+let p = tb("expression_statement").c(&{
+    let mut b_ = tb("block");
+    sym("{").emit(&mut b_);
+    b_.push("    ");
+    b_.nl();
+    {
+        for i in 0..3 {
+            tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "hi")).c(&sym("\"")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
+        }
+    };
+    b_.pop();
+    b_.nl();
+    sym("}").emit(&mut b_);
+    b_.b()
+}).b();
