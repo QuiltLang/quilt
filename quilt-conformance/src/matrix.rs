@@ -322,9 +322,17 @@ impl Matrix {
         s
     }
 
-    /// Render the wiki page. Three tables (object / host / cross-cutting), each
-    /// with an emoji key, plus a notes section listing every `Partial` and
-    /// `Unsupported` cell with its explanation and issue link.
+    /// Render the wiki page: three tables (object / host / cross-cutting), each
+    /// with an emoji key.
+    ///
+    /// There is deliberately no prose "notes and limitations" section. Every
+    /// `note` in the specs would be reproduced here, which is a page of English
+    /// to keep true as the implementations move — the exact maintenance burden
+    /// this whole system exists to remove. A cell that carries a tracking issue
+    /// links to it instead: a link stays correct on its own, and the issue is
+    /// where a limitation's current state actually lives. The full prose is
+    /// still in `conformance/spec/*.toml` and in the JSON, which is what the
+    /// website renders as per-cell tooltips.
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
 
@@ -354,7 +362,9 @@ impl Matrix {
         ] {
             let meaning = match status {
                 Status::Supported => "Works, and a probe proves it",
-                Status::Partial => "Works within a stated limit — see the notes below the table",
+                Status::Partial => {
+                    "Works within a stated limit; the glyph links to the tracking issue"
+                }
                 Status::Unsupported => "Deliberately unsupported; the probe asserts a clean error",
                 Status::Planned => "Intended and tracked by an issue; not yet implemented",
             };
@@ -395,7 +405,17 @@ impl Matrix {
                     match row.cell(*a) {
                         Some(c) => {
                             let mark = if c.is_verified() { "" } else { "*" };
-                            let _ = write!(out, " {}{mark} |", c.status.emoji());
+                            // A tracked limitation links straight to its issue,
+                            // so the glyph stays traceable without a prose
+                            // section restating what the issue already says.
+                            let glyph = match c.issue {
+                                Some(n) => format!(
+                                    "[{}](https://github.com/QuiltLang/quilt/issues/{n})",
+                                    c.status.emoji()
+                                ),
+                                None => c.status.emoji().to_string(),
+                            };
+                            let _ = write!(out, " {glyph}{mark} |");
                         }
                         None => out.push_str("  |"),
                     }
@@ -408,42 +428,6 @@ impl Matrix {
                 let _ = writeln!(out, "- **{}** — {}", a.title(), a.description());
             }
             out.push('\n');
-        }
-
-        out.push_str("## Notes and limitations\n\n");
-        let mut any = false;
-        for row in &self.rows {
-            let notable: Vec<&Cell> = row
-                .cells
-                .iter()
-                .filter(|c| {
-                    matches!(
-                        c.status,
-                        Status::Partial | Status::Unsupported | Status::Planned
-                    ) && c.note.is_some()
-                })
-                .collect();
-            if notable.is_empty() {
-                continue;
-            }
-            any = true;
-            let _ = writeln!(out, "### {}\n", row.display);
-            for c in notable {
-                let issue = c.issue.map_or(String::new(), |n| {
-                    format!(" ([#{n}](https://github.com/QuiltLang/quilt/issues/{n}))")
-                });
-                let _ = writeln!(
-                    out,
-                    "- {} **{}** — {}{issue}",
-                    c.status.emoji(),
-                    c.axis.title(),
-                    c.note.as_deref().unwrap_or_default(),
-                );
-            }
-            out.push('\n');
-        }
-        if !any {
-            out.push_str("_None._\n");
         }
 
         out

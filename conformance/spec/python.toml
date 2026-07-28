@@ -28,7 +28,7 @@ host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported"}
 emit = {status = "partial", note = "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable", issue = 144}
-pattern-match = {status = "supported", note = "Python fragments can be destructured by a Rust host's pattern `let`"}
+pattern-match = {status = "unsupported", note = "`PythonMetaLanguage` sets no `pattern_tag`, so a Python host cannot write `let ↖…↗ = …`. Python *fragments* can still be destructured by a Rust host, which is what `expand_rust.rs::pattern_let_runtime` exercises"}
 runnable = {status = "supported"}
 runtime-binding = {status = "supported"}
 glyph-collisions = {status = "supported"}
@@ -117,3 +117,16 @@ assignment = "stmt"
 function_definition = "stmt"
 binary_operator = "expr"
 call = "expr"
+
+[meta]
+emit = "emit(b_)"
+type_str = "QTerm"
+name_str = "name"
+reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]
+
+[meta.reduce]
+"" = "reduce()"
+python = "reduce()"
+py = "reduce()"
+rust = "reduce_rs()"
+rs = "reduce_rs()"

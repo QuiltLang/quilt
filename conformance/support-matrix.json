@@ -97,17 +97,20 @@
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with"
+          "note": "target-only: no meta-language to reduce with",
+          "verified_by": "reduce/bash"
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`program` and `compound_statement` are variadic, so a host can emit into them"
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/bash"
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; bash fragments can still be destructured by a Rust host"
+          "note": "target-only; bash fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/bash"
         },
         {
           "axis": "runnable",
@@ -224,17 +227,20 @@
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with"
+          "note": "target-only: no meta-language to reduce with",
+          "verified_by": "reduce/html"
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`element` is variadic, so a host can emit children into it"
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/html"
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; HTML fragments can still be destructured by a Rust host"
+          "note": "target-only; HTML fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/html"
         },
         {
           "axis": "runnable",
@@ -362,18 +368,26 @@
           "axis": "reduce",
           "status": "unsupported",
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
-          "issue": 132
+          "issue": 132,
+          "verified_by": "reduce/lean"
         },
         {
           "axis": "emit",
-          "status": "partial",
-          "note": "emit works into `by` / `do` bodies, which are the variadic containers; a top-level sequence of commands needs a variadic `module`, which a bare-hole quote does not produce",
-          "issue": 133
+          "status": "unsupported",
+          "note": "`emit_str` fails unconditionally: the string-based meta has no `b_` accumulator for `←` to append to, and the error points at `List.map` + `String.intercalate` instead. Automatic emission of children into the variadic `by` / `do` containers is a separate mechanism (`wrap_child`) and is unaffected; a top-level sequence of commands additionally needs a variadic `module`",
+          "issue": 133,
+          "verified_by": "emit/lean",
+          "detail": [
+            "← unsupported (fails with guidance)",
+            "type_str → String",
+            "name_str → id"
+          ]
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host"
+          "note": "no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/lean"
         },
         {
           "axis": "runnable",
@@ -498,18 +512,26 @@
           "axis": "reduce",
           "status": "unsupported",
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
-          "issue": 132
+          "issue": 132,
+          "verified_by": "reduce/nix"
         },
         {
           "axis": "emit",
-          "status": "partial",
-          "note": "the string model has no `b_` accumulator, so emit/splice in a ground loop is unsupported; build sequences functionally with `map` / `concatStringsSep`",
-          "issue": 132
+          "status": "unsupported",
+          "note": "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says",
+          "issue": 132,
+          "verified_by": "emit/nix",
+          "detail": [
+            "← unsupported (fails with guidance)",
+            "type_str unsupported",
+            "name_str → toString"
+          ]
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host"
+          "note": "no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/nix"
         },
         {
           "axis": "runnable",
@@ -640,18 +662,33 @@
         },
         {
           "axis": "reduce",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "reduce/python",
+          "detail": [
+            "(homogeneous) → reduce()",
+            "py → reduce()",
+            "python → reduce()",
+            "rs → reduce_rs()",
+            "rust → reduce_rs()"
+          ]
         },
         {
           "axis": "emit",
           "status": "partial",
           "note": "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable",
-          "issue": 144
+          "issue": 144,
+          "verified_by": "emit/python",
+          "detail": [
+            "← → emit(b_)",
+            "type_str → QTerm",
+            "name_str → name"
+          ]
         },
         {
           "axis": "pattern-match",
-          "status": "supported",
-          "note": "Python fragments can be destructured by a Rust host's pattern `let`"
+          "status": "unsupported",
+          "note": "`PythonMetaLanguage` sets no `pattern_tag`, so a Python host cannot write `let ↖…↗ = …`. Python *fragments* can still be destructured by a Rust host, which is what `expand_rust.rs::pattern_let_runtime` exercises",
+          "verified_by": "pattern-match/python"
         },
         {
           "axis": "runnable",
@@ -786,15 +823,34 @@
         },
         {
           "axis": "reduce",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "reduce/rust",
+          "detail": [
+            "(homogeneous) → reduce()",
+            "py → reduce_py()",
+            "python → reduce_py()",
+            "rs → reduce()",
+            "rust → reduce()"
+          ]
         },
         {
           "axis": "emit",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "emit/rust",
+          "detail": [
+            "← → emit(&mut b_)",
+            "type_str → Arc<QTerm>",
+            "name_str → name"
+          ]
         },
         {
           "axis": "pattern-match",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "pattern-match/rust",
+          "detail": [
+            "pattern tag: let_declaration",
+            "metavariable: mvar(\"x\")"
+          ]
         },
         {
           "axis": "runnable",
@@ -904,17 +960,20 @@
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "not a host: no meta-language to reduce with"
+          "note": "not a host: no meta-language to reduce with",
+          "verified_by": "reduce/text"
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "the single `text` tag is variadic, so a host can emit into it"
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/text"
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; text fragments can still be destructured by a Rust host"
+          "note": "target-only; text fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/text"
         },
         {
           "axis": "runnable",
@@ -1032,18 +1091,31 @@
           "axis": "reduce",
           "status": "partial",
           "note": "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend",
-          "issue": 144
+          "issue": 144,
+          "verified_by": "reduce/typescript",
+          "detail": [
+            "(homogeneous) → reduce()",
+            "ts → reduce()",
+            "typescript → reduce()"
+          ]
         },
         {
           "axis": "emit",
           "status": "partial",
           "note": "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable",
-          "issue": 144
+          "issue": 144,
+          "verified_by": "emit/typescript",
+          "detail": [
+            "← → emit(b_)",
+            "type_str → QTerm",
+            "name_str → name"
+          ]
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"
+          "note": "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature",
+          "verified_by": "pattern-match/typescript"
         },
         {
           "axis": "runnable",
@@ -1159,17 +1231,20 @@
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with"
+          "note": "target-only: no meta-language to reduce with",
+          "verified_by": "reduce/wgsl"
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`source_file` and `compound_statement` are variadic, so a host can emit into them"
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/wgsl"
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; WGSL fragments can still be destructured by a Rust host"
+          "note": "target-only; WGSL fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/wgsl"
         },
         {
           "axis": "runnable",
@@ -1297,17 +1372,20 @@
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with"
+          "note": "target-only: no meta-language to reduce with",
+          "verified_by": "reduce/zsh"
         },
         {
           "axis": "emit",
-          "status": "supported",
-          "note": "`program` and `compound_statement` are variadic, so a host can emit into them"
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/zsh"
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; zsh fragments can still be destructured by a Rust host"
+          "note": "target-only; zsh fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/zsh"
         },
         {
           "axis": "runnable",

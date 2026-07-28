@@ -61,3 +61,14 @@ program = "file"
 lexical_declaration = "stmt"
 function_declaration = "stmt"
 binary_expression = "expr"
+
+[meta]
+emit = "emit(b_)"
+type_str = "QTerm"
+name_str = "name"
+reduce_unsupported = ["rust", "rs", "python", "py", "wgsl", "html", "nix", "lean", "lean4", "bash", "zsh"]
+
+[meta.reduce]
+"" = "reduce()"
+typescript = "reduce()"
+ts = "reduce()"

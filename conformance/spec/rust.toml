@@ -120,3 +120,22 @@ let_declaration = "stmt"
 expression_statement = "stmt"
 binary_expression = "expr"
 block = "expr"
+
+# The operator spellings `RustMetaLanguage` emits into generated code. Pinning
+# them here is what turns "the operator works" into a check: a refactor that
+# changes a spelling moves a matrix cell rather than silently changing every
+# expanded program.
+[meta]
+emit = "emit(&mut b_)"
+type_str = "Arc<QTerm>"
+name_str = "name"
+pattern_tag = "let_declaration"
+pattern_var = 'mvar("x")'
+reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]
+
+[meta.reduce]
+"" = "reduce()"
+rust = "reduce()"
+rs = "reduce()"
+python = "reduce_py()"
+py = "reduce_py()"

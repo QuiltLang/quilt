@@ -24,7 +24,7 @@ highlights = {status = "unsupported", note = "the LSP vendors a patched WGSL hig
 host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
 lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
 reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
-emit = {status = "supported", note = "`source_file` and `compound_statement` are variadic, so a host can emit into them"}
+emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
 pattern-match = {status = "unsupported", note = "target-only; WGSL fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "a shader is compiled by the host application, not executed directly"}
 runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
