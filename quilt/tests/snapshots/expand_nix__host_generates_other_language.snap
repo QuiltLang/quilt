@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: "host_expand(\"bash↖echo ↙msg↘↗\")?"
+---
+"echo ${msg}"

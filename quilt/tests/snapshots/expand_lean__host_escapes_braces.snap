@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_lean.rs
+expression: out
+---
+def s := s!"instance : Foo := \{ n := 1 }"

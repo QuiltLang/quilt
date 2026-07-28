@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: "host_expand(\"nix↖{ x = 1; y = 2; }↗\")?"
+---
+"{ x = 1; y = 2; }"

@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: "host_expand(\"let gen = nix↖{ a = ↓; }↗; in gen\")?"
+---
+let gen = "{ a = ↓; }"; in gen

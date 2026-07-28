@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_lean.rs
+expression: out
+---
+def e := s!"x + {toString n}"

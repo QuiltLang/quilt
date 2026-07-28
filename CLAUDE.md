@@ -54,6 +54,13 @@ check-matrix      # gen-matrix + fail if either artifact drifted (CI / pre-commi
 cargo test -p quilt-conformance          # the battery; one test per language
 cargo test -p quilt-conformance rust     # a single language
 
+# Expander output is snapshotted, not pinned with inline string literals
+# (issue #157), so a deliberate change to generated code is a bulk review
+# rather than N hand edits. Snapshots live in quilt/tests/snapshots/.
+cargo insta review               # accept/reject changed snapshots interactively
+INSTA_UPDATE=always cargo test   # accept everything (use when you mean it)
+# CI uploads *.snap.new as a workflow artifact when a snapshot check fails.
+
 # Feature combinations that are contracts, not defaults (issue #162): quiltlang
 # with default-features = false must stay runtime-only (no tree-sitter) so
 # quilt-wasm and the sibling nanobots-codegen can build it for

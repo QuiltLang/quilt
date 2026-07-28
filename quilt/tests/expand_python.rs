@@ -19,20 +19,14 @@ fn expand_py(code: &str) -> Result<String> {
 fn simple() -> Result<()> {
     // Quote on the RHS of an assignment; emits Python builder source (no `&`).
     let out = expand_py("x = ↖1 + 2↗")?;
-    assert_eq!(
-        out,
-        r#"x = tb("binary_operator").c(leaf("integer", "1")).w(" ").c(sym("+")).w(" ").c(leaf("integer", "2")).b()"#
-    );
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
 #[test]
 fn quote_expr() -> Result<()> {
     let out = expand_py("↖1 + 2↗")?;
-    assert_eq!(
-        out,
-        r#"tb("binary_operator").c(leaf("integer", "1")).w(" ").c(sym("+")).w(" ").c(leaf("integer", "2")).b()"#
-    );
+    insta::assert_snapshot!(out);
     Ok(())
 }
 
