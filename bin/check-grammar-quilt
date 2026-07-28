@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run the tree-sitter-quilt corpus (issue #156).
+#
+# `tree-sitter test` ran nowhere: the crate is a workspace member but not a
+# `default-member`, so `cargo test` never reaches it either. The surface syntax
+# — the one thing every language shares — was the least tested part of the
+# system, which is how `←` came to be Quilt's emit glyph without being in the
+# grammar's escape class (#141).
+#
+# Also regenerates the parser and fails if it drifts from grammar.js, the same
+# regenerate-and-diff shape as bin/check-bootstrap and bin/check-grammars: a
+# hand-edited src/parser.c, or a grammar.js change committed without running
+# bin/ts-gen, would otherwise pass the corpus while shipping a stale parser.
+#
+# For CI and pre-commit. Needs the `tree-sitter` CLI (in the flake devShell).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+GRAMMAR="$ROOT/tree-sitter-quilt"
+
+if ! command -v tree-sitter >/dev/null 2>&1; then
+  echo "error: tree-sitter CLI not found — run inside the flake devShell" >&2
+  exit 1
+fi
+
+echo "==> corpus"
+(cd "$GRAMMAR" && tree-sitter test)
+
+echo
+echo "==> generated parser matches grammar.js"
+(cd "$GRAMMAR" && tree-sitter generate)
+if ! git -C "$ROOT" diff --quiet -- tree-sitter-quilt/src; then
+  echo "error: tree-sitter-quilt/src is stale relative to grammar.js." >&2
+  echo "       Run 'bin/ts-gen' and commit tree-sitter-quilt/src/." >&2
+  git -C "$ROOT" --no-pager diff --stat -- tree-sitter-quilt/src >&2
+  exit 1
+fi
+
+echo
+echo "quilt grammar OK ✓"
