@@ -19,7 +19,7 @@ quotable = {status = "supported"}
 hole-positions = {status = "supported", note = "text imposes no kind on a hole, so a spliced child is rendered however the host built it"}
 variadic-containers = {status = "supported"}
 kind-classification = {status = "supported", note = "a text fragment is always an opaque value, so `typ()` answers `Expr` for every tag"}
-lift-into = {status = "unsupported", note = "no `LiftTo<Text>` marker; a host that wants a value as text lifts it in its own language and splices the result", issue = 144}
+lift-into = {status = "planned", note = "no `LiftTo<Text>` marker; a host that wants a value as text lifts it in its own language and splices the result", issue = 149}
 highlights = {status = "unsupported", note = "plain text has no grammar to highlight"}
 host = {status = "unsupported", note = "the `TextMetaLanguage` exists but is identity-only and is not registered as a host in `Omni`"}
 lift-from = {status = "unsupported", note = "not a host: nothing to lift from"}

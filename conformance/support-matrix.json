@@ -33,7 +33,7 @@
           "axis": "variadic-containers",
           "status": "partial",
           "note": "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits",
-          "issue": 144,
+          "issue": 150,
           "verified_by": "variadic-containers/bash",
           "detail": [
             "program",
@@ -63,7 +63,7 @@
           "axis": "lift-into",
           "status": "partial",
           "note": "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl",
-          "issue": 144,
+          "issue": 149,
           "verified_by": "lift-into/bash",
           "detail": [
             "u32:3 → 3",
@@ -116,7 +116,7 @@
           "axis": "runnable",
           "status": "partial",
           "note": "`hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`",
-          "issue": 144,
+          "issue": 151,
           "verified_by": "runnable/bash",
           "detail": [
             "#!/usr/bin/env bash"
@@ -144,7 +144,7 @@
           "axis": "lsp",
           "status": "partial",
           "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied",
-          "issue": 144
+          "issue": 154
         }
       ]
     },
@@ -198,7 +198,7 @@
           "axis": "lift-into",
           "status": "partial",
           "note": "no `LiftTo<Html>` marker, so a Rust host cannot lift into an HTML quote; the Python and TypeScript hosts lift through `qlift_html` instead, which is a host-side spelling rather than a `LiftTo` impl",
-          "issue": 144,
+          "issue": 149,
           "verified_by": "lift-into/html"
         },
         {
@@ -271,7 +271,7 @@
           "axis": "lsp",
           "status": "partial",
           "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream HTML server is proxied",
-          "issue": 144
+          "issue": 154
         }
       ]
     },
@@ -366,14 +366,14 @@
         },
         {
           "axis": "reduce",
-          "status": "unsupported",
+          "status": "planned",
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "issue": 132,
           "verified_by": "reduce/lean"
         },
         {
           "axis": "emit",
-          "status": "unsupported",
+          "status": "planned",
           "note": "`emit_str` fails unconditionally: the string-based meta has no `b_` accumulator for `←` to append to, and the error points at `List.map` + `String.intercalate` instead. Automatic emission of children into the variadic `by` / `do` containers is a separate mechanism (`wrap_child`) and is unaffected; a top-level sequence of commands additionally needs a variadic `module`",
           "issue": 133,
           "verified_by": "emit/lean",
@@ -397,7 +397,7 @@
         },
         {
           "axis": "runtime-binding",
-          "status": "unsupported",
+          "status": "planned",
           "note": "string-based meta: no `QTerm` runtime library is shipped for Lean",
           "issue": 132
         },
@@ -510,16 +510,16 @@
         },
         {
           "axis": "reduce",
-          "status": "unsupported",
+          "status": "planned",
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
-          "issue": 132,
+          "issue": 155,
           "verified_by": "reduce/nix"
         },
         {
           "axis": "emit",
-          "status": "unsupported",
+          "status": "planned",
           "note": "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says",
-          "issue": 132,
+          "issue": 155,
           "verified_by": "emit/nix",
           "detail": [
             "← unsupported (fails with guidance)",
@@ -541,9 +541,9 @@
         },
         {
           "axis": "runtime-binding",
-          "status": "unsupported",
+          "status": "planned",
           "note": "string-based meta: no `QTerm` runtime library is shipped for Nix",
-          "issue": 132
+          "issue": 155
         },
         {
           "axis": "glyph-collisions",
@@ -562,7 +562,7 @@
           "axis": "lsp",
           "status": "partial",
           "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream Nix server is proxied",
-          "issue": 144
+          "issue": 154
         }
       ]
     },
@@ -676,7 +676,7 @@
           "axis": "emit",
           "status": "partial",
           "note": "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable",
-          "issue": 144,
+          "issue": 152,
           "verified_by": "emit/python",
           "detail": [
             "← → emit(b_)",
@@ -931,9 +931,9 @@
         },
         {
           "axis": "lift-into",
-          "status": "unsupported",
+          "status": "planned",
           "note": "no `LiftTo<Text>` marker; a host that wants a value as text lifts it in its own language and splices the result",
-          "issue": 144,
+          "issue": 149,
           "verified_by": "lift-into/text"
         },
         {
@@ -1058,9 +1058,9 @@
         },
         {
           "axis": "lift-into",
-          "status": "unsupported",
+          "status": "planned",
           "note": "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`",
-          "issue": 144,
+          "issue": 149,
           "verified_by": "lift-into/typescript"
         },
         {
@@ -1091,7 +1091,7 @@
           "axis": "reduce",
           "status": "partial",
           "note": "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend",
-          "issue": 144,
+          "issue": 153,
           "verified_by": "reduce/typescript",
           "detail": [
             "(homogeneous) → reduce()",
@@ -1103,7 +1103,7 @@
           "axis": "emit",
           "status": "partial",
           "note": "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable",
-          "issue": 144,
+          "issue": 152,
           "verified_by": "emit/typescript",
           "detail": [
             "← → emit(b_)",
@@ -1197,7 +1197,7 @@
           "axis": "lift-into",
           "status": "partial",
           "note": "numeric and bool literals only — WGSL has no string type, so no `LiftTo<Wgsl> for str` impl exists and lifting a string is a compile error in the generated program rather than a silent truncation. 64-bit integers are likewise omitted",
-          "issue": 144,
+          "issue": 149,
           "verified_by": "lift-into/wgsl",
           "detail": [
             "u32:3 → 3u",
@@ -1310,7 +1310,7 @@
           "axis": "variadic-containers",
           "status": "partial",
           "note": "the arity table has drifted from bash's: zsh omits `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, so an emit into a zsh `for` body behaves differently from the identical bash one",
-          "issue": 144,
+          "issue": 150,
           "verified_by": "variadic-containers/zsh",
           "detail": [
             "program",
@@ -1338,7 +1338,7 @@
           "axis": "lift-into",
           "status": "partial",
           "note": "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Zsh>` impl",
-          "issue": 144,
+          "issue": 149,
           "verified_by": "lift-into/zsh",
           "detail": [
             "u32:3 → 3",
@@ -1391,7 +1391,7 @@
           "axis": "runnable",
           "status": "partial",
           "note": "`hashbang()` returns `#!/usr/bin/env zsh`, but zsh has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`",
-          "issue": 144,
+          "issue": 151,
           "verified_by": "runnable/zsh",
           "detail": [
             "#!/usr/bin/env zsh"
@@ -1419,7 +1419,7 @@
           "axis": "lsp",
           "status": "partial",
           "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream zsh server is proxied",
-          "issue": 144
+          "issue": 154
         }
       ]
     }

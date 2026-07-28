@@ -20,12 +20,12 @@ quotable = {status = "supported"}
 hole-positions = {status = "supported"}
 variadic-containers = {status = "supported"}
 kind-classification = {status = "supported"}
-lift-into = {status = "unsupported", note = "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`", issue = 144}
+lift-into = {status = "planned", note = "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`", issue = 149}
 highlights = {status = "unsupported", note = "no `highlights.scm` is vendored for the TypeScript grammar"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
-reduce = {status = "partial", note = "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend", issue = 144}
-emit = {status = "partial", note = "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable", issue = 144}
+reduce = {status = "partial", note = "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend", issue = 153}
+emit = {status = "partial", note = "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable", issue = 152}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"}
 runnable = {status = "supported"}
 runtime-binding = {status = "supported"}

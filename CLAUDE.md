@@ -54,6 +54,12 @@ check-matrix      # gen-matrix + fail if either artifact drifted (CI / pre-commi
 cargo test -p quilt-conformance          # the battery; one test per language
 cargo test -p quilt-conformance rust     # a single language
 
+# Feature combinations that are contracts, not defaults (issue #162): quiltlang
+# with default-features = false must stay runtime-only (no tree-sitter) so
+# quilt-wasm and the sibling nanobots-codegen can build it for
+# wasm32-unknown-unknown. Also builds each language feature alone.
+check-features
+
 # Build/install the editor tooling: cargo-installs quilt-lsp, npm-installs the
 # VS Code extension, symlinks tools/quilt into ~/.vscode/extensions
 install_tools
