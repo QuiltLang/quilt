@@ -1,0 +1,92 @@
+name = "lean"
+display = "Lean 4"
+aliases = ["lean4"]
+feature = "lean"
+meta_kind = "string"
+lang_src = "quilt/src/langs/lean/lang.rs"
+meta_src = "quilt/src/langs/lean/meta.rs"
+blurb = """
+A quotable target and a string-based host. Generate definitions, theorems and \
+tactic proofs at build time; as a host, a `.lean.quilt` metaprogram expands to \
+plain Lean that builds the output with `s!"…"` interpolation."""
+
+variadic = ["module", "by"]
+not_variadic = ["binary_op", "def", "theorem"]
+
+lift_marker = "Lean"
+lift_from = ["lean", "lean4"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "html", "typescript", "ts", "text", "txt"]
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "partial", note = "term, tactic, do-element, declaration-name and binder position all work with the unpatched grammar (`__QUILT_HOLE__` matches Lean's identifier regex); whole-command position is reached only by the `#check …` wrapper fallback in `parse_pre`", issue = 133}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "supported"}
+lift-into = {status = "supported"}
+highlights = {status = "supported"}
+host = {status = "supported"}
+lift-from = {status = "supported"}
+reduce = {status = "unsupported", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 132}
+emit = {status = "partial", note = "emit works into `by` / `do` bodies, which are the variadic containers; a top-level sequence of commands needs a variadic `module`, which a bare-hole quote does not produce", issue = 133}
+pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host"}
+runnable = {status = "unsupported", note = "Lean has no interpreter shebang — a file runs via `lean file.lean` or `lake env lean`, and `#!` is not Lean comment syntax"}
+runtime-binding = {status = "unsupported", note = "string-based meta: no `QTerm` runtime library is shipped for Lean", issue = 132}
+glyph-collisions = {status = "partial", note = "`←` is Lean's monadic bind and is eaten by the emit glyph; `↑` (coercion) and `↓` (lowering) are also real Lean notation. The ASCII alias `<-` is the current workaround, and `\\←` does not escape because `←` is missing from the grammar's escape class", issue = 141}
+chain-member = {status = "supported"}
+header-comment = {status = "supported", note = "generated Lean files use `--`, not `//!`"}
+lsp = {status = "supported", note = "Lean is a host with a `MetaLanguageAdapter` since #135"}
+
+[[fragments]]
+name = "term"
+code = "n + 1"
+tag = "binary_op"
+
+[[fragments]]
+name = "def"
+code = "def f (n : Nat) : Nat := n + 1"
+tag = "def"
+
+[[fragments]]
+name = "theorem_by_tactic"
+code = "theorem t (n : Nat) : n + 0 = n := by simp"
+tag = "theorem"
+
+[[holes]]
+name = "term_position"
+code = "def f := @"
+ikinds = ["expr"]
+
+[[holes]]
+name = "tactic_position"
+code = "theorem t : True := by\n  @"
+ikinds = ["stmt"]
+
+[[lift]]
+value = "u32:3"
+tag = "num_lit"
+text = "3"
+
+[[lift]]
+value = "i32:-7"
+tag = "unary_op"
+text = "-7"
+
+[[lift]]
+value = "bool:true"
+tag = "true_const"
+text = "true"
+
+[[lift]]
+value = "str:plain"
+tag = "str_lit"
+text = '"hi"'
+
+[[lift]]
+value = "str:tricky"
+tag = "str_lit"
+text = '"a\"b\\c${d}"'
+
+[kinds]
+def = "item"
+theorem = "item"
+binary_op = "expr"

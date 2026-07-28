@@ -45,6 +45,15 @@ check-bootstrap   # run bootstrap and fail if meta.rs changed (CI / pre-commit)
 # Regenerate the tree-sitter-quilt parser after editing grammar.js
 ts-gen
 
+# Language support matrix (issue #144). Capability claims live in
+# conformance/spec/<lang>.toml; the battery in quilt-conformance/ verifies each
+# one and regenerates conformance/support-matrix.json (rendered by the website's
+# support table) + docs/wiki/support-matrix.md.
+gen-matrix        # verify claims, rewrite both artifacts
+check-matrix      # gen-matrix + fail if either artifact drifted (CI / pre-commit)
+cargo test -p quilt-conformance          # the battery; one test per language
+cargo test -p quilt-conformance rust     # a single language
+
 # Build/install the editor tooling: cargo-installs quilt-lsp, npm-installs the
 # VS Code extension, symlinks tools/quilt into ~/.vscode/extensions
 install_tools
@@ -54,7 +63,7 @@ The file stem determines the **language chain**: reading the extensions right-to
 
 ## Workspace layout
 
-Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
 
 The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 

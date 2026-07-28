@@ -53,6 +53,15 @@ jobs:
           - os: ubuntu-latest
             name: Bootstrap (self-host no-op)
             run: bin/check-bootstrap
+          # The language support matrix (issue #144): re-verify every capability
+          # claim in conformance/spec/*.toml against the implementations, then
+          # fail if the committed conformance/support-matrix.json or
+          # docs/wiki/support-matrix.md drifted. The website renders that JSON,
+          # so this is what stops the published support table from claiming
+          # capability we don't test. Fast: no rust-script, no network.
+          - os: ubuntu-latest
+            name: Support matrix (no drift)
+            run: bin/check-matrix
           # Verify the vendored tree-sitter parsers (quilt/grammars/) still match
           # the pinned forks — i.e. nobody hand-edited a parser or forgot to run
           # bin/sync-grammars after a rev bump. Clones the forks, so needs network.

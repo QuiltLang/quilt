@@ -12,10 +12,12 @@ resolver = "2"
 # build quilt-wasm`, and `bin/build-expand-wasm`.
 default-members = [
   "quilt",
+  "quilt-conformance",
   "quilt-lsp",
 ]
 members = [
   "quilt",
+  "quilt-conformance",
   "quilt-lsp",
   "quilt-python",
   "quilt-wasm",
@@ -74,6 +76,7 @@ serde_json = "1.0"
 streaming-iterator = "0.1"
 tempfile = "3.27"
 tokio = "1"
+toml = "0.9"
 tower-lsp = "0.20"
 tracing = "0.1"
 tracing-subscriber = "0.3"

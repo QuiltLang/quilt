@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Verify the committed support matrix is current: regenerate it and fail if
+# anything changed. Same shape as bin/check-bootstrap and bin/check-grammars.
+#
+# A diff here means one of two things, and the distinction matters:
+#
+#   * a capability claim in conformance/spec/*.toml stopped being true — the
+#     implementation regressed, or the claim was wrong; or
+#   * a capability started working that the spec still calls unsupported — the
+#     spec is stale and should be promoted.
+#
+# Either way the website's support table would otherwise have gone on showing
+# the old answer, which is the failure mode this gate exists to prevent.
+#
+# For CI and pre-commit.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+TARGETS=(conformance/support-matrix.json docs/wiki/support-matrix.md)
+
+"$DIR/gen-matrix"
+
+if ! git -C "$ROOT" diff --quiet -- "${TARGETS[@]}"; then
+  echo "error: the committed support matrix is stale." >&2
+  echo "       Run 'bin/gen-matrix' and commit ${TARGETS[*]}." >&2
+  git -C "$ROOT" --no-pager diff -- "${TARGETS[@]}" >&2
+  exit 1
+fi
+
+# A spec for a language nobody registered (or vice versa) would leave the matrix
+# self-consistent but wrong, so the cross-check lives in the test suite.
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" -p quilt-conformance
+
+echo "support matrix is up to date ✓"

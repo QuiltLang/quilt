@@ -79,7 +79,10 @@ impl MetaLanguage for LeanMetaLanguage {
     /// where a value is used as a `String` in host position.)
     fn lift_str(&self, target: &str) -> Result<&'static str> {
         match target {
-            "" | "lean" => Ok("toString"),
+            // `lean4` is a registered alias of `lean` (see `langs/omni.rs`), so
+            // it has to be accepted here too — otherwise the homogeneous lift
+            // works in a `lean↖…↗` quote and fails in a `lean4↖…↗` one.
+            "" | "lean" | "lean4" => Ok("toString"),
             _ => miette::bail!("lean can't lift into {target:?}: only homogeneous `toString`"),
         }
     }

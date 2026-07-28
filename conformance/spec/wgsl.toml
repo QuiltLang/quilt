@@ -1,0 +1,73 @@
+name = "wgsl"
+display = "WGSL"
+aliases = []
+feature = "wgsl"
+meta_kind = "none"
+lang_src = "quilt/src/langs/wgsl/lang.rs"
+blurb = """
+WebGPU Shading Language — a target-only language. Generate shader code at build \
+time from a Rust or Python host, lifting host values straight into WGSL literal \
+syntax."""
+
+variadic = ["source_file", "compound_statement"]
+not_variadic = ["function_declaration"]
+
+lift_marker = "Wgsl"
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported"}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`; WGSL instead sorts fragments with `classify_term`, which reads the parsed term rather than the tag"}
+lift-into = {status = "partial", note = "numeric and bool literals only — WGSL has no string type, so no `LiftTo<Wgsl> for str` impl exists and lifting a string is a compile error in the generated program rather than a silent truncation. 64-bit integers are likewise omitted", issue = 144}
+highlights = {status = "unsupported", note = "the LSP vendors a patched WGSL highlight query of its own rather than exposing one from `quilt::grammars`", issue = 22}
+host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
+lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
+reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
+emit = {status = "supported", note = "`source_file` and `compound_statement` are variadic, so a host can emit into them"}
+pattern-match = {status = "unsupported", note = "target-only; WGSL fragments can still be destructured by a Rust host"}
+runnable = {status = "unsupported", note = "a shader is compiled by the host application, not executed directly"}
+runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported", note = "the canonical chain case: `shaders.wgsl.rs.quilt` makes bare quotes default to WGSL"}
+header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced"}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the LSP's vendored query", issue = 22}
+
+[[fragments]]
+name = "constructor_call"
+code = "vec4<f32>(1.0, 0.0, 0.0, 1.0)"
+tag = "type_constructor_or_function_call_expression"
+
+[[fragments]]
+name = "function"
+code = "fn main() { }"
+tag = "function_declaration"
+
+[[holes]]
+name = "declaration_value"
+code = "let x = @;"
+ikinds = ["file"]
+
+[[lift]]
+value = "u32:3"
+tag = "int_literal"
+text = "3u"
+
+[[lift]]
+value = "i32:-7"
+tag = "int_literal"
+text = "-7i"
+
+[[lift]]
+value = "f32:1.5"
+tag = "float_literal"
+text = "1.5f"
+
+[[lift]]
+value = "bool:true"
+tag = "bool_literal"
+text = "true"
+
+[kinds]
+source_file = "file"
+function_declaration = "file"

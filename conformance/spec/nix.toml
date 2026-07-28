@@ -1,0 +1,93 @@
+name = "nix"
+display = "Nix"
+aliases = []
+feature = "nix"
+meta_kind = "string"
+lang_src = "quilt/src/langs/nix/lang.rs"
+meta_src = "quilt/src/langs/nix/meta.rs"
+blurb = """
+A quotable target and a string-based host. Generate derivations, flakes and \
+modules at build time; as a host, a `.nix.quilt` metaprogram expands to plain \
+Nix that builds the output with `${…}` antiquotation."""
+
+variadic = ["list_expression"]
+not_variadic = ["integer_expression", "select_expression"]
+
+lift_marker = "Nix"
+lift_from = ["nix"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "lean", "html", "typescript", "ts", "text", "txt"]
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported", note = "Nix is purely expression-oriented, so every position is an expression and `__QUILT_HOLE__` parses unpatched as a `variable_expression`"}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "supported"}
+lift-into = {status = "supported"}
+highlights = {status = "supported"}
+host = {status = "supported"}
+lift-from = {status = "supported"}
+reduce = {status = "unsupported", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 132}
+emit = {status = "partial", note = "the string model has no `b_` accumulator, so emit/splice in a ground loop is unsupported; build sequences functionally with `map` / `concatStringsSep`", issue = 132}
+pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host"}
+runnable = {status = "unsupported", note = "a `.nix` file is evaluated with `nix eval`, not executed, so there is no shebang runner"}
+runtime-binding = {status = "unsupported", note = "string-based meta: no `QTerm` runtime library is shipped for Nix", issue = 132}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported"}
+header-comment = {status = "supported", note = "generated Nix files use `#`, not `//!`"}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream Nix server is proxied", issue = 144}
+
+[[fragments]]
+name = "integer"
+code = "1"
+tag = "integer_expression"
+
+[[fragments]]
+name = "attrset"
+code = "{ a = 1; }"
+tag = "attrset_expression"
+
+[[fragments]]
+name = "list"
+code = "[ 1 2 ]"
+tag = "list_expression"
+
+[[fragments]]
+name = "select"
+code = "pkgs.hello"
+tag = "select_expression"
+
+[[holes]]
+name = "attr_value"
+code = "{ a = @; }"
+ikinds = ["expr"]
+
+[[lift]]
+value = "u32:3"
+tag = "integer_expression"
+text = "3"
+
+[[lift]]
+value = "f32:1.5"
+tag = "float_expression"
+text = "1.5"
+
+[[lift]]
+value = "bool:true"
+tag = "variable_expression"
+text = "true"
+
+[[lift]]
+value = "str:plain"
+tag = "string_expression"
+text = '"hi"'
+
+[[lift]]
+value = "str:tricky"
+tag = "string_expression"
+text = '"a\"b\\c\${d}"'
+
+[kinds]
+integer_expression = "expr"
+attrset_expression = "expr"
+list_expression = "expr"
+select_expression = "expr"
