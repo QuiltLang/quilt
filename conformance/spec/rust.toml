@@ -1,0 +1,122 @@
+# Rust — the primary host language.
+#
+# Every key in [capabilities] is required: `Axis::ALL` drives the check, so
+# adding an axis to the matrix forces every language to answer it. That is the
+# mechanism that would have made Lean declare its `←` collision (#141) up front.
+
+name = "rust"
+display = "Rust"
+aliases = ["rs"]
+feature = "rust"
+meta_kind = "runtime"
+lang_src = "quilt/src/langs/rust/lang.rs"
+meta_src = "quilt/src/langs/rust/meta.rs"
+blurb = """
+The primary host. Its `MetaLanguage` is generated from `mk_meta.rs.quilt` by the \
+two-stage bootstrap, so the expander that produces Rust is itself written in Quilt."""
+
+variadic = ["block", "source_file"]
+not_variadic = ["binary_expression", "let_declaration", "function_item"]
+
+lift_marker = "Rust"
+lift_from = ["rust", "rs", "python", "py", "wgsl", "zsh", "bash", "nix", "lean", "lean4"]
+lift_from_unsupported = ["html", "typescript", "ts", "text", "txt"]
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported"}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "supported"}
+lift-into = {status = "supported"}
+highlights = {status = "unsupported", note = "the LSP projects Rust to rust-analyzer rather than highlighting it from a vendored query"}
+host = {status = "supported"}
+lift-from = {status = "supported"}
+reduce = {status = "supported"}
+emit = {status = "supported"}
+pattern-match = {status = "supported"}
+runnable = {status = "supported"}
+runtime-binding = {status = "supported"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported"}
+header-comment = {status = "supported"}
+lsp = {status = "supported"}
+
+[[fragments]]
+name = "binary_expr"
+kind = "expr"
+code = "1 + 2"
+tag = "binary_expression"
+
+[[fragments]]
+name = "let_stmt"
+kind = "stmt"
+code = "let x = 1 + 2;"
+tag = "let_declaration"
+
+[[fragments]]
+name = "expression_stmt"
+kind = "stmt"
+code = 'println!("hi");'
+tag = "expression_statement"
+
+[[fragments]]
+name = "fn_item"
+code = "fn f() { }"
+tag = "function_item"
+
+[[fragments]]
+name = "source_file"
+kind = "file"
+code = "fn f() { }\nfn g() { }"
+tag = "source_file"
+
+[[fragments]]
+name = "auto_expr"
+code = "1 + 2"
+tag = "binary_expression"
+
+[[fragments]]
+name = "string_with_escapes"
+kind = "expr"
+code = '"a\"b\\c"'
+tag = "string_literal"
+
+[[holes]]
+name = "stmt_then_expr"
+code = "fn main() { @ let x = @; }"
+ikinds = ["stmt", "expr"]
+
+[[holes]]
+name = "fn_body_is_block"
+code = "fn f() @"
+ikinds = ["block"]
+
+[[lift]]
+value = "u32:3"
+tag = "integer_literal"
+text = "3"
+
+[[lift]]
+value = "i32:-7"
+tag = "integer_literal"
+text = "-7"
+
+[[lift]]
+value = "str:plain"
+tag = "string_literal"
+text = '"hi"'
+
+[[lift]]
+value = "str:tricky"
+tag = "string_literal"
+text = '"a\"b\\c${d}"'
+
+[kinds]
+source_file = "file"
+function_item = "item"
+struct_item = "item"
+use_declaration = "item"
+let_declaration = "stmt"
+expression_statement = "stmt"
+binary_expression = "expr"
+block = "expr"

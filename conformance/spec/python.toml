@@ -1,0 +1,119 @@
+name = "python"
+display = "Python"
+aliases = ["py"]
+feature = "python"
+meta_kind = "runtime"
+lang_src = "quilt/src/langs/python/lang.rs"
+meta_src = "quilt/src/langs/python/meta.rs"
+blurb = """
+The second host. The PyO3 module in `quilt-python/` gives Python the same `QTerm` \
+builder API the Rust runtime has, and `PythonMetaLanguage` expands quotes into \
+calls against it."""
+
+variadic = ["block", "module"]
+not_variadic = ["binary_operator", "assignment", "function_definition"]
+
+lift_marker = "Python"
+lift_from = ["python", "py", "html"]
+lift_from_unsupported = ["rust", "rs", "wgsl", "nix", "lean", "typescript", "ts", "text", "txt"]
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported"}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "supported"}
+lift-into = {status = "supported"}
+highlights = {status = "supported"}
+host = {status = "supported"}
+lift-from = {status = "supported"}
+reduce = {status = "supported"}
+emit = {status = "partial", note = "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable", issue = 144}
+pattern-match = {status = "supported", note = "Python fragments can be destructured by a Rust host's pattern `let`"}
+runnable = {status = "supported"}
+runtime-binding = {status = "supported"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported"}
+header-comment = {status = "supported"}
+lsp = {status = "supported"}
+
+[[fragments]]
+name = "binary_expr"
+kind = "expr"
+code = "1 + 2"
+tag = "binary_operator"
+
+[[fragments]]
+name = "assignment"
+kind = "stmt"
+code = "x = 1 + 2"
+tag = "assignment"
+
+[[fragments]]
+name = "call"
+kind = "expr"
+code = 'print("hi")'
+tag = "call"
+
+[[fragments]]
+name = "function_def"
+code = "def f(): return"
+tag = "function_definition"
+
+[[fragments]]
+name = "module"
+kind = "file"
+code = "def f(): pass\ndef g(): pass"
+tag = "module"
+
+[[fragments]]
+name = "indented_body"
+code = "def foo():\n    pass"
+tag = "function_definition"
+
+[[fragments]]
+name = "two_indented_defs"
+kind = "file"
+code = "def foo():\n    pass\ndef bar():\n    pass"
+tag = "module"
+
+[[holes]]
+name = "assignment_value"
+code = "x = @"
+ikinds = ["expr"]
+
+[[lift]]
+value = "u32:3"
+tag = "integer"
+text = "3"
+
+[[lift]]
+value = "i32:-7"
+tag = "integer"
+text = "-7"
+
+[[lift]]
+value = "f32:1.5"
+tag = "float"
+text = "1.5"
+
+[[lift]]
+value = "bool:true"
+tag = "true"
+text = "True"
+
+[[lift]]
+value = "str:plain"
+tag = "string"
+text = '"hi"'
+
+[[lift]]
+value = "str:tricky"
+tag = "string"
+text = '"a\"b\\c${d}"'
+
+[kinds]
+module = "file"
+assignment = "stmt"
+function_definition = "stmt"
+binary_operator = "expr"
+call = "expr"

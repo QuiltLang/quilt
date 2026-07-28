@@ -1,0 +1,95 @@
+name = "bash"
+display = "Bash"
+aliases = []
+feature = "bash"
+meta_kind = "none"
+lang_src = "quilt/src/langs/bash/lang.rs"
+blurb = """
+A target-only shell language. Generate scripts with correct quoting: a lifted \
+Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks \
+escaped, so the value stays inert data."""
+
+# Bash and zsh are documented as near-identical, but their arity tables have
+# genuinely diverged: bash lists `variable_assignment` (singular),
+# `for_statement`, `while_statement` and `function_definition`, none of which
+# zsh's table has. Pinning both here makes the divergence visible instead of
+# incidental — see the note on the `variadic-containers` cell.
+variadic = [
+  "program",
+  "compound_statement",
+  "command",
+  "list",
+  "pipeline",
+  "variable_assignment",
+  "variable_assignments",
+  "for_statement",
+  "while_statement",
+  "function_definition",
+  "if_statement",
+]
+not_variadic = []
+
+lift_marker = "Bash"
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported"}
+variadic-containers = {status = "partial", note = "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits", issue = 144}
+kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
+lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl", issue = 144}
+highlights = {status = "supported"}
+host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
+lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
+reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
+emit = {status = "supported", note = "`program` and `compound_statement` are variadic, so a host can emit into them"}
+pattern-match = {status = "unsupported", note = "target-only; bash fragments can still be destructured by a Rust host"}
+runnable = {status = "partial", note = "`hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`", issue = 144}
+runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported"}
+header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced"}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied", issue = 144}
+
+[[fragments]]
+name = "command"
+code = "echo hi"
+tag = "command"
+
+[[fragments]]
+name = "assignment"
+code = "X=1"
+tag = "variable_assignment"
+
+[[fragments]]
+name = "program"
+code = "echo a\necho b"
+tag = "program"
+
+[[fragments]]
+name = "if_statement"
+code = "if true; then\n  echo hi\nfi"
+tag = "if_statement"
+
+[[holes]]
+name = "command_argument"
+code = "echo @"
+ikinds = ["file"]
+
+[[lift]]
+value = "u32:3"
+tag = "number"
+text = "3"
+
+[[lift]]
+value = "str:plain"
+tag = "string"
+text = '"hi"'
+
+[[lift]]
+value = "str:tricky"
+tag = "string"
+text = '"a\"b\\c\${d}"'
+
+[kinds]
+program = "file"
+command = "file"

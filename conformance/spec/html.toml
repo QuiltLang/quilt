@@ -1,0 +1,56 @@
+name = "html"
+display = "HTML"
+aliases = []
+feature = "html"
+meta_kind = "none"
+lang_src = "quilt/src/langs/html/lang.rs"
+blurb = """
+A target-only language for code-generated pages, reports and templates. The \
+Python and TypeScript hosts lift values into it through `qlift_html`, which \
+entity-escapes so a lifted value is inert as text or as an attribute value."""
+
+variadic = ["element"]
+not_variadic = []
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported", note = "holes work in text, in node position and inside double-quoted attribute values; in an attribute value a hole must not follow literal text, because the value's maximal token swallows the marker"}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
+lift-into = {status = "partial", note = "no `LiftTo<Html>` marker, so a Rust host cannot lift into an HTML quote; the Python and TypeScript hosts lift through `qlift_html` instead, which is a host-side spelling rather than a `LiftTo` impl", issue = 144}
+highlights = {status = "supported"}
+host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
+lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
+reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
+emit = {status = "supported", note = "`element` is variadic, so a host can emit children into it"}
+pattern-match = {status = "unsupported", note = "target-only; HTML fragments can still be destructured by a Rust host"}
+runnable = {status = "unsupported", note = "a document is rendered by a browser, not executed"}
+runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported", note = "`report.html.py.quilt` makes bare quotes default to HTML inside a Python host"}
+header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced"}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream HTML server is proxied", issue = 144}
+
+[[fragments]]
+name = "element"
+code = "<p>Hello</p>"
+tag = "element"
+
+[[fragments]]
+name = "element_with_attr"
+code = '<div class="a">x</div>'
+tag = "element"
+
+[[fragments]]
+name = "document"
+code = "<p>a</p>\n<p>b</p>"
+tag = "document"
+
+[[holes]]
+name = "node_position"
+code = "<div>@</div>"
+ikinds = ["file"]
+
+[kinds]
+element = "file"
+document = "file"

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Regenerate the language support matrix from the conformance specs:
+#
+#   conformance/spec/*.toml   (declared, hand-written)
+#        │  verified by the battery in quilt-conformance/
+#        ▼
+#   conformance/support-matrix.json   → rendered by the website's support table
+#   docs/wiki/support-matrix.md       → the wiki page
+#
+# Exits non-zero if any probe failed, after writing the artifacts — a failing run
+# still shows you what the matrix would say. Run `cargo test -p quilt-conformance`
+# for the full per-language diagnostics.
+#
+# See issue #144. `bin/check-matrix` is the CI gate that this was run.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec cargo run --quiet --manifest-path "$ROOT/Cargo.toml" \
+  -p quilt-conformance --bin gen-matrix "$@"

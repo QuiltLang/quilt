@@ -1,0 +1,1349 @@
+{
+  "generated_by": "bin/gen-matrix (quilt-conformance) — DO NOT EDIT",
+  "rows": [
+    {
+      "name": "bash",
+      "display": "Bash",
+      "aliases": [],
+      "feature": "bash",
+      "blurb": "A target-only shell language. Generate scripts with correct quoting: a lifted Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks escaped, so the value stays inert data.",
+      "meta_kind": "none",
+      "lang_src": "quilt/src/langs/bash/lang.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/bash",
+          "detail": [
+            "command → Tuple command ⟨·, \" \", ·⟩",
+            "assignment → Tuple variable_assignment ⟨·, ·, ·⟩",
+            "program → Tuple program ⟨·, ⏎, ·⟩",
+            "if_statement → Tuple if_statement ⟨·, \" \", ·, ·, \" \", ·, »\"  \", ⏎, ·, «, ⏎, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "verified_by": "hole-positions/bash",
+          "detail": [
+            "command_argument: file"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "partial",
+          "note": "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits",
+          "issue": 144,
+          "verified_by": "variadic-containers/bash",
+          "detail": [
+            "program",
+            "compound_statement",
+            "command",
+            "list",
+            "pipeline",
+            "variable_assignment",
+            "variable_assignments",
+            "for_statement",
+            "while_statement",
+            "function_definition",
+            "if_statement"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "unsupported",
+          "note": "no `typ()` override, so every tag reports the default `File`",
+          "verified_by": "kind-classification/bash",
+          "detail": [
+            "command = File",
+            "program = File"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "partial",
+          "note": "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl",
+          "issue": 144,
+          "verified_by": "lift-into/bash",
+          "detail": [
+            "u32:3 → 3",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c\\${d}\""
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/bash",
+          "detail": [
+            "quilt::grammars::bash::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "unsupported",
+          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "verified_by": "host/bash",
+          "detail": [
+            "meta_kind = none"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "unsupported",
+          "note": "target-only: nothing to lift from",
+          "verified_by": "lift-from/bash"
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "target-only: no meta-language to reduce with"
+        },
+        {
+          "axis": "emit",
+          "status": "supported",
+          "note": "`program` and `compound_statement` are variadic, so a host can emit into them"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "target-only; bash fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "partial",
+          "note": "`hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`",
+          "issue": 144,
+          "verified_by": "runnable/bash",
+          "detail": [
+            "#!/usr/bin/env bash"
+          ]
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "target-only: no runtime library"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "unsupported",
+          "note": "target-only: never the ground language, so no generated-file header is produced"
+        },
+        {
+          "axis": "lsp",
+          "status": "partial",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied",
+          "issue": 144
+        }
+      ]
+    },
+    {
+      "name": "html",
+      "display": "HTML",
+      "aliases": [],
+      "feature": "html",
+      "blurb": "A target-only language for code-generated pages, reports and templates. The Python and TypeScript hosts lift values into it through `qlift_html`, which entity-escapes so a lifted value is inert as text or as an attribute value.",
+      "meta_kind": "none",
+      "lang_src": "quilt/src/langs/html/lang.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/html",
+          "detail": [
+            "element → Tuple element ⟨·, ·, ·⟩",
+            "element_with_attr → Tuple element ⟨·, ·, ·⟩",
+            "document → Tuple document ⟨·, ⏎, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "note": "holes work in text, in node position and inside double-quoted attribute values; in an attribute value a hole must not follow literal text, because the value's maximal token swallows the marker",
+          "verified_by": "hole-positions/html",
+          "detail": [
+            "node_position: file"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/html",
+          "detail": [
+            "element"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "unsupported",
+          "note": "no `typ()` override, so every tag reports the default `File`",
+          "verified_by": "kind-classification/html",
+          "detail": [
+            "document = File",
+            "element = File"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "partial",
+          "note": "no `LiftTo<Html>` marker, so a Rust host cannot lift into an HTML quote; the Python and TypeScript hosts lift through `qlift_html` instead, which is a host-side spelling rather than a `LiftTo` impl",
+          "issue": 144,
+          "verified_by": "lift-into/html"
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/html",
+          "detail": [
+            "quilt::grammars::html::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "unsupported",
+          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "verified_by": "host/html",
+          "detail": [
+            "meta_kind = none"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "unsupported",
+          "note": "target-only: nothing to lift from",
+          "verified_by": "lift-from/html"
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "target-only: no meta-language to reduce with"
+        },
+        {
+          "axis": "emit",
+          "status": "supported",
+          "note": "`element` is variadic, so a host can emit children into it"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "target-only; HTML fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "unsupported",
+          "note": "a document is rendered by a browser, not executed",
+          "verified_by": "runnable/html"
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "target-only: no runtime library"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported",
+          "note": "`report.html.py.quilt` makes bare quotes default to HTML inside a Python host"
+        },
+        {
+          "axis": "header-comment",
+          "status": "unsupported",
+          "note": "target-only: never the ground language, so no generated-file header is produced"
+        },
+        {
+          "axis": "lsp",
+          "status": "partial",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream HTML server is proxied",
+          "issue": 144
+        }
+      ]
+    },
+    {
+      "name": "lean",
+      "display": "Lean 4",
+      "aliases": [
+        "lean4"
+      ],
+      "feature": "lean",
+      "blurb": "A quotable target and a string-based host. Generate definitions, theorems and tactic proofs at build time; as a host, a `.lean.quilt` metaprogram expands to plain Lean that builds the output with `s!\"…\"` interpolation.",
+      "meta_kind": "string",
+      "lang_src": "quilt/src/langs/lean/lang.rs",
+      "meta_src": "quilt/src/langs/lean/meta.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/lean",
+          "detail": [
+            "term → Tuple binary_op ⟨·, \" \", ·, \" \", ·⟩",
+            "def → Tuple def ⟨·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·⟩",
+            "theorem_by_tactic → Tuple theorem ⟨·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "partial",
+          "note": "term, tactic, do-element, declaration-name and binder position all work with the unpatched grammar (`__QUILT_HOLE__` matches Lean's identifier regex); whole-command position is reached only by the `#check …` wrapper fallback in `parse_pre`",
+          "issue": 133,
+          "verified_by": "hole-positions/lean",
+          "detail": [
+            "term_position: expr",
+            "tactic_position: stmt"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/lean",
+          "detail": [
+            "module",
+            "by"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "verified_by": "kind-classification/lean",
+          "detail": [
+            "binary_op = Expr",
+            "def = Item",
+            "theorem = Item"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "supported",
+          "verified_by": "lift-into/lean",
+          "detail": [
+            "u32:3 → 3",
+            "i32:-7 → -7",
+            "bool:true → true",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c${d}\""
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/lean",
+          "detail": [
+            "quilt::grammars::lean::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "supported",
+          "verified_by": "host/lean",
+          "detail": [
+            "meta_kind = string"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "supported",
+          "verified_by": "lift-from/lean",
+          "detail": [
+            "lean → toString",
+            "lean4 → toString"
+          ]
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
+          "issue": 132
+        },
+        {
+          "axis": "emit",
+          "status": "partial",
+          "note": "emit works into `by` / `do` bodies, which are the variadic containers; a top-level sequence of commands needs a variadic `module`, which a bare-hole quote does not produce",
+          "issue": 133
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "unsupported",
+          "note": "Lean has no interpreter shebang — a file runs via `lean file.lean` or `lake env lean`, and `#!` is not Lean comment syntax",
+          "verified_by": "runnable/lean"
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "string-based meta: no `QTerm` runtime library is shipped for Lean",
+          "issue": 132
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "partial",
+          "note": "`←` is Lean's monadic bind and is eaten by the emit glyph; `↑` (coercion) and `↓` (lowering) are also real Lean notation. The ASCII alias `<-` is the current workaround, and `\\←` does not escape because `←` is missing from the grammar's escape class",
+          "issue": 141
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "supported",
+          "note": "generated Lean files use `--`, not `//!`"
+        },
+        {
+          "axis": "lsp",
+          "status": "supported",
+          "note": "Lean is a host with a `MetaLanguageAdapter` since #135"
+        }
+      ]
+    },
+    {
+      "name": "nix",
+      "display": "Nix",
+      "aliases": [],
+      "feature": "nix",
+      "blurb": "A quotable target and a string-based host. Generate derivations, flakes and modules at build time; as a host, a `.nix.quilt` metaprogram expands to plain Nix that builds the output with `${…}` antiquotation.",
+      "meta_kind": "string",
+      "lang_src": "quilt/src/langs/nix/lang.rs",
+      "meta_src": "quilt/src/langs/nix/meta.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/nix",
+          "detail": [
+            "integer → Tuple integer_expression ⟨\"1\"⟩",
+            "attrset → Tuple attrset_expression ⟨·, \" \", ·, \" \", ·⟩",
+            "list → Tuple list_expression ⟨·, \" \", ·, \" \", ·, \" \", ·⟩",
+            "select → Tuple select_expression ⟨·, ·, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "note": "Nix is purely expression-oriented, so every position is an expression and `__QUILT_HOLE__` parses unpatched as a `variable_expression`",
+          "verified_by": "hole-positions/nix",
+          "detail": [
+            "attr_value: expr"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/nix",
+          "detail": [
+            "list_expression"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "verified_by": "kind-classification/nix",
+          "detail": [
+            "attrset_expression = Expr",
+            "integer_expression = Expr",
+            "list_expression = Expr",
+            "select_expression = Expr"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "supported",
+          "verified_by": "lift-into/nix",
+          "detail": [
+            "u32:3 → 3",
+            "f32:1.5 → 1.5",
+            "bool:true → true",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c\\${d}\""
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/nix",
+          "detail": [
+            "quilt::grammars::nix::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "supported",
+          "verified_by": "host/nix",
+          "detail": [
+            "meta_kind = string"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "supported",
+          "verified_by": "lift-from/nix",
+          "detail": [
+            "nix → toString"
+          ]
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
+          "issue": 132
+        },
+        {
+          "axis": "emit",
+          "status": "partial",
+          "note": "the string model has no `b_` accumulator, so emit/splice in a ground loop is unsupported; build sequences functionally with `map` / `concatStringsSep`",
+          "issue": 132
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "unsupported",
+          "note": "a `.nix` file is evaluated with `nix eval`, not executed, so there is no shebang runner",
+          "verified_by": "runnable/nix"
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "string-based meta: no `QTerm` runtime library is shipped for Nix",
+          "issue": 132
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "supported",
+          "note": "generated Nix files use `#`, not `//!`"
+        },
+        {
+          "axis": "lsp",
+          "status": "partial",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream Nix server is proxied",
+          "issue": 144
+        }
+      ]
+    },
+    {
+      "name": "python",
+      "display": "Python",
+      "aliases": [
+        "py"
+      ],
+      "feature": "python",
+      "blurb": "The second host. The PyO3 module in `quilt-python/` gives Python the same `QTerm` builder API the Rust runtime has, and `PythonMetaLanguage` expands quotes into calls against it.",
+      "meta_kind": "runtime",
+      "lang_src": "quilt/src/langs/python/lang.rs",
+      "meta_src": "quilt/src/langs/python/meta.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/python",
+          "detail": [
+            "binary_expr → Tuple binary_operator ⟨·, \" \", ·, \" \", ·⟩",
+            "assignment → Tuple assignment ⟨·, \" \", ·, \" \", ·⟩",
+            "call → Tuple call ⟨·, ·⟩",
+            "function_def → Tuple function_definition ⟨·, \" \", ·, ·, ·, \" \", ·⟩",
+            "module → Tuple module ⟨·, ⏎, ·⟩",
+            "indented_body → Tuple function_definition ⟨·, \" \", ·, ·, ·, »\"    \", ⏎, ·, «⟩",
+            "two_indented_defs → Tuple module ⟨·, ⏎, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "verified_by": "hole-positions/python",
+          "detail": [
+            "assignment_value: expr"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/python",
+          "detail": [
+            "block",
+            "module"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "verified_by": "kind-classification/python",
+          "detail": [
+            "assignment = Stmt",
+            "binary_operator = Expr",
+            "call = Expr",
+            "function_definition = Stmt",
+            "module = File"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "supported",
+          "verified_by": "lift-into/python",
+          "detail": [
+            "u32:3 → 3",
+            "i32:-7 → -7",
+            "f32:1.5 → 1.5",
+            "bool:true → True",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c${d}\""
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/python",
+          "detail": [
+            "quilt::grammars::python::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "supported",
+          "verified_by": "host/python",
+          "detail": [
+            "meta_kind = runtime"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "supported",
+          "verified_by": "lift-from/python",
+          "detail": [
+            "python → qlift",
+            "py → qlift",
+            "html → qlift_html"
+          ]
+        },
+        {
+          "axis": "reduce",
+          "status": "supported"
+        },
+        {
+          "axis": "emit",
+          "status": "partial",
+          "note": "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable",
+          "issue": 144
+        },
+        {
+          "axis": "pattern-match",
+          "status": "supported",
+          "note": "Python fragments can be destructured by a Rust host's pattern `let`"
+        },
+        {
+          "axis": "runnable",
+          "status": "supported",
+          "verified_by": "runnable/python",
+          "detail": [
+            "#!/usr/bin/env python3"
+          ]
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "supported"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "supported"
+        },
+        {
+          "axis": "lsp",
+          "status": "supported"
+        }
+      ]
+    },
+    {
+      "name": "rust",
+      "display": "Rust",
+      "aliases": [
+        "rs"
+      ],
+      "feature": "rust",
+      "blurb": "The primary host. Its `MetaLanguage` is generated from `mk_meta.rs.quilt` by the two-stage bootstrap, so the expander that produces Rust is itself written in Quilt.",
+      "meta_kind": "runtime",
+      "lang_src": "quilt/src/langs/rust/lang.rs",
+      "meta_src": "quilt/src/langs/rust/meta.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/rust",
+          "detail": [
+            "binary_expr → Tuple binary_expression ⟨·, \" \", ·, \" \", ·⟩",
+            "let_stmt → Tuple let_declaration ⟨·, \" \", ·, \" \", ·, \" \", ·, ·⟩",
+            "expression_stmt → Tuple expression_statement ⟨·, ·⟩",
+            "fn_item → Tuple function_item ⟨·, \" \", ·, ·, \" \", ·⟩",
+            "source_file → Tuple source_file ⟨·, ⏎, ·⟩",
+            "auto_expr → Tuple binary_expression ⟨·, \" \", ·, \" \", ·⟩",
+            "string_with_escapes → Tuple string_literal ⟨·, ·, ·, ·, ·, ·, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "verified_by": "hole-positions/rust",
+          "detail": [
+            "stmt_then_expr: stmt, expr",
+            "fn_body_is_block: block"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/rust",
+          "detail": [
+            "block",
+            "source_file"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "verified_by": "kind-classification/rust",
+          "detail": [
+            "binary_expression = Expr",
+            "block = Expr",
+            "expression_statement = Stmt",
+            "function_item = Item",
+            "let_declaration = Stmt",
+            "source_file = File",
+            "struct_item = Item",
+            "use_declaration = Item"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "supported",
+          "verified_by": "lift-into/rust",
+          "detail": [
+            "u32:3 → 3",
+            "i32:-7 → -7",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c${d}\""
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "unsupported",
+          "note": "the LSP projects Rust to rust-analyzer rather than highlighting it from a vendored query",
+          "verified_by": "highlights/rust"
+        },
+        {
+          "axis": "host",
+          "status": "supported",
+          "verified_by": "host/rust",
+          "detail": [
+            "meta_kind = runtime"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "supported",
+          "verified_by": "lift-from/rust",
+          "detail": [
+            "rust → qlift()",
+            "rs → qlift()",
+            "python → qlift_to::<Python>()",
+            "py → qlift_to::<Python>()",
+            "wgsl → qlift_to::<Wgsl>()",
+            "zsh → qlift_to::<Zsh>()",
+            "bash → qlift_to::<Bash>()",
+            "nix → qlift_to::<Nix>()",
+            "lean → qlift_to::<Lean>()",
+            "lean4 → qlift_to::<Lean>()"
+          ]
+        },
+        {
+          "axis": "reduce",
+          "status": "supported"
+        },
+        {
+          "axis": "emit",
+          "status": "supported"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "supported"
+        },
+        {
+          "axis": "runnable",
+          "status": "supported",
+          "verified_by": "runnable/rust",
+          "detail": [
+            "#!/usr/bin/env rust-script"
+          ]
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "supported"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "supported"
+        },
+        {
+          "axis": "lsp",
+          "status": "supported"
+        }
+      ]
+    },
+    {
+      "name": "text",
+      "display": "Plain text",
+      "aliases": [
+        "txt"
+      ],
+      "feature": "text",
+      "blurb": "Quote an arbitrary fragment with no language-specific parsing — useful for generating configuration, prose or any format Quilt has no grammar for. A text term is one `text` tuple whose commands interleave literal runs with holes.",
+      "meta_kind": "none",
+      "lang_src": "quilt/src/langs/text/lang.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/text",
+          "detail": [
+            "plain → Tuple text ⟨\"hello, world\"⟩",
+            "multiline → Tuple text ⟨\"line one\", ⏎, \"line two\", ⏎, ⏎, \"line four\"⟩",
+            "glyph_like_content → Tuple text ⟨\"arrows and braces: {} ${} <- stay literal\"⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "note": "text imposes no kind on a hole, so a spliced child is rendered however the host built it",
+          "verified_by": "hole-positions/text",
+          "detail": [
+            "mid_string: any, any"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/text",
+          "detail": [
+            "text"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "note": "a text fragment is always an opaque value, so `typ()` answers `Expr` for every tag",
+          "verified_by": "kind-classification/text",
+          "detail": [
+            "text = Expr"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "unsupported",
+          "note": "no `LiftTo<Text>` marker; a host that wants a value as text lifts it in its own language and splices the result",
+          "issue": 144,
+          "verified_by": "lift-into/text"
+        },
+        {
+          "axis": "highlights",
+          "status": "unsupported",
+          "note": "plain text has no grammar to highlight",
+          "verified_by": "highlights/text"
+        },
+        {
+          "axis": "host",
+          "status": "unsupported",
+          "note": "the `TextMetaLanguage` exists but is identity-only and is not registered as a host in `Omni`",
+          "verified_by": "host/text",
+          "detail": [
+            "meta_kind = none"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "unsupported",
+          "note": "not a host: nothing to lift from",
+          "verified_by": "lift-from/text"
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "not a host: no meta-language to reduce with"
+        },
+        {
+          "axis": "emit",
+          "status": "supported",
+          "note": "the single `text` tag is variadic, so a host can emit into it"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "target-only; text fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "unsupported",
+          "note": "plain text is not executable",
+          "verified_by": "runnable/text"
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "target-only: no runtime library"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "unsupported",
+          "note": "target-only: never the ground language, so no generated-file header is produced"
+        },
+        {
+          "axis": "lsp",
+          "status": "unsupported",
+          "note": "nothing to project: plain text has no downstream server"
+        }
+      ]
+    },
+    {
+      "name": "typescript",
+      "display": "TypeScript",
+      "aliases": [
+        "ts"
+      ],
+      "feature": "typescript",
+      "blurb": "The host behind the browser playground. Expanded `.ts.quilt` code calls the `quilt-wasm` runtime, so a metaprogram can run in the browser with no server.",
+      "meta_kind": "runtime",
+      "lang_src": "quilt/src/langs/typescript/lang.rs",
+      "meta_src": "quilt/src/langs/typescript/meta.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/typescript",
+          "detail": [
+            "binary_expr → Tuple binary_expression ⟨·, \" \", ·, \" \", ·⟩",
+            "lexical_declaration → Tuple lexical_declaration ⟨·, \" \", ·, ·⟩",
+            "function_declaration → Tuple function_declaration ⟨·, \" \", ·, ·, \" \", ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "verified_by": "hole-positions/typescript",
+          "detail": [
+            "declaration_value: expr"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/typescript",
+          "detail": [
+            "program",
+            "statement_block"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "verified_by": "kind-classification/typescript",
+          "detail": [
+            "binary_expression = Expr",
+            "function_declaration = Stmt",
+            "lexical_declaration = Stmt",
+            "program = File"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "unsupported",
+          "note": "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`",
+          "issue": 144,
+          "verified_by": "lift-into/typescript"
+        },
+        {
+          "axis": "highlights",
+          "status": "unsupported",
+          "note": "no `highlights.scm` is vendored for the TypeScript grammar",
+          "verified_by": "highlights/typescript"
+        },
+        {
+          "axis": "host",
+          "status": "supported",
+          "verified_by": "host/typescript",
+          "detail": [
+            "meta_kind = runtime"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "supported",
+          "verified_by": "lift-from/typescript",
+          "detail": [
+            "typescript → qlift",
+            "ts → qlift",
+            "html → qlift_html"
+          ]
+        },
+        {
+          "axis": "reduce",
+          "status": "partial",
+          "note": "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend",
+          "issue": 144
+        },
+        {
+          "axis": "emit",
+          "status": "partial",
+          "note": "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable",
+          "issue": 144
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"
+        },
+        {
+          "axis": "runnable",
+          "status": "supported",
+          "verified_by": "runnable/typescript",
+          "detail": [
+            "#!/usr/bin/env -S node --experimental-strip-types"
+          ]
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "supported"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "supported"
+        },
+        {
+          "axis": "lsp",
+          "status": "unsupported",
+          "note": "no `LanguageAdapter`; `.ts.quilt` files get no projection"
+        }
+      ]
+    },
+    {
+      "name": "wgsl",
+      "display": "WGSL",
+      "aliases": [],
+      "feature": "wgsl",
+      "blurb": "WebGPU Shading Language — a target-only language. Generate shader code at build time from a Rust or Python host, lifting host values straight into WGSL literal syntax.",
+      "meta_kind": "none",
+      "lang_src": "quilt/src/langs/wgsl/lang.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/wgsl",
+          "detail": [
+            "constructor_call → Tuple type_constructor_or_function_call_expression ⟨·, ·⟩",
+            "function → Tuple function_declaration ⟨·, \" \", ·, ·, ·, \" \", ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "verified_by": "hole-positions/wgsl",
+          "detail": [
+            "declaration_value: file"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "verified_by": "variadic-containers/wgsl",
+          "detail": [
+            "source_file",
+            "compound_statement"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "unsupported",
+          "note": "no `typ()` override, so every tag reports the default `File`; WGSL instead sorts fragments with `classify_term`, which reads the parsed term rather than the tag",
+          "verified_by": "kind-classification/wgsl",
+          "detail": [
+            "function_declaration = File",
+            "source_file = File"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "partial",
+          "note": "numeric and bool literals only — WGSL has no string type, so no `LiftTo<Wgsl> for str` impl exists and lifting a string is a compile error in the generated program rather than a silent truncation. 64-bit integers are likewise omitted",
+          "issue": 144,
+          "verified_by": "lift-into/wgsl",
+          "detail": [
+            "u32:3 → 3u",
+            "i32:-7 → -7i",
+            "f32:1.5 → 1.5f",
+            "bool:true → true"
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "unsupported",
+          "note": "the LSP vendors a patched WGSL highlight query of its own rather than exposing one from `quilt::grammars`",
+          "issue": 22,
+          "verified_by": "highlights/wgsl"
+        },
+        {
+          "axis": "host",
+          "status": "unsupported",
+          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "verified_by": "host/wgsl",
+          "detail": [
+            "meta_kind = none"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "unsupported",
+          "note": "target-only: nothing to lift from",
+          "verified_by": "lift-from/wgsl"
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "target-only: no meta-language to reduce with"
+        },
+        {
+          "axis": "emit",
+          "status": "supported",
+          "note": "`source_file` and `compound_statement` are variadic, so a host can emit into them"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "target-only; WGSL fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "unsupported",
+          "note": "a shader is compiled by the host application, not executed directly",
+          "verified_by": "runnable/wgsl"
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "target-only: no runtime library"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported",
+          "note": "the canonical chain case: `shaders.wgsl.rs.quilt` makes bare quotes default to WGSL"
+        },
+        {
+          "axis": "header-comment",
+          "status": "unsupported",
+          "note": "target-only: never the ground language, so no generated-file header is produced"
+        },
+        {
+          "axis": "lsp",
+          "status": "partial",
+          "note": "embedded-quote highlighting only, from the LSP's vendored query",
+          "issue": 22
+        }
+      ]
+    },
+    {
+      "name": "zsh",
+      "display": "Zsh",
+      "aliases": [],
+      "feature": "zsh",
+      "blurb": "A target-only shell language, sharing bash's grammar lineage and escaping rules. A lifted Rust string becomes a properly escaped double-quoted word.",
+      "meta_kind": "none",
+      "lang_src": "quilt/src/langs/zsh/lang.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/zsh",
+          "detail": [
+            "command → Tuple command ⟨·, \" \", ·⟩",
+            "assignment → Tuple variable_assignment ⟨·, ·, ·⟩",
+            "program → Tuple program ⟨·, ⏎, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "supported",
+          "verified_by": "hole-positions/zsh",
+          "detail": [
+            "command_argument: file"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "partial",
+          "note": "the arity table has drifted from bash's: zsh omits `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, so an emit into a zsh `for` body behaves differently from the identical bash one",
+          "issue": 144,
+          "verified_by": "variadic-containers/zsh",
+          "detail": [
+            "program",
+            "compound_statement",
+            "compound_statement_no_always",
+            "command",
+            "list",
+            "pipeline",
+            "variable_assignments",
+            "if_statement",
+            "arithmetic_expansion"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "unsupported",
+          "note": "no `typ()` override, so every tag reports the default `File`",
+          "verified_by": "kind-classification/zsh",
+          "detail": [
+            "command = File",
+            "program = File"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "partial",
+          "note": "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Zsh>` impl",
+          "issue": 144,
+          "verified_by": "lift-into/zsh",
+          "detail": [
+            "u32:3 → 3",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c\\${d}\""
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/zsh",
+          "detail": [
+            "quilt::grammars::zsh::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "unsupported",
+          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "verified_by": "host/zsh",
+          "detail": [
+            "meta_kind = none"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "unsupported",
+          "note": "target-only: nothing to lift from",
+          "verified_by": "lift-from/zsh"
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "target-only: no meta-language to reduce with"
+        },
+        {
+          "axis": "emit",
+          "status": "supported",
+          "note": "`program` and `compound_statement` are variadic, so a host can emit into them"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "target-only; zsh fragments can still be destructured by a Rust host"
+        },
+        {
+          "axis": "runnable",
+          "status": "partial",
+          "note": "`hashbang()` returns `#!/usr/bin/env zsh`, but zsh has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`",
+          "issue": 144,
+          "verified_by": "runnable/zsh",
+          "detail": [
+            "#!/usr/bin/env zsh"
+          ]
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "target-only: no runtime library"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported"
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported"
+        },
+        {
+          "axis": "header-comment",
+          "status": "unsupported",
+          "note": "target-only: never the ground language, so no generated-file header is produced"
+        },
+        {
+          "axis": "lsp",
+          "status": "partial",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream zsh server is proxied",
+          "issue": 144
+        }
+      ]
+    }
+  ]
+}

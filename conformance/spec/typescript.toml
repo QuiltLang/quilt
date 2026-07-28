@@ -1,0 +1,63 @@
+name = "typescript"
+display = "TypeScript"
+aliases = ["ts"]
+feature = "typescript"
+meta_kind = "runtime"
+lang_src = "quilt/src/langs/typescript/lang.rs"
+meta_src = "quilt/src/langs/typescript/meta.rs"
+blurb = """
+The host behind the browser playground. Expanded `.ts.quilt` code calls the \
+`quilt-wasm` runtime, so a metaprogram can run in the browser with no server."""
+
+variadic = ["program", "statement_block"]
+not_variadic = ["binary_expression", "lexical_declaration"]
+
+lift_from = ["typescript", "ts", "html"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "lean", "text", "txt"]
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "supported"}
+variadic-containers = {status = "supported"}
+kind-classification = {status = "supported"}
+lift-into = {status = "unsupported", note = "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`", issue = 144}
+highlights = {status = "unsupported", note = "no `highlights.scm` is vendored for the TypeScript grammar"}
+host = {status = "supported"}
+lift-from = {status = "supported"}
+reduce = {status = "partial", note = "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend", issue = 144}
+emit = {status = "partial", note = "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable", issue = 144}
+pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"}
+runnable = {status = "supported"}
+runtime-binding = {status = "supported"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported"}
+header-comment = {status = "supported"}
+lsp = {status = "unsupported", note = "no `LanguageAdapter`; `.ts.quilt` files get no projection"}
+
+[[fragments]]
+name = "binary_expr"
+kind = "expr"
+code = "1 + 2"
+tag = "binary_expression"
+
+[[fragments]]
+name = "lexical_declaration"
+kind = "stmt"
+code = "let x = 1 + 2;"
+tag = "lexical_declaration"
+
+[[fragments]]
+name = "function_declaration"
+code = "function f() { }"
+tag = "function_declaration"
+
+[[holes]]
+name = "declaration_value"
+code = "let x = @;"
+ikinds = ["expr"]
+
+[kinds]
+program = "file"
+lexical_declaration = "stmt"
+function_declaration = "stmt"
+binary_expression = "expr"

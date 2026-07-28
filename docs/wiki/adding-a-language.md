@@ -202,12 +202,56 @@ If the language will be a host ground language in the LSP:
 2. Add a `MetaLanguageAdapter` impl for the projection logic.
 3. Register the new adapter in `language_adapter()` and `meta_adapter()`.
 
-## 9. Write tests
+## 9. Declare it in the conformance matrix
 
-Add tests alongside your implementation:
+**This is the step that produces your tests.** Rather than hand-writing an
+`expand_<lang>.rs`, you declare what your language can do in
+`conformance/spec/<lang>.toml`, and the shared battery in `quilt-conformance/`
+turns each claim into a probe. See [Support Matrix](support-matrix.md) for the
+rendered result and [issue #144](https://github.com/QuiltLang/quilt/issues/144)
+for the design.
+
+```sh
+cp conformance/spec/wgsl.toml conformance/spec/your_lang.toml   # nearest template
+$EDITOR conformance/spec/your_lang.toml
+bin/gen-matrix        # verify the claims, regenerate the matrix
+```
+
+The spec is required to answer **every** axis in `Axis::ALL` — a missing key is a
+hard error. That is deliberate: it is what makes the checklist below unskippable
+rather than something a new language can quietly omit, which is how `bash`, `zsh`
+and `text` previously ended up with no coverage at all.
+
+What you declare, and what the battery does with it:
+
+| Spec key | What the probe checks |
+|---|---|
+| `[[fragments]]` | parses, round-trips to identical source, produces the declared root tag, is structurally sound (every child has a hole to be written into), and reparses idempotently |
+| `[[holes]]` | each `@` marker lands in a hole with the declared `InnerKind` |
+| `[kinds]` | `Language::typ` classifies each tag as declared |
+| `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour |
+| `lift_marker` + `[[lift]]` | values lift to the declared tag and text, **and the lifted literal reparses in your grammar** — the check that catches escaping bugs |
+| `lift_from` / `lift_from_unsupported` | your `MetaLanguage::lift_str` spells exactly the targets you claim, and refuses the rest |
+| `[capabilities]` | each claim matches reality; `partial`/`unsupported` must carry a `note`, and `partial`/`planned` a tracking `issue` |
+
+Three rules worth knowing before you start:
+
+- **A panic is always a failure**, whatever the claimed status. An `unsupported`
+  capability must return a clean `Err`, never `todo!()`. (This is what finally
+  surfaced the `TextLanguage` stub that issue #11 left behind.)
+- **Over-claiming and under-claiming both fail.** Declaring `supported` for
+  something broken fails; so does declaring `unsupported` for something that
+  works, which keeps the spec from rotting after you fix a gap.
+- **Answer the glyph question honestly.** `glyph-collisions` asks which Quilt
+  glyphs are also your language's own syntax. Lean spells monadic bind `←` —
+  the same glyph as emit — and that cost a real bug
+  ([#141](https://github.com/QuiltLang/quilt/issues/141)) precisely because
+  nothing asked the question when Lean landed.
+
+Add ordinary `#[test]`s too, for anything the battery's shape does not cover
+(unusual recovery paths, language-specific expander behaviour):
 
 ```sh
 cargo test -p quiltlang your_lang
+cargo test -p quilt-conformance your_lang
 ```
-
-At minimum test round-tripping: parse a fragment, serialize it back, and check it matches the input.

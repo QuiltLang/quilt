@@ -15,10 +15,15 @@ use std::process::Command;
 
 /**************************************************************/
 
+/// Escape the body of a Rust double-quoted string literal.
+fn str_body(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 /// Render a Rust string literal, escaping `\` and `"` (matches `strlift` for
 /// `str`).
 fn str_lit(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    format!("\"{}\"", str_body(s))
 }
 
 /// Render a `StrCmd` as constructor source.
@@ -187,11 +192,21 @@ pub fn name(s: &str) -> Arc<QTerm> {
 
 /// A Rust string-literal term, structured exactly as the parser (and `↖"s"↗`)
 /// produces it, so lifted code can be matched/rewritten as Rust AST (e.g. by
-/// `rewrite_naive`). Assumes `s` needs no escaping.
+/// `rewrite_naive`).
+///
+/// `s` is escaped with the same rules as [`str_lit`]. This used to assume the
+/// caller had already ensured `s` needed no escaping, which held for the
+/// expander's own tags and language names but not for the two paths that pass
+/// arbitrary user data: `QLift for str`/`String` (a lifted Rust string) and the
+/// `Write`/`Push` command bodies (arbitrary source text). A `"` in either
+/// produced a generated program that did not parse. Escaping here is also the
+/// *more* faithful reproduction of the parser's own output, since tree-sitter
+/// records `string_content` exactly as it appears in source — backslashes and
+/// all.
 fn strlit_term(s: &str) -> Arc<QTerm> {
     tb("string_literal")
         .c(&sym("\""))
-        .c(&leaf("string_content", s))
+        .c(&leaf("string_content", &str_body(s)))
         .c(&sym("\""))
         .b()
 }

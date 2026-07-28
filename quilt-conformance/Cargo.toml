@@ -1,0 +1,45 @@
+[package]
+edition.workspace = true
+name = "quilt-conformance"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+# Dev-only harness (issue #144). It verifies every capability claim in
+# `conformance/spec/*.toml` against the real implementations and regenerates
+# `conformance/support-matrix.json` + `docs/wiki/support-matrix.md`, which the
+# website renders. Nothing depends on it at runtime, so it is never published.
+publish = false
+
+[dependencies]
+# Every language feature: the harness is a whole-registry check, so a language
+# compiled out would silently drop its rows from the matrix. `bin/check-matrix`
+# fails on the resulting drift, but enabling them here keeps the default
+# `cargo test` honest.
+quilt = {workspace = true, features = [
+  "parse",
+  "bash",
+  "html",
+  "lean",
+  "nix",
+  "python",
+  "rust",
+  "text",
+  "typescript",
+  "wgsl",
+  "zsh",
+]}
+miette = {workspace = true, features = ["fancy"]}
+serde = {workspace = true, features = ["derive"]}
+serde_json = {workspace = true}
+toml = {workspace = true}
+
+[dev-dependencies]
+pretty_assertions = {workspace = true}
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "gen-matrix"
+path = "src/bin/gen_matrix.rs"
