@@ -84,6 +84,47 @@ pub struct LiftProbe {
     pub text: String,
 }
 
+/// The host half of a spec: what this language's `MetaLanguage` spells.
+///
+/// Every field is a spelling the expander will emit verbatim into generated
+/// code, so pinning them here is what turns "the operator works" from prose
+/// into a check. A host with no entry for an operator must *fail* on it —
+/// silently leaking a placeholder into generated code is the failure mode
+/// `emit_str` returning `Result` exists to prevent.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetaSpec {
+    /// Spelling of `←`. Omit when the host cannot emit; then `emit_error` must
+    /// say what the caller should do instead.
+    #[serde(default)]
+    pub emit: Option<String>,
+    /// A distinctive substring the emit failure must contain, so an
+    /// `unsupported` emit is checked for being *actionable*, not just an error.
+    #[serde(default)]
+    pub emit_error: Option<String>,
+    /// Spelling of `⟨T⟩`, or omitted when the host has no way to write types.
+    #[serde(default)]
+    pub type_str: Option<String>,
+    #[serde(default)]
+    pub type_error: Option<String>,
+    /// Spelling of `⟨N⟩`.
+    #[serde(default)]
+    pub name_str: Option<String>,
+    /// The ground tag that introduces a pattern-let, when the host has one.
+    #[serde(default)]
+    pub pattern_tag: Option<String>,
+    /// What `pattern_var("x")` must coparse to.
+    #[serde(default)]
+    pub pattern_var: Option<String>,
+    /// target → spelling of `↓`. `""` is the homogeneous (un-annotated) case.
+    #[serde(default)]
+    pub reduce: BTreeMap<String, String>,
+    /// Targets `reduce_str` must refuse, so a missing backend is a decision
+    /// rather than an oversight.
+    #[serde(default)]
+    pub reduce_unsupported: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spec {
@@ -129,6 +170,10 @@ pub struct Spec {
     /// rather than an oversight.
     #[serde(default)]
     pub lift_from_unsupported: Vec<String>,
+
+    /// Host-only: the operator spellings this language's `MetaLanguage` emits.
+    #[serde(default)]
+    pub meta: MetaSpec,
 }
 
 impl Spec {

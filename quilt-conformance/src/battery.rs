@@ -93,6 +93,11 @@ struct Ctx<'a> {
     cells: Vec<Cell>,
 }
 
+/// Whether a claimed status asserts the capability exists at all.
+fn claims_it_works(status: Status) -> bool {
+    matches!(status, Status::Supported | Status::Partial)
+}
+
 impl Ctx<'_> {
     fn fail(&mut self, axis: Axis, probe: &str, detail: impl Into<String>) {
         self.failures.push(Failure {
@@ -101,6 +106,27 @@ impl Ctx<'_> {
             probe: probe.into(),
             detail: detail.into(),
         });
+    }
+
+    /// Cross-check the *declared status* against what the probe found.
+    ///
+    /// Without this the detail checks and the status column are decoupled: a
+    /// spec could pin every spelling correctly and still claim `supported` for
+    /// a capability whose mechanism is entirely absent. The status is the part
+    /// the website renders, so it is the part that most needs pinning.
+    fn check_status(&mut self, axis: Axis, works: bool, what: &str) {
+        let claim = self.spec.claim(axis).expect("validated").status;
+        if claims_it_works(claim) != works {
+            self.fail(
+                axis,
+                "status",
+                format!(
+                    "spec claims {:?}, but {what} {}",
+                    claim.label(),
+                    if works { "is present" } else { "is absent" }
+                ),
+            );
+        }
     }
 
     /// Record a cell whose claim the harness actually checked.
@@ -172,14 +198,14 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
     probe_host(&mut ctx);
     probe_lift_from(&mut ctx);
     probe_highlights(&mut ctx);
+    probe_emit(&mut ctx);
+    probe_reduce(&mut ctx);
+    probe_pattern(&mut ctx);
 
     // Axes no tier reaches yet. Listing them explicitly (rather than letting
     // them fall through) is what keeps the matrix rectangular and makes the
     // unverified set an obvious, countable backlog.
     for axis in [
-        Axis::Reduce,
-        Axis::Emit,
-        Axis::PatternMatch,
         Axis::RuntimeBinding,
         Axis::GlyphCollisions,
         Axis::ChainMember,
@@ -738,6 +764,288 @@ fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
         },
         _ => return Err(miette!("unknown lift marker {marker:?}")),
     })
+}
+
+/// `←`, plus the two operator spellings that live next to it (`⟨T⟩`, `⟨N⟩`).
+///
+/// `emit_str` returns a `Result` precisely because not every host *has* an
+/// emit: the string-based metas (nix, lean) have no `b_` accumulator, and must
+/// fail loudly rather than leak the `__EMIT__` placeholder into generated code.
+/// So the negative case is checked as carefully as the positive one — including
+/// that the error names the functional alternative, since an unactionable error
+/// here is nearly as bad as a leaked placeholder.
+fn probe_emit(ctx: &mut Ctx) {
+    let axis = Axis::Emit;
+    let Some(meta) = registry::meta(&ctx.spec.name) else {
+        // Target-only: emit is the *host's* operator. What matters for a target
+        // is that it has variadic containers to emit into, which
+        // `probe_variadic` already pins.
+        ctx.verified(axis, Vec::new());
+        return;
+    };
+    let spec = &ctx.spec.meta;
+    let mut detail = Vec::new();
+
+    match (run(|| meta.emit_str()), spec.emit.as_deref()) {
+        (Ran::Ok(got), Some(want)) => {
+            if got == want {
+                detail.push(format!("← → {got}"));
+            } else {
+                ctx.fail(
+                    axis,
+                    "emit_str",
+                    format!("spells {got:?}, spec says {want:?}"),
+                );
+            }
+        }
+        (Ran::Ok(got), None) => ctx.fail(
+            axis,
+            "emit_str",
+            format!("spec declares no emit spelling, but the meta spells {got:?}"),
+        ),
+        (Ran::Err(e), None) => {
+            // Unsupported: the error must be actionable.
+            match spec.emit_error.as_deref() {
+                Some(needle) if !e.contains(needle) => ctx.fail(
+                    axis,
+                    "emit_str",
+                    format!("error does not mention {needle:?}: {e}"),
+                ),
+                Some(_) => detail.push("← unsupported (fails with guidance)".into()),
+                None => ctx.fail(
+                    axis,
+                    "emit_str",
+                    "emit is unsupported but the spec sets no `emit_error` — an \
+                     unsupported operator must still say what to do instead",
+                ),
+            }
+        }
+        (Ran::Err(e), Some(want)) => ctx.fail(
+            axis,
+            "emit_str",
+            format!("spec says emit spells {want:?}, but it failed: {e}"),
+        ),
+        (Ran::Panicked(p), _) => ctx.fail(axis, "emit_str", format!("PANICKED: {p}")),
+    }
+
+    check_operator(
+        ctx,
+        axis,
+        "type_str",
+        run(|| meta.type_str()),
+        spec.type_str.as_deref(),
+        spec.type_error.as_deref(),
+        &mut detail,
+    );
+    check_operator(
+        ctx,
+        axis,
+        "name_str",
+        run(|| meta.name_str()),
+        spec.name_str.as_deref(),
+        None,
+        &mut detail,
+    );
+
+    let works = matches!(run(|| meta.emit_str()), Ran::Ok(_));
+    ctx.check_status(axis, works, "an emit spelling");
+
+    ctx.verified(axis, detail);
+}
+
+/// Shared shape for `⟨T⟩` / `⟨N⟩`: a declared spelling must match, and an
+/// undeclared one must fail rather than silently produce a placeholder.
+fn check_operator(
+    ctx: &mut Ctx,
+    axis: Axis,
+    what: &str,
+    got: Ran<&'static str>,
+    want: Option<&str>,
+    want_error: Option<&str>,
+    detail: &mut Vec<String>,
+) {
+    match (got, want) {
+        (Ran::Ok(got), Some(want)) => {
+            if got == want {
+                detail.push(format!("{what} → {got}"));
+            } else {
+                ctx.fail(axis, what, format!("spells {got:?}, spec says {want:?}"));
+            }
+        }
+        (Ran::Ok(got), None) => ctx.fail(
+            axis,
+            what,
+            format!("spec declares no spelling, but the meta spells {got:?}"),
+        ),
+        (Ran::Err(e), None) => match want_error {
+            Some(needle) if !e.contains(needle) => {
+                ctx.fail(
+                    axis,
+                    what,
+                    format!("error does not mention {needle:?}: {e}"),
+                );
+            }
+            _ => detail.push(format!("{what} unsupported")),
+        },
+        (Ran::Err(e), Some(want)) => ctx.fail(
+            axis,
+            what,
+            format!("spec says it spells {want:?}, but it failed: {e}"),
+        ),
+        (Ran::Panicked(p), _) => ctx.fail(axis, what, format!("PANICKED: {p}")),
+    }
+}
+
+/// `↓`, per target. The homogeneous case is the `""` key; the heterogeneous
+/// ones (`py↓` from a Rust host) are what make this a grid rather than a flag.
+fn probe_reduce(ctx: &mut Ctx) {
+    let axis = Axis::Reduce;
+    let Some(meta) = registry::meta(&ctx.spec.name) else {
+        if !ctx.spec.meta.reduce.is_empty() {
+            ctx.fail(
+                axis,
+                "spec",
+                "declares reduce spellings but has no MetaLanguage",
+            );
+        }
+        ctx.verified(axis, Vec::new());
+        return;
+    };
+
+    let mut detail = Vec::new();
+    for (target, want) in &ctx.spec.meta.reduce {
+        match run(|| meta.reduce_str(target)) {
+            Ran::Ok(got) => {
+                if got == want {
+                    let shown = if target.is_empty() {
+                        "(homogeneous)"
+                    } else {
+                        target
+                    };
+                    detail.push(format!("{shown} → {got}"));
+                } else {
+                    ctx.fail(
+                        axis,
+                        target,
+                        format!("reduce_str({target:?}) spells {got:?}, spec says {want:?}"),
+                    );
+                }
+            }
+            Ran::Err(e) => ctx.fail(
+                axis,
+                target,
+                format!("spec says reduce into {target:?} spells {want:?}, but: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(axis, target, format!("reduce_str PANICKED: {p}")),
+        }
+    }
+
+    for target in &ctx.spec.meta.reduce_unsupported {
+        match run(|| meta.reduce_str(target)) {
+            Ran::Ok(got) => ctx.fail(
+                axis,
+                target,
+                format!(
+                    "spec says reducing via {target:?} is unsupported, but it spells {got:?} \
+                     — promote it in the spec"
+                ),
+            ),
+            Ran::Err(_) => {}
+            Ran::Panicked(p) => ctx.fail(
+                axis,
+                target,
+                format!("reduce_str PANICKED (must return Err): {p}"),
+            ),
+        }
+    }
+
+    let works =
+        matches!(run(|| meta.reduce_str("")), Ran::Ok(_)) || !ctx.spec.meta.reduce.is_empty();
+    ctx.check_status(axis, works, "a reduce backend");
+
+    ctx.verified(axis, detail);
+}
+
+/// `let ↖pattern↗ = value`. A host either has the whole mechanism — the ground
+/// tag that introduces it *and* a metavariable spelling — or none of it; half a
+/// pattern-let would expand into code that references an undefined `mvar`.
+fn probe_pattern(ctx: &mut Ctx) {
+    let axis = Axis::PatternMatch;
+    let Some(meta) = registry::meta(&ctx.spec.name) else {
+        ctx.verified(axis, Vec::new());
+        return;
+    };
+    let spec = &ctx.spec.meta;
+    let mut detail = Vec::new();
+
+    let tag = run(|| Ok(meta.pattern_tag()));
+    match (&tag, spec.pattern_tag.as_deref()) {
+        (Ran::Ok(Some(got)), Some(want)) if got == &want => {
+            detail.push(format!("pattern tag: {got}"));
+        }
+        (Ran::Ok(got), want) => {
+            if got.as_deref() != want {
+                ctx.fail(
+                    axis,
+                    "pattern_tag",
+                    format!("pattern_tag() is {got:?}, spec says {want:?}"),
+                );
+            }
+        }
+        (Ran::Err(e), _) => ctx.fail(axis, "pattern_tag", format!("failed: {e}")),
+        (Ran::Panicked(p), _) => ctx.fail(axis, "pattern_tag", format!("PANICKED: {p}")),
+    }
+
+    match (run(|| meta.pattern_var("x")), spec.pattern_var.as_deref()) {
+        (Ran::Ok(t), Some(want)) => {
+            let got = t.coparse();
+            if got == want {
+                detail.push(format!("metavariable: {got}"));
+            } else {
+                ctx.fail(
+                    axis,
+                    "pattern_var",
+                    format!("pattern_var(\"x\") coparses to {got:?}, spec says {want:?}"),
+                );
+            }
+        }
+        (Ran::Ok(t), None) => ctx.fail(
+            axis,
+            "pattern_var",
+            format!(
+                "spec declares no metavariable spelling, but pattern_var(\"x\") produced {:?}",
+                t.coparse()
+            ),
+        ),
+        (Ran::Err(_), None) => {}
+        (Ran::Err(e), Some(want)) => ctx.fail(
+            axis,
+            "pattern_var",
+            format!("spec says the metavariable spells {want:?}, but: {e}"),
+        ),
+        (Ran::Panicked(p), _) => ctx.fail(axis, "pattern_var", format!("PANICKED: {p}")),
+    }
+
+    // The two halves must agree: a pattern tag with no metavariable spelling
+    // would expand a pattern-let into code referencing an undefined helper.
+    let has_tag = matches!(&tag, Ran::Ok(Some(_)));
+    let has_var = spec.pattern_var.is_some();
+    if has_tag != has_var {
+        ctx.fail(
+            axis,
+            "consistency",
+            format!(
+                "pattern_tag is {} but a metavariable spelling is {} — a host needs both or \
+                 neither",
+                if has_tag { "set" } else { "unset" },
+                if has_var { "declared" } else { "absent" },
+            ),
+        );
+    }
+
+    ctx.check_status(axis, has_tag, "a pattern-let mechanism");
+
+    ctx.verified(axis, detail);
 }
 
 /// Whether a vendored `highlights.scm` is exposed for this grammar. Compile-time

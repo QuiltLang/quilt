@@ -43,16 +43,16 @@ Columns:
 
 | Language | Host | Lift out | Reduce ↓ | Emit ← | Patterns | Runnable | Runtime |
 |---|---|---|---|---|---|---|---|
-| **Bash** | ⬜ | ⬜ | ⬜* | ✅* | ⬜* | 🟡 | ⬜* |
-| **HTML** | ⬜ | ⬜ | ⬜* | ✅* | ⬜* | ⬜ | ⬜* |
-| **Lean 4** | ✅ | ✅ | ⬜* | 🟡* | ⬜* | ⬜ | ⬜* |
-| **Nix** | ✅ | ✅ | ⬜* | 🟡* | ⬜* | ⬜ | ⬜* |
-| **Python** | ✅ | ✅ | ✅* | 🟡* | ✅* | ✅ | ✅* |
-| **Rust** | ✅ | ✅ | ✅* | ✅* | ✅* | ✅ | ✅* |
-| **Plain text** | ⬜ | ⬜ | ⬜* | ✅* | ⬜* | ⬜ | ⬜* |
-| **TypeScript** | ✅ | ✅ | 🟡* | 🟡* | ⬜* | ✅ | ✅* |
-| **WGSL** | ⬜ | ⬜ | ⬜* | ✅* | ⬜* | ⬜ | ⬜* |
-| **Zsh** | ⬜ | ⬜ | ⬜* | ✅* | ⬜* | 🟡 | ⬜* |
+| **Bash** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | 🟡 | ⬜* |
+| **HTML** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜* |
+| **Lean 4** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
+| **Nix** | ✅ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜* |
+| **Python** | ✅ | ✅ | ✅ | 🟡 | ⬜ | ✅ | ✅* |
+| **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅* |
+| **Plain text** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜* |
+| **TypeScript** | ✅ | ✅ | 🟡 | 🟡 | ⬜ | ✅ | ✅* |
+| **WGSL** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜* |
+| **Zsh** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | 🟡 | ⬜* |
 
 Columns:
 
@@ -119,7 +119,7 @@ Columns:
 
 - 🟡 **Holes** — term, tactic, do-element, declaration-name and binder position all work with the unpatched grammar (`__QUILT_HOLE__` matches Lean's identifier regex); whole-command position is reached only by the `#check …` wrapper fallback in `parse_pre` ([#133](https://github.com/QuiltLang/quilt/issues/133))
 - ⬜ **Reduce ↓** — no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against ([#132](https://github.com/QuiltLang/quilt/issues/132))
-- 🟡 **Emit ←** — emit works into `by` / `do` bodies, which are the variadic containers; a top-level sequence of commands needs a variadic `module`, which a bare-hole quote does not produce ([#133](https://github.com/QuiltLang/quilt/issues/133))
+- ⬜ **Emit ←** — `emit_str` fails unconditionally: the string-based meta has no `b_` accumulator for `←` to append to, and the error points at `List.map` + `String.intercalate` instead. Automatic emission of children into the variadic `by` / `do` containers is a separate mechanism (`wrap_child`) and is unaffected; a top-level sequence of commands additionally needs a variadic `module` ([#133](https://github.com/QuiltLang/quilt/issues/133))
 - ⬜ **Patterns** — no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host
 - ⬜ **Runnable** — Lean has no interpreter shebang — a file runs via `lean file.lean` or `lake env lean`, and `#!` is not Lean comment syntax
 - ⬜ **Runtime** — string-based meta: no `QTerm` runtime library is shipped for Lean ([#132](https://github.com/QuiltLang/quilt/issues/132))
@@ -128,7 +128,7 @@ Columns:
 ### Nix
 
 - ⬜ **Reduce ↓** — no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against ([#132](https://github.com/QuiltLang/quilt/issues/132))
-- 🟡 **Emit ←** — the string model has no `b_` accumulator, so emit/splice in a ground loop is unsupported; build sequences functionally with `map` / `concatStringsSep` ([#132](https://github.com/QuiltLang/quilt/issues/132))
+- ⬜ **Emit ←** — `emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says ([#132](https://github.com/QuiltLang/quilt/issues/132))
 - ⬜ **Patterns** — no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host
 - ⬜ **Runnable** — a `.nix` file is evaluated with `nix eval`, not executed, so there is no shebang runner
 - ⬜ **Runtime** — string-based meta: no `QTerm` runtime library is shipped for Nix ([#132](https://github.com/QuiltLang/quilt/issues/132))
@@ -137,6 +137,7 @@ Columns:
 ### Python
 
 - 🟡 **Emit ←** — no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable ([#144](https://github.com/QuiltLang/quilt/issues/144))
+- ⬜ **Patterns** — `PythonMetaLanguage` sets no `pattern_tag`, so a Python host cannot write `let ↖…↗ = …`. Python *fragments* can still be destructured by a Rust host, which is what `expand_rust.rs::pattern_let_runtime` exercises
 
 ### Rust
 
