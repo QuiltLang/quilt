@@ -26,15 +26,15 @@ lift-into = {status = "supported"}
 highlights = {status = "supported"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
-reduce = {status = "unsupported", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 132}
-emit = {status = "unsupported", note = "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says", issue = 132}
+reduce = {status = "planned", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 155}
+emit = {status = "planned", note = "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says", issue = 155}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "a `.nix` file is evaluated with `nix eval`, not executed, so there is no shebang runner"}
-runtime-binding = {status = "unsupported", note = "string-based meta: no `QTerm` runtime library is shipped for Nix", issue = 132}
+runtime-binding = {status = "planned", note = "string-based meta: no `QTerm` runtime library is shipped for Nix", issue = 155}
 glyph-collisions = {status = "supported"}
 chain-member = {status = "supported"}
 header-comment = {status = "supported", note = "generated Nix files use `#`, not `//!`"}
-lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream Nix server is proxied", issue = 144}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream Nix server is proxied", issue = 154}
 
 [[fragments]]
 name = "integer"

@@ -26,11 +26,11 @@ lift-into = {status = "supported"}
 highlights = {status = "supported"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
-reduce = {status = "unsupported", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 132}
-emit = {status = "unsupported", note = "`emit_str` fails unconditionally: the string-based meta has no `b_` accumulator for `←` to append to, and the error points at `List.map` + `String.intercalate` instead. Automatic emission of children into the variadic `by` / `do` containers is a separate mechanism (`wrap_child`) and is unaffected; a top-level sequence of commands additionally needs a variadic `module`", issue = 133}
+reduce = {status = "planned", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 132}
+emit = {status = "planned", note = "`emit_str` fails unconditionally: the string-based meta has no `b_` accumulator for `←` to append to, and the error points at `List.map` + `String.intercalate` instead. Automatic emission of children into the variadic `by` / `do` containers is a separate mechanism (`wrap_child`) and is unaffected; a top-level sequence of commands additionally needs a variadic `module`", issue = 133}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "Lean has no interpreter shebang — a file runs via `lean file.lean` or `lake env lean`, and `#!` is not Lean comment syntax"}
-runtime-binding = {status = "unsupported", note = "string-based meta: no `QTerm` runtime library is shipped for Lean", issue = 132}
+runtime-binding = {status = "planned", note = "string-based meta: no `QTerm` runtime library is shipped for Lean", issue = 132}
 glyph-collisions = {status = "partial", note = "`←` is Lean's monadic bind and is eaten by the emit glyph; `↑` (coercion) and `↓` (lowering) are also real Lean notation. The ASCII alias `<-` is the current workaround, and `\\←` does not escape because `←` is missing from the grammar's escape class", issue = 141}
 chain-member = {status = "supported"}
 header-comment = {status = "supported", note = "generated Lean files use `--`, not `//!`"}

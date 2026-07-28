@@ -19,7 +19,7 @@ quotable = {status = "supported"}
 hole-positions = {status = "supported"}
 variadic-containers = {status = "supported"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`; WGSL instead sorts fragments with `classify_term`, which reads the parsed term rather than the tag"}
-lift-into = {status = "partial", note = "numeric and bool literals only — WGSL has no string type, so no `LiftTo<Wgsl> for str` impl exists and lifting a string is a compile error in the generated program rather than a silent truncation. 64-bit integers are likewise omitted", issue = 144}
+lift-into = {status = "partial", note = "numeric and bool literals only — WGSL has no string type, so no `LiftTo<Wgsl> for str` impl exists and lifting a string is a compile error in the generated program rather than a silent truncation. 64-bit integers are likewise omitted", issue = 149}
 highlights = {status = "unsupported", note = "the LSP vendors a patched WGSL highlight query of its own rather than exposing one from `quilt::grammars`", issue = 22}
 host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
 lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}

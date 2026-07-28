@@ -34,21 +34,21 @@ lift_marker = "Bash"
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
-variadic-containers = {status = "partial", note = "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits", issue = 144}
+variadic-containers = {status = "partial", note = "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits", issue = 150}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
-lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl", issue = 144}
+lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl", issue = 149}
 highlights = {status = "supported"}
 host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
 lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
 reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
 emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
 pattern-match = {status = "unsupported", note = "target-only; bash fragments can still be destructured by a Rust host"}
-runnable = {status = "partial", note = "`hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`", issue = 144}
+runnable = {status = "partial", note = "`hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`", issue = 151}
 runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
 glyph-collisions = {status = "supported"}
 chain-member = {status = "supported"}
 header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced"}
-lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied", issue = 144}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied", issue = 154}
 
 [[fragments]]
 name = "command"
