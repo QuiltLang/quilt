@@ -201,12 +201,12 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
     probe_emit(&mut ctx);
     probe_reduce(&mut ctx);
     probe_pattern(&mut ctx);
+    probe_runtime_binding(&mut ctx);
 
     // Axes no tier reaches yet. Listing them explicitly (rather than letting
     // them fall through) is what keeps the matrix rectangular and makes the
     // unverified set an obvious, countable backlog.
     for axis in [
-        Axis::RuntimeBinding,
         Axis::GlyphCollisions,
         Axis::ChainMember,
         Axis::HeaderComment,
@@ -1048,6 +1048,67 @@ fn probe_pattern(ctx: &mut Ctx) {
 
     ctx.check_status(axis, has_tag, "a pattern-let mechanism");
 
+    ctx.verified(axis, detail);
+}
+
+/// A claimed runtime binding must be *exercised*, not merely asserted.
+///
+/// The three published packages — `quiltlang`, `quilt-python`, `quilt-wasm` —
+/// implement the same builder API, and the shared corpus in
+/// `conformance/runtime/cases.json` drives all three through the same cases
+/// (`bin/test-runtimes`, run nightly). This ties the matrix cell to that
+/// corpus: a language cannot claim a runtime binding that no case covers, and
+/// a corpus that stops covering one moves the cell.
+///
+/// It deliberately does not try to *run* the Python or Node runners — those
+/// need a built cdylib and wasm artifact. What it checks is that the claim and
+/// the corpus agree about which runtimes exist.
+fn probe_runtime_binding(ctx: &mut Ctx) {
+    let axis = Axis::RuntimeBinding;
+    let claim = ctx.spec.claim(axis).expect("validated").status;
+
+    // Which corpus runtime name, if any, this language's binding goes by.
+    let runtime = match ctx.spec.name.as_str() {
+        "rust" => Some("rust"),
+        "python" => Some("python"),
+        "typescript" => Some("wasm"),
+        _ => None,
+    };
+
+    let covered = match runtime {
+        Some(r) => match run(crate::runtime::load) {
+            Ran::Ok(corpus) => corpus.cases.iter().filter(|c| c.applies_to(r)).count(),
+            Ran::Err(e) => {
+                ctx.fail(
+                    axis,
+                    "corpus",
+                    format!("could not load the runtime corpus: {e}"),
+                );
+                0
+            }
+            Ran::Panicked(p) => {
+                ctx.fail(axis, "corpus", format!("loading the corpus PANICKED: {p}"));
+                0
+            }
+        },
+        None => 0,
+    };
+
+    ctx.check_status(axis, runtime.is_some(), "a published runtime package");
+
+    if claims_it_works(claim) && covered == 0 {
+        ctx.fail(
+            axis,
+            "coverage",
+            "claims a runtime binding, but no case in conformance/runtime/cases.json \
+             applies to it — the claim is untested",
+        );
+    }
+
+    let detail = match runtime {
+        Some(r) => vec![format!("{r}: {covered} shared corpus case(s)")],
+        None => Vec::new(),
+    };
     ctx.verified(axis, detail);
 }
 

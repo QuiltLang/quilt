@@ -208,9 +208,16 @@ fn qlift(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
         return Ok(PyQTerm(mk_leaf("integer", &n.to_string())));
     }
     if let Ok(s) = value.extract::<String>() {
+        // Escaped with the same rule the core `LiftTo<Python> for str` uses.
+        // Writing `s` raw here produced literals that do not parse (`a"b`) or
+        // that silently changed value (`a\\b`, where `\\b` is a backspace
+        // escape). Found by the shared runtime corpus (#159).
         let t = mk_tb("string")
             .c(&mk_leaf("string_start", "\""))
-            .c(&mk_leaf("string_content", &s))
+            .c(&mk_leaf(
+                "string_content",
+                &quilt::lift::py_dquote_escape(&s),
+            ))
             .c(&mk_leaf("string_end", "\""))
             .b();
         return Ok(PyQTerm(t));

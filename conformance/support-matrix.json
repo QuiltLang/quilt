@@ -125,7 +125,8 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library"
+          "note": "target-only: no runtime library",
+          "verified_by": "runtime-binding/bash"
         },
         {
           "axis": "glyph-collisions",
@@ -251,7 +252,8 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library"
+          "note": "target-only: no runtime library",
+          "verified_by": "runtime-binding/html"
         },
         {
           "axis": "glyph-collisions",
@@ -399,7 +401,8 @@
           "axis": "runtime-binding",
           "status": "planned",
           "note": "string-based meta: no `QTerm` runtime library is shipped for Lean",
-          "issue": 132
+          "issue": 132,
+          "verified_by": "runtime-binding/lean"
         },
         {
           "axis": "glyph-collisions",
@@ -543,7 +546,8 @@
           "axis": "runtime-binding",
           "status": "planned",
           "note": "string-based meta: no `QTerm` runtime library is shipped for Nix",
-          "issue": 155
+          "issue": 155,
+          "verified_by": "runtime-binding/nix"
         },
         {
           "axis": "glyph-collisions",
@@ -700,7 +704,11 @@
         },
         {
           "axis": "runtime-binding",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "runtime-binding/python",
+          "detail": [
+            "python: 21 shared corpus case(s)"
+          ]
         },
         {
           "axis": "glyph-collisions",
@@ -862,7 +870,11 @@
         },
         {
           "axis": "runtime-binding",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "runtime-binding/rust",
+          "detail": [
+            "rust: 18 shared corpus case(s)"
+          ]
         },
         {
           "axis": "glyph-collisions",
@@ -984,7 +996,8 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library"
+          "note": "target-only: no runtime library",
+          "verified_by": "runtime-binding/text"
         },
         {
           "axis": "glyph-collisions",
@@ -1127,7 +1140,11 @@
         },
         {
           "axis": "runtime-binding",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "runtime-binding/typescript",
+          "detail": [
+            "wasm: 20 shared corpus case(s)"
+          ]
         },
         {
           "axis": "glyph-collisions",
@@ -1255,7 +1272,8 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library"
+          "note": "target-only: no runtime library",
+          "verified_by": "runtime-binding/wgsl"
         },
         {
           "axis": "glyph-collisions",
@@ -1400,7 +1418,8 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library"
+          "note": "target-only: no runtime library",
+          "verified_by": "runtime-binding/zsh"
         },
         {
           "axis": "glyph-collisions",

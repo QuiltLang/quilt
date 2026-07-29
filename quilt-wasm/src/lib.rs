@@ -192,11 +192,19 @@ pub fn name(s: &str) -> WasmQTerm {
 /// `boolean`. Numbers with no fractional part lift to integer literals;
 /// everything is coparse-only, so the tags are advisory.
 ///
-/// Unlike the Python runtime's `qlift`, this does *not* pass an already-built
-/// `QTerm` through unchanged: recovering an exported wasm-bindgen type from a
-/// polymorphic `JsValue` needs target-specific glue. The demos never lift a
-/// term (terms splice via `↙…↘`), so this is sufficient; a JS shim can add
-/// pass-through later if needed.
+/// Lifting an already-built `QTerm` is **not implemented** — see issue #166.
+///
+/// The reason previously given here was that recovering an exported
+/// wasm-bindgen type from a polymorphic `JsValue` needs target-specific glue.
+/// That is not so: `TryFromJsValue` is derived for every exported struct, and
+/// `as_term` below uses it — `qlift_html` takes exactly that route.
+///
+/// What actually blocks it is deciding *what* the term case should do. Under
+/// `↓(↑(x)) == x`, lifting a term must yield code that **reconstructs** it, as
+/// Rust's `QLift for Arc<QTerm>` does; Python's identity pass-through breaks
+/// the law and is itself the bug in #166. Emitting TypeScript constructor code
+/// is real work, so this errors for now rather than shipping a third
+/// behaviour.
 #[wasm_bindgen]
 pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
     if let Some(b) = value.as_bool() {
@@ -209,8 +217,13 @@ pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
     if let Some(s) = value.as_string() {
         return Ok(WasmQTerm(mk_leaf("string", &ts_string_lit(&s))));
     }
+    // Deliberately does not claim QTerm support: it advertised `or QTerm` while
+    // having no branch for one, so a caller lifting a fragment got an error
+    // naming the very type it had passed.
     Err(JsError::new(
-        "qlift: unsupported type (expected number, string, boolean, or QTerm)",
+        "qlift: unsupported type (expected number, string or boolean). Lifting an \
+         already-built QTerm is not yet implemented — see \
+         https://github.com/QuiltLang/quilt/issues/166",
     ))
 }
 
@@ -218,9 +231,21 @@ pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
 /// target). Strings become entity-escaped `text` leaves — inert as text content
 /// or as a double-quoted attribute value — and terms pass through unchanged, so
 /// already-built fragments can be lifted too. Mirrors `qlift_html` in the
-/// Python runtime, minus the `QTerm` pass-through (see [`qlift`]).
+/// Python runtime.
+///
+/// The term case is a genuine pass-through here, unlike `qlift`: an
+/// already-built HTML fragment is already escaped, and re-escaping it would
+/// double-encode. The `↓(↑(x)) == x` law that governs `qlift` (issue #166) does
+/// not bite, because HTML has no reduce to round-trip through.
+///
+/// This branch was missing while the doc comment and the error message both
+/// advertised it, so lifting a fragment failed at run time with a message
+/// naming the very type it was given. Found by the shared runtime corpus (#159).
 #[wasm_bindgen]
 pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
+    if let Some(q) = as_term(value) {
+        return Ok(q);
+    }
     if let Some(b) = value.as_bool() {
         return Ok(WasmQTerm(mk_leaf("text", if b { "true" } else { "false" })));
     }
@@ -233,6 +258,18 @@ pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
     Err(JsError::new(
         "qlift_html: unsupported type (expected number, string, boolean, or QTerm)",
     ))
+}
+
+/// Recover a `WasmQTerm` from a `JsValue`, for the lift functions'
+/// already-a-term case.
+///
+/// `wasm_bindgen` derives `TryFromJsValue` for every exported struct, which is
+/// the supported way to ask "is this JS value one of ours" — `JsCast` is not,
+/// since that is for `js_sys`/`web_sys` imported types rather than exported
+/// Rust ones.
+fn as_term(value: &JsValue) -> Option<WasmQTerm> {
+    use wasm_bindgen::convert::TryFromJsValue as _;
+    WasmQTerm::try_from_js_value_ref(value)
 }
 
 /// Format a JS number: drop the decimal point when it is integral (`42`, not
