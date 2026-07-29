@@ -458,6 +458,35 @@ macro_rules! qlift_display {
 }
 qlift_display!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
+/// Floats need `{:?}` rather than `{}`: `1.0f64.to_string()` is `"1"`, which
+/// would lift a float as an *integer* literal and silently change the type of
+/// the generated code. A negative float is a `unary_expression` over a positive
+/// literal, matching how the parser sees `-1.5` — the same shape the Lean lift
+/// uses for the same reason.
+macro_rules! qlift_float {
+    ($($t:ty),* $(,)?) => {$(
+        impl QLift for $t {
+            fn qlift(&self) -> Arc<QTerm> {
+                let s = format!("{self:?}");
+                if *self < 0.0 {
+                    return tb("unary_expression")
+                        .w("-")
+                        .c(&leaf("float_literal", s.trim_start_matches('-')))
+                        .b();
+                }
+                leaf("float_literal", &s)
+            }
+        }
+    )*};
+}
+qlift_float!(f32, f64);
+
+impl QLift for bool {
+    fn qlift(&self) -> Arc<QTerm> {
+        leaf("boolean_literal", if *self { "true" } else { "false" })
+    }
+}
+
 /**************************************************************/
 
 /// Evaluate a `QTerm` by compiling and running it, then deserialize the result

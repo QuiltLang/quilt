@@ -204,8 +204,22 @@ fn qlift(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
     if let Ok(q) = value.extract::<PyQTerm>() {
         return Ok(q);
     }
+    // Bool *before* int: `bool` is a subclass of `int` in Python, so
+    // `extract::<i64>()` succeeds on `True` and would lift it as `1` — silently
+    // generating an integer where the author wrote a boolean. Found by the
+    // shared runtime corpus (#159); the core library's `LiftTo<Python> for bool`
+    // is the reference, and it produces `True`/`False`.
+    if let Ok(b) = value.extract::<bool>() {
+        let s = if b { "True" } else { "False" };
+        return Ok(PyQTerm(mk_leaf(if b { "true" } else { "false" }, s)));
+    }
     if let Ok(n) = value.extract::<i64>() {
         return Ok(PyQTerm(mk_leaf("integer", &n.to_string())));
+    }
+    // `{:?}` keeps the decimal point, so 1.0 lifts as the float `1.0` rather
+    // than the integer `1` — matching `LiftTo<Python> for f64`.
+    if let Ok(f) = value.extract::<f64>() {
+        return Ok(PyQTerm(mk_leaf("float", &format!("{f:?}"))));
     }
     if let Ok(s) = value.extract::<String>() {
         // Escaped with the same rule the core `LiftTo<Python> for str` uses.
@@ -223,7 +237,7 @@ fn qlift(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
         return Ok(PyQTerm(t));
     }
     Err(pyo3::exceptions::PyTypeError::new_err(
-        "qlift: unsupported type (expected int, str, or QTerm)",
+        "qlift: unsupported type (expected bool, int, float, str, or QTerm)",
     ))
 }
 
@@ -236,14 +250,22 @@ fn qlift_html(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
     if let Ok(q) = value.extract::<PyQTerm>() {
         return Ok(q);
     }
+    // Bool before int, for the same reason as `qlift`: `True` must render as
+    // `True`, not `1`.
+    if let Ok(b) = value.extract::<bool>() {
+        return Ok(PyQTerm(mk_leaf("text", if b { "True" } else { "False" })));
+    }
     if let Ok(n) = value.extract::<i64>() {
         return Ok(PyQTerm(mk_leaf("text", &n.to_string())));
+    }
+    if let Ok(f) = value.extract::<f64>() {
+        return Ok(PyQTerm(mk_leaf("text", &format!("{f:?}"))));
     }
     if let Ok(s) = value.extract::<String>() {
         return Ok(PyQTerm(mk_leaf("text", &escape_html(&s))));
     }
     Err(pyo3::exceptions::PyTypeError::new_err(
-        "qlift_html: unsupported type (expected int, str, or QTerm)",
+        "qlift_html: unsupported type (expected bool, int, float, str, or QTerm)",
     ))
 }
 

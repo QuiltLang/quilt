@@ -105,7 +105,11 @@ pub enum Cmd {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
+    // Order matters: serde's untagged enum tries variants top to bottom, and
+    // JSON `true` would deserialize as an integer if `Int` came first.
+    Bool(bool),
     Int(i64),
+    Float(f64),
     Str(String),
     Term(Box<Term>),
 }
@@ -138,7 +142,9 @@ fn build_cmds(cmds: &[Cmd]) -> Vec<quilt::term::CmdOrHole> {
 
 fn build_value(v: &Value) -> Result<Arc<QTerm>> {
     Ok(match v {
+        Value::Bool(b) => b.qlift(),
         Value::Int(n) => n.qlift(),
+        Value::Float(f) => f.qlift(),
         Value::Str(s) => s.as_str().qlift(),
         // `qlift` on a term is the identity — the property the corpus pins.
         Value::Term(t) => build(t)?.qlift(),

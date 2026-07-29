@@ -284,6 +284,59 @@
       "coparse": "42"
     },
     {
+      "name": "qlift_float",
+      "term": {
+        "qlift": 1.5
+      },
+      "coparse": "1.5"
+    },
+    {
+      "name": "qlift_float_integral_keeps_its_point",
+      "runtimes": [
+        "rust",
+        "python"
+      ],
+      "why": "1.0 formatted with to_string() is '1' in Rust, which would lift a float as an integer literal and silently change the generated code's type",
+      "term": {
+        "qlift": 1.0
+      },
+      "coparse": "1.0"
+    },
+    {
+      "name": "qlift_float_integral_drops_its_point_in_ts",
+      "runtimes": [
+        "wasm"
+      ],
+      "why": "Deliberately different, and correct for the target: every JS number is a double, so `1` and `1.0` are the same value and `fmt_number` drops the point so whole numbers read as integer literals. The distinction only matters in a language with separate int and float types",
+      "term": {
+        "qlift": 1.0
+      },
+      "coparse": "1"
+    },
+    {
+      "name": "qlift_bool",
+      "runtimes": [
+        "rust",
+        "wasm"
+      ],
+      "why": "Rust and TypeScript both spell the literal `true`; Python spells it `True`, so that case is separate rather than pretending the three agree",
+      "term": {
+        "qlift": true
+      },
+      "coparse": "true"
+    },
+    {
+      "name": "qlift_bool_python_spelling",
+      "runtimes": [
+        "python"
+      ],
+      "why": "Python's boolean literal is `True`. This case exists because the runtime used to return `1`: bool is an int subclass, so extract::<i64> matched first and silently generated an integer where the author wrote a boolean",
+      "term": {
+        "qlift": true
+      },
+      "coparse": "True"
+    },
+    {
       "name": "qlift_string",
       "term": {
         "qlift": "hi"
