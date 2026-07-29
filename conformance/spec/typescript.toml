@@ -72,3 +72,10 @@ reduce_unsupported = ["rust", "rs", "python", "py", "wgsl", "html", "nix", "lean
 "" = "reduce()"
 typescript = "reduce()"
 ts = "reduce()"
+
+# How this host embeds a quote of another language, for the cross-language grid
+# (#158). `@` is replaced by `<target>↖…↗`; `lift` is how a lifted ground value
+# is spelled in *this* host's syntax — Rust's `↑` is postfix, Python's prefix.
+[cross]
+wrapper = "let x = @;"
+lift = "↑(v)"
