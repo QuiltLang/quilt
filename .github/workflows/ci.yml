@@ -62,6 +62,15 @@ jobs:
           - os: ubuntu-latest
             name: Support matrix (no drift)
             run: bin/check-matrix
+          # The Quilt surface syntax — arrow brackets, escapes, comments — is
+          # the one thing every language shares, and `tree-sitter test` ran
+          # nowhere (issue #156). tree-sitter-quilt is a workspace member but
+          # not a default-member, so `cargo test` never reached it either. That
+          # gap is how `←` became the emit glyph without being in the grammar's
+          # escape class (#141). Seconds to run, no network.
+          - os: ubuntu-latest
+            name: Quilt grammar (corpus + parser in sync)
+            run: bin/check-grammar-quilt
           # The feature combinations that are contracts rather than defaults
           # (issue #162): `quiltlang` with default-features = false must stay a
           # runtime-only crate with no tree-sitter, because quilt-wasm and the

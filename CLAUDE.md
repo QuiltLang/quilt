@@ -44,6 +44,11 @@ check-bootstrap   # run bootstrap and fail if meta.rs changed (CI / pre-commit)
 
 # Regenerate the tree-sitter-quilt parser after editing grammar.js
 ts-gen
+# Run the quilt grammar corpus + verify src/parser.c matches grammar.js (CI).
+# The corpus lives in tree-sitter-quilt/test/corpus/; `tree-sitter test --update`
+# fills in expected trees, but review them — an --update accepts whatever the
+# parser currently does, right or wrong.
+check-grammar-quilt
 
 # Language support matrix (issue #144). Capability claims live in
 # conformance/spec/<lang>.toml; the battery in quilt-conformance/ verifies each
