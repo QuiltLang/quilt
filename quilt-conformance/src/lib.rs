@@ -21,6 +21,7 @@ pub use quilt::qsnap;
 
 pub mod matrix;
 pub mod registry;
+pub mod runtime;
 pub mod spec;
 
 use matrix::Matrix;

@@ -1,0 +1,431 @@
+{
+  "_comment": [
+    "Language-neutral conformance corpus for the QTerm runtime (issue #159).",
+    "",
+    "Three published packages implement the same builder API and must agree:",
+    "quiltlang (crates.io), quilt-python (PyPI) and quilt-wasm (npm). Each has a",
+    "thin runner that walks these cases against its native API, so a divergence",
+    "is a test failure rather than something a user discovers.",
+    "",
+    "A term is a tagged object:",
+    "  {\"leaf\": {\"tag\": t, \"text\": s}}   {\"sym\": s}   {\"name\": s}",
+    "  {\"qlift\": v}                        {\"qlift_html\": v}",
+    "  {\"tb\": {\"tag\": t, \"steps\": [...]}}",
+    "  {\"quote\"|\"unquote\": {tag, index, lang, term, cmds}}",
+    "A step is {\"w\": s} | {\"c\": term} | {\"e\": term} | {\"p\": s} | \"n\" | \"x\".",
+    "A cmd is  {\"write\": s} | {\"push\": s} | \"NL\" | \"POP\" | \"HOLE\".",
+    "",
+    "`runtimes` narrows a case to the implementations that have the API; omit it",
+    "to mean all three. Every narrowing needs a `why`, so a gap is a recorded",
+    "decision and not an accident.",
+    "",
+    "The governing law for lift is ↓(↑(x)) == x: ↑ maps a value to a term whose",
+    "code evaluates back to it. These cases compare coparse() text, which cannot",
+    "see that law directly — checking it needs the reduce backends, so it lives",
+    "in the nightly job. A case that records behaviour known to *violate* the law",
+    "carries a `deviation` field: it is pinned so a change is noticed, not because",
+    "it is right."
+  ],
+  "cases": [
+    {
+      "name": "leaf",
+      "term": {
+        "leaf": {
+          "tag": "integer_literal",
+          "text": "42"
+        }
+      },
+      "coparse": "42"
+    },
+    {
+      "name": "sym",
+      "term": {
+        "sym": "+"
+      },
+      "coparse": "+"
+    },
+    {
+      "name": "name",
+      "term": {
+        "name": "foo"
+      },
+      "coparse": "foo"
+    },
+    {
+      "name": "builder_binary_expression",
+      "term": {
+        "tb": {
+          "tag": "binary_expression",
+          "steps": [
+            {
+              "c": {
+                "leaf": {
+                  "tag": "integer_literal",
+                  "text": "1"
+                }
+              }
+            },
+            {
+              "w": " "
+            },
+            {
+              "c": {
+                "sym": "+"
+              }
+            },
+            {
+              "w": " "
+            },
+            {
+              "c": {
+                "leaf": {
+                  "tag": "integer_literal",
+                  "text": "2"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "coparse": "1 + 2"
+    },
+    {
+      "name": "builder_empty_tag_only",
+      "term": {
+        "tb": {
+          "tag": "block",
+          "steps": [
+            {
+              "w": "{}"
+            }
+          ]
+        }
+      },
+      "coparse": "{}"
+    },
+    {
+      "name": "builder_newline",
+      "term": {
+        "tb": {
+          "tag": "block",
+          "steps": [
+            {
+              "w": "a"
+            },
+            "n",
+            {
+              "w": "b"
+            }
+          ]
+        }
+      },
+      "coparse": "a\nb"
+    },
+    {
+      "name": "builder_push_pop_prefix",
+      "term": {
+        "tb": {
+          "tag": "block",
+          "steps": [
+            {
+              "w": "{"
+            },
+            {
+              "p": "    "
+            },
+            "n",
+            {
+              "w": "body"
+            },
+            "x",
+            "n",
+            {
+              "w": "}"
+            }
+          ]
+        }
+      },
+      "coparse": "{\n    body\n}"
+    },
+    {
+      "name": "builder_nested_children",
+      "term": {
+        "tb": {
+          "tag": "call",
+          "steps": [
+            {
+              "c": {
+                "name": "print"
+              }
+            },
+            {
+              "w": "("
+            },
+            {
+              "c": {
+                "tb": {
+                  "tag": "binary_expression",
+                  "steps": [
+                    {
+                      "c": {
+                        "leaf": {
+                          "tag": "integer_literal",
+                          "text": "1"
+                        }
+                      }
+                    },
+                    {
+                      "w": "+"
+                    },
+                    {
+                      "c": {
+                        "leaf": {
+                          "tag": "integer_literal",
+                          "text": "2"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "w": ")"
+            }
+          ]
+        }
+      },
+      "coparse": "print(1+2)"
+    },
+    {
+      "name": "builder_emit",
+      "term": {
+        "tb": {
+          "tag": "block",
+          "steps": [
+            {
+              "w": "{"
+            },
+            {
+              "e": {
+                "leaf": {
+                  "tag": "expression_statement",
+                  "text": "a;"
+                }
+              }
+            },
+            {
+              "e": {
+                "leaf": {
+                  "tag": "expression_statement",
+                  "text": "b;"
+                }
+              }
+            },
+            {
+              "w": "}"
+            }
+          ]
+        }
+      },
+      "coparse": "{a;b;}"
+    },
+    {
+      "name": "quote_with_cmds_and_hole",
+      "term": {
+        "quote": {
+          "tag": "x",
+          "index": 0,
+          "lang": "py",
+          "term": {
+            "leaf": {
+              "tag": "integer",
+              "text": "5"
+            }
+          },
+          "cmds": [
+            {
+              "write": "["
+            },
+            "HOLE",
+            {
+              "write": "]"
+            }
+          ]
+        }
+      },
+      "coparse": "[5]"
+    },
+    {
+      "name": "unquote_bare_hole",
+      "term": {
+        "unquote": {
+          "tag": "x",
+          "index": 1,
+          "lang": "py",
+          "term": {
+            "leaf": {
+              "tag": "integer",
+              "text": "5"
+            }
+          },
+          "cmds": [
+            "HOLE"
+          ]
+        }
+      },
+      "coparse": "5"
+    },
+    {
+      "name": "qlift_int",
+      "term": {
+        "qlift": 42
+      },
+      "coparse": "42"
+    },
+    {
+      "name": "qlift_string",
+      "term": {
+        "qlift": "hi"
+      },
+      "coparse": "\"hi\""
+    },
+    {
+      "name": "qlift_string_with_quote",
+      "term": {
+        "qlift": "a\"b"
+      },
+      "coparse": "\"a\\\"b\"",
+      "why": "the escaping bug #144 found in QLift for str: a bare `\"` produced a literal that does not reparse"
+    },
+    {
+      "name": "qlift_string_with_backslash",
+      "term": {
+        "qlift": "a\\b"
+      },
+      "coparse": "\"a\\\\b\""
+    },
+    {
+      "name": "qlift_on_term_identity_DEVIATION",
+      "runtimes": [
+        "python"
+      ],
+      "why": "records current quilt-python behaviour, which is wrong — see `deviation`",
+      "term": {
+        "qlift": {
+          "leaf": {
+            "tag": "integer",
+            "text": "7"
+          }
+        }
+      },
+      "coparse": "7",
+      "deviation": "Violates ↓(↑(x)) == x. Python returns the term unchanged, so ↓ then evaluates the term's own code (`7`) instead of reconstructing the term. Pinned to make a change visible; the fix is issue #166 and is breaking for a published package."
+    },
+    {
+      "name": "qlift_on_term_builds_constructor_code",
+      "runtimes": [
+        "rust"
+      ],
+      "why": "The correct behaviour under ↓(↑(x)) == x: evaluating the lifted code reconstructs the term. Rust is the reference here; issue #166 tracks bringing python and wasm into line.",
+      "term": {
+        "qlift": {
+          "leaf": {
+            "tag": "integer_literal",
+            "text": "7"
+          }
+        }
+      },
+      "coparse": "leaf(\"integer_literal\", \"7\")"
+    },
+    {
+      "name": "qlift_html_int",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149",
+      "term": {
+        "qlift_html": 42
+      },
+      "coparse": "42"
+    },
+    {
+      "name": "qlift_html_escapes_markup",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149",
+      "term": {
+        "qlift_html": "a \"<b>\" & c"
+      },
+      "coparse": "a &quot;&lt;b&gt;&quot; &amp; c"
+    },
+    {
+      "name": "qlift_html_is_idempotent_on_terms",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149",
+      "term": {
+        "qlift_html": {
+          "leaf": {
+            "tag": "text",
+            "text": "x"
+          }
+        }
+      },
+      "coparse": "x"
+    },
+    {
+      "name": "deep_nesting",
+      "term": {
+        "tb": {
+          "tag": "a",
+          "steps": [
+            {
+              "c": {
+                "tb": {
+                  "tag": "b",
+                  "steps": [
+                    {
+                      "c": {
+                        "tb": {
+                          "tag": "c",
+                          "steps": [
+                            {
+                              "c": {
+                                "leaf": {
+                                  "tag": "d",
+                                  "text": "deep"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "coparse": "deep"
+    },
+    {
+      "name": "unicode_content_survives",
+      "term": {
+        "leaf": {
+          "tag": "string_content",
+          "text": "héllo ← ↖ 世界"
+        }
+      },
+      "coparse": "héllo ← ↖ 世界",
+      "why": "the runtime must not apply Quilt's own glyph escaping to target text"
+    }
+  ]
+}

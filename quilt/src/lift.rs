@@ -137,7 +137,15 @@ impl LiftTo<Python> for bool {
 }
 
 /// Escape a string for inclusion in a Python double-quoted literal.
-fn py_dquote_escape(s: &str) -> String {
+///
+/// Public because the `quilt-python` runtime's own `qlift` needs exactly this
+/// rule: there were two implementations of "lift a string into Python" — this
+/// one, and the binding's, which did no escaping at all, so `qlift('a"b')`
+/// produced an unparseable literal and `qlift('a\\b')` silently changed the
+/// value (`\\b` is a backspace escape in Python). Sharing the function is what
+/// keeps them from drifting apart again. Found by the shared runtime corpus
+/// (#159), which runs the same cases against all three published runtimes.
+pub fn py_dquote_escape(s: &str) -> String {
     use std::fmt::Write as _;
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {

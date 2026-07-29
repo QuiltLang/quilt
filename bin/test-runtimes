@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Run the shared runtime conformance corpus against all three published
+# runtimes (issue #159).
+#
+#   conformance/runtime/cases.json
+#        ├── quiltlang     (Rust)   — cargo test -p quilt-conformance
+#        ├── quilt-python  (PyPI)   — pytest, needs bin/build-py
+#        └── quilt-wasm    (npm)    — node, needs wasm-pack
+#
+# They implement the same builder API and must agree. Before this they were
+# tested asymmetrically and separately — 9 pytest cases, one smoke.cjs CI never
+# ran, and no Rust API-parity tests at all — so nothing compared them and the
+# documented divergences were exactly where drift went unnoticed. Its first run
+# found three: unescaped strings in quilt-python's qlift, a missing QTerm branch
+# in quilt-wasm's qlift_html, and three different qlift semantics (#166).
+#
+# Slow: builds a PyO3 cdylib and a wasm artifact. CI runs it nightly, not on
+# every PR. The Rust third runs in the normal `cargo test`, so the fast path
+# still catches a corpus that no longer parses.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+fail=0
+step() { printf '\n==> %s\n' "$*"; }
+
+step "rust (quiltlang)"
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" \
+  -p quilt-conformance --test conformance runtime_corpus \
+  || fail=1
+
+step "python (quilt-python)"
+if [ ! -f "$ROOT/quilt-python/quilt/_quilt.abi3.so" ]; then
+  echo "    building the PyO3 module first (bin/build-py)"
+  "$ROOT/bin/build-py" >/dev/null
+fi
+( cd "$ROOT/quilt-python" && PYTHONPATH=. python3 -m pytest -q tests/test_runtime_corpus.py ) || fail=1
+
+step "wasm (quilt-wasm)"
+if ! command -v wasm-pack >/dev/null 2>&1; then
+  echo "    wasm-pack not found — skipping. Install: https://rustwasm.github.io/wasm-pack/"
+else
+  # --target nodejs so the runner can require() it without a fetch/init dance.
+  # The npm package ships --target web; the API surface is identical.
+  wasm-pack build "$ROOT/quilt-wasm" --target nodejs --out-dir pkg >/dev/null 2>&1
+  node "$ROOT/quilt-wasm/test/corpus.mjs" || fail=1
+fi
+
+echo
+if [ "$fail" -ne 0 ]; then
+  echo "runtime parity FAILED" >&2
+  exit 1
+fi
+echo "runtime parity OK ✓"

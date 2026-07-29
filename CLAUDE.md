@@ -66,6 +66,13 @@ cargo insta review               # accept/reject changed snapshots interactively
 INSTA_UPDATE=always cargo test   # accept everything (use when you mean it)
 # CI uploads *.snap.new as a workflow artifact when a snapshot check fails.
 
+# Runtime parity (issue #159): drive all three published runtimes — quiltlang,
+# quilt-python, quilt-wasm — through one shared corpus
+# (conformance/runtime/cases.json), so a divergence between them is a test
+# failure. Slow (builds a PyO3 cdylib + a wasm artifact), so CI runs it nightly;
+# the Rust third also runs in the normal `cargo test`.
+test-runtimes
+
 # Feature combinations that are contracts, not defaults (issue #162): quiltlang
 # with default-features = false must stay runtime-only (no tree-sitter) so
 # quilt-wasm and the sibling nanobots-codegen can build it for

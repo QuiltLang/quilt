@@ -1,0 +1,63 @@
+name: Nightly
+
+# Checks worth running but too slow for the PR path, which is deliberately kept
+# under a few minutes. Everything here is also runnable by hand
+# (`workflow_dispatch`) when a change touches the relevant area, so nobody has
+# to wait a day to find out.
+on:
+  schedule:
+    # 04:00 UTC — after any evening merges have settled.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_NET_RETRY: "5"
+
+jobs:
+  # Runtime parity (issue #159): drive all three published runtimes —
+  # quiltlang, quilt-python, quilt-wasm — through the same corpus. Nightly
+  # rather than per-PR because it builds a PyO3 cdylib and a wasm artifact.
+  #
+  # The Rust third of the corpus still runs in the normal `cargo test`, so a
+  # corpus that no longer parses, or a Rust-side regression, fails on the PR
+  # path within seconds. What waits for nightly is specifically cross-runtime
+  # *divergence*, which needs the other two built.
+  runtimes:
+    name: Runtime parity (rust + python + wasm)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: nix develop ./nix --command bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            target
+          key: nightly-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            nightly-${{ runner.os }}-cargo-
+      # wasm-pack is not in the flake devShell (it pulls its own toolchain), so
+      # install it here rather than widening the shell every contributor loads.
+      - name: Install wasm-pack
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+          fi
+      - run: bin/test-runtimes

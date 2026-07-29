@@ -148,3 +148,22 @@ fn committed_matrix_is_current() {
         );
     }
 }
+
+/// The shared runtime corpus (#159), run against the Rust implementation. The
+/// Python and Node runners execute the same file, so a divergence between the
+/// three published runtimes fails here or in `bin/test-runtimes`.
+#[test]
+fn runtime_corpus_rust() {
+    let failures = quilt_conformance::runtime::run().expect("corpus loads");
+    assert!(
+        failures.is_empty(),
+        "{} runtime corpus failure(s) for rust:\n\n{}\n\nThe corpus is \
+         conformance/runtime/cases.json.",
+        failures.len(),
+        failures
+            .iter()
+            .map(|f| format!("  • {f}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+}
