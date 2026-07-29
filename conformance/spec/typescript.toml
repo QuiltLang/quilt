@@ -3,6 +3,7 @@ display = "TypeScript"
 aliases = ["ts"]
 feature = "typescript"
 meta_kind = "runtime"
+comment_prefix = "//"
 lang_src = "quilt/src/langs/typescript/lang.rs"
 meta_src = "quilt/src/langs/typescript/meta.rs"
 blurb = """

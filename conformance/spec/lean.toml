@@ -3,6 +3,7 @@ display = "Lean 4"
 aliases = ["lean4"]
 feature = "lean"
 meta_kind = "string"
+comment_prefix = "--"
 lang_src = "quilt/src/langs/lean/lang.rs"
 meta_src = "quilt/src/langs/lean/meta.rs"
 blurb = """

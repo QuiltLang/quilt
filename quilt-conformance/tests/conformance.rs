@@ -223,3 +223,36 @@ fn chain_members() {
             .join("\n"),
     );
 }
+
+/// `bin/check-examples` recognises a generated file by its header comment. If
+/// `quilt::langs::comment_prefix` can emit a spelling that script's regex does
+/// not list, the file stops being recognised and silently drops out of the
+/// expand-diff — losing coverage with no failure anywhere.
+///
+/// That is not hypothetical: moving TypeScript from `//!` to `//` did exactly
+/// this, and the only symptom was the compared-output count going from 21 to 20.
+#[test]
+fn check_examples_recognises_every_header_prefix() {
+    let script = std::fs::read_to_string(quilt_conformance::repo_root().join("bin/check-examples"))
+        .expect("bin/check-examples is readable");
+
+    let line = script
+        .lines()
+        .find(|l| l.trim_start().starts_with("header_re="))
+        .expect("bin/check-examples defines header_re");
+
+    for lang in quilt_conformance::registry::LANGUAGES {
+        let Some(prefix) = quilt::langs::comment_prefix(lang) else {
+            continue;
+        };
+        // The regex spells alternatives as `(//!|//|#|--)`; a prefix is covered
+        // when it appears as one of them.
+        let covered = line.split(['(', ')', '|']).any(|alt| alt == prefix);
+        assert!(
+            covered,
+            "bin/check-examples' header_re does not list {prefix:?} (the prefix for {lang}), so a \
+             generated {lang} file would not be recognised and would drop out of the expand diff.\n\
+             header_re line: {line}",
+        );
+    }
+}

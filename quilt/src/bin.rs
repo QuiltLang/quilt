@@ -392,18 +392,19 @@ fn expand_to<LS: Languages, MS: MetaLanguages>(
 
 /// The line-comment introducer for the `DO NOT EDIT` header, chosen from the
 /// generated file's extension so the header is valid in the language we just
-/// generated. Rust keeps `//!` (an inner doc comment, which documents the
-/// generated module rather than the item after it); anything unrecognised keeps
-/// it too, since `//` is the most common spelling.
+/// generated.
+///
+/// The table itself lives in `quilt::langs::comment_prefix`, beside the
+/// language modules rather than here: as a hardcoded match in the CLI it was
+/// disconnected from the language registry, so a new host silently inherited
+/// Rust's `//!` — issue #136. Anything unrecognised still falls back to `//!`,
+/// preserving the previous behaviour for extensions that name no language.
 fn header_comment(filename: &str) -> &'static str {
-    match std::path::Path::new(filename)
+    std::path::Path::new(filename)
         .extension()
         .and_then(|e| e.to_str())
-    {
-        Some("py" | "nix" | "bash" | "zsh" | "sh") => "#",
-        Some("lean") => "--",
-        _ => "//!",
-    }
+        .and_then(quilt::langs::comment_prefix)
+        .unwrap_or("//!")
 }
 
 fn generate(filename: &str, x: &Arc<QTerm>) -> Result<()> {

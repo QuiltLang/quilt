@@ -9,6 +9,7 @@ display = "Rust"
 aliases = ["rs"]
 feature = "rust"
 meta_kind = "runtime"
+comment_prefix = "//!"
 lang_src = "quilt/src/langs/rust/lang.rs"
 meta_src = "quilt/src/langs/rust/meta.rs"
 blurb = """

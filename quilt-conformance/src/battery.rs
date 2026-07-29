@@ -203,15 +203,31 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
     probe_pattern(&mut ctx);
     probe_runtime_binding(&mut ctx);
     probe_chain_member(&mut ctx);
+    probe_header_comment(&mut ctx);
 
     // Axes no tier reaches yet. Listing them explicitly (rather than letting
     // them fall through) is what keeps the matrix rectangular and makes the
     // unverified set an obvious, countable backlog.
-    for axis in [Axis::GlyphCollisions, Axis::HeaderComment, Axis::Lsp] {
+    for axis in [Axis::GlyphCollisions, Axis::Lsp] {
         ctx.declared(axis);
     }
 
     ctx.cells.sort_by_key(|c| c.axis);
+
+    // The matrix must be rectangular: exactly one cell per axis. Emitting a
+    // cell twice — a probe plus a leftover entry in the declared-only list — is
+    // easy to do and shows up only as a cell count that no longer divides by
+    // the number of languages.
+    for axis in Axis::ALL {
+        let n = ctx.cells.iter().filter(|c| c.axis == *axis).count();
+        if n != 1 {
+            ctx.fail(
+                *axis,
+                "rectangular",
+                format!("emitted {n} cells for this axis; exactly one is required"),
+            );
+        }
+    }
 
     Ok(Outcome {
         row: Row {
@@ -1130,6 +1146,78 @@ fn probe_chain_member(ctx: &mut Ctx) {
             Vec::new()
         },
     );
+}
+
+/// The `DO NOT EDIT` header must be a comment *in the language just generated*
+/// — issue #136, where every language got Rust's `//!`.
+///
+/// The table lives in `quilt::langs::comment_prefix`, beside the language
+/// modules; this pins each language's entry so a new host cannot be added
+/// without deciding its comment syntax, and so a change to one is visible in
+/// the matrix rather than only in generated files nobody re-reads.
+fn probe_header_comment(ctx: &mut Ctx) {
+    let axis = Axis::HeaderComment;
+    let actual = quilt::langs::comment_prefix(&ctx.spec.name);
+
+    match (actual, ctx.spec.comment_prefix.as_deref()) {
+        (Some(got), Some(want)) if got == want => {}
+        (Some(got), Some(want)) => ctx.fail(
+            axis,
+            "prefix",
+            format!(
+                "comment_prefix({:?}) is {got:?}, spec says {want:?}",
+                ctx.spec.name
+            ),
+        ),
+        (Some(got), None) => ctx.fail(
+            axis,
+            "prefix",
+            format!("spec declares no comment prefix, but the registry returns {got:?}"),
+        ),
+        (None, Some(want)) => ctx.fail(
+            axis,
+            "prefix",
+            format!("spec says the prefix is {want:?}, but the registry has no entry"),
+        ),
+        (None, None) => {}
+    }
+
+    // Every alias must resolve to the same prefix: `.lean` and `.lean4` name
+    // one language and must not produce different headers.
+    for alias in &ctx.spec.aliases {
+        if quilt::langs::comment_prefix(alias) != actual {
+            ctx.fail(
+                axis,
+                alias,
+                format!(
+                    "alias {alias:?} maps to {:?} but {:?} maps to {actual:?}",
+                    quilt::langs::comment_prefix(alias),
+                    ctx.spec.name
+                ),
+            );
+        }
+    }
+
+    // The axis is "the generated-file header uses this language's comment
+    // syntax", which only happens for a language that can *be* the ground
+    // language. A target-only language may well have a perfectly good comment
+    // prefix (bash's `#`) and still never receive a header, so having a prefix
+    // is necessary but not sufficient.
+    let is_host = registry::meta(&ctx.spec.name).is_some();
+    ctx.check_status(
+        axis,
+        is_host && actual.is_some(),
+        "a header comment prefix on a host language",
+    );
+
+    let detail = match (is_host, actual) {
+        (true, Some(p)) => vec![p.to_string()],
+        (false, Some(p)) => vec![format!(
+            "{p} (unused: target-only, never the ground language)"
+        )],
+        (_, None) => Vec::new(),
+    };
+    ctx.verified(axis, detail);
 }
 
 /// Whether a vendored `highlights.scm` is exposed for this grammar. Compile-time

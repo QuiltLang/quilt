@@ -3,6 +3,7 @@ display = "WGSL"
 aliases = []
 feature = "wgsl"
 meta_kind = "none"
+comment_prefix = "//"
 lang_src = "quilt/src/langs/wgsl/lang.rs"
 blurb = """
 WebGPU Shading Language — a target-only language. Generate shader code at build \
