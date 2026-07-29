@@ -130,3 +130,10 @@ python = "reduce()"
 py = "reduce()"
 rust = "reduce_rs()"
 rs = "reduce_rs()"
+
+# How this host embeds a quote of another language, for the cross-language grid
+# (#158). `@` is replaced by `<target>↖…↗`; `lift` is how a lifted ground value
+# is spelled in *this* host's syntax — Rust's `↑` is postfix, Python's prefix.
+[cross]
+wrapper = "x = @"
+lift = "↑(v)"

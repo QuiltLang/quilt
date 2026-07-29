@@ -167,3 +167,59 @@ fn runtime_corpus_rust() {
             .join("\n"),
     );
 }
+
+/// The cross-language grid (#158): every host against every target. Reports
+/// every failing cell at once — when a cross-cutting change breaks the grid you
+/// want the blast radius, not the first cell.
+#[test]
+fn cross_language_grid() {
+    let specs = Spec::load_all(&spec_dir()).expect("specs load");
+    let (failures, cells) = quilt_conformance::cross::run(&specs).expect("grid runs");
+    assert!(
+        failures.is_empty(),
+        "{} of {cells} cross-language cell(s) failed:\n\n{}\n",
+        failures.len(),
+        failures
+            .iter()
+            .map(|f| format!("  • {f}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    assert!(cells >= 40, "expected a full grid, got {cells} cells");
+}
+
+/// A refused lift must name both the host and the target. "cannot lift" without
+/// saying between what sends the reader to the source.
+#[test]
+fn lift_errors_name_both_ends() {
+    let specs = Spec::load_all(&spec_dir()).expect("specs load");
+    let failures = quilt_conformance::cross::check_lift_errors(&specs).expect("runs");
+    assert!(
+        failures.is_empty(),
+        "{} unactionable lift error(s):\n\n{}\n",
+        failures.len(),
+        failures
+            .iter()
+            .map(|f| format!("  • {f}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+}
+
+/// Every language must work as the non-ground member of a `.a.b.quilt` chain,
+/// which is what the `chain-member` axis claims (#158).
+#[test]
+fn chain_members() {
+    let specs = Spec::load_all(&spec_dir()).expect("specs load");
+    let (failures, checked) = quilt_conformance::cross::check_chain_members(&specs).expect("runs");
+    assert!(
+        failures.is_empty(),
+        "{} of {checked} chain-member check(s) failed:\n\n{}\n",
+        failures.len(),
+        failures
+            .iter()
+            .map(|f| format!("  • {f}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+}

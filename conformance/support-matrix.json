@@ -134,7 +134,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/bash",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to bash"
+          ]
         },
         {
           "axis": "header-comment",
@@ -262,7 +266,11 @@
         {
           "axis": "chain-member",
           "status": "supported",
-          "note": "`report.html.py.quilt` makes bare quotes default to HTML inside a Python host"
+          "note": "`report.html.py.quilt` makes bare quotes default to HTML inside a Python host",
+          "verified_by": "chain-member/html",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to html"
+          ]
         },
         {
           "axis": "header-comment",
@@ -412,7 +420,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/lean",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to lean"
+          ]
         },
         {
           "axis": "header-comment",
@@ -555,7 +567,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/nix",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to nix"
+          ]
         },
         {
           "axis": "header-comment",
@@ -716,7 +732,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/python",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to python"
+          ]
         },
         {
           "axis": "header-comment",
@@ -882,7 +902,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/rust",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to rust"
+          ]
         },
         {
           "axis": "header-comment",
@@ -1005,7 +1029,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/text",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to text"
+          ]
         },
         {
           "axis": "header-comment",
@@ -1152,7 +1180,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/typescript",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to typescript"
+          ]
         },
         {
           "axis": "header-comment",
@@ -1282,7 +1314,11 @@
         {
           "axis": "chain-member",
           "status": "supported",
-          "note": "the canonical chain case: `shaders.wgsl.rs.quilt` makes bare quotes default to WGSL"
+          "note": "the canonical chain case: `shaders.wgsl.rs.quilt` makes bare quotes default to WGSL",
+          "verified_by": "chain-member/wgsl",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to wgsl"
+          ]
         },
         {
           "axis": "header-comment",
@@ -1427,7 +1463,11 @@
         },
         {
           "axis": "chain-member",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "chain-member/zsh",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to zsh"
+          ]
         },
         {
           "axis": "header-comment",

@@ -202,16 +202,12 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
     probe_reduce(&mut ctx);
     probe_pattern(&mut ctx);
     probe_runtime_binding(&mut ctx);
+    probe_chain_member(&mut ctx);
 
     // Axes no tier reaches yet. Listing them explicitly (rather than letting
     // them fall through) is what keeps the matrix rectangular and makes the
     // unverified set an obvious, countable backlog.
-    for axis in [
-        Axis::GlyphCollisions,
-        Axis::ChainMember,
-        Axis::HeaderComment,
-        Axis::Lsp,
-    ] {
+    for axis in [Axis::GlyphCollisions, Axis::HeaderComment, Axis::Lsp] {
         ctx.declared(axis);
     }
 
@@ -1110,6 +1106,30 @@ fn probe_runtime_binding(ctx: &mut Ctx) {
         None => Vec::new(),
     };
     ctx.verified(axis, detail);
+}
+
+/// Usable as the non-ground member of a `.a.b.quilt` chain — the
+/// `shaders.wgsl.rs.quilt` case, where a bare `↖…↗` means WGSL.
+///
+/// The cross-language grid (`cross::check_chain_members`) does the real work;
+/// this ties the matrix cell to it, so a language cannot claim to be a chain
+/// member without a fragment the grid can actually drive through a chain.
+fn probe_chain_member(ctx: &mut Ctx) {
+    let axis = Axis::ChainMember;
+    // A chain member needs a parseable fragment for the grid to use as payload.
+    let has_payload = !ctx.spec.fragments.is_empty();
+    ctx.check_status(axis, has_payload, "a fragment the chain grid can drive");
+    ctx.verified(
+        axis,
+        if has_payload {
+            vec![format!(
+                "bare `↖…↗` in a chain resolves to {}",
+                ctx.spec.name
+            )]
+        } else {
+            Vec::new()
+        },
+    );
 }
 
 /// Whether a vendored `highlights.scm` is exposed for this grammar. Compile-time

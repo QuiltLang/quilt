@@ -125,6 +125,20 @@ pub struct MetaSpec {
     pub reduce_unsupported: Vec<String>,
 }
 
+/// How a host embeds a quote of another language, for the cross-language grid
+/// (#158). Hosts only; a target-only language has no wrapper.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CrossSpec {
+    /// Source template; `@` is replaced by `<target>↖…↗`.
+    #[serde(default)]
+    pub wrapper: Option<String>,
+    /// How a lifted ground value is spelled in *this* host's syntax — Rust's
+    /// `↑` is postfix (`v.↑`), Python's prefix (`↑(v)`).
+    #[serde(default)]
+    pub lift: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spec {
@@ -174,6 +188,10 @@ pub struct Spec {
     /// Host-only: the operator spellings this language's `MetaLanguage` emits.
     #[serde(default)]
     pub meta: MetaSpec,
+
+    /// Host-only: how this host embeds a quote, for the cross-language grid.
+    #[serde(default)]
+    pub cross: CrossSpec,
 }
 
 impl Spec {
