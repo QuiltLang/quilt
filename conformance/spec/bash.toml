@@ -3,6 +3,7 @@ display = "Bash"
 aliases = []
 feature = "bash"
 meta_kind = "none"
+comment_prefix = "#"
 lang_src = "quilt/src/langs/bash/lang.rs"
 blurb = """
 A target-only shell language. Generate scripts with correct quoting: a lifted \

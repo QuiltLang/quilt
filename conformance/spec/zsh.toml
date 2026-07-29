@@ -3,6 +3,7 @@ display = "Zsh"
 aliases = []
 feature = "zsh"
 meta_kind = "none"
+comment_prefix = "#"
 lang_src = "quilt/src/langs/zsh/lang.rs"
 blurb = """
 A target-only shell language, sharing bash's grammar lineage and escaping rules. \

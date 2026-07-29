@@ -3,6 +3,7 @@ display = "Nix"
 aliases = []
 feature = "nix"
 meta_kind = "string"
+comment_prefix = "#"
 lang_src = "quilt/src/langs/nix/lang.rs"
 meta_src = "quilt/src/langs/nix/meta.rs"
 blurb = """

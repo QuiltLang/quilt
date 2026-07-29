@@ -192,6 +192,12 @@ pub struct Spec {
     /// Host-only: how this host embeds a quote, for the cross-language grid.
     #[serde(default)]
     pub cross: CrossSpec,
+
+    /// The comment introducer the CLI puts on a generated file of this
+    /// language. Absent when the language has none that a *prefix* can express
+    /// (HTML's comments are delimited; plain text has none at all).
+    #[serde(default)]
+    pub comment_prefix: Option<String>,
 }
 
 impl Spec {

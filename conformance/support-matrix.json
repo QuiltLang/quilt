@@ -143,7 +143,11 @@
         {
           "axis": "header-comment",
           "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced"
+          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "verified_by": "header-comment/bash",
+          "detail": [
+            "# (unused: target-only, never the ground language)"
+          ]
         },
         {
           "axis": "lsp",
@@ -275,7 +279,8 @@
         {
           "axis": "header-comment",
           "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced"
+          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "verified_by": "header-comment/html"
         },
         {
           "axis": "lsp",
@@ -429,7 +434,11 @@
         {
           "axis": "header-comment",
           "status": "supported",
-          "note": "generated Lean files use `--`, not `//!`"
+          "note": "generated Lean files use `--`, not `//!`",
+          "verified_by": "header-comment/lean",
+          "detail": [
+            "--"
+          ]
         },
         {
           "axis": "lsp",
@@ -576,7 +585,11 @@
         {
           "axis": "header-comment",
           "status": "supported",
-          "note": "generated Nix files use `#`, not `//!`"
+          "note": "generated Nix files use `#`, not `//!`",
+          "verified_by": "header-comment/nix",
+          "detail": [
+            "#"
+          ]
         },
         {
           "axis": "lsp",
@@ -740,7 +753,11 @@
         },
         {
           "axis": "header-comment",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "header-comment/python",
+          "detail": [
+            "#"
+          ]
         },
         {
           "axis": "lsp",
@@ -910,7 +927,11 @@
         },
         {
           "axis": "header-comment",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "header-comment/rust",
+          "detail": [
+            "//!"
+          ]
         },
         {
           "axis": "lsp",
@@ -1038,7 +1059,8 @@
         {
           "axis": "header-comment",
           "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced"
+          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "verified_by": "header-comment/text"
         },
         {
           "axis": "lsp",
@@ -1188,7 +1210,11 @@
         },
         {
           "axis": "header-comment",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "header-comment/typescript",
+          "detail": [
+            "//"
+          ]
         },
         {
           "axis": "lsp",
@@ -1323,7 +1349,11 @@
         {
           "axis": "header-comment",
           "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced"
+          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "verified_by": "header-comment/wgsl",
+          "detail": [
+            "// (unused: target-only, never the ground language)"
+          ]
         },
         {
           "axis": "lsp",
@@ -1472,7 +1502,11 @@
         {
           "axis": "header-comment",
           "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced"
+          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "verified_by": "header-comment/zsh",
+          "detail": [
+            "# (unused: target-only, never the ground language)"
+          ]
         },
         {
           "axis": "lsp",
