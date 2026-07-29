@@ -103,6 +103,16 @@ tag = "integer_literal"
 text = "-7"
 
 [[lift]]
+value = "f32:1.5"
+tag = "float_literal"
+text = "1.5"
+
+[[lift]]
+value = "bool:true"
+tag = "boolean_literal"
+text = "true"
+
+[[lift]]
 value = "str:plain"
 tag = "string_literal"
 text = '"hi"'

@@ -206,26 +206,41 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
         .ok_or_else(|| miette!("expected a .quilt file"))?;
     let input = fs::read_to_string(filename).into_diagnostic()?;
 
-    // Strip a shebang line like `run` does, so executable scripts check clean
+    // Strip a shebang line like `run` does, so executable scripts check clean.
+    // Blank the line rather than removing it: every span the parser produces is
+    // a byte offset into this string, so dropping the line would shift every
+    // diagnostic that follows it by the shebang's length and report the wrong
+    // line. Overwriting with spaces keeps both byte offsets and line numbers
+    // exact, and a whitespace-only first line is inert in every language we
+    // parse.
     let input = if input.starts_with("#!") {
-        input.lines().skip(1).collect::<Vec<_>>().join("\n")
+        let end = input.find('\n').unwrap_or(input.len());
+        format!("{}{}", " ".repeat(end), &input[end..])
     } else {
         input
     };
+
+    // Attach the source so span-carrying errors render the offending snippet,
+    // exactly as `expand` does. Without this `check` reported bare byte offsets
+    // ("source bytes 8..19") while `expand` rendered a caret under the source —
+    // and `check` is the CI and pre-commit path, so it is the one a contributor
+    // actually reads.
+    let with_src =
+        |e: miette::Report| e.with_source_code(NamedSource::new(filename, input.clone()));
 
     match multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
             let chain = lang_chain(&multi, stem);
-            let sterm = multi.parse_chain(&chain, &input)?;
-            multi.expand_lang(chain[0], &sterm)?;
+            let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
+            multi.expand_lang(chain[0], &sterm).map_err(with_src)?;
         }
         #[cfg(feature = "bootstrap")]
         MultiOptions::Bootstrap => {
             let mut multi = Bootstrap::default();
             let chain = lang_chain(&multi, stem);
-            let sterm = multi.parse_chain(&chain, &input)?;
-            multi.expand_lang(chain[0], &sterm)?;
+            let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
+            multi.expand_lang(chain[0], &sterm).map_err(with_src)?;
         }
     }
     Ok(())

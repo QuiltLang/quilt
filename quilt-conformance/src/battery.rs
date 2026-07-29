@@ -717,6 +717,8 @@ fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
         "Rust" => match value {
             "u32:3" => 3u32.qlift_to::<Rust>(),
             "i32:-7" => (-7i32).qlift_to::<Rust>(),
+            "f32:1.5" => 1.5f32.qlift_to::<Rust>(),
+            "bool:true" => true.qlift_to::<Rust>(),
             "str:plain" => "hi".qlift_to::<Rust>(),
             "str:tricky" => TRICKY.qlift_to::<Rust>(),
             _ => return Err(unknown()),
