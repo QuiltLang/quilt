@@ -15,4 +15,7 @@ name = "quilt_python"
 [dependencies]
 pyo3 = {workspace = true, features = ["abi3-py38"]}
 postcard = {workspace = true, features = ["alloc"]}
-quilt = {workspace = true}
+# `python` gives us `langs::python::ops`, which builds the Python source that
+# reconstructs a term — what `qlift` on an already-built QTerm must return
+# under the `↓(↑(x)) == x` law (issue #166). The feature pulls no parser.
+quilt = {workspace = true, features = ["python"]}

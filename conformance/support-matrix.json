@@ -736,7 +736,7 @@
           "status": "supported",
           "verified_by": "runtime-binding/python",
           "detail": [
-            "python: 24 shared corpus case(s)"
+            "python: 25 shared corpus case(s)"
           ]
         },
         {
@@ -912,7 +912,7 @@
           "status": "supported",
           "verified_by": "runtime-binding/rust",
           "detail": [
-            "rust: 21 shared corpus case(s)"
+            "rust: 22 shared corpus case(s)"
           ]
         },
         {
@@ -1195,7 +1195,7 @@
           "status": "supported",
           "verified_by": "runtime-binding/typescript",
           "detail": [
-            "wasm: 23 shared corpus case(s)"
+            "wasm: 25 shared corpus case(s)"
           ]
         },
         {

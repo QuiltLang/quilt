@@ -112,3 +112,43 @@ def test_case(case):
     assert got == case["coparse"], (
         f"{case['name']}: coparse is {got!r}, corpus says {case['coparse']!r}"
     )
+
+
+# ── the lift law ────────────────────────────────────────────────────────────
+#
+# reduce(lift(x)) == x. The corpus can only compare coparsed text; proving the
+# law needs the generated code to actually be *evaluated*, which this runner can
+# do and a JSON corpus cannot. Issue #166.
+LAW_TERMS = [
+    ("leaf", lambda: leaf("integer", "7")),
+    ("sym", lambda: sym("+")),
+    ("name", lambda: name("f")),
+    ("binary", lambda: tb("binary_operator")
+        .c(leaf("integer", "1")).w(" ").c(sym("+")).w(" ").c(leaf("integer", "2")).b()),
+    ("newline", lambda: tb("block").w("a").n().w("b").b()),
+    ("prefix", lambda: tb("block").w("{").p("    ").n().w("body").x().n().w("}").b()),
+    ("quote", lambda: mk_quote("x", 0, "py", leaf("integer", "5"),
+                               [cmd(write("[")), HOLE, cmd(write("]"))])),
+    ("unquote", lambda: mk_unquote("x", 1, "py", leaf("integer", "5"), [HOLE])),
+]
+
+
+# The namespace the generated code is evaluated in: exactly the runtime's public
+# names, as an expanded `.py.quilt` module would have them via `from quilt import
+# *`. Passed explicitly rather than relying on this module's scope, which aliases
+# `quote`/`unquote` to avoid colliding with the corpus builders.
+import quilt as _quilt_module
+
+LAW_NS = {n: getattr(_quilt_module, n) for n in dir(_quilt_module) if not n.startswith("_")}
+
+
+@pytest.mark.parametrize("label,build_term", LAW_TERMS, ids=[n for n, _ in LAW_TERMS])
+def test_lift_law(label, build_term):
+    x = build_term()
+    code = qlift(x).coparse()
+    # eval is the point: this *is* the reduce step.
+    back = eval(code, dict(LAW_NS))  # noqa: S307
+    assert back.coparse() == x.coparse(), (
+        f"{label}: reduce(lift(x)) != x\n  x    = {x.coparse()!r}\n"
+        f"  lift = {code}\n  back = {back.coparse()!r}"
+    )

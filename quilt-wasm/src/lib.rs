@@ -38,6 +38,25 @@ impl WasmQTerm {
     pub fn to_string(&self) -> String {
         self.0.coparse()
     }
+
+    /// `↑` on this term: the TypeScript source that reconstructs it.
+    ///
+    /// Exists as a *method* because `&self` borrows. The free functions take a
+    /// polymorphic `JsValue`, and the only way to get a `WasmQTerm` back out of
+    /// one is `TryFromJsValue`, which **takes** it — nulling the caller's handle
+    /// so the term is unusable afterwards. `call_self` therefore dispatches to
+    /// this method rather than unwrapping. Prefixed `__` because it is plumbing,
+    /// not API: callers use `qlift`.
+    #[wasm_bindgen(js_name = __liftSelf)]
+    pub fn lift_self(&self) -> WasmQTerm {
+        WasmQTerm(lift_term(&self.0))
+    }
+
+    /// A non-consuming copy, for the same reason.
+    #[wasm_bindgen(js_name = __copySelf)]
+    pub fn copy_self(&self) -> WasmQTerm {
+        self.clone()
+    }
 }
 
 /// A single string command (`write`/`NL`/`push`/`POP`).
@@ -192,21 +211,13 @@ pub fn name(s: &str) -> WasmQTerm {
 /// `boolean`. Numbers with no fractional part lift to integer literals;
 /// everything is coparse-only, so the tags are advisory.
 ///
-/// Lifting an already-built `QTerm` is **not implemented** — see issue #166.
-///
-/// The reason previously given here was that recovering an exported
-/// wasm-bindgen type from a polymorphic `JsValue` needs target-specific glue.
-/// That is not so: `TryFromJsValue` is derived for every exported struct, and
-/// `as_term` below uses it — `qlift_html` takes exactly that route.
-///
-/// What actually blocks it is deciding *what* the term case should do. Under
-/// `↓(↑(x)) == x`, lifting a term must yield code that **reconstructs** it, as
-/// Rust's `QLift for Arc<QTerm>` does; Python's identity pass-through breaks
-/// the law and is itself the bug in #166. Emitting TypeScript constructor code
-/// is real work, so this errors for now rather than shipping a third
-/// behaviour.
+/// An already-built `QTerm` lifts to the TypeScript source that reconstructs it
+/// (see [`lift_term`]), satisfying `↓(↑(x)) == x` — issue #166.
 #[wasm_bindgen]
 pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
+    if let Some(q) = lift_if_term(value) {
+        return Ok(q);
+    }
     if let Some(b) = value.as_bool() {
         let s = if b { "true" } else { "false" };
         return Ok(WasmQTerm(mk_leaf(s, s)));
@@ -217,13 +228,8 @@ pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
     if let Some(s) = value.as_string() {
         return Ok(WasmQTerm(mk_leaf("string", &ts_string_lit(&s))));
     }
-    // Deliberately does not claim QTerm support: it advertised `or QTerm` while
-    // having no branch for one, so a caller lifting a fragment got an error
-    // naming the very type it had passed.
     Err(JsError::new(
-        "qlift: unsupported type (expected number, string or boolean). Lifting an \
-         already-built QTerm is not yet implemented — see \
-         https://github.com/QuiltLang/quilt/issues/166",
+        "qlift: unsupported type (expected number, string, boolean, or QTerm)",
     ))
 }
 
@@ -243,7 +249,7 @@ pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
 /// naming the very type it was given. Found by the shared runtime corpus (#159).
 #[wasm_bindgen]
 pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
-    if let Some(q) = as_term(value) {
+    if let Some(q) = copy_if_term(value) {
         return Ok(q);
     }
     if let Some(b) = value.as_bool() {
@@ -260,16 +266,74 @@ pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
     ))
 }
 
-/// Recover a `WasmQTerm` from a `JsValue`, for the lift functions'
-/// already-a-term case.
+/// Build the TypeScript source that reconstructs `term`, recursively.
 ///
-/// `wasm_bindgen` derives `TryFromJsValue` for every exported struct, which is
-/// the supported way to ask "is this JS value one of ours" — `JsCast` is not,
-/// since that is for `js_sys`/`web_sys` imported types rather than exported
-/// Rust ones.
-fn as_term(value: &JsValue) -> Option<WasmQTerm> {
+/// This is what `↑` on an already-built `QTerm` must produce, because `↑` is
+/// governed by
+///
+/// ```text
+/// ↓(↑(x)) == x
+/// ```
+///
+/// `↑` maps a value to a term *whose code evaluates back to that value*, and `↓`
+/// evaluates a term's code. For `42` that code is `42`; for a term it has to be
+/// a constructor call — `leaf("integer", "7")` — so evaluating it yields the
+/// term again. Rust's `QLift for Arc<QTerm>` has always done this; the term case
+/// was simply missing here. See issue #166.
+fn lift_term(term: &Arc<QTerm>) -> Arc<QTerm> {
+    use quilt::langs::typescript::ops;
+
+    match &**term {
+        QTerm::Tuple { tag, terms, cmds } => {
+            let children: Vec<Arc<QTerm>> = terms.iter().map(lift_term).collect();
+            ops::build_tuple_code(tag, cmds, &children)
+        }
+        QTerm::Quote {
+            tag,
+            index,
+            lang,
+            term,
+            cmds,
+            ..
+        } => ops::build_quote_code(tag, *index, lang, &lift_term(term), cmds),
+        QTerm::Unquote {
+            tag,
+            index,
+            lang,
+            term,
+            cmds,
+            ..
+        } => ops::build_unquote_code(tag, *index, lang, &lift_term(term), cmds),
+    }
+}
+
+/// Call one of `WasmQTerm`'s `__`-prefixed self methods on `value`, if it is one
+/// of our terms.
+///
+/// Deliberately *not* `TryFromJsValue`, which is the obvious choice and is
+/// wrong: it **takes** the value out of the JS object, nulling the caller's
+/// handle, so `qlift(t)` left `t` unusable and the next `t.coparse()` failed
+/// with "null pointer passed to rust". A `&WasmQTerm` *parameter* borrows
+/// (wasm-bindgen emits `_assertClass` + `__wbg_ptr`), and so does a `&self`
+/// method — so the lift is implemented as a method and reached from here.
+fn call_self(value: &JsValue, method: &str) -> Option<WasmQTerm> {
     use wasm_bindgen::convert::TryFromJsValue as _;
-    WasmQTerm::try_from_js_value_ref(value)
+    let f = js_sys::Reflect::get(value, &JsValue::from_str(method)).ok()?;
+    let f = f.dyn_ref::<js_sys::Function>()?;
+    let out = f.call0(value).ok()?;
+    WasmQTerm::try_from_js_value(out).ok()
+}
+
+/// The lifted form of `value`, if it is one of our terms — leaving `value`
+/// itself untouched.
+fn lift_if_term(value: &JsValue) -> Option<WasmQTerm> {
+    call_self(value, "__liftSelf")
+}
+
+/// A copy of `value`, if it is one of our terms — leaving `value` untouched.
+/// Used where a lift must pass an existing term straight through.
+fn copy_if_term(value: &JsValue) -> Option<WasmQTerm> {
+    call_self(value, "__copySelf")
 }
 
 /// Format a JS number: drop the decimal point when it is integral (`42`, not
