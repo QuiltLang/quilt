@@ -1,12 +1,19 @@
 use crate::strcmd::PrefixWriter;
 use crate::term::Term;
 use crate::{prelude::*, term::STerm};
+use miette::{bail, LabeledSpan};
 use std::{fmt::Debug, iter::empty, sync::Arc};
 
 /**************************************************************/
 
-pub const ARROW_LEN: usize = 3;
-pub const ESCAPE_LEN: usize = 1;
+/// UTF-8 length of a Quilt glyph. Every glyph in [`GLYPHS`] is this wide (see
+/// `test glyph_lengths_are_uniform`), which is what lets callers doing byte
+/// arithmetic over the surface syntax — e.g. `quilt-lsp`'s `regions` — use a
+/// single constant. Derived from a glyph rather than written as `3` so it cannot
+/// drift from the glyph set it describes.
+pub const ARROW_LEN: usize = '↖'.len_utf8();
+/// UTF-8 length of the `\` that introduces an escape.
+pub const ESCAPE_LEN: usize = '\\'.len_utf8();
 
 /**************************************************************/
 
@@ -46,82 +53,101 @@ pub enum Node {
 
 impl Node {
     /// Parse a source string into a list of `Node`s.
-    pub fn parse(code: &str) -> Box<[Self]> {
+    ///
+    /// Malformed bracket structure is a diagnostic, not a panic: an unbalanced
+    /// `↖`/`↙` or a stray `↗`/`↘` leaves tree-sitter `ERROR`/`MISSING` nodes in
+    /// the tree, which used to reach the `unreachable!` in [`Self::from_ts`] and
+    /// abort the process — including in `quilt check`, whose whole job is
+    /// reporting diagnostics. See [`syntax_error`].
+    pub fn parse(code: &str) -> Result<Box<[Self]>> {
         let mut parser = tree_sitter::Parser::default();
         parser
             .set_language(&tree_sitter_quilt::LANGUAGE.into())
             .expect("Error loading Quilt grammar");
-        let tree = parser.parse(code, None).unwrap();
+        let tree = parser
+            .parse(code, None)
+            .ok_or_else(|| miette!("failed to parse Quilt source"))?;
         let root = tree.root_node();
+        if root.has_error() {
+            return Err(syntax_error(root));
+        }
 
         let mut nodes = Vec::new();
-        for i in 0..root.child_count() {
-            nodes.push(Self::from_ts(
-                &root.child(u32::try_from(i).unwrap()).unwrap(),
-                code,
-            ));
+        for child in root.children(&mut root.walk()) {
+            nodes.push(Self::from_ts(&child, code)?);
         }
-        nodes.into()
+        Ok(nodes.into())
     }
 
     /// Convert a tree-sitter node + source string to a `Node`.
-    pub fn from_ts(node: &tree_sitter::Node, code: &str) -> Self {
-        match node.kind() {
-            "content" => {
-                let range = node.range();
-                Node::Content(code[range.start_byte..range.end_byte].into())
-            }
-            "escape" => {
-                let range = node.range();
-                Node::Content(code[range.start_byte + ESCAPE_LEN..range.end_byte].into())
-            }
+    ///
+    /// An unrecognised node kind is an error rather than a panic, so adding a
+    /// rule to `tree-sitter-quilt/grammar.js` without teaching this function
+    /// about it degrades to a reportable diagnostic (issue #11).
+    pub fn from_ts(node: &tree_sitter::Node, code: &str) -> Result<Self> {
+        let text = |n: &tree_sitter::Node| -> &str {
+            let range = n.range();
+            &code[range.start_byte..range.end_byte]
+        };
+        Ok(match node.kind() {
+            "content" => Node::Content(text(node).into()),
+            "escape" => Node::Content(text(node)[ESCAPE_LEN..].into()),
             "newline" => Node::NewLine,
             "quote" => {
-                let range = node.child(0).unwrap().range();
-                let anno = code[range.start_byte..range.end_byte - ARROW_LEN].into();
-                let mut nodes = Vec::new();
-                for i in 1..node.child_count() - 1 {
-                    nodes.push(
-                        Self::from_ts(&node.child(u32::try_from(i).unwrap()).unwrap(), code).into(),
-                    );
-                }
-                let nodes = nodes.into();
+                let (anno, nodes) = Self::bracket(node, code, '↖')?;
                 let span = node.start_byte()..node.end_byte();
                 Node::Quote { anno, nodes, span }
             }
             "unquote" => {
-                let range = node.child(0).unwrap().range();
-                let anno = code[range.start_byte..range.end_byte - ARROW_LEN].into();
-                let mut nodes = Vec::new();
-                for i in 1..node.child_count() - 1 {
-                    nodes.push(
-                        Self::from_ts(&node.child(u32::try_from(i).unwrap()).unwrap(), code).into(),
-                    );
-                }
-                let nodes = nodes.into();
+                let (anno, nodes) = Self::bracket(node, code, '↙')?;
                 let span = node.start_byte()..node.end_byte();
                 Node::Unquote { anno, nodes, span }
             }
             "lift" => Node::Lift,
-            "reduce" => {
-                let range = node.range();
-                let text = &code[range.start_byte..range.end_byte];
-                let anno = text[..text.len() - ARROW_LEN].into();
-                Node::Reduce { anno }
-            }
+            "reduce" => Node::Reduce {
+                anno: strip_glyph(text(node), '↓')?.into(),
+            },
             "emit" => Node::Emit,
             "type" => Node::Type,
             "name" => Node::Name,
-            "plain_line_comment" => {
-                let range = node.range();
-                Node::PlainLineComment(code[range.start_byte..range.end_byte].into())
-            }
-            "plain_block_comment" => {
-                let range = node.range();
-                Node::PlainBlockComment(code[range.start_byte..range.end_byte].into())
-            }
-            _ => unreachable!("unexpected node kind: {:?}", node.kind()),
+            "plain_line_comment" => Node::PlainLineComment(text(node).into()),
+            "plain_block_comment" => Node::PlainBlockComment(text(node).into()),
+            kind => bail!(
+                labels = vec![LabeledSpan::at(
+                    node.start_byte()..node.end_byte(),
+                    "this node"
+                )],
+                "Quilt parser: unhandled node kind {kind:?}. This is a gap in \
+                 `Node::from_ts`; please report it."
+            ),
+        })
+    }
+
+    /// Split a `quote`/`unquote` node into its language annotation and body.
+    ///
+    /// The opener token is `[a-z]*↖` (resp. `[a-z]*↙`) per the grammar, so the
+    /// annotation is the opener's text with the glyph stripped. The body is
+    /// every child between the opener and the closer.
+    fn bracket(node: &tree_sitter::Node, code: &str, glyph: char) -> Result<Bracket> {
+        let open = node
+            .child(0)
+            .ok_or_else(|| miette!("Quilt parser: bracket with no opening token"))?;
+        let range = open.range();
+        let anno = strip_glyph(&code[range.start_byte..range.end_byte], glyph)?.into();
+
+        // children(..) yields the opener and closer too; the body is what sits
+        // between them. `saturating_sub` rather than `- 1` so a bracket missing
+        // its closer can't underflow (the `has_error` check in `parse` should
+        // have caught that already, but this function is public).
+        let last = node.child_count().saturating_sub(1);
+        let mut nodes = Vec::new();
+        for i in 1..last {
+            let child = node
+                .child(u32::try_from(i).unwrap())
+                .ok_or_else(|| miette!("Quilt parser: missing bracket child {i}"))?;
+            nodes.push(arc(Self::from_ts(&child, code)?));
         }
+        Ok((anno, nodes.into()))
     }
 
     pub fn coparse(nodes: &[Self]) -> Box<str> {
@@ -133,6 +159,55 @@ impl Node {
         let bytes = buf.into_inner().unwrap();
         String::from_utf8(bytes).unwrap().into()
     }
+}
+
+/// The two halves [`Node::bracket`] splits a `quote`/`unquote` node into: its
+/// language annotation and its body nodes.
+type Bracket = (Box<str>, Box<[Arc<Node>]>);
+
+/// Strip the trailing `glyph` from an opener/operator token's text, leaving its
+/// language annotation.
+///
+/// The grammar spells these tokens `[a-z]*↖` / `[a-z]*↙` / `[a-z]*↓`, so this is
+/// exact. It replaces `text[..text.len() - ARROW_LEN]`, which assumed the glyph's
+/// byte width and would slice mid-codepoint (a panic) if a glyph of another width
+/// were ever added.
+fn strip_glyph(text: &str, glyph: char) -> Result<&str> {
+    text.strip_suffix(glyph)
+        .ok_or_else(|| miette!("Quilt parser: expected {text:?} to end with {glyph:?}"))
+}
+
+/// The most specific `ERROR`/`MISSING` node under `node`, for pointing a
+/// diagnostic at the smallest span the parse can justify.
+fn first_error(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    for child in node.children(&mut node.walk()) {
+        if child.is_error() || child.is_missing() || child.has_error() {
+            return first_error(child);
+        }
+    }
+    (node.is_error() || node.is_missing()).then_some(node)
+}
+
+/// A diagnostic for malformed Quilt bracket structure, pointing at the offending
+/// span. Callers holding the source text (the CLI, the LSP) can attach it with
+/// [`miette::Report::with_source_code`] to render the snippet.
+fn syntax_error(root: tree_sitter::Node) -> miette::Report {
+    let node = first_error(root).unwrap_or(root);
+    let span = node.start_byte()..node.end_byte();
+    let what = if node.is_missing() {
+        "expected something here"
+    } else {
+        "here"
+    };
+    miette!(
+        labels = vec![LabeledSpan::at(span.clone(), what)],
+        help = "Quilt brackets must be balanced and nested: `↖…↗` quotes and \
+                `↙…↘` unquotes. A glyph meant as literal text needs a `\\` \
+                escape.",
+        "malformed Quilt syntax (source bytes {}..{})",
+        span.start,
+        span.end,
+    )
 }
 
 /// The characters Quilt gives special meaning to, and hence the ones `\` can
@@ -284,36 +359,114 @@ mod tests {
     use super::*;
 
     #[test]
-    fn node() {
+    fn node() -> Result<()> {
         let source_code = indoc::indoc! {"
             Some Python: py↖1+2↗
             ↑↓
         "};
-        let nodes = Node::parse(source_code);
+        let nodes = Node::parse(source_code)?;
         dbg!(&nodes);
         let source_code2 = &*Node::coparse(&nodes);
         assert_eq!(source_code, source_code2);
+        Ok(())
     }
 
     #[test]
-    fn plain_comments_coparse() {
+    fn plain_comments_coparse() -> Result<()> {
         let source_code = "// line comment\n/* block comment */\ncode\n";
-        let nodes = Node::parse(source_code);
+        let nodes = Node::parse(source_code)?;
         assert!(matches!(&nodes[0], Node::PlainLineComment(s) if &**s == "// line comment"));
         assert!(matches!(&nodes[2], Node::PlainBlockComment(s) if &**s == "/* block comment */"));
         assert_eq!(&*Node::coparse(&nodes), source_code);
+        Ok(())
     }
 
     #[test]
-    fn annotated_reduce() {
+    fn annotated_reduce() -> Result<()> {
         let source_code = "↓ py↓ rs↓";
-        let nodes = Node::parse(source_code);
+        let nodes = Node::parse(source_code)?;
         assert_eq!(nodes.len(), 5); // ↓, space, py↓, space, rs↓
         assert!(matches!(&nodes[0], Node::Reduce { anno } if anno.is_empty()));
         assert!(matches!(&nodes[2], Node::Reduce { anno } if &**anno == "py"));
         assert!(matches!(&nodes[4], Node::Reduce { anno } if &**anno == "rs"));
         let roundtrip = &*Node::coparse(&nodes);
         assert_eq!(roundtrip, source_code);
+        Ok(())
+    }
+
+    /// Malformed bracket structure is an `Err`, never a panic. Each of these
+    /// used to abort the process via `unreachable!("… \"ERROR\"")` in
+    /// [`Node::from_ts`] — including under `quilt check`, which exists to report
+    /// diagnostics and which lost the whole run (exit 101) to a single stray
+    /// glyph.
+    ///
+    /// Only *surface* malformation belongs here. A top-level `↙x↘` is
+    /// well-formed syntax — an unquote with no enclosing quote is a depth error,
+    /// caught later by the expander with its own diagnostic
+    /// (`Expander::expand` → `unquote_depth_error`).
+    #[test]
+    fn malformed_brackets_are_errors_not_panics() {
+        for src in [
+            "fn main() { let x = ↖1 + 2; }", // unclosed quote
+            "fn main() { let x = 1 ↗ 2; }",  // stray quote close
+            "fn main() { ↘ }",               // stray unquote close
+            "↖↙↗",                           // closer/opener interleaved
+            "py↖",                           // annotated opener, nothing after
+        ] {
+            let err = Node::parse(src)
+                .expect_err("malformed Quilt source should be an Err, not Ok or a panic");
+            assert!(
+                err.to_string().contains("malformed Quilt syntax"),
+                "diagnostic should name the syntax error, got: {err}"
+            );
+        }
+    }
+
+    /// A well-formed nesting of every bracket form still parses, so the
+    /// `has_error` gate isn't rejecting valid input.
+    #[test]
+    fn well_formed_brackets_still_parse() -> Result<()> {
+        for src in ["↖↗", "↖\n↗", "py↖1+2↗", "rs↖ wgsl↖ ↙x↘ ↗ ↗", "↖↙↖↙x↘↗↘↗"]
+        {
+            let nodes = Node::parse(src).map_err(|e| e.wrap_err(format!("parsing {src:?}")))?;
+            assert_eq!(&*Node::coparse(&nodes), src, "{src:?} did not round-trip");
+        }
+        Ok(())
+    }
+
+    /// The error span points *inside* the offending source rather than at the
+    /// whole file, so the rendered diagnostic underlines something useful.
+    #[test]
+    fn syntax_error_span_is_narrow() {
+        let src = "aaaaaaaaaa↗bbbbbbbbbb";
+        let err = Node::parse(src).expect_err("stray `↗` should not parse");
+        let labels: Vec<_> = err.labels().into_iter().flatten().collect();
+        assert_eq!(labels.len(), 1, "expected exactly one label: {err}");
+        let len = labels[0].len();
+        assert!(
+            len < src.len(),
+            "label should be narrower than the whole source, got {len} of {}",
+            src.len()
+        );
+    }
+
+    /// An unrecognised node kind is a diagnostic, not a panic — so adding a rule
+    /// to `grammar.js` without teaching `from_ts` about it degrades gracefully.
+    /// `source_file` stands in for such a kind: it is a real node the grammar
+    /// produces, and one `from_ts` is never handed.
+    #[test]
+    fn unhandled_node_kind_is_an_error() {
+        let mut parser = tree_sitter::Parser::default();
+        parser
+            .set_language(&tree_sitter_quilt::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse("abc", None).unwrap();
+        let err = Node::from_ts(&tree.root_node(), "abc")
+            .expect_err("`source_file` is not a kind `from_ts` handles");
+        assert!(
+            err.to_string().contains("unhandled node kind"),
+            "diagnostic should name the kind, got: {err}"
+        );
     }
 
     /// Every glyph in [`GLYPHS`] is escapable: `\<glyph>` parses to plain
@@ -322,11 +475,11 @@ mod tests {
     /// on output (and `←` was not escapable at all), so `\⟨` and friends were
     /// lossy.
     #[test]
-    fn every_glyph_round_trips() {
+    fn every_glyph_round_trips() -> Result<()> {
         for g in GLYPHS {
             let glyph = g.to_string();
             let source_code = format!("a \\{g} b");
-            let nodes = Node::parse(&source_code);
+            let nodes = Node::parse(&source_code)?;
             assert!(
                 nodes
                     .iter()
@@ -339,6 +492,7 @@ mod tests {
                 "`\\{g}` lost its escape"
             );
         }
+        Ok(())
     }
 
     /// `escape` and `unescape` are inverses over the whole glyph set, and a
@@ -356,13 +510,21 @@ mod tests {
         assert_eq!(&*escape("no glyphs here"), "no glyphs here");
     }
 
+    /// [`ARROW_LEN`] is one constant for the whole glyph set, and `quilt-lsp`'s
+    /// `regions`/`code_actions` do byte arithmetic with it (`body.end +
+    /// ARROW_LEN`), so *every* glyph must be that wide — not just the six arrows
+    /// this test used to cover. Adding a glyph of another width to [`GLYPHS`]
+    /// fails here rather than silently shifting LSP ranges.
     #[test]
-    fn arrow_len() {
-        assert_eq!("↖".len(), ARROW_LEN);
-        assert_eq!("↗".len(), ARROW_LEN);
-        assert_eq!("↙".len(), ARROW_LEN);
-        assert_eq!("↘".len(), ARROW_LEN);
-        assert_eq!("↑".len(), ARROW_LEN);
-        assert_eq!("↓".len(), ARROW_LEN);
+    fn glyph_lengths_are_uniform() {
+        for g in GLYPHS {
+            assert_eq!(
+                g.len_utf8(),
+                ARROW_LEN,
+                "glyph {g:?} is {} bytes, but ARROW_LEN is {ARROW_LEN}",
+                g.len_utf8()
+            );
+        }
+        assert_eq!(ESCAPE_LEN, 1, "the escape introducer is a one-byte `\\`");
     }
 }
