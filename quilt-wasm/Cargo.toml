@@ -27,5 +27,12 @@ keywords = ["quilt", "metaprogramming", "wasm", "webassembly", "typescript"]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-quilt = {workspace = true, features = ["rust"]}
+# `typescript` gives us `langs::typescript::ops`, which builds the TypeScript
+# source that reconstructs a term — what `qlift` on an already-built QTerm
+# must return under the `↓(↑(x)) == x` law (issue #166). Neither feature
+# implies `parse`, so this stays tree-sitter-free on wasm32.
+quilt = {workspace = true, features = ["rust", "typescript"]}
 wasm-bindgen = "0.2"
+# For `Reflect`/`Function`: the lift functions dispatch on "is this JsValue one
+# of our terms?" without consuming it. See `as_term` in src/lib.rs.
+js-sys = "0.3"

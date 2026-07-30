@@ -91,7 +91,63 @@ for (const c of cases) {
   }
 }
 
-console.log(`${RUNTIME}: ${cases.length - failures.length}/${cases.length} corpus cases passed`);
+// ── the lift law ──────────────────────────────────────────────────────────
+//
+// reduce(lift(x)) == x. The corpus can only compare coparsed text; proving the
+// law needs the generated code to actually be *evaluated*, which this runner can
+// do and a JSON corpus cannot. Issue #166.
+//
+// The eval sees exactly the runtime's public names, as an expanded `.ts.quilt`
+// module does after `import * from "quilt-wasm"`.
+const { tb, leaf, sym, name, quote, unquote, cmd, write, push, NL, POP, HOLE } = q;
+void [tb, leaf, sym, name, quote, unquote, cmd, write, push, NL, POP, HOLE];
+
+const lawTerms = {
+  leaf: () => q.leaf("number", "7"),
+  sym: () => q.sym("+"),
+  name: () => q.name("f"),
+  binary: () =>
+    q.tb("binary_expression").c(q.leaf("number", "1")).w(" ").c(q.sym("+")).w(" ")
+      .c(q.leaf("number", "2")).b(),
+  newline: () => q.tb("block").w("a").n().w("b").b(),
+  prefix: () => q.tb("block").w("{").p("    ").n().w("body").x().n().w("}").b(),
+  quote: () =>
+    q.quote("x", 0, "ts", q.leaf("number", "5"),
+      [q.cmd(q.write("[")), q.HOLE(), q.cmd(q.write("]"))]),
+  unquote: () => q.unquote("x", 1, "ts", q.leaf("number", "5"), [q.HOLE()]),
+};
+
+let lawChecked = 0;
+for (const [label, build_] of Object.entries(lawTerms)) {
+  lawChecked++;
+  const x = build_();
+  const want = x.coparse();
+  const code = q.qlift(x).coparse();
+  try {
+    // eval is the point: this *is* the reduce step.
+    const back = eval(code);
+    if (back.coparse() !== want) {
+      failures.push(`lift law [${label}]: reduce(lift(x)) is ${JSON.stringify(back.coparse())}, x is ${JSON.stringify(want)} (via ${code})`);
+    }
+  } catch (e) {
+    failures.push(`lift law [${label}]: evaluating ${code} threw: ${e.message ?? e}`);
+  }
+}
+
+// A lift must not consume its argument: recovering a term from a polymorphic
+// JsValue via TryFromJsValue *takes* it, nulling the caller's handle, so
+// `qlift(t)` left `t` unusable. See issue #166.
+for (const [label, fn] of [["qlift", q.qlift], ["qlift_html", q.qlift_html]]) {
+  const t = q.leaf("text", "x");
+  fn(t);
+  try {
+    t.coparse();
+  } catch (e) {
+    failures.push(`${label} consumed its argument: ${e.message ?? e}`);
+  }
+}
+
+console.log(`${RUNTIME}: ${cases.length - failures.length}/${cases.length} corpus cases passed, ${lawChecked} lift-law checks, 2 non-consumption checks`);
 if (failures.length > 0) {
   console.error(`\n${failures.length} failure(s):`);
   for (const f of failures) console.error(`  • ${f}`);

@@ -51,16 +51,24 @@ def test_unquote():
 def test_qlift():
     assert qlift(42).coparse() == "42"
     assert qlift("hi").coparse() == '"hi"'
-    # qlift is idempotent on terms
+    # Lifting a term yields the code that *reconstructs* it, not the term. That
+    # is what reduce(lift(x)) == x requires: lift maps a value to a term whose
+    # code evaluates back to it, so for a term the code has to be a constructor
+    # call. This assertion used to read `== "7"` ("qlift is idempotent on
+    # terms"), which encoded the bug fixed in issue #166.
     t = leaf("integer", "7")
-    assert qlift(t).coparse() == "7"
+    assert qlift(t).coparse() == 'leaf("integer", "7")'
+    # And the law itself, checked by evaluating the generated code.
+    assert eval(qlift(t).coparse()).coparse() == t.coparse()
 
 
 def test_qlift_html():
     assert qlift_html(42).coparse() == "42"
     # strings are entity-escaped, so they are inert as text or attribute value
     assert qlift_html('a "<b>" & c').coparse() == "a &quot;&lt;b&gt;&quot; &amp; c"
-    # qlift_html is idempotent on terms
+    # qlift_html *is* a pass-through on terms, unlike qlift: an already-built
+    # HTML fragment is already escaped, and HTML has no reduce for the
+    # lift/reduce law to apply to.
     t = leaf("text", "x")
     assert qlift_html(t).coparse() == "x"
 

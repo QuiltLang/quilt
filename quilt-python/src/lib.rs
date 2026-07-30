@@ -197,12 +197,59 @@ fn name(s: &str) -> PyQTerm {
     PyQTerm(mk_leaf("identifier", s))
 }
 
+/// Build the Python source that reconstructs `term`, recursively.
+///
+/// This is what `↑` on an already-built `QTerm` must produce, because `↑` is
+/// governed by
+///
+/// ```text
+/// ↓(↑(x)) == x
+/// ```
+///
+/// `↑` maps a value to a term *whose code evaluates back to that value*, and `↓`
+/// evaluates a term's code. For a plain value like `42` the code is `42`. For a
+/// term, the code has to be a constructor call — `leaf("integer", "7")` — so
+/// that evaluating it yields the term again.
+///
+/// It used to return the term unchanged, which reads as a sensible no-op but
+/// breaks the law: `↓` then evaluated the term's *own* code (`7`) and produced
+/// the integer 7 rather than the term. `test_main.py` asserted that
+/// ("qlift is idempotent on terms"), so the test encoded the bug. Rust's
+/// `QLift for Arc<QTerm>` has always done it correctly; this brings the Python
+/// runtime into line. See issue #166.
+fn lift_term(term: &Arc<QTerm>) -> Arc<QTerm> {
+    use quilt::langs::python::ops;
+
+    match &**term {
+        QTerm::Tuple { tag, terms, cmds } => {
+            let children: Vec<Arc<QTerm>> = terms.iter().map(lift_term).collect();
+            ops::build_tuple_code(tag, cmds, &children)
+        }
+        QTerm::Quote {
+            tag,
+            index,
+            lang,
+            term,
+            cmds,
+            ..
+        } => ops::build_quote_code(tag, *index, lang, &lift_term(term), cmds),
+        QTerm::Unquote {
+            tag,
+            index,
+            lang,
+            term,
+            cmds,
+            ..
+        } => ops::build_unquote_code(tag, *index, lang, &lift_term(term), cmds),
+    }
+}
+
 /// Lift a Python value to a term that reconstructs it (the `↑` operator).
 /// Supports `int`, `str`, and existing `QTerm`s.
 #[pyfunction]
 fn qlift(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
     if let Ok(q) = value.extract::<PyQTerm>() {
-        return Ok(q);
+        return Ok(PyQTerm(lift_term(&q.0)));
     }
     // Bool *before* int: `bool` is a subclass of `int` in Python, so
     // `extract::<i64>()` succeeds on `True` and would lift it as `1` — silently

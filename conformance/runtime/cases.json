@@ -23,8 +23,12 @@
     "code evaluates back to it. These cases compare coparse() text, which cannot",
     "see that law directly — checking it needs the reduce backends, so it lives",
     "in the nightly job. A case that records behaviour known to *violate* the law",
-    "carries a `deviation` field: it is pinned so a change is noticed, not because",
-    "it is right."
+    "it is right.",
+    "",
+    "The lift law is reduce(lift(x)) == x: lift maps a value to a term whose code",
+    "evaluates back to it, so lifting a *term* yields constructor code. All three",
+    "runtimes satisfy it as of #166; the eval-based checks that prove it live in",
+    "the Python and Node runners, which can actually evaluate the generated code."
   ],
   "cases": [
     {
@@ -359,11 +363,8 @@
       "coparse": "\"a\\\\b\""
     },
     {
-      "name": "qlift_on_term_identity_DEVIATION",
-      "runtimes": [
-        "python"
-      ],
-      "why": "records current quilt-python behaviour, which is wrong — see `deviation`",
+      "name": "qlift_on_term_builds_constructor_code",
+      "why": "Lifting a term must yield code that *reconstructs* it, so that reduce(lift(x)) == x. All three runtimes agree on the leaf shorthand. See issue #166.",
       "term": {
         "qlift": {
           "leaf": {
@@ -372,24 +373,58 @@
           }
         }
       },
-      "coparse": "7",
-      "deviation": "Violates ↓(↑(x)) == x. Python returns the term unchanged, so ↓ then evaluates the term's own code (`7`) instead of reconstructing the term. Pinned to make a change visible; the fix is issue #166 and is breaking for a published package."
+      "coparse": "leaf(\"integer\", \"7\")"
     },
     {
-      "name": "qlift_on_term_builds_constructor_code",
+      "name": "qlift_on_term_builder_chain_rust",
       "runtimes": [
         "rust"
       ],
-      "why": "The correct behaviour under ↓(↑(x)) == x: evaluating the lifted code reconstructs the term. Rust is the reference here; issue #166 tracks bringing python and wasm into line.",
+      "why": "Same law; the builder chain differs only in Rust's `.c(&child)` — its builder takes `&Arc<QTerm>` where the Python and wasm runtimes take the term by value. That divergence is documented and deliberate.",
       "term": {
         "qlift": {
-          "leaf": {
-            "tag": "integer_literal",
-            "text": "7"
+          "tb": {
+            "tag": "b",
+            "steps": [
+              {
+                "c": {
+                  "leaf": {
+                    "tag": "integer",
+                    "text": "1"
+                  }
+                }
+              }
+            ]
           }
         }
       },
-      "coparse": "leaf(\"integer_literal\", \"7\")"
+      "coparse": "tb(\"b\").c(&leaf(\"integer\", \"1\")).b()"
+    },
+    {
+      "name": "qlift_on_term_builder_chain_by_value",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "Same law; the builder chain differs only in Rust's `.c(&child)` — its builder takes `&Arc<QTerm>` where the Python and wasm runtimes take the term by value. That divergence is documented and deliberate.",
+      "term": {
+        "qlift": {
+          "tb": {
+            "tag": "b",
+            "steps": [
+              {
+                "c": {
+                  "leaf": {
+                    "tag": "integer",
+                    "text": "1"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "coparse": "tb(\"b\").c(leaf(\"integer\", \"1\")).b()"
     },
     {
       "name": "qlift_html_int",

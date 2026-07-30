@@ -256,3 +256,32 @@ fn check_examples_recognises_every_header_prefix() {
         );
     }
 }
+
+/// `reduce(lift(x)) == x` for the Rust runtime, at the level the harness can
+/// check without invoking rust-script: lifting a term must produce *constructor
+/// code*, and that code must name the term's own tag and content — the property
+/// that makes evaluating it reproduce the term. The Python and Node runners
+/// prove the stronger form by actually evaluating (#166).
+#[test]
+fn lift_law_produces_constructor_code() {
+    use quilt::prelude::*;
+
+    for (label, term, want) in [
+        ("leaf", leaf("integer", "7"), r#"leaf("integer", "7")"#),
+        ("sym", sym("+"), r#"sym("+")"#),
+        (
+            "builder",
+            tb("b").c(&leaf("integer", "1")).b(),
+            r#"tb("b").c(&leaf("integer", "1")).b()"#,
+        ),
+    ] {
+        let lifted = term.qlift().coparse();
+        assert_eq!(lifted, want, "{label}: lifting a term must rebuild it");
+        assert_ne!(
+            lifted,
+            term.coparse(),
+            "{label}: lifting a term must not be the identity — that is the bug \
+             in #166, where reduce would then evaluate the term's own code"
+        );
+    }
+}

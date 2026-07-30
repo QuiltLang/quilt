@@ -79,7 +79,13 @@ nix = ["parse"]
 python = []
 rust = []
 text = []
-typescript = ["parse"]
+# Like `python` and `rust`, and unlike the other targets: the TypeScript
+# *runtime* (`langs::typescript::{meta, ops}`) is pure QTerm manipulation and
+# needs no parser, so this must not imply `parse`. `quilt-wasm` is exactly that
+# consumer — it generates TypeScript on wasm32 with no C runtime. The vendored
+# parser is still gated: `langs::typescript::lang` and `grammars` are both
+# `#[cfg(feature = "parse")]`, and build.rs returns early without it.
+typescript = []
 wgsl = ["parse"]
 zsh = ["parse"]
 
