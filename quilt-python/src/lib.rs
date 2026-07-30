@@ -269,19 +269,13 @@ fn qlift(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
         return Ok(PyQTerm(mk_leaf("float", &format!("{f:?}"))));
     }
     if let Ok(s) = value.extract::<String>() {
-        // Escaped with the same rule the core `LiftTo<Python> for str` uses.
-        // Writing `s` raw here produced literals that do not parse (`a"b`) or
-        // that silently changed value (`a\\b`, where `\\b` is a backspace
-        // escape). Found by the shared runtime corpus (#159).
-        let t = mk_tb("string")
-            .c(&mk_leaf("string_start", "\""))
-            .c(&mk_leaf(
-                "string_content",
-                &quilt::lift::py_dquote_escape(&s),
-            ))
-            .c(&mk_leaf("string_end", "\""))
-            .b();
-        return Ok(PyQTerm(t));
+        // Shares the core's `py_string_term`, which owns both the escaping rule
+        // and the tree shape. Writing `s` raw here produced literals that do not
+        // parse (`a"b`) or that silently changed value (`a\\b`, where `\\b` is a
+        // backspace escape) — found by the shared runtime corpus (#159) — and
+        // reproducing the *shape* by hand let the two drift on the empty string,
+        // which the parser spells with no `string_content` child at all.
+        return Ok(PyQTerm(quilt::lift::py_string_term(&s)));
     }
     Err(pyo3::exceptions::PyTypeError::new_err(
         "qlift: unsupported type (expected bool, int, float, str, or QTerm)",
