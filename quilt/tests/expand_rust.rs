@@ -56,12 +56,18 @@ fn quote_expr() -> Result<()> {
 
 #[test]
 fn variadic() -> Result<()> {
+    // `block` is variadic, but this one holds no unquote, so there is nothing
+    // that could contribute more than one child: it builds with the fluent
+    // chain rather than the `{ let mut b_ = ..; .. }` accumulator. `splicing`
+    // and `splicing_nested` below cover the accumulator form, which is what a
+    // block with a dynamic child still gets.
     let out = expand_both(indoc! {r#"
         ↖fn foo() {
             println!("Hello");
             println!("World");
         }↗
     "#})?;
+    assert!(!out.contains("let mut b_"), "{out}");
     insta::assert_snapshot!(out);
     Ok(())
 }

@@ -594,7 +594,25 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     }
                 }
                 QTerm::Tuple { tag, terms, cmds } => {
-                    let arity = self.langs.get(lang1)?.arity(tag);
+                    // Variadic is about *dynamic* children. The accumulator form
+                    // (`{ let mut b_ = tb(tag); …; b_.b() }`) exists so a child
+                    // can contribute zero-or-many terms, which only an unquote
+                    // can do — a child that is literal quoted syntax always
+                    // contributes exactly itself, and `x.emit(&mut b_)` on it is
+                    // just a longhand `.c(&x)`.
+                    //
+                    // So a variadic node with no unquote among its children is
+                    // downgraded to the fluent form: same term, far less
+                    // generated code. This is what keeps the variadic set free
+                    // to follow the grammar — `string_literal` and `token_tree`
+                    // really do hold repeats, but a *literal* `"hi"` should not
+                    // expand to six lines of accumulator to say so.
+                    let mut arity = self.langs.get(lang1)?.arity(tag);
+                    if arity == Arity::Variadic
+                        && !terms.iter().any(|t| matches!(&**t, QTerm::Unquote { .. }))
+                    {
+                        arity = Arity::Unknown;
+                    }
                     let expanded = terms
                         .iter()
                         .map(|term| {
