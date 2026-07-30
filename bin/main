@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+#
+# bin/main — the repo's front door.
+#
+# `bin/` holds two dozen task scripts and nothing indexes them, so `main` is the
+# one name worth remembering: it names the handful of things you do constantly,
+# and delegates anything else straight through to the script of that name.
+#
+# With ./bin on PATH (see .envrc), just run `main` from anywhere in the repo.
+#
+#   main                     # this help, plus every other script in bin/
+#   main run <file> [args]   # run a .quilt file        (= quilt <file>)
+#   main expand <file>       # expand a .quilt file     (= quilt expand <file>)
+#   main build               # cargo build
+#   main test [args]         # cargo test               (= ctest)
+#   main lint                # cargo clippy --tests     (= lint)
+#   main fmt                 # cargo fmt --all
+#   main check               # the pre-commit gate — everything fast + offline
+#   main check --all         # …plus the slow/network gates CI also runs
+#   main <script> [args]     # any other bin/ script, e.g. `main sync-grammars`
+#
+# Works from any cwd (resolves the repo root from its own path).
+#
+set -euo pipefail
+
+BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$BIN/.." && pwd)"
+cd "$ROOT"
+
+MANIFEST=(--manifest-path "$ROOT/Cargo.toml")
+
+# The verbs `main` handles itself; everything else in bin/ is listed under
+# "other scripts" and dispatched to unchanged.
+OWN_VERBS="run expand build test lint fmt check help"
+
+usage() {
+  # The header comment above *is* the help text — from the line after the `#`
+  # that follows the shebang, through the last comment line before the code.
+  # Read rather than pinned to line numbers, so editing the header can't
+  # silently truncate the help.
+  awk 'NR < 3 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$BIN/main"
+  echo "other scripts in bin/:"
+  # Generated, not hard-coded: a new script shows up here the day it lands.
+  for f in "$BIN"/*; do
+    name="$(basename "$f")"
+    [ -x "$f" ] || continue
+    case " $OWN_VERBS main quilt ctest " in *" $name "*) continue ;; esac
+    printf '  main %s\n' "$name"
+  done
+}
+
+# The pre-commit gate. Order is deliberate: cheapest and most likely to fail
+# first, so a bad run stops in seconds rather than after a full test build.
+# Each entry is one bin/ script, which is also exactly what the CI matrix runs
+# — see .github/workflows/ci.yml — so green here means green there.
+check() {
+  local all=0
+  case "${1:-}" in
+    "") ;;
+    --all) all=1 ;;
+    *)
+      echo "main check: unknown option '$1' (expected --all)" >&2
+      exit 1
+      ;;
+  esac
+
+  run_gate "format"        "$BIN/fmt-check"
+  run_gate "clippy"        "$BIN/lint" -- -D warnings
+  run_gate "test"          "$BIN/ctest"
+  run_gate "bootstrap"     "$BIN/check-bootstrap"
+  run_gate "quilt grammar" "$BIN/check-grammar-quilt"
+  run_gate "support matrix" "$BIN/check-matrix"
+  run_gate "examples"      "$BIN/check-examples"
+
+  if [ "$all" = 1 ]; then
+    # Slower or network-bound: check-features builds several feature combos
+    # (and wants the wasm32 target), check-grammars clones the grammar forks,
+    # and the python gate builds the PyO3 cdylib with maturin.
+    run_gate "feature matrix" "$BIN/check-features"
+    run_gate "vendored grammars" "$BIN/check-grammars"
+    run_gate "python bindings (build)" "$BIN/build-py"
+    run_gate "python runtime" "$BIN/test-py"
+  else
+    echo "note: skipped feature matrix, vendored grammars and the python" >&2
+    echo "      runtime — run 'main check --all' for the full CI set." >&2
+  fi
+
+  echo
+  echo "all gates passed ✓"
+}
+
+run_gate() {
+  local label="$1"
+  shift
+  echo
+  echo "==> $label"
+  "$@"
+}
+
+cmd="${1:-help}"
+if [ $# -gt 0 ]; then shift; fi
+
+case "$cmd" in
+  help | -h | --help) usage ;;
+  run) exec "$BIN/quilt" "$@" ;;
+  expand) exec "$BIN/quilt" expand "$@" ;;
+  build) exec cargo build "${MANIFEST[@]}" "$@" ;;
+  test) exec "$BIN/ctest" "$@" ;;
+  lint) exec "$BIN/lint" "$@" ;;
+  # `--all`: the root manifest is a virtual workspace with no targets of its
+  # own, so plain `cargo fmt` there finds nothing to format.
+  fmt) exec cargo fmt "${MANIFEST[@]}" --all "$@" ;;
+  check) check "$@" ;;
+  *)
+    # Anything else: the bin/ script of that name, so `main` is a complete front
+    # door rather than a curated subset that goes stale.
+    if [ -x "$BIN/$cmd" ]; then
+      exec "$BIN/$cmd" "$@"
+    fi
+    echo "main: unknown command '$cmd'" >&2
+    echo >&2
+    usage >&2
+    exit 1
+    ;;
+esac

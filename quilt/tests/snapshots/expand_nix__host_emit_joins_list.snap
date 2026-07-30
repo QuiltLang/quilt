@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: out
+---
+let ns = [ "a" "b" ]; in "[ ${(builtins.concatStringsSep "\n") (map (n: "\"${n}\"") ns)} ]"

@@ -9,6 +9,12 @@
 //! `Builder` (`.c`/`.w`/`.n`/`.p`/`.x`/`.e`/`.b`) and `QTerm` (`.coparse()`)
 //! classes that source calls into. It mirrors the PyO3 runtime in
 //! `quilt-python/src/lib.rs`, one-for-one where the two host ABIs allow.
+//!
+//! Where they *don't* allow it, the difference is recorded rather than papered
+//! over — see "Divergences from the Python runtime" in `quilt-wasm/README.md`.
+//! The one that shows up in every generated module is `NL`/`POP`/`HOLE`, which
+//! are constants there and functions here; [`NL`] and [`HOLE`] carry the two
+//! reasons why (issue #167).
 
 use quilt::prelude::{Arc, QTerm};
 use quilt::qterm::{
@@ -177,21 +183,44 @@ pub fn push(s: &str) -> WasmStrCmd {
     WasmStrCmd(mk_push(s))
 }
 
-/// The `NewLine` command (the `NL` constant in the Python runtime).
+/// The `NewLine` command — `NL()` here, the `NL` *constant* in the Python
+/// runtime.
+///
+/// A function because wasm-bindgen has no way to export a module-scope
+/// constant: `#[wasm_bindgen]` on a `const` is a hard compile error ("will not
+/// work on constants unless you are defining a
+/// `#[wasm_bindgen(typescript_custom_section)]`"), and the only items that
+/// reach JS are functions, structs, enums and impls. A `static get` on an
+/// exported class would give `Consts.NL`, not the bare `NL` the Python runtime
+/// spells — reaching that would mean replacing wasm-pack's generated package
+/// with a hand-maintained JS entry point, on the npm publish path, for an
+/// ergonomics wart. [`HOLE`] documents the second, independent reason. Issue
+/// #167 weighed both and kept the divergence, documented.
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn NL() -> WasmStrCmd {
     WasmStrCmd(StrCmd::NewLine)
 }
 
-/// The `Pop` command (the `POP` constant in the Python runtime).
+/// The `Pop` command — `POP()` here, the `POP` constant in the Python runtime.
+/// See [`NL`].
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn POP() -> WasmStrCmd {
     WasmStrCmd(StrCmd::Pop)
 }
 
-/// A child placeholder (the `HOLE` constant in the Python runtime).
+/// A child placeholder — `HOLE()` here, the `HOLE` constant in the Python
+/// runtime.
+///
+/// A function for [`NL`]'s reason and one of its own, which would survive even
+/// if the export problem were solved: [`quote`] and [`unquote`] take
+/// `Vec<WasmCmdOrHole>`, and wasm-bindgen **moves** each element out of its JS
+/// wrapper (`__unwrap` → `__destroy_into_raw`), nulling the caller's handle.
+/// A module-level `HOLE` singleton would be freed by the first `quote(..)` that
+/// used it and throw "array contains a value of the wrong type" on the second —
+/// the same move-semantics trap `call_self` exists to dodge. Calling it hands
+/// out a fresh value each time, which is exactly what makes reuse safe.
 #[wasm_bindgen]
 #[allow(non_snake_case)]
 pub fn HOLE() -> WasmCmdOrHole {
