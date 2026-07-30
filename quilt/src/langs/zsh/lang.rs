@@ -61,49 +61,72 @@ impl TSProvider for ZshProvider {
         Ok((qterm.squash(), kind))
     }
 
+    /// Kept deliberately in the same order as [`super::super::bash`]'s table, so
+    /// the two read side by side. Zsh shares bash's grammar lineage, so every
+    /// node kind both grammars define must classify the same way in both — an
+    /// emit into a zsh `for` body has no business behaving differently from the
+    /// identical bash one (#150). `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` enforces exactly that, so the
+    /// only entries that may differ are the ones the other grammar has no kind
+    /// for, grouped at the end.
     fn arity(&self, tag: &str) -> Arity {
         match tag {
             "program"
             | "compound_statement"
-            | "compound_statement_no_always"
+            | "subshell"
             | "list"
             | "pipeline"
             | "command"
             | "command_name"
             | "command_substitution"
-            | "subshell"
+            | "process_substitution"
             | "if_statement"
             | "elif_clause"
             | "else_clause"
             | "case_statement"
             | "case_item"
             | "do_group"
+            | "for_statement"
+            | "c_style_for_statement"
+            | "while_statement"
+            | "function_definition"
             | "redirected_statement"
+            | "file_redirect"
+            | "heredoc_redirect"
+            | "herestring_redirect"
+            | "variable_assignment"
             | "variable_assignments"
             | "declaration_command"
+            | "unset_command"
             | "negated_command"
+            | "test_command"
             | "string"
+            | "raw_string"
+            | "ansi_c_string"
+            | "translated_string"
             | "concatenation"
             | "array"
             | "expansion"
-            | "expansion_default_list"
             | "brace_expression"
             | "arithmetic_expansion"
             | "binary_expression"
             | "unary_expression"
+            | "ternary_expression"
             | "postfix_expression"
             | "parenthesized_expression"
+            | "subscript"
             | "number"
             | "heredoc_body"
-            | "heredoc_redirect"
-            | "herestring_redirect"
-            | "process_substitution"
+            // Zsh-only kinds — the bash grammar defines none of these, which is
+            // why bash's table has no counterpart to them. (Bash's one unshared
+            // entry is `simple_expansion`; zsh spells the same construct
+            // `dollar_variable` / `variable_ref`.)
+            | "compound_statement_no_always"
+            | "expansion_default_list"
             | "select_statement"
             | "repeat_statement"
-            | "unset_command"
             | "dollar_variable"
             | "variable_ref"
-            | "translated_string"
             | "zsh_array_subscript_flags" => Arity::Variadic,
             _ => Arity::Unknown,
         }
