@@ -2,7 +2,7 @@
 source: quilt-conformance/tests/grammar_tags.rs
 expression: report
 ---
-bash: 47 variadic
+bash: 46 variadic
   ansi_c_string
   arithmetic_expansion
   array
@@ -47,7 +47,6 @@ bash: 47 variadic
   translated_string
   unary_expression
   unset_command
-  variable_assignment
   variable_assignments
   while_statement
 
@@ -101,11 +100,14 @@ wgsl: 5 variadic
   struct_declaration
   switch_statement
 
-zsh: 42 variadic
+zsh: 55 variadic
+  always_clause
+  ansi_c_string
   arithmetic_expansion
   array
   binary_expression
   brace_expression
+  c_style_for_statement
   case_item
   case_statement
   command
@@ -114,6 +116,7 @@ zsh: 42 variadic
   compound_statement
   compound_statement_no_always
   concatenation
+  coprocess_statement
   declaration_command
   do_group
   dollar_variable
@@ -121,6 +124,9 @@ zsh: 42 variadic
   else_clause
   expansion
   expansion_default_list
+  file_redirect
+  for_statement
+  function_definition
   heredoc_body
   heredoc_redirect
   herestring_redirect
@@ -133,14 +139,20 @@ zsh: 42 variadic
   postfix_expression
   process_substitution
   program
+  raw_string
   redirected_statement
   repeat_statement
   select_statement
   string
+  subscript
   subshell
+  ternary_expression
+  terse_for_statement
+  test_command
   translated_string
   unary_expression
   unset_command
   variable_assignments
   variable_ref
+  while_statement
   zsh_array_subscript_flags

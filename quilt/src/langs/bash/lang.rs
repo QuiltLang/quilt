@@ -7,6 +7,7 @@
 
 use crate::{
     lang::{Arity, InnerKind},
+    langs::shell,
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -55,94 +56,22 @@ impl TSProvider for BashProvider {
             return Ok((qterm, InnerKind::File));
         }
         let kind = match &*terms[0] {
-            QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+            QTerm::Tuple { tag, .. } if shell::is_expr_tag(tag) => InnerKind::Expr,
             _ => InnerKind::Stmt,
         };
         Ok((qterm.squash(), kind))
     }
 
+    /// Delegated to [`crate::langs::shell`], which zsh shares (issue #150): the
+    /// two dialects had two independently maintained copies of this table, and
+    /// they drifted.
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "program"
-            | "compound_statement"
-            | "subshell"
-            | "list"
-            | "pipeline"
-            | "command"
-            | "command_name"
-            | "command_substitution"
-            | "process_substitution"
-            | "if_statement"
-            | "elif_clause"
-            | "else_clause"
-            | "case_statement"
-            | "case_item"
-            | "do_group"
-            | "for_statement"
-            | "c_style_for_statement"
-            | "while_statement"
-            | "function_definition"
-            | "redirected_statement"
-            | "file_redirect"
-            | "heredoc_redirect"
-            | "herestring_redirect"
-            | "variable_assignment"
-            | "variable_assignments"
-            | "declaration_command"
-            | "unset_command"
-            | "negated_command"
-            | "test_command"
-            | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
-            | "concatenation"
-            | "array"
-            | "expansion"
-            | "simple_expansion"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "binary_expression"
-            | "unary_expression"
-            | "ternary_expression"
-            | "postfix_expression"
-            | "parenthesized_expression"
-            | "subscript"
-            | "number"
-            | "heredoc_body" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        shell::arity(tag)
     }
 
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env bash")
     }
-}
-
-/// Tags that are Bash "expressions" (used only to label squashed
-/// single-fragment quotes; the label is advisory).
-fn is_expr_tag(tag: &str) -> bool {
-    matches!(
-        tag,
-        "word"
-            | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
-            | "number"
-            | "binary_expression"
-            | "unary_expression"
-            | "ternary_expression"
-            | "postfix_expression"
-            | "parenthesized_expression"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "command_substitution"
-            | "process_substitution"
-            | "expansion"
-            | "simple_expansion"
-            | "concatenation"
-    )
 }
 
 pub type BashLanguage = TSLanguage<BashProvider>;

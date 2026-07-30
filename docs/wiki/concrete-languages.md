@@ -120,9 +120,11 @@ let shader = ↖
 
 ## Zsh (`zsh`) and Bash (`bash`) — target only
 
-**Files:** `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
+**Files:** `langs/shell.rs`, `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
 
 Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. Both are target-only: they can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) but have no `MetaLanguage`. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
+
+`tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the two dialects share almost all of their node kinds. They therefore share one tag table, `langs/shell.rs`, which answers both `Language::arity` and the `is_expr_tag` classification for either provider. That used to be two independently maintained `match` arms in two files, and they drifted: bash claimed `for_statement`, `while_statement`, `function_definition` and nine more kinds that zsh's table omitted despite zsh's grammar defining every one, so an emit into a zsh `for` body compiled differently from the identical bash one with no diagnostic (issue #150). Kinds only one grammar defines — bash's `simple_expansion`, zsh's `always_clause`, `terse_for_statement`, `select_statement`, `repeat_statement`, `coprocess_statement` and expansion vocabulary — live in the same table and simply never match for the other dialect; `conformance/spec/{bash,zsh}.toml` declare them in a marked dialect-only block, and `grammar_tags::shell_dialects_agree_on_shared_kinds` fails if the two ever stop agreeing on a shared kind.
 
 ---
 
