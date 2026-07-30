@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Work modes
 
-A prompt may select a work mode with `mode=<name>` (e.g. `mode=fast`). If no
-mode is given, use `mode=default`.
+A prompt may select a work mode with `mode=<name>` (e.g. `mode=merge`). If no
+mode is given, use `mode=pr`.
 
 **Always work in a dedicated git worktree — never check out a branch in the
 main working directory.** Create a fresh worktree for every task (e.g. via the
@@ -13,23 +13,23 @@ main working directory.** Create a fresh worktree for every task (e.g. via the
 switch`-ing branches in place. This keeps `main` clean and lets work proceed in
 isolation.
 
-| Mode      | Delivery                       | Questions                                                |
-| --------- | ------------------------------ | -------------------------------------------------------- |
-| `default` | Merge to `main` without asking | Ask as necessary                                         |
-| `fast`    | Merge to `main` without asking | Don't stop — file them as GitHub issues to discuss later |
-| `pr`      | Cut a PR                       | Ask as necessary                                         |
-| `fast+pr` | Cut a PR                       | Don't stop — leave them as comments on the PR            |
+| Mode                | Delivery                       | Questions                                                |
+| ------------------- | ------------------------------ | -------------------------------------------------------- |
+| `pr` **(default)**  | Cut a PR                       | Ask as necessary                                         |
+| `fast+pr`           | Cut a PR                       | Don't stop — leave them as comments on the PR            |
+| `merge`             | Merge to `main` without asking | Ask as necessary                                         |
+| `fast`              | Merge to `main` without asking | Don't stop — file them as GitHub issues to discuss later |
 
 Details:
 
-- **`mode=default`** — The default. Work in a worktree, then merge to `main`
-  without asking. Resolve any merge conflicts as necessary. Ask questions as
+- **`mode=pr`** — The default. Work in a worktree and cut a PR. Ask questions as
   necessary.
-- **`mode=fast`** — Like `default`, but don't stop to ask questions. File them
-  as GitHub issues to discuss later, labeled `question`.
-- **`mode=pr`** — Work in a worktree and cut a PR. Ask questions as necessary.
-- **`mode=fast+pr`** — Work in a worktree and cut a PR. Don't stop to ask
-  questions; put them in the PR as comments.
+- **`mode=fast+pr`** — Like `pr`, but don't stop to ask questions; put them in
+  the PR as comments.
+- **`mode=merge`** — Work in a worktree, then merge to `main` without asking.
+  Resolve any merge conflicts as necessary. Ask questions as necessary.
+- **`mode=fast`** — Like `merge`, but don't stop to ask questions. File them as
+  GitHub issues to discuss later, labeled `question`.
 
 In every mode, get `main check` green before merging or cutting a PR — it runs
 the same `bin/` gates the CI matrix does (see Commands below).
