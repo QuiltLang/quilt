@@ -140,9 +140,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// plain `foo.rs.quilt` case where bare quotes default to the host.
     #[cfg(feature = "parse")]
     pub fn parse_chain(&mut self, chain: &[&str], s: &str) -> Result<Arc<QTerm>> {
-        let nodes = Node::parse(s)
+        let nodes = Node::parse(s)?
             .iter()
-            .map(|n| n.clone().into())
+            .map(|n| arc(n.clone()))
             .collect::<Vec<_>>();
 
         Ok(self
