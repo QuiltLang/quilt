@@ -63,8 +63,8 @@ impl MetaLanguage for NixMetaLanguage {
 
     /// Identity: the string model has no `b_` accumulator to emit/splice into,
     /// so a child is woven into its parent purely by `expand_tuple`'s
-    /// concatenation. Emit/splice in *ground* loops is therefore unsupported —
-    /// build sequences functionally instead (`map`, `concatStringsSep`).
+    /// concatenation. A child that is *itself* a sequence goes through the `←`
+    /// operator instead of this hook — see [`Self::emit_str`].
     fn wrap_child(&self, qterm: Arc<QTerm>, _okind: OuterKind) -> Result<Arc<QTerm>> {
         Ok(qterm)
     }
@@ -79,14 +79,32 @@ impl MetaLanguage for NixMetaLanguage {
         }
     }
 
-    /// No spelling: `←` needs a `b_` accumulator to emit into, which the string
-    /// model doesn't have (see [`Self::wrap_child`]). Fail here rather than let
-    /// the `__EMIT__` placeholder leak into the generated Nix.
+    /// `←` appends a *sequence* of fragments into the surrounding container.
+    ///
+    /// The imperative reading of emit — append one term to a `b_` accumulator,
+    /// once per loop iteration — has no counterpart in Nix: it is a pure
+    /// expression language with no statements and nothing to mutate. Its
+    /// functional counterpart does: build the list of fragments with `map` and
+    /// hand the whole list to `←`, which joins it into one fragment. So
+    ///
+    /// ```nix
+    /// nix↖[ ↙← (map (n: nix↖"↙n↘"↗) names)↘ ]↗
+    /// ```
+    ///
+    /// is the string model's counterpart of a runtime-backed host's `↖…↗.←`
+    /// inside a ground loop. The spelling is `builtins`-only (this host ships
+    /// no runtime library) and is applied prefix, by juxtaposition, like
+    /// `↑`/`toString`: `← xs`, not `xs.←`.
+    ///
+    /// The separator is a newline because it is the only one that is *correct*
+    /// for every container: Nix is whitespace-insensitive, so `[ a\nb ]` and
+    /// `{ inherit a\nb; }` are the lists the source meant, and a generated
+    /// line-oriented target (bash, python, …) gets one statement per line
+    /// rather than a run-on. Where a different separator is wanted (a
+    /// comma-separated `formals`, say), call `builtins.concatStringsSep`
+    /// directly — `←` is exactly its newline partial application.
     fn emit_str(&self) -> Result<&'static str> {
-        miette::bail!(
-            "nix can't emit `←`: the string-based meta has no `b_` accumulator to emit into — \
-             build sequences functionally instead (`map` + `concatStringsSep`)"
-        )
+        Ok("(builtins.concatStringsSep \"\\n\")")
     }
 
     /// No spelling: `↓` compiles a term and deserializes the result back, which

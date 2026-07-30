@@ -169,3 +169,56 @@ fn ident_tags_are_real_node_kinds() {
         failures.join("\n"),
     );
 }
+
+/// Bash and zsh must classify every node kind their grammars *share* the same way.
+///
+/// The two are documented as near-equivalent — `concrete-languages.md` says of
+/// bash: *"Same as Zsh — a separate target with Bash-specific quoting
+/// semantics"* — and zsh's grammar is a fork of bash's. But their `arity` tables
+/// were maintained by hand and independently, and had drifted by eleven tags:
+/// `for_statement`, `while_statement`, `function_definition`, `test_command`,
+/// `variable_assignment`, `c_style_for_statement`, `file_redirect`,
+/// `raw_string`, `ansi_c_string`, `subscript` and `ternary_expression` were
+/// variadic in bash and not in zsh, even though the zsh grammar defines all
+/// eleven and parses them to structurally identical trees. Arity decides whether
+/// the expander treats a node as a container to emit into, so an emit into a zsh
+/// `for` body behaved differently from the identical bash one, with no
+/// diagnostic (#150).
+///
+/// Restricting to the shared kinds is what makes this a real invariant rather
+/// than a wish: it says nothing about the constructs only one shell has (zsh's
+/// `repeat_statement`, bash's `simple_expansion`), so a legitimate
+/// grammar-specific tag never trips it, while a tag that both grammars define
+/// cannot be classified two ways again.
+#[test]
+fn bash_and_zsh_agree_on_shared_kinds() {
+    let bash_grammar = registry::grammar("bash").expect("bash grammar");
+    let zsh_grammar = registry::grammar("zsh").expect("zsh grammar");
+    let bash = registry::language("bash").expect("bash language builds");
+    let zsh = registry::language("zsh").expect("zsh language builds");
+
+    let shared: BTreeSet<&str> = registry::node_kinds(&bash_grammar)
+        .intersection(&registry::node_kinds(&zsh_grammar))
+        .copied()
+        .collect();
+
+    let mut disagreements = Vec::new();
+    for kind in shared {
+        let (b, z) = (bash.arity(kind), zsh.arity(kind));
+        if b != z {
+            disagreements.push(format!("  {kind}: bash {b:?}, zsh {z:?}"));
+        }
+    }
+
+    assert!(
+        disagreements.is_empty(),
+        "bash and zsh disagree on the arity of {} node kind(s) that both grammars define:\n{}\n\n\
+         Zsh's grammar is a fork of bash's, so a kind both define is the same construct \
+         and must classify the same way — otherwise emit/splice into it silently behaves \
+         differently between the two shells (#150). Fix the table in \
+         quilt/src/langs/{{bash,zsh}}/lang.rs, not this test; only kinds a grammar does \
+         not define may be listed on one side alone.",
+        disagreements.len(),
+        disagreements.join("\n"),
+    );
+}

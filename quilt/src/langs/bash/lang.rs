@@ -61,6 +61,11 @@ impl TSProvider for BashProvider {
         Ok((qterm.squash(), kind))
     }
 
+    /// See [`super::super::zsh`]'s table, which is kept in the same order: the
+    /// two grammars share a lineage, so every node kind both define must
+    /// classify the same way in both, enforced by
+    /// `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` (#150).
     fn arity(&self, tag: &str) -> Arity {
         match tag {
             "program"
@@ -99,6 +104,8 @@ impl TSProvider for BashProvider {
             | "concatenation"
             | "array"
             | "expansion"
+            // Bash's one entry with no zsh counterpart: zsh spells the same
+            // construct `dollar_variable` / `variable_ref`.
             | "simple_expansion"
             | "brace_expression"
             | "arithmetic_expansion"
