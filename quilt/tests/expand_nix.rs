@@ -209,23 +209,72 @@ fn chain_default_quote_lang() -> Result<()> {
     Ok(())
 }
 
-/// Nix-as-host has no `b_` accumulator to emit into (see `wrap_child` in
-/// `langs::nix::meta`), so a *ground* `←` fails loudly instead of leaking the
-/// `__EMIT__` placeholder into the generated Nix, and the message points at the
-/// functional alternative.
+/// Nix-as-host has no `b_` accumulator, but it does have emit (issue #155):
+/// `←` is the *functional* reading of "append these into the surrounding
+/// container" — hand it the whole list of fragments and it joins them. It is
+/// applied prefix, by juxtaposition, exactly like `↑`/`toString`.
 #[test]
-fn host_emit_unsupported() {
-    for code in [
-        // Inside a host unquote — the case that used to expand to
-        // `"a ${v.__EMIT__} b"` with no error at all.
-        r#"let v = "x"; in nix↖a ↙v.←↘ b↗"#,
-        // …and at plain ground position.
-        "let gen = ←; in gen",
-    ] {
-        let msg = host_expand(code).unwrap_err().to_string();
-        assert!(msg.contains("nix can't emit"), "{msg}");
-        assert!(msg.contains("concatStringsSep"), "{msg}");
+fn host_emit_joins_list() -> Result<()> {
+    let out = host_expand(r#"let ns = [ "a" "b" ]; in nix↖[ ↙← (map (n: nix↖"↙n↘"↗) ns)↘ ]↗"#)?;
+    insta::assert_snapshot!(out);
+    // No `__EMIT__` placeholder may reach the generated Nix.
+    assert!(!out.contains("__EMIT__"), "{out}");
+    Ok(())
+}
+
+/// The separator is a newline because that is the only one correct for *both*
+/// container kinds: whitespace-insensitive Nix (above) and a line-oriented
+/// target like Bash, where the emitted fragments must land one per line.
+#[test]
+fn host_emit_into_target_language() -> Result<()> {
+    let out = host_expand(indoc! {r#"
+        let fs = [ "a" "b" ]; in bash↖
+        set -e
+        ↙← (map (f: bash↖cp ↙f↘ /tmp/↗) fs)↘
+        ↗"#})?;
+    insta::assert_snapshot!(out);
+    Ok(())
+}
+
+/// The spelling is `builtins`-only — this host ships no runtime library, so a
+/// generated Nix file must stay evaluable with nothing imported.
+#[test]
+fn host_emit_spelling_needs_no_runtime() -> Result<()> {
+    let out = host_expand("let gen = ←; in gen")?;
+    assert_eq!(out, "let gen = (builtins.concatStringsSep \"\\n\"); in gen");
+    Ok(())
+}
+
+/// The spelling has to be *evaluable* Nix, not merely well-formed text, and it
+/// has to mean what the docs say: fragments joined one per line. Pinning the
+/// spelling in a snapshot cannot catch a typo inside it, so evaluate it for
+/// real when a `nix` is on `PATH` (CI runs inside `nix develop`; a contributor
+/// without Nix still gets every other test in this file).
+#[test]
+fn host_emit_evaluates() -> Result<()> {
+    if std::process::Command::new("nix")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        eprintln!("skipping host_emit_evaluates: no `nix` on PATH");
+        return Ok(());
     }
+    let expanded =
+        host_expand(r#"let ns = [ "a" "b" ]; in nix↖[ ↙← (map (n: nix↖"↙n↘"↗) ns)↘ ]↗"#)?;
+    let out = std::process::Command::new("nix")
+        .args(["eval", "--raw", "--expr", &expanded])
+        .output()
+        .expect("running `nix eval`");
+    assert!(
+        out.status.success(),
+        "nix eval failed on {expanded}:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "[ \"a\"\n\"b\" ]");
+    Ok(())
 }
 
 /// A `←` at sky depth belongs to a *later* stage, so it is still deferred as
