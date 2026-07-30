@@ -9,9 +9,12 @@
 //!
 //! It is a near-clone of `langs::python::ops` — TypeScript and Python share the
 //! method-chain shape and `[..]` array literals — differing only in:
-//! * `NL`/`POP`/`HOLE` are emitted as **calls** (`NL()`, `POP()`, `HOLE()`):
-//!   wasm-bindgen can't export struct-valued constants, so the runtime exposes
-//!   them as functions (see `quilt-wasm/src/lib.rs`).
+//! * `NL`/`POP`/`HOLE` are emitted as **calls** (`NL()`, `POP()`, `HOLE()`)
+//!   where Python emits bare constants. wasm-bindgen cannot export a
+//!   module-scope constant at all, and a shared singleton would be consumed by
+//!   its first use anyway — a documented, deliberate divergence (issue #167);
+//!   see `quilt-wasm/src/lib.rs` and the README's "Divergences from the Python
+//!   runtime".
 //! * string literals escape `\` as well as `"`.
 //! * a variadic node is a fluent `.e()` emit chain (as in Python), so
 //!   statement-context splicing into a named `b_` is unsupported.
