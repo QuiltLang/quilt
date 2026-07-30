@@ -172,9 +172,66 @@ pub trait Language {
 
     /// Shebang line used to run an expanded file of this language, if supported.
     /// e.g. `"#!/usr/bin/env rust-script"` or `"#!/usr/bin/env python3"`.
+    ///
+    /// Use [`parse_hashbang`] to turn one into a command — the interpreter is not
+    /// always the last word.
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
+}
+
+/// Split a [`Language::hashbang`] into the program to execute and the arguments
+/// that precede the script path.
+///
+/// `quilt run` used to take `split_whitespace().next_back()` — the *last* word —
+/// which is the interpreter only when the shebang has no arguments. TypeScript's
+/// is `#!/usr/bin/env -S node --experimental-strip-types`, so that yielded
+/// `--experimental-strip-types` and `quilt run foo.ts.quilt` tried to execute the
+/// flag (issue #174, finding F).
+///
+/// `env` is unwrapped the way `env -S` does it: its own options (`-S`, `-i`,
+/// `-u NAME`, `--`) and any `VAR=value` assignments are skipped, and the first
+/// remaining word is the real program. Everything after it is an argument to that
+/// program.
+///
+/// Returns `None` when no program can be identified — an empty shebang, or one
+/// that is nothing but `env` and its options.
+#[must_use]
+pub fn parse_hashbang(hashbang: &str) -> Option<(&str, Vec<&str>)> {
+    let mut words = hashbang.trim_start_matches("#!").split_whitespace();
+    let first = words.next()?;
+
+    // A non-`env` interpreter is used as given: `#!/bin/sh -e` → ("/bin/sh", ["-e"]).
+    if basename(first) != "env" {
+        return Some((first, words.collect()));
+    }
+
+    // `env` itself: skip its options and any environment assignments to find the
+    // program it would exec.
+    let mut program = None;
+    while let Some(word) = words.next() {
+        match word {
+            // `-u NAME` / `--unset=NAME` take a value; the others are flags.
+            "-u" | "--unset" => {
+                words.next();
+            }
+            "--" => {}
+            _ if word.starts_with('-') => {}
+            // `VAR=value` sets the child's environment rather than naming it.
+            _ if word.contains('=') => {}
+            _ => {
+                program = Some(word);
+                break;
+            }
+        }
+    }
+    Some((program?, words.collect()))
+}
+
+/// The final path component of `path`, for comparing a program name against
+/// `env` without caring whether the shebang spelled it `/usr/bin/env`.
+fn basename(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 pub trait LanguagePost: Debug {
@@ -217,5 +274,59 @@ impl LanguagePost for Box<dyn LanguagePost> {
 
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>> {
         self.as_ref().parse_post(plugs)
+    }
+}
+
+/**************************************************************/
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hashbang;
+
+    /// Every shebang a `Language` in this repo declares must name its
+    /// interpreter, not a flag. TypeScript's is the case that regressed.
+    #[test]
+    fn parses_the_declared_hashbangs() {
+        let cases = [
+            ("#!/usr/bin/env rust-script", "rust-script", vec![]),
+            ("#!/usr/bin/env python3", "python3", vec![]),
+            ("#!/usr/bin/env bash", "bash", vec![]),
+            ("#!/usr/bin/env zsh", "zsh", vec![]),
+            (
+                "#!/usr/bin/env -S node --experimental-strip-types",
+                "node",
+                vec!["--experimental-strip-types"],
+            ),
+        ];
+        for (hashbang, program, args) in cases {
+            assert_eq!(
+                parse_hashbang(hashbang),
+                Some((program, args)),
+                "{hashbang:?} did not resolve to its interpreter"
+            );
+        }
+    }
+
+    /// Shapes Quilt does not use today but that `env` accepts, so a language
+    /// adding one is not a surprise breakage.
+    #[test]
+    fn parses_other_env_shapes() {
+        // A direct interpreter, with its own flag.
+        assert_eq!(
+            parse_hashbang("#!/bin/sh -e"),
+            Some(("/bin/sh", vec!["-e"]))
+        );
+        // `env` with an environment assignment, and with `-u NAME`.
+        assert_eq!(
+            parse_hashbang("#!/usr/bin/env FOO=1 python3 -X dev"),
+            Some(("python3", vec!["-X", "dev"]))
+        );
+        assert_eq!(
+            parse_hashbang("#!/usr/bin/env -u FOO -S node"),
+            Some(("node", vec![]))
+        );
+        // A bare `env` names no program.
+        assert_eq!(parse_hashbang("#!/usr/bin/env -S"), None);
+        assert_eq!(parse_hashbang("#!"), None);
     }
 }

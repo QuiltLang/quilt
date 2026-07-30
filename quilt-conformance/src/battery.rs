@@ -500,6 +500,31 @@ fn probe_runnable(ctx: &mut Ctx, lang: &BoxLang) {
                     ),
                 );
             }
+            // Declaring a shebang is not the same as being launchable from one.
+            // This probe used to stop at `is_some()`, so TypeScript's
+            // `#!/usr/bin/env -S node --experimental-strip-types` counted as
+            // runnable while `quilt run` — which took the shebang's *last* word —
+            // tried to execute `--experimental-strip-types` (issue #174).
+            // Resolving it the way the CLI does is what makes the claim mean
+            // something.
+            if let Some(hb) = hb {
+                match quilt::lang::parse_hashbang(hb) {
+                    None => ctx.fail(
+                        axis,
+                        "hashbang",
+                        format!("hashbang {hb:?} names no interpreter"),
+                    ),
+                    Some((program, _)) if program.starts_with('-') => ctx.fail(
+                        axis,
+                        "hashbang",
+                        format!(
+                            "hashbang {hb:?} resolves to {program:?}, which is a flag, \
+                             not an interpreter"
+                        ),
+                    ),
+                    Some(_) => {}
+                }
+            }
             ctx.verified(axis, hb.map(|h| vec![h.to_string()]).unwrap_or_default());
         }
         Ran::Err(e) => {

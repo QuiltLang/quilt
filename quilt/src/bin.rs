@@ -317,12 +317,15 @@ fn run(args: &RunArgs) -> Result<()> {
 
     let hashbang =
         hashbang.ok_or_else(|| miette!("language '{lang}' is not runnable via 'quilt'"))?;
-    let runner = hashbang
-        .trim_start_matches("#!")
-        .split_whitespace()
-        .next_back()
-        .unwrap();
+    // The interpreter is not always the last word: TypeScript's shebang is
+    // `#!/usr/bin/env -S node --experimental-strip-types`, so taking the last
+    // word executed the flag (issue #174). `parse_hashbang` unwraps `env` the way
+    // `env -S` does and keeps the interpreter's own arguments.
+    let (runner, runner_args) = quilt::lang::parse_hashbang(hashbang).ok_or_else(|| {
+        miette!("language '{lang}' has a shebang naming no interpreter: {hashbang:?}")
+    })?;
     let mut runner_cmd = std::process::Command::new(runner);
+    runner_cmd.args(&runner_args);
     if runner.ends_with("rust-script") {
         // Embed a cargo manifest in the script so its operators resolve against
         // *this* quilt crate (so `quilt` works from any directory, not just
