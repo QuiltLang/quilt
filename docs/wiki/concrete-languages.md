@@ -283,7 +283,11 @@ expands to the Lean metaprogram `… s!"@[{attr}] theorem {name} (n : Nat) : n +
 
 **Files:** `langs/text/lang.rs`, `langs/text/mod.rs`, `langs/text/meta.rs`
 
-Plain text. Useful when you want to quote an arbitrary string fragment without language-specific parsing. Has a `MetaLanguage` but only for text-level operations (the expand methods produce identity output).
+Plain text. Useful when you want to quote an arbitrary string fragment without language-specific parsing.
+
+It also has a `MetaLanguage` — the **identity** meta. Rust and Python translate a quoted fragment into builder calls, Nix and Lean into string literals; text has no expressions to translate into, so `TextMetaLanguage` *holds the object-level code as unparsed lines*: same tags, same `cmds`, same text. Expanding a text-hosted quote yields the quoted term itself, so `↖…↗` contributes its body, a ground `↙x↘` reads straight through, and a nested quote keeps its glyphs for the next stage. The operator spellings are the other half of that fact: `↑ ↓ ← ⟨T⟩ ⟨N⟩` each need a host expression to expand into, so each is a hard error naming a real host rather than a placeholder leaking into the output.
+
+Text is absent from `omni.rs`'s `metas` section, so `Omni` never selects it — the meta is reached by wiring text into a `Single`/`DictMulti` by hand, which is what the tests in `langs/text/meta.rs` do.
 
 ---
 
