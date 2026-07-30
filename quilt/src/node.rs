@@ -128,11 +128,7 @@ impl Node {
     /// The opener token is `[a-z]*↖` (resp. `[a-z]*↙`) per the grammar, so the
     /// annotation is the opener's text with the glyph stripped. The body is
     /// every child between the opener and the closer.
-    fn bracket(
-        node: &tree_sitter::Node,
-        code: &str,
-        glyph: char,
-    ) -> Result<(Box<str>, Box<[Arc<Node>]>)> {
+    fn bracket(node: &tree_sitter::Node, code: &str, glyph: char) -> Result<Bracket> {
         let open = node
             .child(0)
             .ok_or_else(|| miette!("Quilt parser: bracket with no opening token"))?;
@@ -164,6 +160,10 @@ impl Node {
         String::from_utf8(bytes).unwrap().into()
     }
 }
+
+/// The two halves [`Node::bracket`] splits a `quote`/`unquote` node into: its
+/// language annotation and its body nodes.
+type Bracket = (Box<str>, Box<[Arc<Node>]>);
 
 /// Strip the trailing `glyph` from an opener/operator token's text, leaving its
 /// language annotation.
