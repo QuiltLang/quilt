@@ -61,19 +61,7 @@ fn main() -> Result<()> {
         
         decls.push(tb("def").c(&sym("def")).w(" ").c(&name).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).w(" ").c(&sym(":=")).w(" ").c(&body(n)).b().coparse());
         decls.push(
-            tb("declaration").c(&tb("attributes").c(&sym("@[")).c(&leaf("identifier", "simp")).c(&sym("]")).b()).w(" ").c(&tb("theorem").c(&sym("theorem")).w(" ").c(&lemma).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("app").c(&name).w(" ").c(&leaf("identifier", "x")).b()).w(" ").c(&sym("=")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("^")).w(" ").c(&n.qlift_to::<Lean>()).b()).b()).w(" ").c(&sym(":=")).w(" ").c(&{
-                let mut b_ = tb("by");
-                {
-                    let mut b_ = tb("by");
-                    b_.write("by");
-                    b_.b()
-                }.emit(&mut b_);
-                b_.push("  ");
-                b_.nl();
-                tb("app").c(&leaf("identifier", "simp")).w(" ").c(&tb("list_lit").c(&sym("[")).c(&name).c(&sym(",")).w(" ").c(&leaf("identifier", "Nat.pow_succ")).c(&sym(",")).w(" ").c(&leaf("identifier", "Nat.pow_zero")).c(&sym(",")).w(" ").c(&leaf("identifier", "Nat.one_mul")).c(&sym("]")).b()).b().emit(&mut b_);
-                b_.pop();
-                b_.b()
-            }).b()).b()
+            tb("declaration").c(&tb("attributes").c(&sym("@[")).c(&leaf("identifier", "simp")).c(&sym("]")).b()).w(" ").c(&tb("theorem").c(&sym("theorem")).w(" ").c(&lemma).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("app").c(&name).w(" ").c(&leaf("identifier", "x")).b()).w(" ").c(&sym("=")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("^")).w(" ").c(&n.qlift_to::<Lean>()).b()).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).p("  ").n().c(&tb("app").c(&leaf("identifier", "simp")).w(" ").c(&tb("list_lit").c(&sym("[")).c(&name).c(&sym(",")).w(" ").c(&leaf("identifier", "Nat.pow_succ")).c(&sym(",")).w(" ").c(&leaf("identifier", "Nat.pow_zero")).c(&sym(",")).w(" ").c(&leaf("identifier", "Nat.one_mul")).c(&sym("]")).b()).b()).x().b()).b()).b()
             .coparse(),
         );
     }
