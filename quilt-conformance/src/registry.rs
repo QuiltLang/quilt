@@ -56,6 +56,44 @@ pub fn language(name: &str) -> Result<BoxLang> {
     })
 }
 
+/// The vendored tree-sitter grammar for a language, or `None` when it has none.
+///
+/// Only `text` has none — it implements `Language` directly, with a single `text`
+/// tag and no grammar to check against. Everything else is tree-sitter backed,
+/// which is what lets a test ask the grammar whether a hand-written tag is a
+/// node kind it actually defines.
+#[must_use]
+pub fn grammar(name: &str) -> Option<tree_sitter::Language> {
+    use quilt::grammars;
+    Some(match name {
+        "bash" => grammars::bash::LANGUAGE.into(),
+        "html" => grammars::html::LANGUAGE.into(),
+        "lean" => grammars::lean::LANGUAGE.into(),
+        "nix" => grammars::nix::LANGUAGE.into(),
+        "python" => grammars::python::LANGUAGE.into(),
+        "rust" => grammars::rust::LANGUAGE.into(),
+        "typescript" => grammars::typescript::LANGUAGE_TYPESCRIPT.into(),
+        "wgsl" => grammars::wgsl::LANGUAGE.into(),
+        "zsh" => grammars::zsh::LANGUAGE.into(),
+        // `text` is not tree-sitter backed.
+        _ => return None,
+    })
+}
+
+/// Every node kind a grammar defines, named and anonymous alike.
+///
+/// This is the authority a hand-written tag table can be checked against:
+/// tree-sitter exposes its whole symbol table, so a tag that is misspelled — or
+/// that a grammar bump renamed — is detectable instead of silently falling
+/// through to `Arity::Unknown`.
+#[must_use]
+pub fn node_kinds(lang: &tree_sitter::Language) -> std::collections::BTreeSet<&'static str> {
+    (0..lang.node_kind_count())
+        .filter_map(|id| u16::try_from(id).ok())
+        .filter_map(|id| lang.node_kind_for_id(id))
+        .collect()
+}
+
 /// Build one meta-language, if the language has one. Cheap: every meta is a
 /// unit struct, so unlike `language` this needs no batching.
 pub fn meta(name: &str) -> Option<Box<dyn MetaLanguage>> {

@@ -33,8 +33,15 @@ miette = {workspace = true, features = ["fancy"]}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 toml = {workspace = true}
+# Read each vendored grammar's symbol table, so a hand-written tag table can be
+# checked against the grammar it describes (tests/grammar_tags.rs).
+tree-sitter = {workspace = true}
 
 [dev-dependencies]
+# Snapshot the tag tables derived from the vendored grammars, so a grammar bump
+# that renames a node kind is a reviewable diff rather than a silent behaviour
+# change (the #157 approach; see tests/grammar_tags.rs).
+insta = {workspace = true}
 pretty_assertions = {workspace = true}
 
 [lints]
