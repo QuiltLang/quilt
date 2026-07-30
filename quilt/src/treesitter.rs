@@ -83,6 +83,11 @@ pub trait TSProvider {
         }
     }
 
+    /// See [`Language::ident_tag`](crate::lang::Language::ident_tag).
+    fn ident_tag(&self) -> &'static str {
+        "identifier"
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
@@ -301,6 +306,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         self.provider.classify_term(term)
     }
 
+    fn ident_tag(&self) -> &'static str {
+        self.provider.ident_tag()
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         self.provider.hashbang()
     }
@@ -392,6 +401,10 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
 
     fn classify_term(&self, term: &QTerm) -> InnerKind {
         self.0.classify_term(term)
+    }
+
+    fn ident_tag(&self) -> &'static str {
+        self.0.ident_tag()
     }
 
     fn hashbang(&self) -> Option<&'static str> {

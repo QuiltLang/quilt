@@ -137,3 +137,35 @@ fn variadic_tags_snapshot() {
 
     insta::assert_snapshot!(report);
 }
+
+/// `Language::ident_tag` names a node kind its grammar actually defines.
+///
+/// The expander constructs exactly one term itself rather than parsing it: the
+/// placeholder for an operator deferred to a later stage. That used to be
+/// hardcoded `leaf("identifier", …)` in `multi.rs` — a Rust tag applied to every
+/// language, and not a kind bash, zsh or html define at all (#174, finding E2).
+/// Now each language answers, and this checks the answers against the grammars.
+#[test]
+fn ident_tags_are_real_node_kinds() {
+    let mut failures = Vec::new();
+
+    for name in registry::LANGUAGES {
+        let Some(grammar) = registry::grammar(name) else {
+            continue; // `text` has no grammar to check against
+        };
+        let lang = registry::language(name).expect("language builds");
+        let tag = lang.ident_tag();
+        if !registry::node_kinds(&grammar).contains(tag) {
+            failures.push(format!(
+                "{name}: ident_tag() is {tag:?}, not a node kind in the {name} grammar"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{}\n\nOverride `ident_tag` in that language's provider with a kind its \
+         grammar defines.",
+        failures.join("\n"),
+    );
+}

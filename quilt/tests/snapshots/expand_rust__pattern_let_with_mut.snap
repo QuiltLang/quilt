@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: out
+---
+let mut [x] = qmatch_n(&tb("binary_expression").c(&leaf("integer_literal", "1")).w(" ").c(&sym("+")).w(" ").c(&mvar("x")).b(), &rhs);

@@ -170,6 +170,20 @@ pub trait Language {
         }
     }
 
+    /// The node kind this language spells a bare identifier with.
+    ///
+    /// The expander needs it for the one term it constructs itself rather than
+    /// parsing: an operator (`↑`, `↓`, `←`) inside an as-yet-unresolved quote is
+    /// deferred as its glyph, to be spelled out when that stage runs. That
+    /// placeholder used to be hardcoded as `leaf("identifier", …)` in
+    /// `multi.rs` — a Rust tag applied to every language, and simply not a node
+    /// kind bash or zsh define (they have `word`); see issue #174, finding E2.
+    ///
+    /// The default is right for every language here except the shells.
+    fn ident_tag(&self) -> &'static str {
+        "identifier"
+    }
+
     /// Shebang line used to run an expanded file of this language, if supported.
     /// e.g. `"#!/usr/bin/env rust-script"` or `"#!/usr/bin/env python3"`.
     ///
@@ -260,6 +274,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn classify_term(&self, term: &QTerm) -> InnerKind {
         self.as_ref().classify_term(term)
+    }
+
+    fn ident_tag(&self) -> &'static str {
+        self.as_ref().ident_tag()
     }
 
     fn hashbang(&self) -> Option<&'static str> {
