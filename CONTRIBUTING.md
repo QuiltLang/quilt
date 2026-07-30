@@ -23,7 +23,15 @@ See `CLAUDE.md` for a tour of the workspace layout and architecture, and `docs/w
 
 ## Before you submit a PR
 
-CI runs every check inside the Nix devShell; you can reproduce them locally with the same scripts:
+CI runs every check inside the Nix devShell; `bin/main check` reproduces them locally in one go:
+
+```sh
+bin/main check         # fmt, clippy, tests, bootstrap, quilt grammar,
+                       #   support matrix, examples
+bin/main check --all   # …plus feature matrix, vendored grammars, Python runtime
+```
+
+`bin/main check` is nothing but these scripts, run one after another; reach for them individually when you want just one:
 
 ```sh
 bin/ctest              # cargo test across the workspace
@@ -34,7 +42,7 @@ bin/check-examples     # quilt-check + expand-diff every example
 bin/build-py && bin/test-py   # Python bindings + .py.quilt runtime
 ```
 
-(Without the direnv environment, run the scripts from the repo root, e.g. `./bin/ctest`.)
+`bin/main` is the front door to all of `bin/`: run it with no arguments to list every script, and reach any of them as `main <script>`. With the direnv environment active, `bin/` is on your `PATH`, so it is just `main`. (Without it, run the scripts from the repo root, e.g. `./bin/ctest`.)
 
 A few project-specific things to know:
 

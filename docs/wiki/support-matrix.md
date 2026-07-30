@@ -19,7 +19,7 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 
 | Language | Quotable | Holes | Variadic | Kinds | Lift in | Highlights |
 |---|---|---|---|---|---|---|
-| **Bash** | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/150) | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
+| **Bash** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 | **HTML** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 | **Lean 4** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/133) | ✅ | ✅ | ✅ | ✅ |
 | **Nix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -28,7 +28,7 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 | **Plain text** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **TypeScript** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **WGSL** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | [⬜](https://github.com/QuiltLang/quilt/issues/22) |
-| **Zsh** | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/150) | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
+| **Zsh** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 
 Columns:
 
@@ -46,7 +46,7 @@ Columns:
 | **Bash** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/151) | ⬜ |
 | **HTML** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Lean 4** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/132) | [🔵](https://github.com/QuiltLang/quilt/issues/133) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/132) |
-| **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🔵](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
+| **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🟡](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
 | **Python** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
