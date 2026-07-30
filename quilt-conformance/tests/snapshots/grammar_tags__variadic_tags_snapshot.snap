@@ -1,0 +1,146 @@
+---
+source: quilt-conformance/tests/grammar_tags.rs
+expression: report
+---
+bash: 47 variadic
+  ansi_c_string
+  arithmetic_expansion
+  array
+  binary_expression
+  brace_expression
+  c_style_for_statement
+  case_item
+  case_statement
+  command
+  command_name
+  command_substitution
+  compound_statement
+  concatenation
+  declaration_command
+  do_group
+  elif_clause
+  else_clause
+  expansion
+  file_redirect
+  for_statement
+  function_definition
+  heredoc_body
+  heredoc_redirect
+  herestring_redirect
+  if_statement
+  list
+  negated_command
+  number
+  parenthesized_expression
+  pipeline
+  postfix_expression
+  process_substitution
+  program
+  raw_string
+  redirected_statement
+  simple_expansion
+  string
+  subscript
+  subshell
+  ternary_expression
+  test_command
+  translated_string
+  unary_expression
+  unset_command
+  variable_assignment
+  variable_assignments
+  while_statement
+
+html: 7 variadic
+  document
+  element
+  quoted_attribute_value
+  script_element
+  self_closing_tag
+  start_tag
+  style_element
+
+lean: 3 variadic
+  by
+  do_block
+  module
+
+nix: 5 variadic
+  binding_set
+  formals
+  inherited_attrs
+  list_expression
+  source_code
+
+python: 2 variadic
+  block
+  module
+
+rust: 2 variadic
+  block
+  source_file
+
+text: (no tree-sitter grammar)
+
+typescript: 10 variadic
+  arguments
+  array
+  array_pattern
+  class_body
+  named_imports
+  object
+  object_pattern
+  program
+  statement_block
+  switch_body
+
+wgsl: 5 variadic
+  case_compound_statement
+  compound_statement
+  source_file
+  struct_declaration
+  switch_statement
+
+zsh: 42 variadic
+  arithmetic_expansion
+  array
+  binary_expression
+  brace_expression
+  case_item
+  case_statement
+  command
+  command_name
+  command_substitution
+  compound_statement
+  compound_statement_no_always
+  concatenation
+  declaration_command
+  do_group
+  dollar_variable
+  elif_clause
+  else_clause
+  expansion
+  expansion_default_list
+  heredoc_body
+  heredoc_redirect
+  herestring_redirect
+  if_statement
+  list
+  negated_command
+  number
+  parenthesized_expression
+  pipeline
+  postfix_expression
+  process_substitution
+  program
+  redirected_statement
+  repeat_statement
+  select_statement
+  string
+  subshell
+  translated_string
+  unary_expression
+  unset_command
+  variable_assignments
+  variable_ref
+  zsh_array_subscript_flags

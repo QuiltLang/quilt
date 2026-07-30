@@ -1020,12 +1020,14 @@ dependencies = [
 name = "quilt-conformance"
 version = "0.5.0"
 dependencies = [
+ "insta",
  "miette",
  "pretty_assertions",
  "quiltlang",
  "serde",
  "serde_json",
  "toml",
+ "tree-sitter",
 ]
 
 [[package]]
