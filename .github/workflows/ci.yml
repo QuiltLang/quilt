@@ -103,6 +103,22 @@ jobs:
             run: |
               bin/build-py
               bin/test-py
+          # The same gate for the other runtime: build quilt-wasm for node, then
+          # run the `↓` tests and the self-contained .ts.quilt examples. Without
+          # it nothing on the PR path executes a .ts.quilt file, which is how
+          # `↓` came to work in the browser and nowhere else (#153).
+          #
+          # wasm-pack is deliberately not in the flake devShell (it pulls its own
+          # toolchain), so install it here as the nightly runtime-parity job
+          # does; it adds the wasm32-unknown-unknown target itself. ubuntu only —
+          # the artifact is wasm, so a second OS would re-verify nothing.
+          - os: ubuntu-latest
+            name: TypeScript (quilt-wasm node runtime + .ts.quilt reduce)
+            run: |
+              command -v wasm-pack >/dev/null 2>&1 || \
+                curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+              bin/build-ts
+              bin/test-ts
           # macOS is the primary development platform, so run the
           # platform-sensitive checks there too (paths, dyld libpython loading,
           # tree-sitter codegen). The Linux matrix above stays the canonical

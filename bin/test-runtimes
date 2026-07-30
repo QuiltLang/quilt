@@ -40,9 +40,10 @@ step "wasm (quilt-wasm)"
 if ! command -v wasm-pack >/dev/null 2>&1; then
   echo "    wasm-pack not found — skipping. Install: https://rustwasm.github.io/wasm-pack/"
 else
-  # --target nodejs so the runner can require() it without a fetch/init dance.
-  # The npm package ships --target web; the API surface is identical.
-  wasm-pack build "$ROOT/quilt-wasm" --target nodejs --out-dir pkg >/dev/null 2>&1
+  # bin/build-ts is the same --target nodejs build `quilt run` needs, so the
+  # flags live in one place. (The npm package ships --target web; the API
+  # surface is identical.)
+  "$ROOT/bin/build-ts" >/dev/null 2>&1
   node "$ROOT/quilt-wasm/test/corpus.mjs" || fail=1
 fi
 

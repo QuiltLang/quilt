@@ -27,10 +27,19 @@ quilt check path/to/file.rs.quilt path/to/other.py.quilt
 # Defaults to the Omni (production) multi; pass `-m bootstrap` for the bootstrap one.
 quilt path/to/script.rs.quilt       # rust-script runner
 quilt path/to/script.py.quilt       # python3 runner (needs `bin/build-py` first)
+quilt path/to/script.ts.quilt       # node runner (needs `bin/build-ts` first)
 
 # Build the quilt_python PyO3 module (the runtime .py.quilt files target).
 # Required once before running .py.quilt files; rebuild after editing the bindings.
 build-py
+test-py       # pytest the bindings + `quilt run` the .py.quilt examples
+
+# Build the quilt-wasm runtime for node (what .ts.quilt files target on the CLI).
+# Required once before running .ts.quilt files; rebuild after editing the bindings.
+# `quilt run` binds the bare `quilt` import to quilt-wasm/node, which adds `↓`
+# (reduce) on top of it by shelling back out to the expander — issue #153.
+build-ts
+test-ts       # node tests for `↓` + `quilt run` the .ts.quilt examples
 
 # Bootstrap — regenerates quilt/src/langs/rust/meta.rs from mk_meta.rs.quilt.
 # Both stages run mk_meta.rs.quilt via quilt (which writes meta.rs): bootstrap0
@@ -175,6 +184,7 @@ Serialization is driven by a stack-based `StrCmd` sequence embedded in each `QTe
 
 - `quilt-lsp` — a multiplexing Language Server for `.quilt` files (tower-lsp). It parses the quilt structure, projects each language into a virtual document, proxies LSP traffic to per-language downstream servers (currently `rust-analyzer` for the ground language), and remaps positions in both directions. See `quilt-lsp/README.md` and `docs/wiki/lsp.md`.
 - `quilt-python/` (crate `quilt_python`) — PyO3 bindings exposing quilt's core IR (`QTerm`, the fluent `tb/.c/.w/.n/.p/.x/.e/.b` builder, `leaf/sym/quote/unquote/cmd/write/push/name/qlift`, `NL/POP/HOLE`, and `.coparse()`) to Python. This is the runtime that expanded `.py.quilt` files target (`PythonMetaLanguage` emits calls into it). The Python import name is **`quilt`** (`from quilt import *`): a `quilt/` package whose `__init__.py` re-exports the native `quilt._quilt` module. Built abi3 (one `.so` for CPython ≥3.8) via `bin/build-py` (maturin); `quilt` puts it on `PYTHONPATH` for `python3` runs. See `examples/hello.py.quilt`.
+- `quilt-wasm/` — wasm-bindgen bindings exposing the same core IR to JavaScript: the runtime expanded `.ts.quilt` files target, in the browser demos and on the CLI. Built with `bin/build-ts` (`--target nodejs`, into `pkg/`); `examples/web/build.mjs` builds `--target web` into `pkg-web/` for the browser. `quilt-wasm/node/` wraps it as the package `quilt run` binds the bare `quilt` import to, adding `↓` (reduce) — which re-expands a generated stage by shelling out to `$QUILT`, since the expander is not in the runtime crate. `examples/web/quilt-rt.js` is the same wrapper for the browser, calling an in-page WASI expander instead. See `examples/staged_pow.ts.quilt`.
 - `tree-sitter-quilt` — the Quilt bracket language (arrow brackets and special symbols). Source in `grammar.js`; regenerate the parser with `ts-gen`.
 
 ### Clippy configuration

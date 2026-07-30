@@ -80,6 +80,45 @@ Python also has a `LiftTo` marker type (`Python` in `lift.rs`), so a Rust host c
 
 ---
 
+## TypeScript (`ts`) — host + meta
+
+**Files:** `langs/typescript/lang.rs`, `langs/typescript/meta.rs`, `langs/typescript/ops.rs`
+
+TypeScript uses the forked `tree-sitter-typescript` (hole placeholder `__HOLE__`). Its `MetaLanguage` emits calls into the `quilt-wasm` runtime — the same builder API as the Python runtime, reached over wasm-bindgen instead of PyO3 — so a `.ts.quilt` metaprogram runs unchanged in a browser and on the CLI.
+
+### TypeScript operators
+
+| Glyph  | Expands to                                                 |
+|--------|------------------------------------------------------------|
+| `↑(x)` | `qlift(x)` into TypeScript; `qlift_html(x)` into an HTML quote |
+| `↓`    | `reduce()` (postfix: `term.↓` → `term.reduce()`)           |
+| `←`    | `emit(b_)`                                                 |
+| `⟨T⟩`  | `QTerm`                                                    |
+| `⟨N⟩`  | `name("ident")`                                            |
+
+Lift is written *prefix* (`↙↑(x)↘`), like Python's and for the same reason. Emit has Python's limitation too — a fluent chain with no named accumulator, so `←` from a *ground* loop is unavailable ([#152](https://github.com/QuiltLang/quilt/issues/152)).
+
+### Reduce on the CLI
+
+`↓` needs to do something the runtime cannot do alone: a generated stage's `coparse()` is often still *Quilt* source — a program that itself quotes — so reducing it means **re-expanding** first, and the expander is not part of the runtime crate. Each host solves that differently:
+
+| Host       | `↓` runs the code via | Re-expands with            |
+|------------|-----------------------|----------------------------|
+| Rust       | `rust-script`         | (compiled in)              |
+| Python     | `exec` / `eval`       | shells out to `$QUILT`     |
+| TypeScript | `node:vm`             | shells out to `$QUILT`     |
+
+The TypeScript backend lives in `quilt-wasm/node/index.mjs`, which `quilt run` binds to the bare `quilt` specifier (see [`quilt run`](cli.md#binding-the-runtime)). It is the CLI twin of `examples/web/quilt-rt.js`, which does the same job in the browser by calling an in-page WASI expander instead of a binary. Before [#153](https://github.com/QuiltLang/quilt/issues/153) only the browser half existed, so `↓` worked in the playground and not on the command line.
+
+Two properties follow from being on Node rather than in a page:
+
+- **Block-aware.** Evaluation goes through `node:vm`, whose script completion value is the trailing expression — so a stage may run statements and then end in the value it produces, exactly as quilt-python documents and as a Rust block does. The browser shim, limited to `new Function("return (…)")`, takes a single expression.
+- **Really TypeScript.** A stage carrying type annotations is stripped (`module.stripTypeScriptTypes`) before evaluation, so it need not be annotation-free JavaScript.
+
+`examples/staged_pow.ts.quilt` is the three-stage program this makes runnable; `bin/test-ts` runs it and the `↓` unit tests.
+
+---
+
 ## HTML (`html`) — target only
 
 **Files:** `langs/html/lang.rs`, `langs/html/mod.rs`
