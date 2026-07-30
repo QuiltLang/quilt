@@ -2,11 +2,58 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Work modes
+
+A prompt may select a work mode with `mode=<name>` (e.g. `mode=merge`). If no
+mode is given, use `mode=pr`.
+
+**Always work in a dedicated git worktree — never check out a branch in the
+main working directory.** Create a fresh worktree for every task (e.g. via the
+`EnterWorktree` tool, or `git worktree add`) rather than `git checkout`/`git
+switch`-ing branches in place. This keeps `main` clean and lets work proceed in
+isolation.
+
+| Mode                | Delivery                       | Questions                                                |
+| ------------------- | ------------------------------ | -------------------------------------------------------- |
+| `pr` **(default)**  | Cut a PR                       | Ask as necessary                                         |
+| `fast+pr`           | Cut a PR                       | Don't stop — leave them as comments on the PR            |
+| `merge`             | Merge to `main` without asking | Ask as necessary                                         |
+| `fast`              | Merge to `main` without asking | Don't stop — file them as GitHub issues to discuss later |
+
+Details:
+
+- **`mode=pr`** — The default. Work in a worktree and cut a PR. Ask questions as
+  necessary.
+- **`mode=fast+pr`** — Like `pr`, but don't stop to ask questions; put them in
+  the PR as comments.
+- **`mode=merge`** — Work in a worktree, then merge to `main` without asking.
+  Resolve any merge conflicts as necessary. Ask questions as necessary.
+- **`mode=fast`** — Like `merge`, but don't stop to ask questions. File them as
+  GitHub issues to discuss later, labeled `question`.
+
+In every mode, get `main check` green before merging or cutting a PR — it runs
+the same `bin/` gates the CI matrix does (see Commands below).
+
 ## Commands
 
-Cargo commands run from the repo root (the Cargo workspace root). The `bin/` scripts work from anywhere when the direnv env is active.
+`main` is the front door: `main` on its own lists everything, and any other
+`bin/` script is reachable as `main <script>`. The `bin/` scripts also work
+directly, from anywhere, when the direnv env is active. Cargo commands run from
+the repo root (the Cargo workspace root).
 
 ```sh
+main                  # what's available
+main run <file>       # run a .quilt file      (= quilt <file>)
+main expand <file>    # expand a .quilt file   (= quilt expand <file>)
+main build            # cargo build
+main test [args]      # cargo test             (= ctest)
+main lint             # cargo clippy --tests   (= lint)
+main fmt              # cargo fmt --all
+main check            # pre-commit gate: fmt, clippy, tests, bootstrap,
+                      #   quilt grammar, support matrix, examples
+main check --all      # …plus feature matrix, vendored grammars, python runtime
+main <script> [args]  # any other bin/ script, e.g. `main sync-grammars`
+
 # Build / test / lint / format (from repo root)
 cargo build
 cargo test                 # or `ctest` (wrapper that works from anywhere)
@@ -88,7 +135,7 @@ The file stem determines the **language chain**: reading the extensions right-to
 
 ## Workspace layout
 
-Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts, fronted by `bin/main`), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment, which also puts `bin/` on `PATH`).
 
 The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 
