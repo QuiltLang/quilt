@@ -164,9 +164,40 @@ pub fn py_dquote_escape(s: &str) -> String {
     out
 }
 
+/// Build the Python `string` term for `s`, structured the way the Python parser
+/// structures a string literal: a `string` tuple over `string_start`,
+/// `string_content`, `string_end`.
+///
+/// This used to be a single flat `leaf("string", "\"…\"")`. That coparses to the
+/// right text, so every text-level test passed — but it is a shape
+/// tree-sitter-python never produces, which matters because `smatch` /
+/// `sinstantiate` / [`QTerm::rewrite`] compare tree structure. It also disagreed
+/// with `quilt-python`'s own `qlift`, which already built the three-child form:
+/// two implementations of one documented operation, differing in the shape they
+/// hand back. `rust::ops::strlit_term` makes the same argument for the Rust
+/// target in its own doc comment.
+///
+/// Fidelity is exact for an escape-free string. A string *with* escapes parses
+/// with nested `escape_sequence` children inside `string_content`
+/// (`"a\"b"` → `(string_content "a" (escape_sequence) "b")`), which neither this
+/// nor `quilt-python`'s `qlift` reproduces; see issue #174 (finding A2) for the
+/// general "a lift must equal the parse of its own text" guard.
+/// The empty string is spelled `(string (string_start) (string_end))` — the
+/// parser emits no `string_content` child when there is no content — so this
+/// mirrors that rather than emitting an empty one.
+pub fn py_string_term(s: &str) -> Arc<QTerm> {
+    let mut b = tb("string");
+    b.child(&leaf("string_start", "\""));
+    if !s.is_empty() {
+        b.child(&leaf("string_content", &py_dquote_escape(s)));
+    }
+    b.child(&leaf("string_end", "\""));
+    b.b()
+}
+
 impl LiftTo<Python> for str {
     fn lift_to(&self) -> Arc<QTerm> {
-        leaf("string", &format!("\"{}\"", py_dquote_escape(self)))
+        py_string_term(self)
     }
 }
 
@@ -504,6 +535,39 @@ mod tests {
             "say \"hi\\\"\nbye".qlift_to::<Python>().coparse(),
             "\"say \\\"hi\\\\\\\"\\nbye\""
         );
+        assert_eq!("".qlift_to::<Python>().coparse(), "\"\"");
+    }
+
+    /// A lifted Python string is the term the Python parser produces for the same
+    /// text — not merely something that coparses to it.
+    ///
+    /// The lift used to be a single flat `leaf("string", "\"…\"")`, a shape
+    /// tree-sitter-python never emits, which the text-level assertions above
+    /// could not see. Structure matters because `smatch`/`rewrite` compare it.
+    ///
+    /// Only escape-free strings are checked: with escapes the parser nests
+    /// `escape_sequence` children inside `string_content`, which neither this
+    /// lift nor `quilt-python`'s `qlift` reproduces (issue #174, finding A2).
+    #[cfg(feature = "parse")]
+    #[test]
+    fn python_string_lift_matches_the_parser() -> crate::prelude::Result<()> {
+        use crate::lang::{flat_nodes, Language};
+        use crate::langs::python::lang::PythonLanguage;
+
+        let mut py = PythonLanguage::default();
+        for s in ["", "hi there", "/usr/bin", "no escapes at all"] {
+            let lifted = s.qlift_to::<Python>();
+            let text = lifted.coparse();
+            let parsed = py.parse_as(None, &flat_nodes(&text))?;
+            assert_eq!(
+                &*parsed,
+                &*lifted,
+                "lift of {s:?} is {:?} but the parser reads {text} as {:?}",
+                lifted.sexp(),
+                parsed.sexp()
+            );
+        }
+        Ok(())
     }
 
     #[test]
