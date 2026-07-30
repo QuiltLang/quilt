@@ -33,7 +33,7 @@ hand-written tables in `lift.rs` answer from memory.
 |---|---|---|---|
 | 1 | [Heterogeneous lift impls](#1-heterogeneous-lift-impls-liftrs) | `lift.rs`, 726 lines, 28 hand-written `LiftTo` impls | **Do it** — and it fixes [#174](https://github.com/QuiltLang/quilt/issues/174) as a side effect |
 | 2 | [Builder-call emitters](#2-builder-call-emitters-langsops) | `langs/{rust,python,typescript}/ops.rs`, ~925 lines, ~90% cloned | **Do it, partially** — generate the fragment shapes, keep the fold |
-| 3 | [Arity tables from the grammar](#3-arity-tables-from-the-grammar) | 9 hand-written `match tag` allowlists | **Don't** — `children.multiple` is not what `Arity::Variadic` means. Evidence below |
+| 3 | [Arity tables from the grammar](#3-arity-tables-from-the-grammar) | 9 hand-written `match tag` allowlists | **Do it** — but from `REPEAT`, not `children.multiple`. Two calls left ([#202](https://github.com/QuiltLang/quilt/issues/202)) |
 | 4 | [String-based emitters](#4-string-based-emitters-nix-lean) | `langs/{nix,lean}/ops.rs`, 331 lines | **Don't** — the output is a string, not a term; Quilt adds nothing |
 | 5 | [`omni.rs` registry](#5-the-omni-registry) | 528 lines, already `macro_rules!` | **Don't** — `macro_rules!` is the right tool; Quilt would be worse |
 | 6 | [`strlift.rs`](#6-strliftrs-and-the-bootstrap-floor) | 200 lines of `format!` | **Can't** — it is the bootstrap's trusted base case |
@@ -263,55 +263,92 @@ means the technique is already proven on a lower-risk file.
 Suggested on the issue: scrape `Arity::Variadic` out of the tree-sitter grammar
 JSON instead of hand-maintaining nine `match tag` allowlists.
 
-**This does not work as a replacement, and the data says so clearly.**
+**This works — but not from the field the obvious scrape reads.** The first
+version of this page said "don't", on the grounds that it changes behaviour
+across nine languages. That was the wrong test. The right one is whether the
+derived tables are *correct*, and running them says they largely are.
 
-`node-types.json` marks a node as `children.multiple` (or a `multiple` field) when
-the grammar lets it hold a repeated child. That is the obvious proxy for "variadic".
-Comparing it against the set each provider actually declares — via the
-`variadic_tags_snapshot` added in `0d9ba66` — at the pinned grammar revs:
+### `children.multiple` is the wrong signal
 
-| lang | declared | grammar says multi-child | declared but *not* multi | multi but not declared |
-|---|---|---|---|---|
-| rust | 2 | 57 | 0 | 55 |
-| python | 2 | 55 | 0 | 53 |
-| wgsl | 5 | 30 | 0 | 25 |
-| typescript | 10 | 53 | 0 | 43 |
-| lean | 3 | 66 | 0 | 63 |
-| nix | 5 | 9 | 1 | 5 |
-| html | 7 | 8 | 0 | 1 |
-| bash | 47 | 32 | **15** | 0 |
-| zsh | 42 | 45 | **10** | 13 |
+`node-types.json` marks a node `children.multiple` when the grammar lets it hold
+more than one child. That sounds like "variadic" and is not: it is true for any
+node with several distinct child *slots*. Under it, Rust's `function_item`
+becomes variadic — which `conformance/spec/rust.toml` explicitly declares it must
+not be, and rightly, since emitting a sequence into a function item is
+meaningless. Scraping this field takes Rust from 2 tags to 57 and fails the
+conformance battery for rust, wgsl, typescript and lean.
 
-Scraping would take Rust from 2 variadic tags to 57. `Arity::Variadic` is not a
-grammar fact — it is a *Quilt policy* meaning "expand this node through the `b_`
-accumulator so `←` can emit into it". Rust declares `block` and `source_file`
-because those are the two places emitting into a sequence makes sense, not
-because they are the only repeat containers. The curation is the point.
+### `REPEAT` is the right one
 
-### But the comparison is worth running once
+`grammar.json` records the actual rule structure, so a genuine sequence container
+is a node whose rule contains a `REPEAT`/`REPEAT1` over a symbol. Two refinements,
+both found by iterating against the test suite rather than by reading:
 
-The right-hand direction is noise. The **`declared but not multi-child`** column is
-not: a node the grammar cannot give more than one child to should not be variadic.
+1. **Follow hidden (`_`-prefixed) rules.** bash's `program` reaches its repeat via
+   `_statements`; without inlining, the file root — the single most important
+   variadic container for a shell host — drops out of the set.
+2. **But not *category* rules.** A hidden rule that is only a `CHOICE` of symbols
+   (`_expression`) is a category, not structure. Following it inherits the repeats
+   of every alternative and inflates the set (python 30 → 56 spuriously).
 
-* **bash declares 15 such tags**, **zsh 10**. Among bash's: `raw_string` (which
-  `node-types.json` gives *no* children at all), `number` (at most one),
-  `command_name`, `unary_expression`, `variable_assignment`. These read like a
-  scrape that was over-inclusive, and they sit oddly next to Rust's hand-picked
-  two — the two families are following different policies with nothing recording
-  that.
-* **nix declares `source_code`**, whose only field is a single optional
-  `expression`. A Nix file *is* one expression; emitting a sequence into it
-  produces invalid Nix.
-* **html declares 7 of the grammar's 8**, missing `attribute` — plausibly
-  deliberate (an `attribute` is not a sequence you emit into), but nothing says so.
+With both, the derived set is a strict **superset** of what is declared today for
+six of nine languages, and matches html exactly:
 
-So the actionable version of this item is *not* codegen. It is a one-off review of
-those 26 entries, plus — if it is worth the vendoring — extending
-`grammar_tags.rs` with a soft check that flags a declared-variadic tag the grammar
-cannot give multiple children to. That needs `node-types.json` vendored under
-`quilt/grammars/<lang>/` (`bin/sync-grammars` already clones the forks; the files
-are 6 KB–730 KB), because the runtime symbol table `0d9ba66` uses exposes node
-*names* but not multiplicity.
+| lang | declared | derived | declared but *not* derived |
+|---|---|---|---|
+| html | 7 | 7 | — |
+| rust | 2 | 35 | — |
+| python | 2 | 56 | — |
+| wgsl | 5 | 18 | — |
+| lean | 3 | 57 | — |
+| typescript | 10 | 35 | — |
+| nix | 5 | 9 | `source_code` |
+| bash | 47 | 28 | 19 tags |
+| zsh | 42 | 40 | 15 tags |
+
+Nothing currently declared is lost except in bash, zsh and nix — and those losses
+are exactly the entries that should go: `raw_string` (which the grammar gives *no*
+children at all), `number`, `command_name`, `binary_expression`,
+`variable_assignment`, and nix's `source_code`, whose only field is a single
+optional expression. A Nix file *is* one expression; emitting a sequence into it
+produces invalid Nix.
+
+### What made this look impossible, and why it no longer is
+
+The objection was output size, not semantics. `string_literal` and `token_tree`
+really are repeat containers, so scraping turned every string literal in generated
+Rust into a six-line accumulator block. That is why the tables were hand-curated:
+declaring a tag variadic was *expensive*.
+
+It no longer is. A variadic node with no unquote among its direct children now
+builds fluently — same term, none of the accumulator — so the table is free to
+follow the grammar. Semantics were never the problem: with the derived tables
+installed across all nine languages, `cargo test -p quiltlang` passes end to end,
+including the Omni-vs-Bootstrap differential.
+
+### The two calls left
+
+Tracked in [#202](https://github.com/QuiltLang/quilt/issues/202), because they are
+design decisions rather than mechanical work:
+
+1. **Adopt the ~150 newly-derived tags?** rust 2 → 35, python 2 → 56, lean 3 → 57.
+   This is an expressiveness gain — emitting into `arguments`, `array_expression`,
+   `parameters`, `match_block` — but it also widens where the emit heuristic fires.
+2. **Drop bash/zsh/nix's non-repeat entries?** `conformance/spec/bash.toml`
+   currently *requires* `list`, `function_definition` and `variable_assignment` to
+   be variadic, so dropping them moves declared claims.
+
+Three tags stay contested under any rule: `wgsl::function_declaration` and
+`typescript::lexical_declaration` are real repeats (of attributes / declarators)
+that the specs say must not be variadic, and `lean::by` depends on which hidden
+rules get inlined.
+
+### Not a Quilt-dogfooding target
+
+Worth saying, since this page is about dogfooding: the *generator* here should not
+be a `.quilt` file. It is a JSON-to-table transform with no interesting structure —
+the same reasoning that leaves `omni.rs` as a `macro_rules!`. It belongs next to
+`gen-matrix` in `quilt-conformance`, which already depends on `serde_json`.
 
 ---
 
@@ -367,8 +404,7 @@ explicitly so they are not re-audited later:
   message (`"arity({tag:?}) is {other:?}, spec says Variadic"`). No generated code.
 * **`quilt-conformance/src/matrix.rs`** (14 hits) — Markdown table assembly for
   `docs/wiki/support-matrix.md`. Quilt could only reach this through the `text`
-  language, whose `Language` impl is a `todo!()` stub, and a Markdown table is not
-  a tree anyone benefits from typing.
+  language, and a Markdown table is not a tree anyone benefits from typing.
 
 One layering note that is adjacent but not a dogfooding item:
 `qmatch::pattern_var_code` / `pattern_let_code` emit **Rust** source
@@ -378,53 +414,64 @@ plain move-the-function refactor rather than anything Quilt is needed for.
 
 ---
 
-## Found while auditing: `←` double-wraps at unquote top level
+## Found while auditing: a ground unquote holding statements was emitted, not spliced
 
-Building the finding-1 prototype turned up an expander bug. A quote emitted with
-`←` as a **direct statement of a ground unquote** — rather than nested inside a
-loop or block — is wrapped twice, producing a generated program that does not
-parse.
+Building the finding-1 prototype turned up an expander bug, since fixed. A ground
+unquote whose body holds **several** statements was wrapped as a value to emit
+rather than spliced as code to run, appending `.emit(&mut b_);` after the body's
+last statement:
 
 ```rust
-// emit_bug.rs.quilt
 let out: ⟨T⟩ = ↖
     fn keep() {}
 
     ↙
-        for _ in 0..1 {
-            ↖fn in_loop() {}↗.←;     // fine
-        }
-        ↖fn direct() {}↗.←;          // double-wrapped
+        let n = 3;
+        ↖fn made() {}↗.←;
     ↘
 ↗;
 ```
 
-expands to:
-
 ```rust
-}).b().emit(&mut b_);                    // in_loop — correct
-}).b().emit(&mut b_);.emit(&mut b_);     // direct  — syntax error
+tb("function_item")…b().emit(&mut b_);.emit(&mut b_);   // does not parse
 ```
 
-The `←` glyph expands to `emit(&mut b_)`, and then `wrap_child` applies
-`OuterKind::Emit` again because the statement is itself a direct hole of the
-enclosing variadic `source_file`. Inside the `for` body the statement is a hole of
-the *loop's* block instead, so the second wrap does not happen.
+Two things were wrong in the same decision. The body was classified with the
+*quoted* language rather than the ground one — `html↖<input value="↙w↘">↗` was
+asking HTML whether the Rust expression `w` is a statement — and the test was
+`is_stmt_like`, a single-node question, so a statement *sequence* (which parses
+with the file root) read as "not code".
 
-`mk_meta.rs.quilt` never hits this because everything it emits is inside a `for`.
-Anyone writing their first generator will hit it immediately, and the error
-surfaces as a `rustc` parse failure on a temp file rather than as a Quilt
+It went unnoticed because it is invisible whenever the last statement is
+block-shaped (`for`, `if`, `{…}`): those are valid method receivers evaluating to
+`()`, so the stray call landed on the no-op `impl Emit for ()`. **`mk_meta.rs.quilt`
+ends its unquote with a `for`**, so the bootstrap had been generating
+`}.emit(&mut b_);` and bootstrapping straight past it. Anyone whose unquote ends
+in anything else got a `rustc` parse failure on a temp file with no Quilt
 diagnostic.
 
-## Suggested order
+The two halves are not separable: `Language::typ` defaults to `InnerKind::File`,
+so widening the test while still asking the quoted language reads every
+non-classifying target (html, wgsl, bash, zsh) as "always code".
 
-1. **Decide the #174 faithfulness question.** Everything in finding 1 waits on it,
-   and it is a judgement call about what a lifted term is *for*, not a refactor.
-2. **Fix the `←` double-wrap.** Small, and it is on the path of anyone writing the
-   generators below.
+## Status
+
+| | |
+|---|---|
+| Ground-unquote splice bug | fixed — [#197](https://github.com/QuiltLang/quilt/pull/197) |
+| Hole-free variadic nodes build fluently | [#201](https://github.com/QuiltLang/quilt/pull/201) — prerequisite for finding 3 |
+| Derive the arity tables (finding 3) | [#202](https://github.com/QuiltLang/quilt/issues/202) — two calls left |
+| Generate `lift.rs` (finding 1) | [#203](https://github.com/QuiltLang/quilt/issues/203) — blocked on the #174 decision |
+| Generate the `ops.rs` fragments (finding 2) | [#204](https://github.com/QuiltLang/quilt/issues/204) — do last |
+
+Suggested order from here:
+
+1. **Decide the #174 faithfulness question.** Finding 1 waits on it, and it is a
+   judgement call about what a lifted term is *for*, not a refactor.
+2. **Make the two calls in [#202](https://github.com/QuiltLang/quilt/issues/202).**
+   The derivation is written and verified; what is left is whether to adopt the
+   newly-derived tags and whether to move the bash/zsh spec claims.
 3. **Generate `lift.rs`** (finding 1). Highest value: it removes the largest
    hand-written table *and* makes a class of #174 bug unrepresentable.
-4. **Review the 26 over-declared variadic tags** (finding 3). Cheap, and it is a
-   real behaviour question in bash/zsh/nix that no amount of codegen would answer.
-5. **Generate the `ops.rs` fragment shapes** (finding 2). Do it last: it is the
+4. **Generate the `ops.rs` fragment shapes** (finding 2). Last: it is the
    expander's own output path, so every snapshot is in scope.
