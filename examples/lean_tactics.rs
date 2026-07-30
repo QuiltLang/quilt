@@ -95,7 +95,7 @@ fn main() -> Result<()> {
                 NL.emit(&mut b_);
             }
             leaf("identifier", "omega").emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();
@@ -119,7 +119,7 @@ fn main() -> Result<()> {
                 NL.emit(&mut b_);
             }
             leaf("identifier", "omega").emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();
@@ -143,7 +143,7 @@ fn main() -> Result<()> {
         b_.nl();
         {
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w("chain 0 = ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&tb("paren").c(&sym("(")).c(&applied).c(&sym(")")).b()).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();

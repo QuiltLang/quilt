@@ -173,7 +173,7 @@ fn main() -> Result<()> {
                 NL.emit(&mut b_);
             }
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("interpolated_str").c(&sym("s!\"")).w("total = ").c(&tb("interpolation").c(&sym("{")).c(&tb("proj").c(&tb("paren").c(&sym("(")).c(&tb("app").c(&tb("app").c(&tb("app").c(&leaf("identifier", "Palette.mk")).w(" ").c(&leaf("num_lit", "1")).b()).w(" ").c(&leaf("num_lit", "2")).b()).w(" ").c(&leaf("num_lit", "3")).b()).c(&sym(")")).b()).c(&sym(".")).c(&leaf("identifier", "total")).b()).c(&sym("}")).b()).c(&sym("\"")).b()).b().emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();
