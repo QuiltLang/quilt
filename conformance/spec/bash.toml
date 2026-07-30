@@ -10,32 +10,51 @@ A target-only shell language. Generate scripts with correct quoting: a lifted \
 Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks \
 escaped, so the value stays inert data."""
 
-# Bash and zsh are documented as near-identical, but their arity tables have
-# genuinely diverged: bash lists `variable_assignment` (singular),
-# `for_statement`, `while_statement` and `function_definition`, none of which
-# zsh's table has. Pinning both here makes the divergence visible instead of
-# incidental — see the note on the `variadic-containers` cell.
+# Bash and zsh are documented as near-identical targets, and as of #150 their
+# arity tables agree on every node kind both grammars define — enforced by
+# `shell_arity_tables_agree` in quilt-conformance/tests/grammar_tags.rs. This
+# list is deliberately the same in zsh.toml apart from the trailing
+# language-specific entries, so a future divergence shows up as a diff here too.
 variadic = [
   "program",
   "compound_statement",
-  "command",
+  "subshell",
   "list",
   "pipeline",
-  "variable_assignment",
-  "variable_assignments",
+  "command",
+  "do_group",
+  "if_statement",
+  "elif_clause",
+  "else_clause",
+  "case_statement",
+  "case_item",
   "for_statement",
+  "c_style_for_statement",
   "while_statement",
   "function_definition",
-  "if_statement",
+  "redirected_statement",
+  "file_redirect",
+  "variable_assignment",
+  "variable_assignments",
+  "declaration_command",
+  "test_command",
+  "string",
+  "array",
+  "expansion",
+  "concatenation",
+  # bash-only: zsh spells this `dollar_variable` / `variable_ref`.
+  "simple_expansion",
 ]
-not_variadic = []
+# Over-declaring variadicity silently changes emit behaviour, so pin leaves that
+# must stay non-variadic. All four are kinds both shell grammars define.
+not_variadic = ["word", "comment", "variable_name", "test_operator"]
 
 lift_marker = "Bash"
 
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
-variadic-containers = {status = "partial", note = "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits", issue = 150}
+variadic-containers = {status = "supported", note = "47 variadic container tags, agreeing with zsh's table on every node kind both grammars define"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl", issue = 149}
 highlights = {status = "supported"}

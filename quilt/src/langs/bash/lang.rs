@@ -61,6 +61,13 @@ impl TSProvider for BashProvider {
         Ok((qterm.squash(), kind))
     }
 
+    /// Bash's variadic containers.
+    ///
+    /// Kept in the same order as [`crate::langs::zsh::lang::ZshProvider::arity`]
+    /// so the two read as diffable copies of one table;
+    /// `shell_arity_tables_agree` in `quilt-conformance/tests/grammar_tags.rs`
+    /// fails if they disagree about any node kind both grammars define
+    /// (issue #150).
     fn arity(&self, tag: &str) -> Arity {
         match tag {
             "program"
@@ -99,7 +106,6 @@ impl TSProvider for BashProvider {
             | "concatenation"
             | "array"
             | "expansion"
-            | "simple_expansion"
             | "brace_expression"
             | "arithmetic_expansion"
             | "binary_expression"
@@ -109,7 +115,9 @@ impl TSProvider for BashProvider {
             | "parenthesized_expression"
             | "subscript"
             | "number"
-            | "heredoc_body" => Arity::Variadic,
+            | "heredoc_body"
+            // bash-only: zsh spells this `dollar_variable` / `variable_ref`.
+            | "simple_expansion" => Arity::Variadic,
             _ => Arity::Unknown,
         }
     }
