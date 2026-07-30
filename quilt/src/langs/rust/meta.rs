@@ -172,12 +172,12 @@ impl Lift for usize {
 }
 impl Lift for f32 {
     fn lift(&self) -> Arc<QTerm> {
-        leaf("integer_literal", &format!("{self}f32"))
+        leaf("float_literal", &format!("{self}f32"))
     }
 }
 impl Lift for f64 {
     fn lift(&self) -> Arc<QTerm> {
-        leaf("integer_literal", &format!("{self}f64"))
+        leaf("float_literal", &format!("{self}f64"))
     }
 }
 

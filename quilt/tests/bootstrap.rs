@@ -164,3 +164,21 @@ fn splicing_nested() -> Result<()> {
 
     Ok(())
 }
+
+/// The `Lift` impls the bootstrap generates must tag each literal with the kind
+/// the Rust parser gives it.
+///
+/// Floats shared the integers' template until #174, so every float impl emitted
+/// `leaf("integer_literal", …)` — a float tagged as an integer. Nothing called
+/// `Lift`, so nothing noticed; this pins the tags now that `mk_meta.rs.quilt`
+/// derives the float template from a float literal.
+#[test]
+fn generated_lift_tags_match_the_literal_kind() {
+    use quilt::langs::rust::meta::Lift;
+
+    assert_eq!(1.5f32.lift(), leaf("float_literal", "1.5f32"));
+    assert_eq!(0.5f64.lift(), leaf("float_literal", "0.5f64"));
+    // Integers are unchanged.
+    assert_eq!(7i32.lift(), leaf("integer_literal", "7i32"));
+    assert_eq!(7u8.lift(), leaf("integer_literal", "7u8"));
+}
