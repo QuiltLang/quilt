@@ -118,23 +118,44 @@ fn main() -> Result<()> {
         }
 
         ↙
-            let num_types = [
+            let int_types = [
                 "i8", "i16", "i32", "i64", "i128", "isize",
                 "u8", "u16", "u32", "u64", "u128", "usize",
-                "f32", "f64",
             ];
             ⟨//⟩ ex: `leaf("integer_literal", "0")`
             let code_int_0: ⟨T⟩ = ↖0↗.↑;
             ⟨//⟩ ex: `"0"`
-            let str_0: ⟨T⟩ = ↖"0"↗;
-            for &ty in &num_types {
+            let str_int_0: ⟨T⟩ = ↖"0"↗;
+            for &ty in &int_types {
                 ⟨//⟩ ex: `format!("{self}i8")`
                 let format: ⟨T⟩ = ↖&format!(↙format!("{{self}}{ty}").↑↘)↗;
                 ↖
                     impl Lift for ↙⟨N⟩(ty)↘ {
                         fn lift(&self) -> ⟨T⟩ {
                             ⟨//⟩ ex: `leaf("integer_literal", &format!("{self}i8"))`
-                            ↙code_int_0.rewrite_naive(&str_0, &format)↘
+                            ↙code_int_0.rewrite_naive(&str_int_0, &format)↘
+                        }
+                    }
+                ↗.←;
+            }
+
+            ⟨//⟩ Floats need their own template. The tag comes from whatever
+            ⟨//⟩ literal the template was lifted from, so reusing the integer one
+            ⟨//⟩ made every float impl emit `leaf("integer_literal", "1f32")` — a
+            ⟨//⟩ float tagged as an integer (issue #174).
+            let float_types = ["f32", "f64"];
+            ⟨//⟩ ex: `leaf("float_literal", "0.0")`
+            let code_float_0: ⟨T⟩ = ↖0.0↗.↑;
+            ⟨//⟩ ex: `"0.0"`
+            let str_float_0: ⟨T⟩ = ↖"0.0"↗;
+            for &ty in &float_types {
+                ⟨//⟩ ex: `format!("{self}f32")`
+                let format: ⟨T⟩ = ↖&format!(↙format!("{{self}}{ty}").↑↘)↗;
+                ↖
+                    impl Lift for ↙⟨N⟩(ty)↘ {
+                        fn lift(&self) -> ⟨T⟩ {
+                            ⟨//⟩ ex: `leaf("float_literal", &format!("{self}f32"))`
+                            ↙code_float_0.rewrite_naive(&str_float_0, &format)↘
                         }
                     }
                 ↗.←;
