@@ -61,14 +61,18 @@ typed in by hand for every target.
 
 ### Why that is a correctness problem, not a style problem
 
-[#174](https://github.com/QuiltLang/quilt/issues/174) already established that
-most of these shapes are wrong: the term `lift.rs` builds is not the term the
-parser builds. Only plain scalars are faithful. Every string, every container,
-every negative number, and both WGSL cases build a tree the grammar would never
-produce.
+[#174](https://github.com/QuiltLang/quilt/issues/174) established that most of
+these shapes were wrong: the term `lift.rs` built was not the term the parser
+builds. Only plain scalars were faithful — every string, every container, every
+negative number and both WGSL cases built a tree the grammar would never produce.
 
-That table was derived by hand. It can be derived mechanically, because the
-expander will just tell you:
+Two rounds of hand-fixing have since closed most of it (#176 for the Python
+string, `fed278b` for every case whose *root tag* does not move), with
+`quilt/tests/lift_fidelity.rs` as a structural guard. What remains hand-written
+is the *method*: a person reads parser output and retypes it into `lift.rs`. That
+is what generation replaces, and it is why the survey had to be run twice.
+
+The survey itself was always mechanical — the expander will just tell you:
 
 ```console
 $ quilt expand probe.rs.quilt
@@ -166,9 +170,10 @@ a human.
 
 ### What this buys
 
-* **Faithfulness by construction.** The shape comes from the same parser the
-  round-trip test compares against, so `assert_eq!(parse(lit), lift(v))` becomes
-  true by construction rather than by vigilance.
+* **Faithfulness by construction.** The shape comes from the same parser
+  `lift_fidelity.rs` compares against, so its assertion becomes true by
+  construction rather than by vigilance — and nobody has to run the survey a
+  third time.
 * **Adding a target gets cheap.** Today it is ~60 lines of shape-guessing per
   language. It becomes a table of sample literals.
 * **`lift.rs` shrinks.** Of its 726 lines, 493 precede the test module, and the
@@ -179,8 +184,9 @@ a human.
 
 ### What it costs, and what has to be decided first
 
-This is blocked on the call #174 flagged, and the audit does not resolve it:
-adopting parser-faithful shapes **moves declared conformance claims**.
+What is left is the call #174 flagged, which the audit does not resolve and
+`fed278b` deliberately skipped: the remaining shapes **move declared conformance
+claims**.
 `wgsl.toml` pins `tag = "int_literal"` but the parser wraps literals in
 `const_literal`; `python.toml` pins `tag = "integer"` for `i32:-7` but `-7`
 parses as `unary_operator`. Either the specs follow the parser, or the invariant
@@ -461,13 +467,15 @@ non-classifying target (html, wgsl, bash, zsh) as "always code".
 | Ground-unquote splice bug | fixed — [#197](https://github.com/QuiltLang/quilt/pull/197) |
 | Hole-free variadic nodes build fluently | [#201](https://github.com/QuiltLang/quilt/pull/201) — prerequisite for finding 3 |
 | Derive the arity tables (finding 3) | [#202](https://github.com/QuiltLang/quilt/issues/202) — two calls left |
-| Generate `lift.rs` (finding 1) | [#203](https://github.com/QuiltLang/quilt/issues/203) — blocked on the #174 decision |
+| Lift shapes match the parsers | mostly fixed by hand — #176, `fed278b`, guarded by `lift_fidelity.rs` |
+| Generate `lift.rs` (finding 1) | [#203](https://github.com/QuiltLang/quilt/issues/203) — stops the shapes re-drifting; two cases still need the #174 call |
 | Generate the `ops.rs` fragments (finding 2) | [#204](https://github.com/QuiltLang/quilt/issues/204) — do last |
 
 Suggested order from here:
 
-1. **Decide the #174 faithfulness question.** Finding 1 waits on it, and it is a
-   judgement call about what a lifted term is *for*, not a refactor.
+1. **Decide the remaining #174 faithfulness question** — the two cases `fed278b`
+   skipped because they move a declared conformance tag (`wgsl::int_literal` →
+   `const_literal`, `python::integer` → `unary_operator` for `-7`).
 2. **Make the two calls in [#202](https://github.com/QuiltLang/quilt/issues/202).**
    The derivation is written and verified; what is left is whether to adopt the
    newly-derived tags and whether to move the bash/zsh spec claims.
