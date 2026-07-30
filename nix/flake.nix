@@ -39,6 +39,18 @@
             pkgs.rust-script
             pkgs.rustup
             pkgs.tree-sitter
+            # wasm-pack builds the quilt-wasm runtime (`bin/build-ts`), which
+            # `quilt run` needs to run a .ts.quilt file at all.
+            #
+            # This used to be left out on the grounds that it "pulls its own
+            # toolchain", with CI curl|sh-ing the official installer instead.
+            # That installer cannot work here: it copies the binary next to the
+            # `cargo` it finds on PATH — under this shell, the read-only
+            # /nix/store rustup — and ignores $CARGO_HOME, so it fails with
+            # EACCES. So nobody in the devShell could build wasm, and the
+            # nightly runtime-parity job silently skipped its wasm third for
+            # want of a binary it never actually installed.
+            pkgs.wasm-pack
           ];
 
           RUST_BACKTRACE = "1";
