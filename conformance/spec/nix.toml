@@ -28,7 +28,7 @@ highlights = {status = "supported"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "planned", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against", issue = 155}
-emit = {status = "planned", note = "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says", issue = 155}
+emit = {status = "partial", note = "the string model has no `b_` accumulator, so `←` is the *functional* reading of emit: it takes the whole list of fragments and joins it into the surrounding container (`builtins.concatStringsSep \"\\n\"`, applied prefix like `↑`). Building that list is `map`, not a ground loop, and joined fragments are not re-indented", issue = 155}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; Nix fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "a `.nix` file is evaluated with `nix eval`, not executed, so there is no shebang runner"}
 runtime-binding = {status = "planned", note = "string-based meta: no `QTerm` runtime library is shipped for Nix", issue = 155}
@@ -93,10 +93,11 @@ attrset_expression = "expr"
 list_expression = "expr"
 select_expression = "expr"
 
-# String-based meta: no `QTerm` runtime, so `←` and `⟨T⟩` have no spelling at
-# all and must fail loudly rather than leak a placeholder into generated Nix.
+# String-based meta: no `QTerm` runtime, so `←` is a plain `builtins` join
+# rather than a push into an accumulator, and `⟨T⟩` has no spelling at all and
+# must fail loudly rather than leak a placeholder into generated Nix.
 [meta]
-emit_error = "concatStringsSep"
+emit = '(builtins.concatStringsSep "\n")'
 type_error = "untyped"
 name_str = "toString"
 reduce_unsupported = ["", "nix", "rust", "rs", "python", "py", "wgsl", "html", "lean", "lean4", "bash", "zsh", "typescript", "ts"]

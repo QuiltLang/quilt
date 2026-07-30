@@ -6,8 +6,9 @@
 //! they were tested asymmetrically and separately: 9 pytest cases, one
 //! `smoke.cjs` CI never ran, and no Rust API-parity tests at all. Nothing
 //! compared them, so the documented divergences (`.c(&x)` vs `.c(x)`, postfix
-//! `qlift()` vs prefix `qlift(x)`, `qlift_html`) were exactly where drift would
-//! go unnoticed.
+//! `qlift()` vs prefix `qlift(x)`, `qlift_html`, and wasm's `NL()`/`POP()`/
+//! `HOLE()` against Python's constants — issue #167) were exactly where drift
+//! would go unnoticed.
 //!
 //! This module is the interpreter for one runtime. The other two are ~80-line
 //! runners in their own languages; adding a fourth runtime means writing one

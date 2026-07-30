@@ -61,6 +61,11 @@ HOLE            # CmdOrHole::Hole constant
 cmd(strcmd)     # CmdOrHole::Cmd(strcmd)
 ```
 
+> These three are **constants** here and **functions** (`NL()`, `POP()`,
+> `HOLE()`) in the `quilt-wasm` runtime that `.ts.quilt` files target — the one
+> shape change to watch for when porting a metaprogram between the two hosts.
+> See [Relation to the wasm runtime](#relation-to-the-wasm-runtime).
+
 ### QTerm methods
 
 ```python
@@ -152,3 +157,37 @@ The Python builder API is intentionally parallel to the Rust `QTermBuilder` API.
 | `Arc<QTerm>`                                      | opaque `QTerm` object                        |
 | `↑` is postfix: `x.↑` → `x.qlift()` (`QLift` trait) | `↑` is prefix: `↑(x)` → free `qlift(x)` function |
 | Variadic block uses imperative `b_`               | Variadic block uses fluent `.e(child)` chain |
+
+## Relation to the wasm runtime
+
+`quilt-wasm` is the third published runtime — the one expanded `.ts.quilt`
+files target — and is a closer match to this one: same fluent builder, same
+by-value `.c(child)`, same prefix `qlift(x)`, same `.e(child)` variadic chain.
+All three are held together by a shared corpus
+(`conformance/runtime/cases.json`), so a drift between them is a test failure.
+
+One difference remains:
+
+| Python                            | quilt-wasm                          |
+|-----------------------------------|-------------------------------------|
+| `NL`, `POP`, `HOLE` are constants | `NL()`, `POP()`, `HOLE()` are functions |
+
+```python
+cmd(NL)                                         # quilt-python
+[cmd(write("[")), HOLE, cmd(write("]"))]
+```
+
+```js
+cmd(NL())                                       // quilt-wasm
+[cmd(write("[")), HOLE(), cmd(write("]"))]
+```
+
+Expanded code is always right for its own target, since each meta-language
+emits its own runtime's spelling; the cost falls on a human porting a
+metaprogram across hosts. `wasm-bindgen` cannot export a module-scope constant
+at all — `#[wasm_bindgen]` on a `const` is a compile error, and only functions,
+structs, enums and impls reach JS — and a shared singleton would in any case be
+consumed by its first use, because wasm-bindgen *moves* struct values passed in
+arrays. Issue #167 weighed the alternative (a hand-maintained JS entry point
+wrapping wasm-pack's output) and kept the divergence; `quilt-wasm/README.md`
+records the full reasoning.
