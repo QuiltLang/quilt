@@ -1,3 +1,4 @@
+pub mod arity;
 #[cfg(feature = "bash")]
 pub mod bash;
 #[cfg(feature = "bootstrap")]

@@ -50,7 +50,7 @@ main test [args]      # cargo test             (= ctest)
 main lint             # cargo clippy --tests   (= lint)
 main fmt              # cargo fmt --all
 main check            # pre-commit gate: fmt, clippy, tests, bootstrap,
-                      #   quilt grammar, support matrix, examples
+                      #   quilt grammar, arity tables, support matrix, examples
 main check --all      # …plus feature matrix, vendored grammars, the python
                       #   and typescript runtimes
 main <script> [args]  # any other bin/ script, e.g. `main sync-grammars`
@@ -116,6 +116,15 @@ check-matrix      # gen-matrix + fail if either artifact drifted (CI / pre-commi
 cargo test -p quilt-conformance          # the battery; one test per language
 cargo test -p quilt-conformance rust     # a single language
 
+# Variadic-container tables (issue #202). Which node kinds can hold a variable
+# number of children — i.e. where emit (`←`) may splice a sequence — is derived
+# from each grammar's `REPEAT` rules rather than hand-curated per language. The
+# derivation lives in quilt-conformance/src/arity.rs; it reads the grammar.json
+# that bin/sync-grammars vendors alongside each parser.c, and writes the tables
+# to quilt/src/langs/arity.rs, where every `Language::arity` reads them.
+gen-arity         # rewrite quilt/src/langs/arity.rs from the grammars
+check-arity       # gen-arity + fail if the file drifted (CI / pre-commit)
+
 # Expander output is snapshotted, not pinned with inline string literals
 # (issue #157), so a deliberate change to generated code is a bulk review
 # rather than N hand edits. Snapshots live in quilt/tests/snapshots/.
@@ -145,7 +154,7 @@ The file stem determines the **language chain**: reading the extensions right-to
 
 ## Workspace layout
 
-Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts, fronted by `bin/main`), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment, which also puts `bin/` on `PATH`).
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`, and each grammar's `grammar.json`, which `bin/gen-arity` derives the variadic tables from — issue #202); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts, fronted by `bin/main`), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment, which also puts `bin/` on `PATH`).
 
 The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 

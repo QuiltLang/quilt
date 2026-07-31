@@ -62,11 +62,21 @@ impl TSProvider for ZshProvider {
         Ok((qterm.squash(), kind))
     }
 
-    /// Delegated to [`crate::langs::shell`], which bash shares (issue #150): the
-    /// two dialects had two independently maintained copies of this table, and
-    /// they drifted.
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
+    ///
+    /// Zsh's grammar is a fork of bash's, so the two tables mostly coincide
+    /// without being maintained in step (#150) and without the shared
+    /// hand-written table that issue first reached for. Where they part company
+    /// it is now a grammar fact rather than drift: `function_definition` is
+    /// variadic here and not in bash because zsh's rule takes
+    /// `repeat1(field('name', …))` — `function a b c { … }` defines three
+    /// functions at once, which bash has no syntax for.
+    /// `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` pins the exceptions, so a
+    /// *new* divergence still has to be looked at.
     fn arity(&self, tag: &str) -> Arity {
-        shell::arity(tag)
+        Arity::from_table(crate::langs::arity::ZSH, tag)
     }
 
     /// The shell grammars have no `identifier` node kind at all — a bare word is

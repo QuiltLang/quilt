@@ -50,3 +50,10 @@ workspace = true
 [[bin]]
 name = "gen-matrix"
 path = "src/bin/gen_matrix.rs"
+
+# Derives the variadic-container tables from the vendored grammars and writes
+# `quilt/src/langs/arity.rs` (issue #202). Run by `bin/gen-arity`; gated by
+# `bin/check-arity`.
+[[bin]]
+name = "gen-arity"
+path = "src/bin/gen_arity.rs"

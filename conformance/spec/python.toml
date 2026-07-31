@@ -11,7 +11,14 @@ The second host. The PyO3 module in `quilt-python/` gives Python the same `QTerm
 builder API the Rust runtime has, and `PythonMetaLanguage` expands quotes into \
 calls against it."""
 
-variadic = ["block", "module"]
+# Derived from the grammar's `REPEAT` rules (#202). `block` and `module` were
+# the whole hand-written table; `argument_list`, `list` and `parameters` are
+# containers the derivation added.
+#
+# `function_definition` stays a leaf, and the grammar agrees: the repeat it
+# reaches is inside `alias($._simple_statements, $.block)`, so those statements
+# are children of the `block`, not of the definition.
+variadic = ["block", "module", "argument_list", "list", "parameters"]
 not_variadic = ["binary_operator", "assignment", "function_definition"]
 
 lift_marker = "Python"

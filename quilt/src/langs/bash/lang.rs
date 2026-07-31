@@ -62,11 +62,19 @@ impl TSProvider for BashProvider {
         Ok((qterm.squash(), kind))
     }
 
-    /// Delegated to [`crate::langs::shell`], which zsh shares (issue #150): the
-    /// two dialects had two independently maintained copies of this table, and
-    /// they drifted.
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
+    ///
+    /// Bash and zsh no longer need their tables kept in step by hand (#150):
+    /// both come from their own grammar, so a construct the two spell the same
+    /// way classifies the same way unless the *grammars* differ. That is a
+    /// stronger guarantee than the shared hand-written table #150 first reached
+    /// for, and it replaces it — [`crate::langs::shell`] keeps only the tag sets
+    /// that *aren't* derivable. `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` now guards that weaker,
+    /// truthful claim.
     fn arity(&self, tag: &str) -> Arity {
-        shell::arity(tag)
+        Arity::from_table(crate::langs::arity::BASH, tag)
     }
 
     /// The shell grammars have no `identifier` node kind at all — a bare word is

@@ -11,8 +11,12 @@ A quotable target and a string-based host. Generate derivations, flakes and \
 modules at build time; as a host, a `.nix.quilt` metaprogram expands to plain \
 Nix that builds the output with `${…}` antiquotation."""
 
-variadic = ["list_expression"]
-not_variadic = ["integer_expression", "select_expression"]
+# Derived from the grammar's `REPEAT` rules (#202). `source_code` was in the
+# hand-written table and is not derived: its only field is a single optional
+# expression, so a Nix file is one expression rather than a sequence the way a
+# Rust `source_file` is.
+variadic = ["list_expression", "binding_set", "formals"]
+not_variadic = ["integer_expression", "select_expression", "source_code"]
 
 lift_marker = "Nix"
 lift_from = ["nix"]

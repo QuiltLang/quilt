@@ -34,14 +34,22 @@ fetch() {
   git -C "$dest" checkout -q "$rev"
 }
 
-# Copy parser.c, scanner.c, sibling *.h (e.g. html's tag.h), and tree_sitter/*.h
-# from a fork src dir ($1) into a vendored dir ($2).
+# Copy parser.c, scanner.c, sibling *.h (e.g. html's tag.h), tree_sitter/*.h and
+# grammar.json from a fork src dir ($1) into a vendored dir ($2).
+#
+# grammar.json is not compiled — it is the input to `bin/gen-arity`, which
+# derives each language's variadic-container table from the grammar's `REPEAT`
+# rules instead of hand-curating it (issue #202). It has to come from the same
+# pinned rev as parser.c, which is why it is vendored here rather than fetched
+# separately: a table derived from a different rev than the parser in use is
+# exactly the silent drift the derivation exists to remove.
 copy_src() {
   local src="$1" dst="$2"
   rm -rf "$dst"
   mkdir -p "$dst/tree_sitter"
   cp "$src/parser.c" "$dst/parser.c"
   [ -f "$src/scanner.c" ] && cp "$src/scanner.c" "$dst/scanner.c"
+  cp "$src/grammar.json" "$dst/grammar.json"
   for h in "$src"/*.h; do cp "$h" "$dst/"; done
   cp "$src"/tree_sitter/*.h "$dst/tree_sitter/"
 }

@@ -34,11 +34,10 @@ impl TSProvider for PythonProvider {
         Some("#!/usr/bin/env python3")
     }
 
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "module" | "block" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::PYTHON, tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {

@@ -62,7 +62,19 @@ Passed as a hint to `parse_pre`. Some parsers use it to try specific grammar ent
 pub enum Arity { Unknown, Const(u8), Variadic }
 ```
 
-Returned by `Language::arity(tag)`. `Variadic` tags (e.g. Rust's `"block"` and `"source_file"`) tell the expander to use `expand_tuple` in variadic mode, generating an imperative builder block rather than a single `tb(..).c(..)..b()` call.
+Returned by `Language::arity(tag)`. `Variadic` tags (e.g. Rust's `"block"` and `"source_file"`) tell the expander to use `expand_tuple` in variadic mode, generating an imperative builder block rather than a single `tb(..).c(..)..b()` call — so that one child can contribute zero-or-many terms.
+
+The tables are **generated, not hand-written** (issue #202): `bin/gen-arity` reads the `REPEAT` rules out of each vendored `quilt/grammars/<lang>/grammar.json` and writes `quilt/src/langs/arity.rs`, and every provider's `arity` is one line:
+
+```rust
+fn arity(&self, tag: &str) -> Arity {
+    Arity::from_table(crate::langs::arity::RUST, tag)
+}
+```
+
+`bin/check-arity` regenerates and fails on drift, so a grammar bump that adds, drops or renames a repeat container shows up as a reviewable diff rather than as emit quietly changing where it may splice. The derivation itself — which repeats count as a node's *own* children, and why hidden rules are followed but category rules, aliases and tokens are not — is documented in `quilt-conformance/src/arity.rs`.
+
+Declaring a tag variadic costs nothing in generated output: a variadic node with no unquote among its direct children is built fluently anyway, since only an unquote can contribute a variable number of terms.
 
 ### `hashbang`
 

@@ -28,7 +28,13 @@ fn main() -> Result<()> {
                 } else {
                     i.to_string()
                 };
-                tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&label.qlift()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
+                tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&{
+                    let mut b_ = tb("token_tree");
+                    sym("(").emit(&mut b_);
+                    label.qlift().emit(&mut b_);
+                    sym(")").emit(&mut b_);
+                    b_.b()
+                }).b()).c(&sym(";")).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
         };
