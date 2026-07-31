@@ -30,10 +30,18 @@
 //!
 //! So before #150 an emit into a zsh `for` body silently did something different
 //! from the identical bash one, with no diagnostic. The companion check is
-//! `shell_arity_tables_agree` in `quilt-conformance/tests/grammar_tags.rs`, which
-//! holds the two tables to agreement on every node kind both grammars define;
-//! this file covers the four constructs above whose hole positions are awkward
-//! to reach from a fragment.
+//! `bash_and_zsh_agree_on_shared_kinds` in
+//! `quilt-conformance/tests/grammar_tags.rs`, which holds the two tables to
+//! agreement on every node kind both grammars define.
+//!
+//! One subtlety decides how the fragments below are written. Since #180 a
+//! variadic node with **no unquote among its direct children** builds fluently
+//! anyway — the accumulator only buys something when a child can contribute
+//! zero-or-many terms, and only an unquote can. So `for x in a b; do ↙body↘ done`
+//! no longer distinguishes the two arities: the hole is inside the `do_group`,
+//! and the `for_statement` around it emits the same fluent chain either way.
+//! Each fragment therefore puts the hole **directly inside** the container under
+//! test, which is the position where arity is still observable.
 
 use indoc::indoc;
 use quilt::langs::omni::Omni;
@@ -58,15 +66,16 @@ fn is_variadic_form(out: &str, tag: &str) -> bool {
 }
 
 /// Fragments exercising the constructs #150 reconciled, one per container tag.
-/// Each parses in both shells and puts a hole inside the container, so the
-/// container's arity decides the shape of the generated code.
+/// Each parses in both shells and puts a hole *directly* inside the container —
+/// in its word list, condition or name rather than its body — so the container's
+/// own arity, not its body's, decides the shape of the generated code.
 const SHARED_CONTAINERS: &[(&str, &str)] = &[
-    ("for_statement", "for x in a b; do\n    ↙body↘\ndone"),
-    ("while_statement", "while true; do\n    ↙body↘\ndone"),
-    ("function_definition", "f() {\n    ↙body↘\n}"),
+    ("for_statement", "for x in ↙items↘; do\n    echo hi\ndone"),
+    ("while_statement", "while ↙cond↘; do\n    echo hi\ndone"),
+    ("function_definition", "↙name↘() {\n    echo hi\n}"),
     (
         "c_style_for_statement",
-        "for ((i=0; i<3; i++)); do\n    ↙body↘\ndone",
+        "for ((↙init↘; i<3; i++)); do\n    echo hi\ndone",
     ),
     ("variable_assignment", "X=↙v↘"),
     ("file_redirect", "echo hi > ↙f↘"),
@@ -124,8 +133,13 @@ fn for_loop_expands_identically_across_shells() -> Result<()> {
 }
 
 /// The generated shape itself, so a change to it is reviewable rather than
-/// silent (issue #157). Both shells share one snapshot: they agree modulo the
-/// loop-variable leaf kind, and asserting that here too is the point.
+/// silent (issue #157). Zsh's shape is pinned to this one by
+/// `for_loop_expands_identically_across_shells` above, modulo the loop-variable
+/// leaf kind.
+///
+/// Note the two forms side by side: `for_statement` holds no unquote directly,
+/// so since #180 it builds fluently, while the `do_group` that does hold `body`
+/// keeps the accumulator and the `body.emit(&mut b_)` that #150 is about.
 #[test]
 fn for_loop_with_emit_body() -> Result<()> {
     let out = expand(indoc! {r#"

@@ -13,7 +13,7 @@
 //! only the `rust` feature but splices WGSL terms). The markers index lifting;
 //! they don't need the parser.
 
-use crate::qterm::{leaf, tb, QTerm};
+use crate::qterm::{leaf, sym, tb, QTerm};
 use std::sync::Arc;
 
 /**************************************************************/
@@ -209,14 +209,17 @@ impl LiftTo<Python> for String {
 
 impl<T: LiftTo<Python>> LiftTo<Python> for [T] {
     fn lift_to(&self) -> Arc<QTerm> {
-        let mut b = tb("list").w("[");
+        // `[1, 4]` parses as `(list "[" (integer) "," (integer) "]")`: the
+        // brackets and commas are child tokens, not literal text. Only the
+        // space after a comma is layout.
+        let mut b = tb("list").c(&sym("["));
         for (i, x) in self.iter().enumerate() {
             if i > 0 {
-                b = b.w(", ");
+                b = b.c(&sym(",")).w(" ");
             }
             b = b.c(&x.lift_to());
         }
-        b.w("]").b()
+        b.c(&sym("]")).b()
     }
 }
 
@@ -250,7 +253,13 @@ macro_rules! shell_lifts {
     ($marker:ty; $($t:ty),* $(,)?) => {
         impl LiftTo<$marker> for str {
             fn lift_to(&self) -> Arc<QTerm> {
-                leaf("string", &format!("\"{}\"", sh_dquote_escape(self)))
+                // `"s"` parses as `(string "\"" (string_content) "\"")`; an
+                // empty string has no `string_content` child.
+                let mut b = tb("string").c(&sym("\""));
+                if !self.is_empty() {
+                    b = b.c(&leaf("string_content", &sh_dquote_escape(self)));
+                }
+                b.c(&sym("\"")).b()
             }
         }
         impl LiftTo<$marker> for String {
@@ -302,10 +311,13 @@ fn nix_dquote_escape(s: &str) -> String {
 
 impl LiftTo<Nix> for str {
     fn lift_to(&self) -> Arc<QTerm> {
-        leaf(
-            "string_expression",
-            &format!("\"{}\"", nix_dquote_escape(self)),
-        )
+        // `"s"` parses as `(string_expression "\"" (string_fragment) "\"")`.
+        // An empty string has no `string_fragment` child at all.
+        let mut b = tb("string_expression").c(&sym("\""));
+        if !self.is_empty() {
+            b = b.c(&leaf("string_fragment", &nix_dquote_escape(self)));
+        }
+        b.c(&sym("\"")).b()
     }
 }
 
@@ -343,19 +355,24 @@ nix_lift_float!(f32, f64);
 
 impl LiftTo<Nix> for bool {
     fn lift_to(&self) -> Arc<QTerm> {
-        // `true`/`false` are builtins, parsed as `variable_expression`s.
-        leaf("variable_expression", if *self { "true" } else { "false" })
+        // `true`/`false` are builtins, parsed as
+        // `(variable_expression (identifier))` — the name is its own node.
+        tb("variable_expression")
+            .c(&leaf("identifier", if *self { "true" } else { "false" }))
+            .b()
     }
 }
 
 impl<T: LiftTo<Nix>> LiftTo<Nix> for [T] {
     fn lift_to(&self) -> Arc<QTerm> {
-        // Nix list literals are space-separated, not comma-separated: `[ 1 2 ]`.
-        let mut b = tb("list_expression").w("[");
+        // `[ 1 4 ]` parses as `(list_expression "[" (…) (…) "]")`: the brackets
+        // are child tokens and the separators really are just whitespace, since
+        // Nix lists are space-separated rather than comma-separated.
+        let mut b = tb("list_expression").c(&sym("[")).w(" ");
         for x in self {
-            b = b.w(" ").c(&x.lift_to());
+            b = b.c(&x.lift_to()).w(" ");
         }
-        b.w(" ]").b()
+        b.c(&sym("]")).b()
     }
 }
 
@@ -396,7 +413,13 @@ fn lean_dquote_escape(s: &str) -> String {
 
 impl LiftTo<Lean> for str {
     fn lift_to(&self) -> Arc<QTerm> {
-        leaf("str_lit", &format!("\"{}\"", lean_dquote_escape(self)))
+        // `"s"` parses as `(str_lit "\"" "\"")` — the quote tokens are children
+        // and the body sits between them as raw text, not as its own node.
+        let mut b = tb("str_lit").c(&sym("\""));
+        if !self.is_empty() {
+            b = b.w(&lean_dquote_escape(self));
+        }
+        b.c(&sym("\"")).b()
     }
 }
 
@@ -425,8 +448,10 @@ macro_rules! lean_lift_int {
                 // `num_lit` is unsigned in the grammar, so a negative value is
                 // the `unary_op` `-` applied to its magnitude.
                 if *self < 0 {
+                    // `-2` parses as `(unary_op "-" (num_lit))`: the sign is a
+                    // child token, not literal text.
                     return tb("unary_op")
-                        .w("-")
+                        .c(&sym("-"))
                         .c(&leaf("num_lit", &self.unsigned_abs().to_string()))
                         .b();
                 }
@@ -447,7 +472,7 @@ macro_rules! lean_lift_float {
                 let s = format!("{self:?}");
                 if *self < 0.0 {
                     return tb("unary_op")
-                        .w("-")
+                        .c(&sym("-"))
                         .c(&leaf("scientific_lit", s.trim_start_matches('-')))
                         .b();
                 }
@@ -471,14 +496,15 @@ impl LiftTo<Lean> for bool {
 
 impl<T: LiftTo<Lean>> LiftTo<Lean> for [T] {
     fn lift_to(&self) -> Arc<QTerm> {
-        let mut b = tb("list_lit").w("[");
+        // `[1, 2]` parses as `(list_lit "[" (num_lit) "," (num_lit) "]")`.
+        let mut b = tb("list_lit").c(&sym("["));
         for (i, x) in self.iter().enumerate() {
             if i > 0 {
-                b = b.w(", ");
+                b = b.c(&sym(",")).w(" ");
             }
             b = b.c(&x.lift_to());
         }
-        b.w("]").b()
+        b.c(&sym("]")).b()
     }
 }
 

@@ -61,13 +61,11 @@ impl TSProvider for BashProvider {
         Ok((qterm.squash(), kind))
     }
 
-    /// Bash's variadic containers.
-    ///
-    /// Kept in the same order as [`crate::langs::zsh::lang::ZshProvider::arity`]
-    /// so the two read as diffable copies of one table;
-    /// `shell_arity_tables_agree` in `quilt-conformance/tests/grammar_tags.rs`
-    /// fails if they disagree about any node kind both grammars define
-    /// (issue #150).
+    /// See [`super::super::zsh`]'s table, which is kept in the same order: the
+    /// two grammars share a lineage, so every node kind both define must
+    /// classify the same way in both, enforced by
+    /// `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` (#150).
     fn arity(&self, tag: &str) -> Arity {
         match tag {
             "program"
@@ -106,6 +104,9 @@ impl TSProvider for BashProvider {
             | "concatenation"
             | "array"
             | "expansion"
+            // Bash's one entry with no zsh counterpart: zsh spells the same
+            // construct `dollar_variable` / `variable_ref`.
+            | "simple_expansion"
             | "brace_expression"
             | "arithmetic_expansion"
             | "binary_expression"
@@ -115,11 +116,16 @@ impl TSProvider for BashProvider {
             | "parenthesized_expression"
             | "subscript"
             | "number"
-            | "heredoc_body"
-            // bash-only: zsh spells this `dollar_variable` / `variable_ref`.
-            | "simple_expansion" => Arity::Variadic,
+            | "heredoc_body" => Arity::Variadic,
             _ => Arity::Unknown,
         }
+    }
+
+    /// The shell grammars have no `identifier` node kind at all — a bare word is
+    /// a `word` — so the trait default would tag a deferred operator with a kind
+    /// this grammar does not define.
+    fn ident_tag(&self) -> &'static str {
+        "word"
     }
 
     fn hashbang(&self) -> Option<&'static str> {

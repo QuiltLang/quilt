@@ -61,14 +61,14 @@ impl TSProvider for ZshProvider {
         Ok((qterm.squash(), kind))
     }
 
-    /// Zsh's variadic containers.
-    ///
-    /// The first block is the shell-shared set, kept in the same order as
-    /// [`crate::langs::bash::lang::BashProvider::arity`] so the two read as
-    /// diffable copies of one table; `shell_arity_tables_agree` in
-    /// `quilt-conformance/tests/grammar_tags.rs` fails if they disagree about
-    /// any node kind both grammars define (issue #150). The second block is
-    /// what zsh has and bash does not, so it has no counterpart to match.
+    /// Kept deliberately in the same order as [`super::super::bash`]'s table, so
+    /// the two read side by side. Zsh shares bash's grammar lineage, so every
+    /// node kind both grammars define must classify the same way in both — an
+    /// emit into a zsh `for` body has no business behaving differently from the
+    /// identical bash one (#150). `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` enforces exactly that, so the
+    /// only entries that may differ are the ones the other grammar has no kind
+    /// for, grouped at the end.
     fn arity(&self, tag: &str) -> Arity {
         match tag {
             "program"
@@ -117,7 +117,10 @@ impl TSProvider for ZshProvider {
             | "subscript"
             | "number"
             | "heredoc_body"
-            // zsh-only: absent from the bash grammar.
+            // Zsh-only kinds — the bash grammar defines none of these, which is
+            // why bash's table has no counterpart to them. (Bash's one unshared
+            // entry is `simple_expansion`; zsh spells the same construct
+            // `dollar_variable` / `variable_ref`.)
             | "compound_statement_no_always"
             | "expansion_default_list"
             | "select_statement"
@@ -129,46 +132,37 @@ impl TSProvider for ZshProvider {
         }
     }
 
+    /// The shell grammars have no `identifier` node kind at all — a bare word is
+    /// a `word` — so the trait default would tag a deferred operator with a kind
+    /// this grammar does not define.
+    fn ident_tag(&self) -> &'static str {
+        "word"
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env zsh")
     }
 }
 
 /// Tags that are Zsh "expressions".
-///
-/// Aligned with bash's list — see the note on [`ZshProvider::arity`]; the
-/// trailing two are zsh's own spelling of an expansion, which bash writes as
-/// `simple_expansion`. This list had drifted from bash's the same way `arity`
-/// had, omitting `raw_string`, `ansi_c_string`, `translated_string` and
-/// `process_substitution`.
-///
-/// Unlike `arity`, the divergence was latent rather than observable: the
-/// `InnerKind` this feeds is the second half of `unwrap`'s return, which its
-/// only caller currently discards (`let (qterm, _ikind) = …` in
-/// `treesitter.rs`). Aligning it now means the two shells will not disagree once
-/// that kind is threaded through.
 fn is_expr_tag(tag: &str) -> bool {
     matches!(
         tag,
         "word"
             | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
             | "number"
             | "binary_expression"
             | "unary_expression"
-            | "ternary_expression"
             | "postfix_expression"
+            | "ternary_expression"
             | "parenthesized_expression"
             | "brace_expression"
             | "arithmetic_expansion"
             | "command_substitution"
-            | "process_substitution"
-            | "expansion"
-            | "concatenation"
             | "variable_ref"
             | "dollar_variable"
+            | "expansion"
+            | "concatenation"
     )
 }
 

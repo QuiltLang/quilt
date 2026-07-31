@@ -147,6 +147,12 @@ let program = ↖{
 
 The unquote `↙{…}↘` runs a Rust loop at generation time; each iteration emits one `println!` statement into the outer block.
 
+That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)):
+
+```nix
+nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗
+```
+
 ## Lift `↑` and reduce `↓`
 
 `↑` (lift) converts a value into a `QTerm`. What "lift" means is language-specific:

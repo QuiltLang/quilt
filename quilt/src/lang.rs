@@ -44,6 +44,21 @@ impl InnerKind {
     pub fn is_stmt_like(self) -> bool {
         matches!(self, InnerKind::Stmt | InnerKind::Item)
     }
+
+    /// Whether a fragment of this kind is *code to run* rather than a value to
+    /// insert — [`is_stmt_like`](Self::is_stmt_like) widened to include a whole
+    /// sequence of statements.
+    ///
+    /// The two differ for exactly one case, and it matters: a ground unquote
+    /// holding **several** statements parses with the file root
+    /// (`source_file` / `module`), so `is_stmt_like` says `false` even though a
+    /// statement sequence is the least value-like thing there is. The expander
+    /// asks this when deciding whether to splice a ground unquote or emit it;
+    /// see `Expander::expand`.
+    #[must_use]
+    pub fn is_code_like(self) -> bool {
+        self.is_stmt_like() || matches!(self, InnerKind::File)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -170,6 +185,20 @@ pub trait Language {
         }
     }
 
+    /// The node kind this language spells a bare identifier with.
+    ///
+    /// The expander needs it for the one term it constructs itself rather than
+    /// parsing: an operator (`↑`, `↓`, `←`) inside an as-yet-unresolved quote is
+    /// deferred as its glyph, to be spelled out when that stage runs. That
+    /// placeholder used to be hardcoded as `leaf("identifier", …)` in
+    /// `multi.rs` — a Rust tag applied to every language, and simply not a node
+    /// kind bash or zsh define (they have `word`); see issue #174, finding E2.
+    ///
+    /// The default is right for every language here except the shells.
+    fn ident_tag(&self) -> &'static str {
+        "identifier"
+    }
+
     /// Shebang line used to run an expanded file of this language, if supported.
     /// e.g. `"#!/usr/bin/env rust-script"` or `"#!/usr/bin/env python3"`.
     ///
@@ -260,6 +289,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn classify_term(&self, term: &QTerm) -> InnerKind {
         self.as_ref().classify_term(term)
+    }
+
+    fn ident_tag(&self) -> &'static str {
+        self.as_ref().ident_tag()
     }
 
     fn hashbang(&self) -> Option<&'static str> {

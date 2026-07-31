@@ -56,12 +56,18 @@ fn quote_expr() -> Result<()> {
 
 #[test]
 fn variadic() -> Result<()> {
+    // `block` is variadic, but this one holds no unquote, so there is nothing
+    // that could contribute more than one child: it builds with the fluent
+    // chain rather than the `{ let mut b_ = ..; .. }` accumulator. `splicing`
+    // and `splicing_nested` below cover the accumulator form, which is what a
+    // block with a dynamic child still gets.
     let out = expand_both(indoc! {r#"
         ↖fn foo() {
             println!("Hello");
             println!("World");
         }↗
     "#})?;
+    assert!(!out.contains("let mut b_"), "{out}");
     insta::assert_snapshot!(out);
     Ok(())
 }
@@ -133,11 +139,68 @@ fn ground_unit_unquote_spliced() -> Result<()> {
 }
 
 #[test]
+fn ground_stmt_sequence_unquote_spliced() -> Result<()> {
+    // The same rule for a body holding *several* statements, which parses with
+    // the file root rather than a statement one.
+    //
+    // This used to be emitted, appending `.emit(&mut b_);` after the body's
+    // last statement — `…emit(&mut b_);.emit(&mut b_);` here, which does not
+    // parse. It went unnoticed because the failure is invisible whenever the
+    // last statement is block-shaped (`for`, `if`, `{…}`): those are valid
+    // method receivers evaluating to `()`, so the stray call landed on the
+    // no-op `impl Emit for ()`. `mk_meta.rs.quilt` ends its unquote with a
+    // `for`, so the bootstrap bootstrapped right past it.
+    let out = expand_both(indoc! {r#"
+        let p = ↖
+            fn keep() {}
+
+            ↙
+                let n = 3;
+                ↖fn made() {}↗.←;
+            ↘
+        ↗;
+    "#})?;
+    assert!(!out.contains(";.emit(&mut b_)"), "{out}");
+    // The body is spliced verbatim, statements and all.
+    assert!(out.contains("let n = 3;"), "{out}");
+    insta::assert_snapshot!(out);
+    Ok(())
+}
+
+#[test]
 fn pattern_let() -> Result<()> {
     // A quote in the binding position of a `let` is a pattern (issue #18):
     // its ground unquotes become metavariables and the statement destructures
     // the value by matching its shape.
     insta::assert_snapshot!(expand_both("let ↖1 + ↙x↘↗ = rhs;")?);
+    Ok(())
+}
+
+/// `let mut ↖p↗ = v;` is a pattern-let too.
+///
+/// The expander used to take the pattern from a fixed `terms[1]`, which is the
+/// `mutable_specifier` here, not the pattern. The quote then expanded as an
+/// ordinary term-builder *in binding position*, so `quilt expand` happily wrote
+/// Rust that does not compile:
+///
+/// ```text
+/// let mut tb("binary_expression").c(&a) … .b() = v;
+/// ```
+///
+/// The meta-language now reports the pattern and value positions relative to its
+/// own separator token, so an extra child cannot shift them (#174, finding E3).
+#[test]
+fn pattern_let_with_mut() -> Result<()> {
+    let out = expand_both("let mut ↖1 + ↙x↘↗ = rhs;")?;
+    assert!(
+        out.contains("qmatch_n"),
+        "`let mut` should still be a pattern-let: {out}"
+    );
+    assert!(
+        !out.contains("tb(\"binary_expression\").c(&x)"),
+        "the pattern must not expand as a term builder in binding position: {out}"
+    );
+    insta::assert_snapshot!(out);
     Ok(())
 }
 

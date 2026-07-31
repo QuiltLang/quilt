@@ -203,12 +203,15 @@ pub fn name(s: &str) -> Arc<QTerm> {
 /// *more* faithful reproduction of the parser's own output, since tree-sitter
 /// records `string_content` exactly as it appears in source — backslashes and
 /// all.
+/// The empty string is `(string_literal "\"" "\"")` — the parser emits no
+/// `string_content` child when there is no content — so this mirrors that rather
+/// than emitting an empty one.
 fn strlit_term(s: &str) -> Arc<QTerm> {
-    tb("string_literal")
-        .c(&sym("\""))
-        .c(&leaf("string_content", &str_body(s)))
-        .c(&sym("\""))
-        .b()
+    let mut b = tb("string_literal").c(&sym("\""));
+    if !s.is_empty() {
+        b = b.c(&leaf("string_content", &str_body(s)));
+    }
+    b.c(&sym("\"")).b()
 }
 
 /// A `[..]` cmds data literal whose string args are structured `string_literal`s.
@@ -469,8 +472,10 @@ macro_rules! qlift_float {
             fn qlift(&self) -> Arc<QTerm> {
                 let s = format!("{self:?}");
                 if *self < 0.0 {
+                    // `-1.5` parses as `(unary_expression "-" (float_literal))`:
+                    // the sign is a child token, not literal text.
                     return tb("unary_expression")
-                        .w("-")
+                        .c(&sym("-"))
                         .c(&leaf("float_literal", s.trim_start_matches('-')))
                         .b();
                 }
@@ -483,7 +488,11 @@ qlift_float!(f32, f64);
 
 impl QLift for bool {
     fn qlift(&self) -> Arc<QTerm> {
-        leaf("boolean_literal", if *self { "true" } else { "false" })
+        // `true` parses as `(boolean_literal "true")` — the keyword is a child
+        // token, so a flat leaf is a shape the parser never produces.
+        tb("boolean_literal")
+            .c(&sym(if *self { "true" } else { "false" }))
+            .b()
     }
 }
 

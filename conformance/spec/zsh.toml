@@ -9,11 +9,11 @@ blurb = """
 A target-only shell language, sharing bash's grammar lineage and escaping rules. \
 A lifted Rust string becomes a properly escaped double-quoted word."""
 
-# See bash.toml: the shared entries below are identical in both specs, and #150
-# reconciled the providers behind them — `shell_arity_tables_agree` in
-# quilt-conformance/tests/grammar_tags.rs now fails if bash and zsh classify any
-# node kind both grammars define differently. The trailing block is what zsh has
-# and bash does not, so it has no bash counterpart.
+# See bash.toml: the block below is deliberately identical to it, in the same
+# order; only the entries one grammar has no node kind for follow it, so a future
+# divergence shows up as a diff between these two files as well. The eleven tags
+# marked below are the ones whose classification had drifted between the two
+# (#150).
 variadic = [
   "program",
   "compound_statement",
@@ -27,37 +27,52 @@ variadic = [
   "else_clause",
   "case_statement",
   "case_item",
+  # The eleven that had drifted. Both grammars define all of them.
   "for_statement",
   "c_style_for_statement",
   "while_statement",
   "function_definition",
-  "redirected_statement",
-  "file_redirect",
+  "test_command",
   "variable_assignment",
+  "file_redirect",
+  "raw_string",
+  "ansi_c_string",
+  "subscript",
+  "ternary_expression",
+  # Shared containers that never drifted.
+  "redirected_statement",
   "variable_assignments",
   "declaration_command",
-  "test_command",
   "string",
+  "concatenation",
   "array",
   "expansion",
-  "concatenation",
-  # zsh-only: absent from the bash grammar.
+  "arithmetic_expansion",
+  # Zsh-only: the bash grammar defines none of these.
   "compound_statement_no_always",
+  "expansion_default_list",
   "select_statement",
   "repeat_statement",
   "dollar_variable",
   "variable_ref",
+  "zsh_array_subscript_flags",
 ]
-# Over-declaring variadicity silently changes emit behaviour, so pin leaves that
-# must stay non-variadic. All four are kinds both shell grammars define.
-not_variadic = ["word", "comment", "variable_name", "test_operator"]
+# Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
+# All five are kinds both shell grammars define.
+not_variadic = [
+  "word",
+  "variable_name",
+  "comment",
+  "test_operator",
+  "file_descriptor",
+]
 
 lift_marker = "Zsh"
 
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
-variadic-containers = {status = "supported", note = "53 variadic container tags, agreeing with bash's table on every node kind both grammars define"}
+variadic-containers = {status = "supported", note = "agrees with bash's table on every node kind both grammars define"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Zsh>` impl", issue = 149}
 highlights = {status = "supported"}

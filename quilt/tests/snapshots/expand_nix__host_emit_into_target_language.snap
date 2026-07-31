@@ -1,0 +1,6 @@
+---
+source: quilt/tests/expand_nix.rs
+expression: out
+---
+let fs = [ "a" "b" ]; in "set -e
+${(builtins.concatStringsSep "\n") (map (f: "cp ${f} /tmp/") fs)}"

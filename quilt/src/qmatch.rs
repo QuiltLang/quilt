@@ -216,6 +216,55 @@ pub fn qmatch_n<const N: usize>(pattern: &QTerm, term: &QTerm) -> [Arc<QTerm>; N
 // Codegen: the Rust spellings of the runtime above, shared by the Rust and
 // Bootstrap meta-languages (see `MetaLanguage::pattern_var`/`pattern_let`).
 
+/// Locate the pattern and value children of a pattern-let, from the tokens that
+/// delimit them: `value_sep` introduces the initializer (`=` for Rust, `:=` or
+/// `<-` elsewhere) and `type_sep`, when the language has one, introduces a type
+/// annotation (`:` for Rust).
+///
+/// The value is the child after `value_sep`. The pattern is the child before
+/// `type_sep` when an annotation is present, and the child before `value_sep`
+/// otherwise — so all three of these find the same binding position:
+///
+/// ```text
+/// let ↖p↗ = v;            pattern before `=`
+/// let mut ↖p↗ = v;        `mutable_specifier` shifts it — still before `=`
+/// let ↖p↗: T = v;         annotation present — pattern before `:`
+/// ```
+///
+/// Deriving the positions from the tokens is what makes this robust to extra
+/// children. The expander used to hardcode a fixed `terms[1]`, which is the
+/// `mutable_specifier` in the second case: the quote then expanded as an
+/// ordinary term builder *in binding position*, and `quilt expand` emitted Rust
+/// that does not compile (issue #174, finding E3).
+///
+/// Returns `None` when `value_sep` is absent or sits at an edge — i.e. when the
+/// tuple is not a well-formed pattern-let after all.
+#[must_use]
+pub fn pattern_binding_at(
+    terms: &[Arc<QTerm>],
+    value_sep: &str,
+    type_sep: Option<&str>,
+) -> Option<(usize, usize)> {
+    let token = |sep: &str| {
+        terms.iter().position(|t| {
+            matches!(&**t, QTerm::Tuple { tag, terms, .. }
+                if &**tag == sep && terms.is_empty())
+        })
+    };
+
+    let value_at = token(value_sep)?;
+    // An annotation only counts when it precedes the initializer: `:` after `=`
+    // would belong to the value expression, not to this binding.
+    let anchor = type_sep
+        .and_then(token)
+        .filter(|&t| t < value_at)
+        .unwrap_or(value_at);
+
+    let pattern = anchor.checked_sub(1)?;
+    let value = value_at + 1;
+    (value < terms.len()).then_some((pattern, value))
+}
+
 /// Code for a pattern metavariable splice: `mvar("name")`.
 pub fn pattern_var_code(name: &str) -> Arc<QTerm> {
     leaf("_", &format!("mvar(\"{name}\")"))

@@ -32,7 +32,7 @@
         {
           "axis": "variadic-containers",
           "status": "supported",
-          "note": "47 variadic container tags, agreeing with zsh's table on every node kind both grammars define",
+          "note": "agrees with zsh's table on every node kind both grammars define",
           "verified_by": "variadic-containers/bash",
           "detail": [
             "program",
@@ -51,16 +51,21 @@
             "c_style_for_statement",
             "while_statement",
             "function_definition",
-            "redirected_statement",
-            "file_redirect",
+            "test_command",
             "variable_assignment",
+            "file_redirect",
+            "raw_string",
+            "ansi_c_string",
+            "subscript",
+            "ternary_expression",
+            "redirected_statement",
             "variable_assignments",
             "declaration_command",
-            "test_command",
             "string",
+            "concatenation",
             "array",
             "expansion",
-            "concatenation",
+            "arithmetic_expansion",
             "simple_expansion"
           ]
         },
@@ -556,12 +561,12 @@
         },
         {
           "axis": "emit",
-          "status": "planned",
-          "note": "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says",
+          "status": "partial",
+          "note": "the string model has no `b_` accumulator, so `←` is the *functional* reading of emit: it takes the whole list of fragments and joins it into the surrounding container (`builtins.concatStringsSep \"\\n\"`, applied prefix like `↑`). Building that list is `map`, not a ground loop, and joined fragments are not re-indented",
           "issue": 155,
           "verified_by": "emit/nix",
           "detail": [
-            "← unsupported (fails with guidance)",
+            "← → (builtins.concatStringsSep \"\\n\")",
             "type_str unsupported",
             "name_str → toString"
           ]
@@ -1410,7 +1415,7 @@
         {
           "axis": "variadic-containers",
           "status": "supported",
-          "note": "53 variadic container tags, agreeing with bash's table on every node kind both grammars define",
+          "note": "agrees with bash's table on every node kind both grammars define",
           "verified_by": "variadic-containers/zsh",
           "detail": [
             "program",
@@ -1429,21 +1434,28 @@
             "c_style_for_statement",
             "while_statement",
             "function_definition",
-            "redirected_statement",
-            "file_redirect",
+            "test_command",
             "variable_assignment",
+            "file_redirect",
+            "raw_string",
+            "ansi_c_string",
+            "subscript",
+            "ternary_expression",
+            "redirected_statement",
             "variable_assignments",
             "declaration_command",
-            "test_command",
             "string",
+            "concatenation",
             "array",
             "expansion",
-            "concatenation",
+            "arithmetic_expansion",
             "compound_statement_no_always",
+            "expansion_default_list",
             "select_statement",
             "repeat_statement",
             "dollar_variable",
-            "variable_ref"
+            "variable_ref",
+            "zsh_array_subscript_flags"
           ]
         },
         {

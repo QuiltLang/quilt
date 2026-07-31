@@ -153,7 +153,18 @@ let drv = nix↖
 
 `NixMetaLanguage` makes Nix drive generation. Unlike the Rust/Python hosts, which emit builder calls into a `QTerm` runtime, the Nix host has **no runtime library**: `meta.rs`/`ops.rs` represent generated code as plain **Nix strings**. A quote `↖…↗` becomes a Nix string literal, a host unquote `↙x↘` becomes Nix's own `${x}` antiquotation, and `↑` spells `toString`. So a `.nix.quilt` file expands to a Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. Static sub-structure is flattened inline, so a literal fragment is one flat string, not a tower of `${"…"}`.
 
-The string model is language-agnostic (a Nix host can generate *any* target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`). A ground `←` is a hard error saying exactly that (`NixMetaLanguage::emit_str`); a `←` at sky depth still defers to the next stage, as always. Ground `↓` is likewise an error — reducing a term needs the `QTerm` runtime this host doesn't have, so compute the value in ordinary Nix and splice it with `↙…↘`. `⟨T⟩` has no spelling either, since Nix is untyped (and `⟨T⟩` is not staged, so this holds inside a quote too); `⟨N⟩` is `toString`, the identity on a string. See `examples/nix_host.nix.quilt`:
+The string model is language-agnostic (a Nix host can generate *any* target), but has no `b_` accumulator, so emit is **functional** rather than imperative. Nix is a pure expression language: there are no statements and nothing to mutate, so "append one term to `b_`, once around the loop" has no counterpart. Its functional reading does — build the list of fragments with `map`, then hand the whole list to `←`, which joins it into the surrounding container (`NixMetaLanguage::emit_str`, issue #155):
+
+```nix
+let
+  services = [ "web" "db" "cache" ];
+in
+  nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗
+```
+
+`←` spells `builtins.concatStringsSep "\n"` — `builtins`-only, since this host ships no runtime library — and like `↑`/`toString` it is applied prefix, by juxtaposition: write `← xs`, not `xs.←`. The separator is a newline because it is the only one correct for *both* container kinds: Nix is whitespace-insensitive, so `[ "web"\n"db" ]` is the list the source meant, and a line-oriented target (bash, python, …) gets one statement per line rather than a run-on. Two limits follow from the model: joined fragments are not re-indented (the same is already true of any multi-line `↙x↘` splice), and a container whose elements need some *other* separator — a comma-separated `formals`, say — wants `builtins.concatStringsSep` directly, which is exactly what `←` partially applies. A `←` at sky depth still defers to the next stage, as always. See `examples/nix_emit.nix.quilt`.
+
+Ground `↓` is still an error — reducing a term needs the `QTerm` runtime this host doesn't have, so compute the value in ordinary Nix and splice it with `↙…↘`. `⟨T⟩` has no spelling either, since Nix is untyped (and `⟨T⟩` is not staged, so this holds inside a quote too); `⟨N⟩` is `toString`, the identity on a string. See `examples/nix_host.nix.quilt`:
 
 ```nix
 let

@@ -2,29 +2,14 @@
 source: quilt/tests/expand_shell.rs
 expression: out
 ---
-const X: T = {
-    let mut b_ = tb("for_statement");
-    sym("for").emit(&mut b_);
-    b_.write(" ");
-    leaf("variable_name", "x").emit(&mut b_);
-    b_.write(" ");
-    sym("in").emit(&mut b_);
-    b_.write(" ");
-    leaf("word", "a").emit(&mut b_);
-    b_.write(" ");
-    leaf("word", "b").emit(&mut b_);
-    sym(";").emit(&mut b_);
-    b_.write(" ");
-    {
-        let mut b_ = tb("do_group");
-        sym("do").emit(&mut b_);
-        b_.push("    ");
-        b_.nl();
-        body.emit(&mut b_);
-        b_.pop();
-        b_.nl();
-        sym("done").emit(&mut b_);
-        b_.b()
-    }.emit(&mut b_);
+const X: T = tb("for_statement").c(&sym("for")).w(" ").c(&leaf("variable_name", "x")).w(" ").c(&sym("in")).w(" ").c(&leaf("word", "a")).w(" ").c(&leaf("word", "b")).c(&sym(";")).w(" ").c(&{
+    let mut b_ = tb("do_group");
+    sym("do").emit(&mut b_);
+    b_.push("    ");
+    b_.nl();
+    body.emit(&mut b_);
+    b_.pop();
+    b_.nl();
+    sym("done").emit(&mut b_);
     b_.b()
-};
+}).b();
