@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Build the quilt-wasm runtime for Node — the runtime expanded .ts.quilt files
+# target when they are run from the CLI, the way bin/build-py builds the one
+# .py.quilt files target. Required before `quilt run foo.ts.quilt`.
+#
+# `--target nodejs` (not the `--target web` build the npm package ships, which
+# examples/web/build.mjs puts in pkg-web/): CommonJS with the wasm instantiated
+# on require, so there is no fetch/init dance for a CLI run. The API surface is
+# identical either way.
+#
+# `quilt run` resolves the bare `quilt` import to quilt-wasm/node/, which adds
+# the `↓` (reduce) operator on top of what this builds.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if ! command -v wasm-pack >/dev/null 2>&1; then
+  echo "error: wasm-pack not found — install it: https://rustwasm.github.io/wasm-pack/" >&2
+  exit 1
+fi
+
+wasm-pack build "$ROOT/quilt-wasm" --target nodejs --out-dir pkg "$@"
+echo "built quilt-wasm/pkg (nodejs target) — .ts.quilt files are now runnable"

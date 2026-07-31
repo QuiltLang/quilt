@@ -53,11 +53,11 @@ jobs:
           key: nightly-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             nightly-${{ runner.os }}-cargo-
-      # wasm-pack is not in the flake devShell (it pulls its own toolchain), so
-      # install it here rather than widening the shell every contributor loads.
-      - name: Install wasm-pack
-        run: |
-          if ! command -v wasm-pack >/dev/null 2>&1; then
-            curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
-          fi
+      # wasm-pack now comes from the flake devShell. It used to be installed
+      # here with the official curl|sh installer, which cannot work inside that
+      # shell: it copies the binary next to the `cargo` on PATH — the read-only
+      # /nix/store rustup — and ignores $CARGO_HOME, so it failed with EACCES.
+      # The failure was invisible, because bin/test-runtimes *skips* the wasm
+      # runtime when wasm-pack is missing: this job reported runtime parity
+      # while only ever comparing two of the three runtimes.
       - run: bin/test-runtimes

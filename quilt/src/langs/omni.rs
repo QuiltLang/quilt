@@ -198,6 +198,17 @@ macro_rules! define_omni {
                 }
             }
 
+            fn ident_tag(&self) -> &'static str {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.ident_tag(),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => "identifier",
+                }
+            }
+
             #[allow(unused_variables)]
             fn arity(&self, tag: &str) -> Arity {
                 match self {
@@ -424,6 +435,10 @@ impl MetaLanguage for OmniMetaLanguage {
 
     fn pattern_tag(&self) -> Option<&'static str> {
         self.inner().pattern_tag()
+    }
+
+    fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
+        self.inner().pattern_binding(terms)
     }
 
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {

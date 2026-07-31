@@ -65,6 +65,25 @@ pub trait MetaLanguage {
         None
     }
 
+    /// Where the pattern and value sit among the children of a
+    /// [`pattern_tag`](Self::pattern_tag) tuple, as `(pattern_ix, value_ix)`.
+    ///
+    /// The expander used to hardcode this: it scanned for a child tagged
+    /// literally `"="` and took the pattern from `terms[1]`. Both assumptions are
+    /// Rust's, sitting in the language-agnostic core — so a host whose binding
+    /// form uses `:=` or `<-` could not have pattern-lets even after supplying a
+    /// `pattern_tag`, and `let mut ↖p↗ = v` (where `mutable_specifier` shifts the
+    /// pattern off index 1) silently expanded to Rust that does not compile
+    /// (issue #174, finding E3).
+    ///
+    /// `None` means this tuple is not a pattern-let, so the expander treats it as
+    /// an ordinary ground tuple. Implementations will usually delegate to
+    /// [`crate::qmatch::pattern_binding_at`] with their separator token.
+    fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
+        let _ = terms;
+        None
+    }
+
     /// Code for a pattern metavariable: the expression spliced where `↙name↘`
     /// sits inside a pattern quote (e.g. `mvar("name")` for Rust).
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
@@ -177,6 +196,10 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn pattern_tag(&self) -> Option<&'static str> {
         (**self).pattern_tag()
+    }
+
+    fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
+        (**self).pattern_binding(terms)
     }
 
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {

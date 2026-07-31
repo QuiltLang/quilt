@@ -69,6 +69,13 @@ impl TSProvider for ZshProvider {
         shell::arity(tag)
     }
 
+    /// The shell grammars have no `identifier` node kind at all — a bare word is
+    /// a `word` — so the trait default would tag a deferred operator with a kind
+    /// this grammar does not define.
+    fn ident_tag(&self) -> &'static str {
+        "word"
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env zsh")
     }

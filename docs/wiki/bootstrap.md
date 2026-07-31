@@ -87,3 +87,9 @@ pub type Bootstrap = Multi<Singleton<BootstrapRustLanguage>, Singleton<Bootstrap
 ## Idempotency
 
 A clean run of `bootstrap` leaves `meta.rs` byte-for-byte unchanged. This is verified in CI by checking that the file has no diff after running bootstrap. If `meta.rs` diverges, it means a change to `mk_meta.rs.quilt` or a breaking change in `ops.rs` that must be reconciled.
+
+## What else could be bootstrapped
+
+`meta.rs` is currently the only generated file. The [Dogfooding Audit](dogfooding.md)
+surveys the rest of the tree for code that is hand-written but could be produced
+the same way — and, just as usefully, the places where it should not be.

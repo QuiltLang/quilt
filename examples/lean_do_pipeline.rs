@@ -39,17 +39,7 @@ fn main() -> Result<()> {
     let budget = 40u32;
     
     // The helper every generated bind calls. Plain quoted Lean, no splices.
-    let helper = tb("def").c(&sym("def")).w(" ").c(&leaf("identifier", "stage")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "name")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "String")).c(&sym(")")).b()).w(" ").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "cost")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("app").c(&leaf("identifier", "IO")).w(" ").c(&leaf("identifier", "Nat")).b()).w(" ").c(&sym(":=")).w(" ").c(&{
-        let mut b_ = tb("do_block");
-        sym("do").emit(&mut b_);
-        b_.push("    ");
-        b_.nl();
-        tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("interpolated_str").c(&sym("s!\"")).w("  ").c(&tb("interpolation").c(&sym("{")).c(&leaf("identifier", "name")).c(&sym("}")).b()).w(": ").c(&tb("interpolation").c(&sym("{")).c(&leaf("identifier", "cost")).c(&sym("}")).b()).w("ms").c(&sym("\"")).b()).b().emit(&mut b_);
-        b_.nl();
-        tb("app").c(&leaf("identifier", "pure")).w(" ").c(&leaf("identifier", "cost")).b().emit(&mut b_);
-        b_.pop();
-        b_.b()
-    }).b();
+    let helper = tb("def").c(&sym("def")).w(" ").c(&leaf("identifier", "stage")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "name")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "String")).c(&sym(")")).b()).w(" ").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "cost")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("app").c(&leaf("identifier", "IO")).w(" ").c(&leaf("identifier", "Nat")).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("do_block").c(&sym("do")).p("    ").n().c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("interpolated_str").c(&sym("s!\"")).w("  ").c(&tb("interpolation").c(&sym("{")).c(&leaf("identifier", "name")).c(&sym("}")).b()).w(": ").c(&tb("interpolation").c(&sym("{")).c(&leaf("identifier", "cost")).c(&sym("}")).b()).w("ms").c(&sym("\"")).b()).b()).n().c(&tb("app").c(&leaf("identifier", "pure")).w(" ").c(&leaf("identifier", "cost")).b()).x().b()).b();
     
     // The sum of every stage's binding, folded now so the emitted Lean is a
     // flat `fetch + parse + render` rather than anything recursive.
@@ -86,7 +76,7 @@ fn main() -> Result<()> {
             // emit into an already-indented block needs care. A single-line
             // `if … then … else …` sidesteps it and is idiomatic Lean anyway.
             tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "total")).w(" ").c(&sym(">")).w(" ").c(&budget.qlift_to::<Lean>()).b()).w(" ").c(&sym("then")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("over budget").c(&sym("\"")).b()).b()).w(" ").c(&sym("else")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("within budget").c(&sym("\"")).b()).b()).b().emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();

@@ -88,19 +88,7 @@ fn main() -> Result<()> {
     // The bound is the channel count, lifted out of the Rust list. `decide`
     // closes each case, so a wrong bound would be a compile error downstream.
     decls.push(
-        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Color.code_lt")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "c")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Color")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c.code")).w(" ").c(&sym("<")).w(" ").c(&n.qlift_to::<Lean>()).b()).w(" ").c(&sym(":=")).w(" ").c(&{
-            let mut b_ = tb("by");
-            {
-                let mut b_ = tb("by");
-                b_.write("by");
-                b_.b()
-            }.emit(&mut b_);
-            b_.push("  ");
-            b_.nl();
-            tb("binary_op").c(&tb("induction").c(&sym("cases")).w(" ").c(&leaf("identifier", "c")).b()).w(" ").c(&sym("<;>")).w(" ").c(&leaf("identifier", "decide")).b().emit(&mut b_);
-            b_.pop();
-            b_.b()
-        }).b()
+        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Color.code_lt")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "c")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Color")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c.code")).w(" ").c(&sym("<")).w(" ").c(&n.qlift_to::<Lean>()).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).p("  ").n().c(&tb("binary_op").c(&tb("induction").c(&sym("cases")).w(" ").c(&leaf("identifier", "c")).b()).w(" ").c(&sym("<;>")).w(" ").c(&leaf("identifier", "decide")).b()).x().b()).b()
         .coparse(),
     );
     
@@ -137,17 +125,7 @@ fn main() -> Result<()> {
     // `mk` is an application, so it is parenthesised before `.total`: a splice
     // carries a term, not a precedence level.
     decls.push(
-        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Palette.total_mk")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&binder_group).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("proj").c(&tb("paren").c(&sym("(")).c(&mk).c(&sym(")")).b()).c(&sym(".")).c(&leaf("identifier", "total")).b()).w(" ").c(&sym("=")).w(" ").c(&rhs).b()).w(" ").c(&sym(":=")).w(" ").c(&{
-            let mut b_ = tb("by");
-            {
-                let mut b_ = tb("by");
-                b_.write("by");
-                b_.b()
-            }.emit(&mut b_);
-            b_.write(" ");
-            leaf("identifier", "rfl").emit(&mut b_);
-            b_.b()
-        }).b()
+        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Palette.total_mk")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&binder_group).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("proj").c(&tb("paren").c(&sym("(")).c(&mk).c(&sym(")")).b()).c(&sym(".")).c(&leaf("identifier", "total")).b()).w(" ").c(&sym("=")).w(" ").c(&rhs).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).w(" ").c(&leaf("identifier", "rfl")).b()).b()
         .coparse(),
     );
     
@@ -173,7 +151,7 @@ fn main() -> Result<()> {
                 NL.emit(&mut b_);
             }
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("interpolated_str").c(&sym("s!\"")).w("total = ").c(&tb("interpolation").c(&sym("{")).c(&tb("proj").c(&tb("paren").c(&sym("(")).c(&tb("app").c(&tb("app").c(&tb("app").c(&leaf("identifier", "Palette.mk")).w(" ").c(&leaf("num_lit", "1")).b()).w(" ").c(&leaf("num_lit", "2")).b()).w(" ").c(&leaf("num_lit", "3")).b()).c(&sym(")")).b()).c(&sym(".")).c(&leaf("identifier", "total")).b()).c(&sym("}")).b()).c(&sym("\"")).b()).b().emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();

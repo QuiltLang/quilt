@@ -75,9 +75,17 @@ variadic = [
 ]
 # `variable_assignment` (singular) is a fixed name/`=`/value triple, not a
 # sequence — `variable_assignments` (plural) is the `X=1 Y=2` repeat. bash's
-# table claimed both, which is the copy-paste divergence #150 names. `word` and
-# `comment` are leaf negative controls.
-not_variadic = ["variable_assignment", "word", "comment"]
+# table claimed both, which is the copy-paste divergence #150 names.
+# Over-declaring variadicity silently changes emit behaviour, so the leaves are
+# pinned as negative controls too; every kind here is one both grammars define.
+not_variadic = [
+  "variable_assignment",
+  "word",
+  "variable_name",
+  "comment",
+  "test_operator",
+  "file_descriptor",
+]
 
 lift_marker = "Bash"
 

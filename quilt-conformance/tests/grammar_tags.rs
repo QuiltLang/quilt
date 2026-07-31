@@ -13,7 +13,7 @@
 //! (bash and zsh arity tables drifted apart) was one instance, fixed by giving
 //! the two dialects one shared table; issue #174 is the survey.
 //!
-//! Three checks here, all derived from the grammar rather than from a second copy
+//! Four checks here, all derived from the grammar rather than from a second copy
 //! of the table:
 //!
 //! 1. [`spec_tags_are_real_node_kinds`] — a hard assertion that every tag any
@@ -23,7 +23,10 @@
 //!    grammar. A grammar bump that renames or drops a kind shows up as a
 //!    reviewable diff instead of a silent behaviour change (the #157 approach:
 //!    review a diff, don't hand-maintain N literals).
-//! 3. [`shell_dialects_agree_on_shared_kinds`] — the fix for #150: bash and zsh
+//! 3. [`ident_tags_are_real_node_kinds`] — the one tag the expander constructs
+//!    rather than parses (`Language::ident_tag`) must also be a kind its grammar
+//!    defines (#174, finding E2).
+//! 4. [`shell_dialects_agree_on_shared_kinds`] — the fix for #150: bash and zsh
 //!    must answer `arity` identically for every node kind both grammars define.
 
 use quilt::lang::{Arity, Language};
@@ -140,17 +143,60 @@ fn variadic_tags_snapshot() {
     insta::assert_snapshot!(report);
 }
 
-/// bash and zsh must classify every node kind they share identically (issue #150).
+/// `Language::ident_tag` names a node kind its grammar actually defines.
 ///
-/// `tree-sitter-zsh` is a fork of `tree-sitter-bash` and the two Quilt languages
-/// are documented as near-equivalent, so a kind both grammars define is the same
-/// construct in both. If `arity` disagrees about one, an emit into (say) a zsh
-/// `for` body compiles differently from the identical bash one, with no
-/// diagnostic — which is exactly what had happened across twelve kinds.
+/// The expander constructs exactly one term itself rather than parsing it: the
+/// placeholder for an operator deferred to a later stage. That used to be
+/// hardcoded `leaf("identifier", …)` in `multi.rs` — a Rust tag applied to every
+/// language, and not a kind bash, zsh or html define at all (#174, finding E2).
+/// Now each language answers, and this checks the answers against the grammars.
+#[test]
+fn ident_tags_are_real_node_kinds() {
+    let mut failures = Vec::new();
+
+    for name in registry::LANGUAGES {
+        let Some(grammar) = registry::grammar(name) else {
+            continue; // `text` has no grammar to check against
+        };
+        let lang = registry::language(name).expect("language builds");
+        let tag = lang.ident_tag();
+        if !registry::node_kinds(&grammar).contains(tag) {
+            failures.push(format!(
+                "{name}: ident_tag() is {tag:?}, not a node kind in the {name} grammar"
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{}\n\nOverride `ident_tag` in that language's provider with a kind its \
+         grammar defines.",
+        failures.join("\n"),
+    );
+}
+
+/// Bash and zsh must classify every node kind their grammars *share* the same way.
+///
+/// The two are documented as near-equivalent — `concrete-languages.md` says of
+/// bash: *"Same as Zsh — a separate target with Bash-specific quoting
+/// semantics"* — and zsh's grammar is a fork of bash's. But their `arity` tables
+/// were maintained by hand and independently, and had drifted by twelve tags:
+/// `for_statement`, `while_statement`, `function_definition`, `test_command`,
+/// `c_style_for_statement`, `file_redirect`, `raw_string`, `ansi_c_string`,
+/// `subscript` and `ternary_expression` among them, every one of which the zsh
+/// grammar also defines and parses to a structurally identical tree. Arity
+/// decides whether the expander treats a node as a container to emit into, so an
+/// emit into a zsh `for` body behaved differently from the identical bash one,
+/// with no diagnostic (#150).
+///
+/// Restricting to the shared kinds is what makes this a real invariant rather
+/// than a wish: it says nothing about the constructs only one shell has (zsh's
+/// `repeat_statement`, bash's `simple_expansion`), so a legitimate
+/// grammar-specific tag never trips it, while a tag that both grammars define
+/// cannot be classified two ways again.
 ///
 /// The shared table in `quilt::langs::shell` is what makes this hold; this test
-/// is what keeps it holding. A dialect-only kind is out of scope by construction:
-/// it cannot be in the intersection.
+/// is what keeps it holding.
 #[test]
 fn shell_dialects_agree_on_shared_kinds() {
     let bash_grammar = registry::grammar("bash").expect("bash grammar");

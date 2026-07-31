@@ -15,7 +15,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 fn quilt() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_quilt"))
+    let mut c = Command::new(env!("CARGO_BIN_EXE_quilt"));
+    // The dev shell exports `RUST_LOG=info` (see .envrc), which puts tracing's
+    // `running: …` line on the CLI's stdout. Assertions about what a command
+    // printed should not depend on the developer's environment.
+    c.env_remove("RUST_LOG");
+    c
 }
 
 /// A scratch directory that cleans itself up.
@@ -228,6 +233,126 @@ fn expand_reports_errors_with_a_snippet() {
     assert!(!o.status.success());
     let e = stderr(&o);
     assert!(e.contains("let x = ↙1 + 2↘;"), "stderr:\n{e}");
+}
+
+/* ── run: the TypeScript/Node backend ──────────────────────────────────── */
+
+/// The Node runtime `quilt run` binds the bare `quilt` import to, and the
+/// wasm-pack build it needs. Absent in a checkout that has not run
+/// `bin/build-ts`, so the tests below skip rather than fail there — the CI
+/// `typescript` job builds it, as the `python` job does for `quilt_python`.
+fn node_runtime_built() -> bool {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../quilt-wasm/pkg/quilt_wasm.js")
+        .exists()
+}
+
+fn skip_without_node_runtime(test: &str) -> bool {
+    if node_runtime_built() {
+        return false;
+    }
+    eprintln!("skipping {test}: quilt-wasm is not built for Node — run `bin/build-ts`");
+    true
+}
+
+/// A `.ts.quilt` file has to actually run: the expanded program imports the
+/// runtime by bare specifier, and Node's ESM resolver ignores `NODE_PATH`, so
+/// before #153 `quilt run` died at the import.
+#[test]
+fn run_typescript_resolves_the_runtime_import() {
+    if skip_without_node_runtime("run_typescript_resolves_the_runtime_import") {
+        return;
+    }
+    let d = Dir::new("run-ts");
+    let f = d.write(
+        "hello.ts.quilt",
+        "import { tb, leaf, sym } from \"quilt\";\n\
+         const frag = ts↖1 + 2↗;\n\
+         console.log(frag.coparse());\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "1 + 2");
+}
+
+/// `↓` on the CLI — the whole point of #153. The first reduce is plain
+/// TypeScript; the second is a *generated stage* whose source still holds
+/// glyphs, so it only works if the runtime re-invokes the expander.
+#[test]
+fn run_typescript_reduces() {
+    if skip_without_node_runtime("run_typescript_reduces") {
+        return;
+    }
+    let d = Dir::new("run-ts-reduce");
+    // Everything printed is a string: `console.log` inspects non-string
+    // arguments, which adds ANSI colour whenever $FORCE_COLOR is set.
+    let f = d.write(
+        "reduce.ts.quilt",
+        "import { tb, leaf, sym, quote, unquote, cmd, write, qlift, HOLE } from \"quilt\";\n\
+         console.log(`plain: ${(ts↖6 * 7↗).↓}`);\n\
+         const stage2 = ts↖(a) => ts↖(x) => ↙↑(a)↘ * x↗↗;\n\
+         const gen = stage2.↓;\n\
+         console.log(`staged: ${gen(7).coparse()}`);\n\
+         console.log(`value: ${gen(7).↓(6)}`);\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let out = stdout(&o);
+    assert!(out.contains("plain: 42"), "stdout:\n{out}");
+    assert!(out.contains("staged: (x) => 7 * x"), "stdout:\n{out}");
+    assert!(out.contains("value: 42"), "stdout:\n{out}");
+}
+
+/// Reduce has to re-expand a generated stage under the right language chain, or
+/// the stage's own quotes resolve to the wrong language. `quilt run` passes the
+/// running chain as `$QUILT_CHAIN` and the runtime reads the stage's chain off
+/// it: one entry along, since the chain is indexed by quote depth — but never
+/// dropping the ground, or the stage would stop being a TypeScript program.
+#[test]
+fn run_typescript_reduces_under_the_language_chain() {
+    if skip_without_node_runtime("run_typescript_reduces_under_the_language_chain") {
+        return;
+    }
+    let imports = "import { tb, leaf, sym, quote, unquote, cmd, write, push, \
+                   name, qlift, qlift_html, NL, POP, HOLE } from \"quilt\";\n";
+    for (name, body) in [
+        // [ts, ts, html]: the stage is the un-annotated depth-1 quote, and its
+        // own un-annotated quote is HTML — so the stage's chain is [ts, html].
+        (
+            "gen.html.ts.ts.quilt",
+            "const s = ↖(t) => ↖<li>↙↑(t)↘</li>↗↗;\n",
+        ),
+        // [ts, html]: the stage has to be written `ts↖…↗`, and dropping the
+        // ground would re-expand it as an HTML program.
+        (
+            "gen.html.ts.quilt",
+            "const s = ts↖(t) => html↖<li>↙↑(t)↘</li>↗↗;\n",
+        ),
+    ] {
+        let d = Dir::new(&format!("run-ts-chain-{}", name.replace('.', "-")));
+        let f = d.write(
+            name,
+            &format!("{imports}{body}console.log(s.↓(\"Fix <bug>\").coparse());\n"),
+        );
+        let o = run(&[Path::new("run"), &f]);
+        assert!(o.status.success(), "{name}: stderr:\n{}", stderr(&o));
+        // The HTML lift escapes, which also proves the fragment was built by the
+        // HTML side of the runtime rather than spliced as TypeScript text.
+        assert_eq!(stdout(&o).trim(), "<li>Fix &lt;bug&gt;</li>", "{name}");
+    }
+}
+
+/// The script's exit code is the CLI's exit code, so a failing `.ts.quilt`
+/// program is not reported as a success.
+#[test]
+fn run_typescript_propagates_the_exit_code() {
+    if skip_without_node_runtime("run_typescript_propagates_the_exit_code") {
+        return;
+    }
+    let d = Dir::new("run-ts-exit");
+    let f = d.write("boom.ts.quilt", "process.exit(3);\n");
+    let o = run(&[Path::new("run"), &f]);
+    assert_eq!(o.status.code(), Some(3), "stderr:\n{}", stderr(&o));
 }
 
 /* ── general ───────────────────────────────────────────────────────────── */

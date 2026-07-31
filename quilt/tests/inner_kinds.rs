@@ -86,10 +86,14 @@ fn wgsl_classify_term_expr() -> Result<()> {
 /// heuristic uses `wgsl.classify_term(body)`, which inspects the children and
 /// returns `Stmt`, so emit fires.
 ///
-/// The signal is the *outer* `}.emit(&mut b_);` — the whole WGSL-building block
-/// emitted into the Rust builder. (The inner `.emit(&mut b_)` calls belong to
-/// WGSL's own block builder and are present regardless, so a bare
-/// `.emit(&mut b_)` substring is *not* a reliable check.)
+/// The signal is that the whole WGSL-building expression is followed by
+/// `.emit(&mut b_);` — emitted into the Rust builder rather than dropped. It is
+/// spelled `.b().emit(&mut b_);` here because WGSL's `source_file` holds no
+/// *direct* unquote child (the `↙val↘` is nested inside the
+/// `assignment_statement`), so it builds fluently; a fragment that did would end
+/// `}.emit(&mut b_);` instead. Both spellings mean the same thing, so the check
+/// accepts either — what it must not accept is the term being built and
+/// silently discarded.
 #[test]
 fn wgsl_stmt_quote_emits_in_rust_block() -> Result<()> {
     let out = expand(indoc! {r#"
@@ -99,7 +103,7 @@ fn wgsl_stmt_quote_emits_in_rust_block() -> Result<()> {
     "#})?;
     println!("{out}");
     assert!(
-        out.contains("}.emit(&mut b_);"),
+        out.contains(".b().emit(&mut b_);") || out.contains("}.emit(&mut b_);"),
         "WGSL stmt quote should emit the built term into the Rust block builder, got:\n{out}"
     );
     Ok(())

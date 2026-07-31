@@ -8,7 +8,8 @@ lang_src = "quilt/src/langs/typescript/lang.rs"
 meta_src = "quilt/src/langs/typescript/meta.rs"
 blurb = """
 The host behind the browser playground. Expanded `.ts.quilt` code calls the \
-`quilt-wasm` runtime, so a metaprogram can run in the browser with no server."""
+`quilt-wasm` runtime, so a metaprogram can run in the browser with no server — \
+or under node, where `quilt run` binds the same runtime and adds `↓`."""
 
 variadic = ["program", "statement_block"]
 not_variadic = ["binary_expression", "lexical_declaration"]
@@ -25,7 +26,7 @@ lift-into = {status = "planned", note = "no `LiftTo<TypeScript>` marker in `lift
 highlights = {status = "unsupported", note = "no `highlights.scm` is vendored for the TypeScript grammar"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
-reduce = {status = "partial", note = "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend", issue = 153}
+reduce = {status = "supported", note = "`quilt run` binds the bare `quilt` import to the Node runtime (`quilt-wasm/node`), which re-expands a generated stage by shelling out to the `quilt` binary; needs `bin/build-ts`"}
 emit = {status = "partial", note = "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable", issue = 152}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"}
 runnable = {status = "supported"}

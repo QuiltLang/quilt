@@ -298,19 +298,28 @@ fn run(args: &RunArgs) -> Result<()> {
         .suffix(&format!(".{lang}"))
         .tempfile()
         .into_diagnostic()?;
-    let path = temp_file.path().to_str().unwrap().to_string();
+    let mut path = temp_file.path().to_str().unwrap().to_string();
 
-    let hashbang = match &args.multi {
+    // The chain travels with the run (as `$QUILT_CHAIN`, ground first) so a
+    // runtime that re-invokes the expander on a *generated* stage — `↓` — can
+    // expand it under the same defaults for un-annotated quotes.
+    let (hashbang, chain_key) = match &args.multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
             let chain = lang_chain(&multi, base);
-            expand_to(&mut multi, &chain, &input, &path)?
+            (
+                expand_to(&mut multi, &chain, &input, &path)?,
+                chain.join("."),
+            )
         }
         #[cfg(feature = "bootstrap")]
         MultiOptions::Bootstrap => {
             let mut multi = Bootstrap::default();
             let chain = lang_chain(&multi, base);
-            expand_to(&mut multi, &chain, &input, &path)?
+            (
+                expand_to(&mut multi, &chain, &input, &path)?,
+                chain.join("."),
+            )
         }
     };
     tracing::debug!("expanded to: {path}");
@@ -326,7 +335,10 @@ fn run(args: &RunArgs) -> Result<()> {
     })?;
     let mut runner_cmd = std::process::Command::new(runner);
     runner_cmd.args(&runner_args);
-    if runner.ends_with("rust-script") {
+    // Per-runner setup: each host needs its runtime importable, and each spells
+    // that its own way — a cargo manifest, `PYTHONPATH`, a `node_modules`. Only
+    // node needs a scratch directory to hold the latter, hence the `Option`.
+    let node_dir = if runner.ends_with("rust-script") {
         // Embed a cargo manifest in the script so its operators resolve against
         // *this* quilt crate (so `quilt` works from any directory, not just
         // `rust/quilt`) with the matching feature set: `qlift`/`name` (Omni)
@@ -343,6 +355,7 @@ fn run(args: &RunArgs) -> Result<()> {
                 "quilt = {{ path = \"{quilt_dir}\", package = \"quiltlang\", default-features = false, features = [\"{quilt_feature}\"] }}"
             )],
         )?;
+        None
     } else if runner.ends_with("python3") || runner.ends_with("python") {
         // Make the `quilt_python` extension module (the runtime that expanded
         // .py.quilt files target) importable. It lives next to this crate; build
@@ -360,7 +373,28 @@ fn run(args: &RunArgs) -> Result<()> {
         if let Ok(exe) = std::env::current_exe() {
             runner_cmd.env("QUILT", exe);
         }
-    }
+        None
+    } else if runner.ends_with("node") {
+        // Node's ESM resolver ignores NODE_PATH, so the bare `import … from
+        // "quilt"` an expanded .ts.quilt program carries resolves only against a
+        // `node_modules` directory *above the script*. A bare temp file has
+        // none, so `quilt run foo.ts.quilt` died at the import before it could
+        // run anything — which is why `↓` was browser-only (issue #153).
+        let dir = node_workspace()?;
+        let script = dir.path().join(base);
+        fs::rename(&path, &script).into_diagnostic()?;
+        path = script.to_string_lossy().into_owned();
+        // As for python: hand the running expander's own path to the script, so
+        // the runtime's `↓` can re-invoke `quilt expand` on a generated stage
+        // that still contains Quilt glyphs. `quilt` isn't necessarily on PATH.
+        if let Ok(exe) = std::env::current_exe() {
+            runner_cmd.env("QUILT", exe);
+        }
+        runner_cmd.env("QUILT_CHAIN", &chain_key);
+        Some(dir)
+    } else {
+        None
+    };
 
     runner_cmd.arg(&path).args(&args.args);
     let cmd_str = std::iter::once(runner_cmd.get_program())
@@ -371,7 +405,58 @@ fn run(args: &RunArgs) -> Result<()> {
     tracing::info!("running: {cmd_str}");
     let status = runner_cmd.status().into_diagnostic()?;
 
+    // `process::exit` runs no destructors, so clean the scratch files up here
+    // rather than leaving one temp file (and, for node, a directory) per run.
+    drop(temp_file);
+    drop(node_dir);
     std::process::exit(status.code().unwrap_or(1));
+}
+
+/// A private directory for a Node run, holding a `node_modules` with the two
+/// packages the browser demos bind in their import map: `quilt` — the
+/// reduce-enabled runtime (`quilt-wasm/node`), which is what supplies `↓` — and
+/// `quilt-wasm`, the raw wasm-pack package. The script is moved in beside it, so
+/// Node's ordinary "walk up looking for `node_modules`" resolution finds both.
+///
+/// Both live next to this crate and are built by `bin/build-ts`; a missing build
+/// is reported here rather than as a Node module-resolution stack trace.
+fn node_workspace() -> Result<tempfile::TempDir> {
+    let quilt_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let runtime = quilt_dir.join("../quilt-wasm/node");
+    let wasm = quilt_dir.join("../quilt-wasm/pkg");
+    if !wasm.join("quilt_wasm.js").exists() {
+        return Err(miette!(
+            "the quilt-wasm runtime is not built for Node ({}) — run `bin/build-ts` \
+             and try again",
+            wasm.display()
+        ));
+    }
+
+    let dir = tempfile::tempdir().into_diagnostic()?;
+    let modules = dir.path().join("node_modules");
+    fs::create_dir_all(&modules).into_diagnostic()?;
+    symlink_dir(&runtime, &modules.join("quilt"))?;
+    symlink_dir(&wasm, &modules.join("quilt-wasm"))?;
+    Ok(dir)
+}
+
+/// Symlink a directory, the one filesystem call whose spelling differs by
+/// platform. Node resolves a symlinked package to its real path, so each
+/// package's own relative imports keep working.
+fn symlink_dir(target: &std::path::Path, link: &std::path::Path) -> Result<()> {
+    #[cfg(unix)]
+    let r = std::os::unix::fs::symlink(target, link);
+    #[cfg(windows)]
+    let r = std::os::windows::fs::symlink_dir(target, link);
+    #[cfg(not(any(unix, windows)))]
+    let r: std::io::Result<()> = Err(std::io::Error::other("symlinks are unsupported here"));
+    r.into_diagnostic().map_err(|e| {
+        e.context(format!(
+            "linking {} -> {}",
+            link.display(),
+            target.display()
+        ))
+    })
 }
 
 /// Prepend a rust-script cargo manifest (a `//! ```cargo` doc-comment block)

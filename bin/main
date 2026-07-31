@@ -75,14 +75,18 @@ check() {
   if [ "$all" = 1 ]; then
     # Slower or network-bound: check-features builds several feature combos
     # (and wants the wasm32 target), check-grammars clones the grammar forks,
-    # and the python gate builds the PyO3 cdylib with maturin.
+    # and each runtime gate builds its own artifact — a PyO3 cdylib with
+    # maturin, a wasm one with wasm-pack.
     run_gate "feature matrix" "$BIN/check-features"
     run_gate "vendored grammars" "$BIN/check-grammars"
     run_gate "python bindings (build)" "$BIN/build-py"
     run_gate "python runtime" "$BIN/test-py"
+    run_gate "typescript runtime (build)" "$BIN/build-ts"
+    run_gate "typescript runtime" "$BIN/test-ts"
   else
-    echo "note: skipped feature matrix, vendored grammars and the python" >&2
-    echo "      runtime — run 'main check --all' for the full CI set." >&2
+    echo "note: skipped feature matrix, vendored grammars and the python /" >&2
+    echo "      typescript runtimes — run 'main check --all' for the full" >&2
+    echo "      CI set." >&2
   fi
 
   echo
