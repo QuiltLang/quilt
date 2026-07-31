@@ -14,7 +14,7 @@ import json
 import pathlib
 
 import pytest
-from quilt import HOLE, NL, POP, cmd, leaf, name, push, qlift, qlift_html
+from quilt import HOLE, NL, POP, cmd, from_postcard_bytes, leaf, name, push, qlift, qlift_html
 from quilt import quote as mk_quote
 from quilt import sym, tb
 from quilt import unquote as mk_unquote
@@ -25,10 +25,27 @@ CORPUS = (
     pathlib.Path(__file__).resolve().parents[2] / "conformance" / "runtime" / "cases.json"
 )
 
+# The corpus-declared invariants this runner knows how to check. An invariant
+# that applies to python and is not in here fails `test_invariants_are_implemented`
+# rather than being skipped — the corpus decides what a runtime owes, so a runner
+# must not quietly opt out of a property it lacks the coverage for. Issue #192.
+IMPLEMENTED_INVARIANTS = {"postcard_roundtrip", "stringify"}
+
+
+def load_corpus():
+    return json.loads(CORPUS.read_text())
+
 
 def load_cases():
-    data = json.loads(CORPUS.read_text())
-    return [c for c in data["cases"] if RUNTIME in c.get("runtimes", [RUNTIME])]
+    return [c for c in load_corpus()["cases"] if RUNTIME in c.get("runtimes", [RUNTIME])]
+
+
+def load_invariants():
+    return [
+        i["name"]
+        for i in load_corpus().get("invariants", [])
+        if RUNTIME in i.get("runtimes", [RUNTIME])
+    ]
 
 
 def build_cmds(cmds):
@@ -100,10 +117,19 @@ def build(t):
 
 
 CASES = load_cases()
+INVARIANTS = load_invariants()
 
 
 def test_corpus_is_reachable():
     assert CASES, f"no corpus cases applied to the {RUNTIME} runtime ({CORPUS})"
+
+
+def test_invariants_are_implemented():
+    unknown = sorted(set(INVARIANTS) - IMPLEMENTED_INVARIANTS)
+    assert not unknown, (
+        f"invariant(s) {unknown} apply to {RUNTIME} but this runner does not "
+        f"implement them — implement them or narrow their `runtimes` in {CORPUS}"
+    )
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
@@ -111,6 +137,91 @@ def test_case(case):
     got = build(case["term"]).coparse()
     assert got == case["coparse"], (
         f"{case['name']}: coparse is {got!r}, corpus says {case['coparse']!r}"
+    )
+
+
+# ── invariants (issue #192) ─────────────────────────────────────────────────
+#
+# Properties that hold of every case rather than of one program, so they run
+# over the whole corpus instead of needing a second corpus each.
+
+POSTCARD_CASES = [c for c in CASES if "postcard_roundtrip" in INVARIANTS]
+
+
+@pytest.mark.parametrize("case", POSTCARD_CASES, ids=[c["name"] for c in POSTCARD_CASES])
+def test_postcard_roundtrip(case):
+    """`from_postcard_bytes(x.postcard_bytes())` is `x`, for every shape.
+
+    The pair is the wire format of `py↓`: a generated Python stage returns its
+    result as these bytes and the Rust side decodes them (`langs/rust/ops.rs`).
+    Before this it had no test at all, in either direction.
+    """
+    x = build(case["term"])
+    data = x.postcard_bytes()
+    assert isinstance(data, bytes), (
+        f"{case['name']}: postcard_bytes returned {type(data).__name__}, not bytes — "
+        "the generated py↓ script writes it straight to a binary file"
+    )
+    back = from_postcard_bytes(data)
+    assert back.coparse() == case["coparse"], (
+        f"{case['name']}: postcard round-trip coparses to {back.coparse()!r}, "
+        f"corpus says {case['coparse']!r}"
+    )
+
+
+PINNED = [c for c in POSTCARD_CASES if "postcard" in c]
+
+
+@pytest.mark.parametrize("case", PINNED, ids=[c["name"] for c in PINNED])
+def test_postcard_wire_format(case):
+    """The bytes match the ones the corpus pins — which the Rust runner checks too.
+
+    A round-trip cannot see a `QTerm` layout change: postcard is positional, so
+    a reordered field or a `serde(skip)` on `span` moves the format with *both*
+    ends moving together and encode-then-decode stays green. `py↓` sends these
+    bytes between two separately-built runtimes, where that is fatal, so the
+    format itself is pinned rather than merely round-tripped.
+    """
+    x = build(case["term"])
+    assert x.postcard_bytes().hex() == case["postcard"], (
+        f"{case['name']}: postcard bytes are {x.postcard_bytes().hex()}, corpus "
+        f"pins {case['postcard']} — if the QTerm layout changed on purpose, re-pin "
+        "every `postcard` field in the corpus (they are a wire format two "
+        "runtimes share)"
+    )
+    # And the pinned bytes still decode here, which is what `rs↓` does with
+    # bytes the *other* runtime produced.
+    back = from_postcard_bytes(bytes.fromhex(case["postcard"]))
+    assert back.coparse() == case["coparse"]
+
+
+def test_from_postcard_bytes_rejects_garbage():
+    """The decode error path: a bad payload raises, rather than panicking the
+    interpreter or yielding a half-built term."""
+    with pytest.raises(ValueError):
+        from_postcard_bytes(b"\xff" * 16)
+
+
+STRINGIFY_CASES = [c for c in CASES if "stringify" in INVARIANTS]
+
+
+@pytest.mark.parametrize("case", STRINGIFY_CASES, ids=[c["name"] for c in STRINGIFY_CASES])
+def test_stringify_agrees_with_coparse(case):
+    """`str(term)` and `coparse()` are both exported, so they must not drift.
+
+    quilt-wasm's `toString` is the same promise on the other runtime and the
+    Node runner checks it against the same cases.
+    """
+    x = build(case["term"])
+    assert str(x) == x.coparse(), (
+        f"{case['name']}: str() is {str(x)!r} but coparse() is {x.coparse()!r}"
+    )
+    # __repr__ is the debugging spelling: the same text, quoted and labelled.
+    # Only the wrapper is pinned — the quoting inside is Rust's `{:?}`, which
+    # is not Python's `repr` and has no reason to be.
+    r = repr(x)
+    assert r.startswith('QTerm("') and r.endswith('")'), (
+        f"{case['name']}: repr is {r!r}, expected QTerm(\"…\")"
     )
 
 
