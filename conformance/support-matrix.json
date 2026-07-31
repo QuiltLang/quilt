@@ -727,12 +727,12 @@
         },
         {
           "axis": "emit",
-          "status": "partial",
-          "note": "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable",
+          "status": "unsupported",
+          "note": "no statement-splice: Rust's variadic block is a *block expression* and can bind `let mut b_ = tb(..)`, but Python has no statement-block in expression position, so the block is built as a fluent `tb(..).e(child).b()` chain with no named accumulator — and the runtime exposes no `emit` method on a term either. A ground `←` is therefore a hard error naming the alternative: build the sequence with your own `tb(..)` builder in ground code and splice the finished term with `↙…↘`. Automatic emission of children into a variadic container is a separate mechanism (`wrap_child`) and is unaffected",
           "issue": 152,
           "verified_by": "emit/python",
           "detail": [
-            "← → emit(b_)",
+            "← unsupported (fails with guidance)",
             "type_str → QTerm",
             "name_str → name"
           ]
@@ -1185,12 +1185,12 @@
         },
         {
           "axis": "emit",
-          "status": "partial",
-          "note": "same fluent-chain shape as Python: no named accumulator, so emit from a ground loop is unavailable",
+          "status": "unsupported",
+          "note": "same fluent-chain shape as Python: `build_variadic_block` emits `tb(..).e(child).b()` with no named accumulator, so a ground `←` is a hard error naming the alternative (build the sequence with your own `tb(..)` builder and splice the finished term with `↙…↘`). An IIFE would give TypeScript statements in expression position, unlike Python — but `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` has no `emit` method, so the runtime half is missing too. Automatic emission into a variadic container (`wrap_child`) is unaffected",
           "issue": 152,
           "verified_by": "emit/typescript",
           "detail": [
-            "← → emit(b_)",
+            "← unsupported (fails with guidance)",
             "type_str → QTerm",
             "name_str → name"
           ]

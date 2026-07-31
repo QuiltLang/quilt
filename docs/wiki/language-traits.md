@@ -158,6 +158,14 @@ the same as having no emit, and nix spells it
 fragments into the surrounding container (issue #155). Lean's still fails
 (issue #133).
 
+Having a `QTerm` runtime is not sufficient either. Python and TypeScript build a
+variadic container as a fluent `tb(..).e(child).b()` chain rather than Rust's
+imperative block, so there is no name for a ground `←` to append to — and their
+runtimes expose no `emit` method on a term. Both therefore fail on `←` too
+(issue #152). The rule is the same in every case: spell the glyph where the host
+has a meaning for it, fail with actionable guidance where it does not, and never
+let the placeholder reach the output.
+
 ---
 
 ## `TSLanguage` — the tree-sitter helper
