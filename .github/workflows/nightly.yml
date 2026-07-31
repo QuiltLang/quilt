@@ -61,3 +61,103 @@ jobs:
       # runtime when wasm-pack is missing: this job reported runtime parity
       # while only ever comparing two of the three runtimes.
       - run: bin/test-runtimes
+
+  # Tier 6 properties (issue #161) at nightly strength. The same properties run
+  # on every PR inside `bin/ctest` — `quilt-conformance` is a default-member —
+  # but at a few hundred cases each, so the PR path stays under a second. This
+  # runs them two orders of magnitude harder, which is where an escaping bug in
+  # a rare character combination actually turns up: the zsh `((` finding (#212)
+  # took ~600 cases in one language.
+  #
+  # Cheap enough that it needs no artifact and no separate build — it is the
+  # same test binary `cargo test` already produces.
+  properties:
+    name: Properties (proptest, high case count)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: nix develop ./nix --command bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            target
+          key: nightly-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            nightly-${{ runner.os }}-cargo-
+      - run: PROPTEST_CASES=20000 cargo test -p quilt-conformance --test properties
+      # A shrunk counterexample is the whole value of a property failure, and
+      # proptest also writes it to a regression file so the exact case can be
+      # replayed. Upload it rather than making someone re-derive it from the log.
+      - name: Upload proptest regressions
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: proptest-regressions
+          path: "**/proptest-regressions/**"
+          if-no-files-found: ignore
+
+  # Fuzzing (issue #161). Nightly and time-boxed rather than on the PR path:
+  # it is unbounded by nature, and it needs a *nightly* Rust toolchain, because
+  # libFuzzer builds with `-Zsanitizer` and the repo is pinned to stable
+  # (rust-toolchain.toml). Everything else in CI runs on that pin.
+  #
+  # The corpus is cached, so each run continues from the coverage the previous
+  # ones reached instead of restarting from the seeds every night — that
+  # accumulation is most of what makes short daily budgets worth anything.
+  fuzz:
+    name: Fuzz (quilt surface + expander)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: nix develop ./nix --command bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            fuzz/target
+          key: fuzz-${{ runner.os }}-cargo-${{ hashFiles('fuzz/Cargo.toml', 'rust-toolchain.toml') }}
+          restore-keys: |
+            fuzz-${{ runner.os }}-cargo-
+      # The evolving corpus, keyed so every run restores the newest one and
+      # saves a fresh copy: actions/cache keys are immutable, so a rolling
+      # `run_id` suffix plus a prefix restore-key is the documented way to keep
+      # appending to a cache rather than freezing the first version of it.
+      - uses: actions/cache@v6
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+      - name: Install nightly + cargo-fuzz
+        run: |
+          rustup toolchain install nightly --profile minimal
+          command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --locked
+      # ~10 minutes total: three targets at 200s each, plus build time.
+      - run: bin/fuzz 200
+      # A crash is the entire point of the job, so make it downloadable and
+      # replayable (`cargo +nightly fuzz run <target> <artifact>`) rather than
+      # something to reconstruct from a log.
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/**
+          if-no-files-found: ignore

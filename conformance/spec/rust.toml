@@ -108,9 +108,19 @@ tag = "float_literal"
 text = "1.5"
 
 [[lift]]
+value = "f32:-1.5"
+tag = "unary_expression"
+text = "-1.5"
+
+[[lift]]
 value = "bool:true"
 tag = "boolean_literal"
 text = "true"
+
+[[lift]]
+value = "bool:false"
+tag = "boolean_literal"
+text = "false"
 
 [[lift]]
 value = "str:plain"

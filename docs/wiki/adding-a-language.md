@@ -248,6 +248,31 @@ Three rules worth knowing before you start:
   ([#141](https://github.com/QuiltLang/quilt/issues/141)) precisely because
   nothing asked the question when Lean landed.
 
+### Your spec also generates property tests
+
+The same file drives `quilt-conformance/tests/properties.rs`
+([#161](https://github.com/QuiltLang/quilt/issues/161)), so declaring a
+`lift_marker` and `[[lift]]` probes buys more than the six literals you wrote
+down: each probe declares a *row* of the lift grid — a Rust type plus, where it
+changes the spelling, the sign or value — and the property then generates
+arbitrary values of that row and requires every one of them to lift to the
+declared tag and reparse in your grammar. That is the escaping net, and it is
+where a target's quoting rules meet input nobody thought to write by hand.
+
+Two consequences when you add a language:
+
+- **Add a `lift_arbitrary` arm** in `properties.rs` for every row your spec
+  declares. A declared row with no arm is a test failure, not a silent skip —
+  the spec is what says the cell exists.
+- **Declare both spellings when the value picks one.** Lean gives `false` its
+  own tag (`false_const`, not `true_const`) and lifts a negative integer as a
+  `unary_op`; Rust lifts a negative float as a `unary_expression`. If your
+  language does something similar, write the second `[[lift]]` probe —
+  otherwise half that row's domain goes unchecked.
+
+Nothing here needs a nightly toolchain: the properties run in the ordinary
+`cargo test`. The `bin/fuzz` targets are separate and are not per-language.
+
 Add ordinary `#[test]`s too, for anything the battery's shape does not cover
 (unusual recovery paths, language-specific expander behaviour):
 

@@ -98,9 +98,19 @@ tag = "float"
 text = "1.5"
 
 [[lift]]
+value = "f32:-1.5"
+tag = "float"
+text = "-1.5"
+
+[[lift]]
 value = "bool:true"
 tag = "true"
 text = "True"
+
+[[lift]]
+value = "bool:false"
+tag = "false"
+text = "False"
 
 [[lift]]
 value = "str:plain"
