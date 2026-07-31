@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/rust_lift_into_html.rs.quilt
+---
+  × rust can't lift into "html": no spelling/LiftTo impls registered

@@ -40,6 +40,14 @@ variadic = [
   "array",
   "expansion",
   "arithmetic_expansion",
+  # Substitutions and heredocs. #150's shared table declared these and the
+  # derivation agrees, so they stay claimed — the two lists are the same set
+  # here, reached two different ways.
+  "command_substitution",
+  "process_substitution",
+  "heredoc_redirect",
+  "heredoc_body",
+  "unset_command",
 ]
 # Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
 not_variadic = [

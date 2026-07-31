@@ -235,6 +235,248 @@ fn expand_reports_errors_with_a_snippet() {
     assert!(e.contains("let x = ↙1 + 2↘;"), "stderr:\n{e}");
 }
 
+/* ── -m: choosing the multi ────────────────────────────────────────────── */
+
+/// A file that reaches the two engines' one visible difference: `↑` spells
+/// `qlift()` under Omni and `bs_lift()` under Bootstrap. Everything else about
+/// the expansion is identical, which is the point — `expand_rust.rs` asserts
+/// that agreement term by term.
+const LIFTING: &str = "let n = 3;\nlet e = ↖↙n.↑↘ + 1↗;\n";
+
+/// `-m bootstrap` picks a different *engine*, not a flag on the same one: the
+/// `BootstrapMetaLanguage` that `bin/bootstrap0` expands `mk_meta.rs.quilt`
+/// with, back when there is no generated `RustMetaLanguage` to use yet.
+#[test]
+fn expand_bootstrap_selects_the_other_engine() {
+    let d = Dir::new("boot");
+    let f = d.write("b.rs.quilt", LIFTING);
+
+    let o = run(&[Path::new("expand"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let omni = std::fs::read_to_string(d.0.join("b.rs")).unwrap();
+    assert!(omni.contains("n.qlift()"), "omni output:\n{omni}");
+
+    let o = quilt()
+        .args(["expand", "-m", "bootstrap"])
+        .arg(&f)
+        .output()
+        .expect("runs");
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let boot = std::fs::read_to_string(d.0.join("b.rs")).unwrap();
+    assert!(boot.contains("n.bs_lift()"), "bootstrap output:\n{boot}");
+
+    // The two differ only in that spelling, so the rest of the generated code
+    // is the same builder chain.
+    assert_eq!(
+        omni.replace("n.qlift()", "LIFT"),
+        boot.replace("n.bs_lift()", "LIFT")
+            // the header records the exact command, `-m bootstrap` included
+            .replace("quilt expand -m bootstrap", "quilt expand"),
+        "the engines should differ only in the lift spelling"
+    );
+}
+
+/// The expand cache is keyed by the multi as well as by path and mtime — it has
+/// to be, because the same unmodified file expands to different code under the
+/// two engines. A key of (path, mtime) alone would serve Omni's output to a
+/// `-m bootstrap` run, and the failure would be silent: valid Rust, wrong
+/// runtime call, discovered by the bootstrap gate much later.
+#[test]
+fn expand_cache_is_keyed_by_the_multi() {
+    let d = Dir::new("boot-cache");
+    let f = d.write("c.rs.quilt", LIFTING);
+    // Keep the run hermetic: a private cache dir, so the assertion doesn't
+    // depend on (or pollute) the developer's `~/.cache/quilt`.
+    let cache = d.0.join("cache");
+
+    for (multi, want) in [("omni", "n.qlift()"), ("bootstrap", "n.bs_lift()")] {
+        let o = quilt()
+            .args(["expand", "-m", multi])
+            .arg(&f)
+            .env("XDG_CACHE_HOME", &cache)
+            .output()
+            .expect("runs");
+        assert!(o.status.success(), "{multi}: stderr:\n{}", stderr(&o));
+        let body = std::fs::read_to_string(d.0.join("c.rs")).unwrap();
+        assert!(
+            body.contains(want),
+            "-m {multi} on an unmodified file should not reuse the other engine's \
+             cached expansion; got:\n{body}"
+        );
+    }
+}
+
+#[test]
+fn check_accepts_the_bootstrap_multi() {
+    let d = Dir::new("boot-check");
+    let ok = d.write("ok.rs.quilt", LIFTING);
+    let o = quilt()
+        .args(["check", "-m", "bootstrap"])
+        .arg(&ok)
+        .output()
+        .expect("runs");
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+
+    let bad = d.write("bad.rs.quilt", "let x = ↙1 + 2↘;\n");
+    let o = quilt()
+        .args(["check", "-m", "bootstrap"])
+        .arg(&bad)
+        .output()
+        .expect("runs");
+    assert_eq!(o.status.code(), Some(1), "stderr:\n{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("unquote depth too high"),
+        "the bootstrap engine should report the same error, got:\n{}",
+        stderr(&o)
+    );
+}
+
+/* ── run: dispatch and the error paths ─────────────────────────────────── */
+
+/// Not every language has an interpreter. Nix and Lean are hosts — a
+/// `.nix.quilt` file expands fine — but they are *generators*: the expansion is
+/// a Nix program you evaluate, not a script `quilt` can hand to a runner. The
+/// refusal has to name the language, because the file expanded successfully and
+/// nothing else in the output says why it stopped.
+#[test]
+fn run_rejects_a_language_with_no_interpreter() {
+    let d = Dir::new("run-nix");
+    let f = d.write("n.nix.quilt", "let gen = nix↖1↗; in gen\n");
+    let o = run(&[Path::new("run"), &f]);
+    assert_eq!(o.status.code(), Some(1));
+    assert!(
+        stderr(&o).contains("language 'nix' is not runnable via 'quilt'"),
+        "stderr:\n{}",
+        stderr(&o)
+    );
+}
+
+/// `run` is the *default* subcommand, and that is load-bearing: a
+/// `#!/usr/bin/env quilt` shebang invokes `quilt <script> <args>…` with no
+/// subcommand at all. If the bare form ever stopped meaning `run`, every
+/// shebang script in the repo would break at once.
+#[test]
+fn run_is_the_default_subcommand() {
+    let d = Dir::new("run-default");
+    let f = d.write("n.nix.quilt", "let gen = nix↖1↗; in gen\n");
+    let bare = run(&[&f]);
+    let explicit = run(&[Path::new("run"), &f]);
+    assert_eq!(bare.status.code(), explicit.status.code());
+    assert_eq!(
+        stderr(&bare),
+        stderr(&explicit),
+        "`quilt <file>` should be `quilt run <file>`"
+    );
+}
+
+#[test]
+fn run_missing_file_exits_nonzero() {
+    let d = Dir::new("run-missing");
+    let f = d.0.join("nope.rs.quilt");
+    let o = run(&[Path::new("run"), &f]);
+    assert_eq!(o.status.code(), Some(1));
+}
+
+/* ── run: the Python backend ───────────────────────────────────────────── */
+
+/// The `quilt_python` extension module a `.py.quilt` program imports. Absent
+/// until `bin/build-py` has run, so these tests skip rather than fail — as the
+/// Node ones below do. `bin/test-py` builds it and then runs this file, which
+/// is where they execute for real.
+fn python_runtime_built() -> bool {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../quilt-python/quilt/_quilt.abi3.so")
+        .exists()
+}
+
+fn skip_without_python_runtime(test: &str) -> bool {
+    if python_runtime_built() {
+        return false;
+    }
+    eprintln!("skipping {test}: quilt_python is not built — run `bin/build-py`");
+    true
+}
+
+/// The `.py.quilt` end of `run`: the expanded program imports the runtime by
+/// bare name, which only resolves because `run` injects `PYTHONPATH`. The
+/// shebang is stripped before parsing, so an executable script runs as itself.
+#[test]
+fn run_python_resolves_the_runtime_import() {
+    if skip_without_python_runtime("run_python_resolves_the_runtime_import") {
+        return;
+    }
+    let d = Dir::new("run-py");
+    let f = d.write(
+        "hello.py.quilt",
+        "#!/usr/bin/env quilt\n\
+         from quilt import *\n\
+         frag = py↖1 + 2↗\n\
+         print(frag.coparse())\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "1 + 2");
+}
+
+/// Everything after the filename belongs to the script, not to `quilt` — the
+/// other half of what makes a shebang script a real program. Untested until
+/// now, and the flags are hyphen-friendly on purpose (`allow_hyphen_values`),
+/// so a script can take its own `--flag` without `quilt` claiming it.
+#[test]
+fn run_python_forwards_script_arguments() {
+    if skip_without_python_runtime("run_python_forwards_script_arguments") {
+        return;
+    }
+    let d = Dir::new("run-py-args");
+    let f = d.write(
+        "args.py.quilt",
+        "import sys\nprint(\" \".join(sys.argv[1:]))\n",
+    );
+    let o = quilt()
+        .arg("run")
+        .arg(&f)
+        .args(["--verbose", "two"])
+        .output()
+        .expect("runs");
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "--verbose two");
+}
+
+#[test]
+fn run_python_propagates_the_exit_code() {
+    if skip_without_python_runtime("run_python_propagates_the_exit_code") {
+        return;
+    }
+    let d = Dir::new("run-py-exit");
+    let f = d.write("boom.py.quilt", "import sys\nsys.exit(3)\n");
+    let o = run(&[Path::new("run"), &f]);
+    assert_eq!(o.status.code(), Some(3), "stderr:\n{}", stderr(&o));
+}
+
+/// An extension-less entry point — `bin/issues` is a symlink to
+/// `examples/issue_triage.html.py.quilt` — has no chain in its own name, so
+/// `run` resolves the symlink and derives the chain from the target's. Only the
+/// file *name* counts: a dot in a parent directory must not leak into it.
+#[cfg(unix)]
+#[test]
+fn run_resolves_a_symlinked_entry_point() {
+    if skip_without_python_runtime("run_resolves_a_symlinked_entry_point") {
+        return;
+    }
+    let d = Dir::new("run-py-symlink");
+    let target = d.write(
+        "some.dir.v2/tool.py.quilt",
+        "#!/usr/bin/env quilt\n\
+         from quilt import *\n\
+         print(py↖40 + 2↗.coparse())\n",
+    );
+    let link = d.0.join("tool");
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    let o = run(&[Path::new("run"), &link]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "40 + 2");
+}
+
 /* ── run: the TypeScript/Node backend ──────────────────────────────────── */
 
 /// The Node runtime `quilt run` binds the bare `quilt` import to, and the

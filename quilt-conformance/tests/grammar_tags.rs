@@ -13,8 +13,11 @@
 //!
 //! `Language::arity` is no longer one of them — its tables are generated from
 //! the grammars by `bin/gen-arity` and gated by `bin/check-arity` (#202), which
-//! is a stronger guarantee than any check here could make. The three checks
-//! below cover what is still written by hand:
+//! is a stronger guarantee than any check here could make. That also supersedes
+//! the shared bash/zsh table #150 first reached for: the two dialects now agree
+//! because their *grammars* do, not because they read one hand-written list.
+//! The checks below cover what is still written by hand, plus two that keep the
+//! generated tables honest:
 //!
 //! 1. [`spec_tags_are_real_node_kinds`] — a hard assertion that every tag any
 //!    spec names is a node kind its grammar defines.
@@ -23,7 +26,13 @@
 //!    grammar. This is now a check that the *generated* tables are wired up and
 //!    reach the provider, and a reviewable record of what emit can splice into
 //!    (the #157 approach: review a diff, don't hand-maintain N literals).
-//! 3. [`bash_and_zsh_agree_on_shared_kinds`] — the two shells classify the node
+//! 3. [`ident_tags_are_real_node_kinds`] — the one tag the expander constructs
+//!    rather than parses (`Language::ident_tag`) must also be a kind its grammar
+//!    defines (#174, finding E2).
+//! 4. [`providers_use_the_derived_tables`] — every provider agrees with a *fresh*
+//!    derivation, not merely with the committed file, which a stale table and the
+//!    code reading it could satisfy together.
+//! 5. [`bash_and_zsh_agree_on_shared_kinds`] — the two shells classify the node
 //!    kinds their grammars share the same way, except where the grammars
 //!    themselves differ.
 

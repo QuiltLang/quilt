@@ -1,0 +1,11 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/unquote_depth.rs.quilt
+---
+  × unquote depth too high! (source bytes 8..19)
+   ╭─[unquote_depth.rs.quilt:1:9]
+ 1 │ let x = ↙1 + 2↘;
+   ·         ───┬───
+   ·            ╰── this unquote
+   ╰────

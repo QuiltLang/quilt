@@ -50,6 +50,16 @@ variadic = [
   "expansion_substring",
   "expansion_modifier",
   "terse_for_statement",
+  "expansion_array",
+  "expansion_pattern",
+  "expansion_with_modifier",
+  "arithmetic_call",
+  # Substitutions and heredocs, shared with bash — see the matching block there.
+  "command_substitution",
+  "process_substitution",
+  "heredoc_redirect",
+  "heredoc_body",
+  "unset_command",
 ]
 # Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
 not_variadic = [

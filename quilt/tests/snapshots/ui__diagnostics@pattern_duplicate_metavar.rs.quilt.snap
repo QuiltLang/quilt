@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/pattern_duplicate_metavar.rs.quilt
+---
+  × pattern let binds metavariable `a` more than once

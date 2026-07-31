@@ -57,7 +57,12 @@
             "concatenation",
             "array",
             "expansion",
-            "arithmetic_expansion"
+            "arithmetic_expansion",
+            "command_substitution",
+            "process_substitution",
+            "heredoc_redirect",
+            "heredoc_body",
+            "unset_command"
           ]
         },
         {
@@ -1458,7 +1463,16 @@
             "expansion_default",
             "expansion_substring",
             "expansion_modifier",
-            "terse_for_statement"
+            "terse_for_statement",
+            "expansion_array",
+            "expansion_pattern",
+            "expansion_with_modifier",
+            "arithmetic_call",
+            "command_substitution",
+            "process_substitution",
+            "heredoc_redirect",
+            "heredoc_body",
+            "unset_command"
           ]
         },
         {
