@@ -589,7 +589,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                         // metavariable binder, not a splice: record its name
                         // and splice an `mvar` marker (see `crate::qmatch`).
                         if let Some(vars) = &mut self.pattern_vars {
-                            let name = pattern_var_name(term)?;
+                            let name = self.meta.pattern_var_name(term)?;
                             vars.push(name.clone());
                             return self.meta.pattern_var(&name);
                         }
@@ -680,21 +680,6 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
             .collect::<Result<Vec<_>>>()?;
         Ok(tuple(tag, &terms, cmds))
     }
-}
-
-/// The metavariable name of a ground unquote inside a pattern quote: its body
-/// must be a plain identifier.
-fn pattern_var_name(term: &QTerm) -> Result<Box<str>> {
-    let text = term.coparse();
-    let name = text.trim();
-    let mut chars = name.chars();
-    let ident = chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
-        && chars.all(|c| c.is_alphanumeric() || c == '_');
-    ensure!(
-        ident,
-        "pattern metavariable must be a plain identifier, got {name:?}"
-    );
-    Ok(name.into())
 }
 
 /**************************************************************/

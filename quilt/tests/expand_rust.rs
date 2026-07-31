@@ -19,10 +19,16 @@
 //! something that must be true, not something that merely is true today.
 
 use indoc::indoc;
+use miette::ensure;
+use quilt::lang::Arity;
 use quilt::langs::bootstrap::Bootstrap;
 use quilt::langs::omni::Omni;
+use quilt::langs::rust::lang::DynRustLanguage;
+use quilt::langs::rust::meta::RustMetaLanguage;
+use quilt::meta::MetaLanguage;
+use quilt::multi::DictMulti;
 use quilt::prelude::*;
-use quilt::term::STerm;
+use quilt::term::{CmdOrHole, STerm};
 use std::ops::Range;
 
 /// Expand `code` with both engines, assert identical output, and return it.
@@ -194,6 +200,119 @@ fn pattern_let_non_ident_var_rejected() {
     let qterm = omni.parse("let ↖1 + ↙f(x)↘↗ = rhs;").unwrap();
     let err = omni.expand(&qterm).unwrap_err();
     assert!(err.to_string().contains("plain identifier"), "{err}");
+}
+
+/// A host that spells metavariable binders `$name`, to check that
+/// [`MetaLanguage::pattern_var_name`] is what decides.
+///
+/// Every answer is `RustMetaLanguage`'s except that one. The rule used to be a
+/// free function in `multi.rs` applied to every host, so this spelling was not
+/// expressible at all — the `$` would have been rejected as "not a plain
+/// identifier" before the meta-language was ever consulted (#174, finding E4).
+struct DollarMeta;
+
+impl MetaLanguage for DollarMeta {
+    /// The point of the test: `$a` binds the name `a`.
+    fn pattern_var_name(&self, term: &QTerm) -> Result<Box<str>> {
+        let text = term.coparse();
+        let name = text.trim();
+        let rest = name
+            .strip_prefix('$')
+            .ok_or_else(|| miette!("pattern metavariable must be $name, got {name:?}"))?;
+        ensure!(!rest.is_empty(), "empty metavariable name");
+        Ok(rest.into())
+    }
+
+    // Everything below is Rust's own answer, unchanged.
+    fn expand_quote(
+        &self,
+        lang1: &str,
+        tag: &str,
+        i: Index,
+        lang2: &str,
+        qterm: &Arc<QTerm>,
+        cmds: &[CmdOrHole],
+    ) -> Result<Arc<QTerm>> {
+        RustMetaLanguage.expand_quote(lang1, tag, i, lang2, qterm, cmds)
+    }
+
+    fn expand_unquote(
+        &self,
+        lang1: &str,
+        tag: &str,
+        i: Index,
+        lang2: &str,
+        qterm: &Arc<QTerm>,
+        cmds: &[CmdOrHole],
+    ) -> Result<Arc<QTerm>> {
+        RustMetaLanguage.expand_unquote(lang1, tag, i, lang2, qterm, cmds)
+    }
+
+    fn expand_tuple(
+        &self,
+        lang1: &str,
+        tag: &str,
+        qterms: &[Arc<QTerm>],
+        cmds: &[CmdOrHole],
+        arity: Arity,
+    ) -> Result<Arc<QTerm>> {
+        RustMetaLanguage.expand_tuple(lang1, tag, qterms, cmds, arity)
+    }
+
+    fn pattern_tag(&self) -> Option<&'static str> {
+        RustMetaLanguage.pattern_tag()
+    }
+
+    fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
+        RustMetaLanguage.pattern_binding(terms)
+    }
+
+    fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
+        RustMetaLanguage.pattern_var(name)
+    }
+
+    fn pattern_let(
+        &self,
+        names: &[Box<str>],
+        pattern: &Arc<QTerm>,
+        value: &Arc<QTerm>,
+    ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
+        RustMetaLanguage.pattern_let(names, pattern, value)
+    }
+}
+
+fn dollar_multi() -> DictMulti {
+    let mut multi = DictMulti::default();
+    multi.add_lang("rs", Box::new(DynRustLanguage::default()));
+    multi.add_meta("rs", Box::new(DollarMeta));
+    multi
+}
+
+/// A host can choose its own metavariable spelling, because the rule is now a
+/// trait method rather than the core's (#174, finding E4).
+#[test]
+fn pattern_var_name_is_the_metas_choice() -> Result<()> {
+    let mut multi = dollar_multi();
+    let qterm = multi.parse_lang("rs", "let ↖↙$a↘ + ↙$b↘↗ = rhs;")?;
+    let out = multi.expand_lang("rs", &qterm)?.coparse();
+
+    // `$a` bound the name `a`: it is the binder and the metavariable both.
+    assert!(out.contains("let [a, b]"), "{out}");
+    assert!(out.contains("mvar(\"a\")"), "{out}");
+    assert!(out.contains("mvar(\"b\")"), "{out}");
+    // The `$` is a binder sigil, not part of the name.
+    assert!(!out.contains("$a"), "{out}");
+    Ok(())
+}
+
+/// The same override rejects what it does not recognise — a bare identifier,
+/// which is exactly what the old hardcoded rule *only* accepted.
+#[test]
+fn pattern_var_name_override_rejects_bare_ident() {
+    let mut multi = dollar_multi();
+    let qterm = multi.parse_lang("rs", "let ↖↙a↘ + ↙b↘↗ = rhs;").unwrap();
+    let err = multi.expand_lang("rs", &qterm).unwrap_err();
+    assert!(err.to_string().contains("must be $name"), "{err}");
 }
 
 #[test]

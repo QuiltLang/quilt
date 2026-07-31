@@ -84,6 +84,22 @@ pub trait MetaLanguage {
         None
     }
 
+    /// The metavariable name a ground unquote inside a pattern quote binds.
+    ///
+    /// The expander used to lex this itself, in the language-agnostic core, with
+    /// a hand-rolled `is_alphabetic() || '_'` rule applied to every host (issue
+    /// #174, finding E4) — the same category of hardcoding as
+    /// [`pattern_binding`](Self::pattern_binding). Now the meta-language reads
+    /// its own binder syntax, and gets the whole [`QTerm`] rather than pre-lexed
+    /// text so it can inspect the term's shape instead of re-lexing.
+    ///
+    /// The default accepts a plain identifier via
+    /// [`crate::qmatch::plain_ident_name`], which is right for any host whose
+    /// binders are identifiers; override it for one whose are not (say `$name`).
+    fn pattern_var_name(&self, term: &QTerm) -> Result<Box<str>> {
+        crate::qmatch::plain_ident_name(term)
+    }
+
     /// Code for a pattern metavariable: the expression spliced where `↙name↘`
     /// sits inside a pattern quote (e.g. `mvar("name")` for Rust).
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
@@ -200,6 +216,10 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
         (**self).pattern_binding(terms)
+    }
+
+    fn pattern_var_name(&self, term: &QTerm) -> Result<Box<str>> {
+        (**self).pattern_var_name(term)
     }
 
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {

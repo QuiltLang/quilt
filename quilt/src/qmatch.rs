@@ -265,6 +265,33 @@ pub fn pattern_binding_at(
     (value < terms.len()).then_some((pattern, value))
 }
 
+/// Read a metavariable name off a ground unquote whose body must be a plain
+/// identifier: a leading letter or `_`, then letters, digits or `_`.
+///
+/// This is the default answer for
+/// [`MetaLanguage::pattern_var_name`](crate::meta::MetaLanguage::pattern_var_name),
+/// and the rule the expander used to apply to every host from `multi.rs`
+/// (issue #174, finding E4). It lives here, beside the rest of the pattern
+/// machinery, so a host with different binder syntax overrides the trait method
+/// instead of the core deciding for it.
+///
+/// The name has to satisfy two consumers at once, which is why "plain
+/// identifier" is the useful default: it is spliced into the pattern as
+/// `mvar("name")` ([`pattern_var_code`]) *and* bound as a variable in the
+/// generated host code ([`pattern_let_code`]).
+pub fn plain_ident_name(term: &QTerm) -> Result<Box<str>> {
+    let text = term.coparse();
+    let name = text.trim();
+    let mut chars = name.chars();
+    let ident = chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '_');
+    ensure!(
+        ident,
+        "pattern metavariable must be a plain identifier, got {name:?}"
+    );
+    Ok(name.into())
+}
+
 /// Code for a pattern metavariable splice: `mvar("name")`.
 pub fn pattern_var_code(name: &str) -> Arc<QTerm> {
     leaf("_", &format!("mvar(\"{name}\")"))

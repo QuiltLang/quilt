@@ -441,6 +441,10 @@ impl MetaLanguage for OmniMetaLanguage {
         self.inner().pattern_binding(terms)
     }
 
+    fn pattern_var_name(&self, term: &QTerm) -> Result<Box<str>> {
+        self.inner().pattern_var_name(term)
+    }
+
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
         self.inner().pattern_var(name)
     }
