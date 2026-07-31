@@ -108,9 +108,15 @@ fn bare_tuple_quote() -> Result<()> {
     // statement; the quote must not try to squash past it. This is the
     // fold-through-a-quote join: `a, b` splices flat into expression
     // position, so folding it again stays a flat comma-separated list.
+    //
+    // The children are `.e`, not `.c`, because `expression_statement` is one of
+    // the containers the derived arity table picks up (#202) — its rule is
+    // `commaSep1(expression)`, which is exactly what a bare tuple exercises. For
+    // a single child the two are the same call; what `.e` adds is that an emit
+    // (`←`) can splice a whole sequence into the tuple.
     let out = expand_py("p = ↖↙a↘, ↙b↘↗")?;
     assert!(
-        out.contains(r#"tb("expression_statement").c(a).c(sym(",")).w(" ").c(b)"#),
+        out.contains(r#"tb("expression_statement").e(a).e(sym(",")).w(" ").e(b)"#),
         "a bare tuple quote should keep the expression_statement whole; got:\n{out}"
     );
     Ok(())

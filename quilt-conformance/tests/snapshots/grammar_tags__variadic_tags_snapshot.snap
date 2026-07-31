@@ -2,17 +2,13 @@
 source: quilt-conformance/tests/grammar_tags.rs
 expression: report
 ---
-bash: 47 variadic
-  ansi_c_string
+bash: 28 variadic
   arithmetic_expansion
   array
-  binary_expression
-  brace_expression
   c_style_for_statement
   case_item
   case_statement
   command
-  command_name
   command_substitution
   compound_statement
   concatenation
@@ -23,31 +19,16 @@ bash: 47 variadic
   expansion
   file_redirect
   for_statement
-  function_definition
   heredoc_body
   heredoc_redirect
-  herestring_redirect
   if_statement
-  list
-  negated_command
-  number
-  parenthesized_expression
   pipeline
-  postfix_expression
   process_substitution
   program
-  raw_string
   redirected_statement
-  simple_expansion
   string
-  subscript
   subshell
-  ternary_expression
-  test_command
-  translated_string
-  unary_expression
   unset_command
-  variable_assignment
   variable_assignments
   while_statement
 
@@ -60,98 +41,251 @@ html: 7 variadic
   start_tag
   style_element
 
-lean: 3 variadic
+lean: 50 variadic
+  abbrev
+  anon_ctor
+  anon_ctor_binder
+  array_lit
+  attribute_cmd
+  attributes
+  axiom
   by
+  constant
+  decl_doc_cmd
+  decl_modifiers
+  declaration
+  def
+  deriving_cmd
   do_block
+  elab_rules_cmd
+  example
+  explicit_binder
+  export
+  fun
+  implicit_binder
+  induction
+  inductive
+  initialize
+  instance
+  interpolated_str
+  list_lit
+  macro_cmd
+  macro_rules_cmd
+  match
+  match_alt
   module
+  opaque
+  open
+  paren
+  str_lit
+  strict_implicit_binder
+  struct_lit
+  structure
+  syntax_cmd
+  tactic_case
+  theorem
+  tuple_binder
+  unif_hint_cmd
+  universe
+  universe_app
+  variable
+  where_aux_def
+  where_decls
+  where_struct
 
-nix: 5 variadic
+nix: 9 variadic
+  attrpath
   binding_set
   formals
+  hpath_expression
+  indented_string_expression
   inherited_attrs
   list_expression
-  source_code
+  path_expression
+  string_expression
 
-python: 2 variadic
+python: 45 variadic
+  argument_list
+  assert_statement
   block
+  case_clause
+  class_pattern
+  comparison_operator
+  concatenated_string
+  decorated_definition
+  dict_pattern
+  dictionary
+  dictionary_comprehension
+  dotted_name
+  exec_statement
+  expression_list
+  expression_statement
+  for_in_clause
+  format_specifier
+  future_import_statement
+  generator_expression
+  global_statement
+  if_statement
+  import_from_statement
+  import_prefix
+  import_statement
+  lambda_parameters
+  list
+  list_comprehension
+  list_pattern
+  match_statement
   module
+  nonlocal_statement
+  parameters
+  pattern_list
+  print_statement
+  set
+  set_comprehension
+  string
+  string_content
+  subscript
+  try_statement
+  tuple
+  tuple_pattern
+  type_parameter
+  union_pattern
+  with_clause
 
-rust: 2 variadic
+rust: 35 variadic
+  arguments
+  array_expression
   block
+  closure_parameters
+  declaration_list
+  enum_variant_list
+  field_declaration_list
+  field_initializer
+  field_initializer_list
+  for_lifetimes
+  function_modifiers
+  macro_definition
+  match_arm
+  match_block
+  ordered_field_declaration_list
+  parameters
+  shorthand_field_initializer
+  slice_pattern
   source_file
+  string_literal
+  struct_pattern
+  token_repetition
+  token_repetition_pattern
+  token_tree
+  token_tree_pattern
+  trait_bounds
+  tuple_expression
+  tuple_pattern
+  tuple_struct_pattern
+  tuple_type
+  type_arguments
+  type_parameters
+  use_bounds
+  use_list
+  where_clause
 
 text: (no tree-sitter grammar)
 
-typescript: 10 variadic
+typescript: 35 variadic
+  abstract_class_declaration
   arguments
   array
   array_pattern
+  class
   class_body
+  class_declaration
+  enum_body
+  export_clause
+  export_statement
+  extends_clause
+  extends_type_clause
+  formal_parameters
+  implements_clause
+  lexical_declaration
   named_imports
   object
   object_pattern
+  object_type
+  optional_parameter
   program
+  public_field_definition
+  required_parameter
+  sequence_expression
   statement_block
+  string
   switch_body
+  switch_case
+  switch_default
+  template_literal_type
+  template_string
+  tuple_type
+  type_arguments
+  type_parameters
+  variable_declaration
 
-wgsl: 5 variadic
+wgsl: 19 variadic
+  argument_list_expression
+  attribute
   case_compound_statement
+  case_selectors
   compound_statement
+  const_expression
+  continuing_compound_statement
+  function_declaration
+  function_return_type_declaration
+  global_constant_declaration
+  global_variable_declaration
+  lhs_expression
+  loop_statement
+  parameter
+  parameter_list
   source_file
   struct_declaration
+  struct_member
   switch_statement
 
-zsh: 53 variadic
-  ansi_c_string
+zsh: 40 variadic
+  arithmetic_call
   arithmetic_expansion
   array
-  binary_expression
-  brace_expression
   c_style_for_statement
   case_item
   case_statement
   command
-  command_name
   command_substitution
   compound_statement
   compound_statement_no_always
   concatenation
   declaration_command
   do_group
-  dollar_variable
   elif_clause
   else_clause
   expansion
+  expansion_array
+  expansion_default
   expansion_default_list
+  expansion_modifier
+  expansion_pattern
+  expansion_substring
+  expansion_with_modifier
   file_redirect
   for_statement
   function_definition
   heredoc_body
   heredoc_redirect
-  herestring_redirect
   if_statement
-  list
-  negated_command
-  number
-  parenthesized_expression
   pipeline
-  postfix_expression
   process_substitution
   program
-  raw_string
   redirected_statement
-  repeat_statement
   select_statement
   string
-  subscript
   subshell
-  ternary_expression
-  test_command
-  translated_string
-  unary_expression
+  terse_for_statement
   unset_command
-  variable_assignment
   variable_assignments
-  variable_ref
   while_statement
-  zsh_array_subscript_flags

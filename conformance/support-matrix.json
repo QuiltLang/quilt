@@ -32,41 +32,20 @@
         {
           "axis": "variadic-containers",
           "status": "supported",
-          "note": "agrees with zsh's table on every node kind both grammars define",
           "verified_by": "variadic-containers/bash",
           "detail": [
             "program",
             "compound_statement",
-            "subshell",
-            "list",
-            "pipeline",
-            "command",
             "do_group",
+            "command",
+            "pipeline",
             "if_statement",
-            "elif_clause",
-            "else_clause",
             "case_statement",
-            "case_item",
+            "variable_assignments",
             "for_statement",
             "c_style_for_statement",
             "while_statement",
-            "function_definition",
-            "test_command",
-            "variable_assignment",
-            "file_redirect",
-            "raw_string",
-            "ansi_c_string",
-            "subscript",
-            "ternary_expression",
-            "redirected_statement",
-            "variable_assignments",
-            "declaration_command",
-            "string",
-            "concatenation",
-            "array",
-            "expansion",
-            "arithmetic_expansion",
-            "simple_expansion"
+            "file_redirect"
           ]
         },
         {
@@ -210,7 +189,9 @@
           "status": "supported",
           "verified_by": "variadic-containers/html",
           "detail": [
-            "element"
+            "element",
+            "document",
+            "start_tag"
           ]
         },
         {
@@ -349,7 +330,10 @@
           "verified_by": "variadic-containers/lean",
           "detail": [
             "module",
-            "by"
+            "by",
+            "do_block",
+            "def",
+            "theorem"
           ]
         },
         {
@@ -502,7 +486,9 @@
           "status": "supported",
           "verified_by": "variadic-containers/nix",
           "detail": [
-            "list_expression"
+            "list_expression",
+            "binding_set",
+            "formals"
           ]
         },
         {
@@ -659,7 +645,10 @@
           "verified_by": "variadic-containers/python",
           "detail": [
             "block",
-            "module"
+            "module",
+            "argument_list",
+            "list",
+            "parameters"
           ]
         },
         {
@@ -826,7 +815,12 @@
           "verified_by": "variadic-containers/rust",
           "detail": [
             "block",
-            "source_file"
+            "source_file",
+            "arguments",
+            "array_expression",
+            "declaration_list",
+            "match_block",
+            "parameters"
           ]
         },
         {
@@ -1098,7 +1092,7 @@
         "ts"
       ],
       "feature": "typescript",
-      "blurb": "The host behind the browser playground. Expanded `.ts.quilt` code calls the `quilt-wasm` runtime, so a metaprogram can run in the browser with no server — or under node, where `quilt run` binds the same runtime and adds `↓`.",
+      "blurb": "The host behind the browser playground. Expanded `.ts.quilt` code calls the `quilt-wasm` runtime, so a metaprogram can run in the browser with no server.",
       "meta_kind": "runtime",
       "lang_src": "quilt/src/langs/typescript/lang.rs",
       "meta_src": "quilt/src/langs/typescript/meta.rs",
@@ -1127,7 +1121,11 @@
           "verified_by": "variadic-containers/typescript",
           "detail": [
             "program",
-            "statement_block"
+            "statement_block",
+            "lexical_declaration",
+            "arguments",
+            "array",
+            "formal_parameters"
           ]
         },
         {
@@ -1174,8 +1172,9 @@
         },
         {
           "axis": "reduce",
-          "status": "supported",
-          "note": "`quilt run` binds the bare `quilt` import to the Node runtime (`quilt-wasm/node`), which re-expands a generated stage by shelling out to the `quilt` binary; needs `bin/build-ts`",
+          "status": "partial",
+          "note": "`↓` runs in the browser demo via the WASI expander rather than a native runner, so there is no `quilt run` reduce backend",
+          "issue": 153,
           "verified_by": "reduce/typescript",
           "detail": [
             "(homogeneous) → reduce()",
@@ -1276,7 +1275,8 @@
           "verified_by": "variadic-containers/wgsl",
           "detail": [
             "source_file",
-            "compound_statement"
+            "compound_statement",
+            "function_declaration"
           ]
         },
         {
@@ -1414,47 +1414,29 @@
         {
           "axis": "variadic-containers",
           "status": "supported",
-          "note": "agrees with bash's table on every node kind both grammars define",
           "verified_by": "variadic-containers/zsh",
           "detail": [
             "program",
             "compound_statement",
-            "subshell",
-            "list",
-            "pipeline",
-            "command",
             "do_group",
+            "command",
+            "pipeline",
             "if_statement",
-            "elif_clause",
-            "else_clause",
             "case_statement",
-            "case_item",
+            "variable_assignments",
+            "arithmetic_expansion",
             "for_statement",
             "c_style_for_statement",
             "while_statement",
             "function_definition",
-            "test_command",
-            "variable_assignment",
             "file_redirect",
-            "raw_string",
-            "ansi_c_string",
-            "subscript",
-            "ternary_expression",
-            "redirected_statement",
-            "variable_assignments",
-            "declaration_command",
-            "string",
-            "concatenation",
-            "array",
-            "expansion",
-            "arithmetic_expansion",
             "compound_statement_no_always",
             "expansion_default_list",
             "select_statement",
-            "repeat_statement",
-            "dollar_variable",
-            "variable_ref",
-            "zsh_array_subscript_flags"
+            "expansion_default",
+            "expansion_substring",
+            "expansion_modifier",
+            "terse_for_statement"
           ]
         },
         {

@@ -11,8 +11,22 @@ The host behind the browser playground. Expanded `.ts.quilt` code calls the \
 `quilt-wasm` runtime, so a metaprogram can run in the browser with no server — \
 or under node, where `quilt run` binds the same runtime and adds `↓`."""
 
-variadic = ["program", "statement_block"]
-not_variadic = ["binary_expression", "lexical_declaration"]
+# Derived from the grammar's `REPEAT` rules (#202). `lexical_declaration` was
+# pinned as *not* variadic while the table was hand-written; it is
+# `commaSep1($.variable_declarator)`, so `const a = 1, b = 2` genuinely has a
+# variable number of direct children.
+#
+# `arguments`, `array` and `formal_parameters` are containers the derivation
+# added: emit (`←`) can now splice a sequence into an argument list.
+variadic = [
+  "program",
+  "statement_block",
+  "lexical_declaration",
+  "arguments",
+  "array",
+  "formal_parameters",
+]
+not_variadic = ["binary_expression", "identifier"]
 
 lift_from = ["typescript", "ts", "html"]
 lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "lean", "text", "txt"]

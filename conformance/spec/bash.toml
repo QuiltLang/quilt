@@ -10,40 +10,29 @@ A target-only shell language. Generate scripts with correct quoting: a lifted \
 Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks \
 escaped, so the value stays inert data."""
 
-# Bash and zsh are documented as near-identical and zsh's grammar is a fork of
-# bash's, so the block below is deliberately identical to zsh.toml's, in the same
-# order; only the entries one grammar has no node kind for follow it. A future
-# divergence therefore shows up as a diff between these two files as well.
-# The eleven tags marked below are the ones whose classification had drifted
-# between the two (#150); pinning them on both sides keeps the reconciliation
-# from quietly coming undone.
+# The table these are checked against is derived from the grammar's `REPEAT`
+# rules (#202), so this list is a claim about the *grammar*: these node kinds
+# take a variable number of direct children.
+#
+# It still overlaps zsh.toml's heavily, since zsh's grammar is a fork of bash's,
+# but the two are no longer maintained to *match* — each follows its own grammar.
 variadic = [
   "program",
   "compound_statement",
   "subshell",
-  "list",
-  "pipeline",
-  "command",
   "do_group",
+  "command",
+  "pipeline",
   "if_statement",
   "elif_clause",
   "else_clause",
   "case_statement",
   "case_item",
-  # The eleven that had drifted. Both grammars define all of them.
   "for_statement",
   "c_style_for_statement",
   "while_statement",
-  "function_definition",
-  "test_command",
-  "variable_assignment",
-  "file_redirect",
-  "raw_string",
-  "ansi_c_string",
-  "subscript",
-  "ternary_expression",
-  # Shared containers that never drifted.
   "redirected_statement",
+  "file_redirect",
   "variable_assignments",
   "declaration_command",
   "string",
@@ -51,8 +40,32 @@ variadic = [
   "array",
   "expansion",
   "arithmetic_expansion",
-  # Bash-only: zsh spells this `dollar_variable` / `variable_ref`.
+]
+# Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
+not_variadic = [
+  "word",
+  "variable_name",
+  "comment",
+  "test_operator",
+  "file_descriptor",
+  # Declared variadic by the hand-written table until #202, and wrong: the bash
+  # grammar gives none of these a repeated child. `list` (`a && b`) is a binary
+  # sequence of two statements; `function_definition` takes exactly one body
+  # (zsh's takes `repeat1` names, which is why *its* spec still claims it);
+  # `raw_string`, `ansi_c_string` and `simple_expansion` have no children at
+  # all. The rest reach a repeat only through a category rule or an alias, so
+  # the repetition belongs to the `word` or `binary_expression` underneath
+  # rather than to the node itself.
+  "list",
+  "function_definition",
+  "test_command",
+  "variable_assignment",
+  "raw_string",
+  "ansi_c_string",
+  "subscript",
+  "ternary_expression",
   "simple_expansion",
+]
 ]
 # Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
 # All five are kinds both shell grammars define.
@@ -62,6 +75,23 @@ not_variadic = [
   "comment",
   "test_operator",
   "file_descriptor",
+  # Declared variadic by the hand-written table until #202, and wrong: the bash
+  # grammar gives none of these a repeated child. `list` (`a && b`) is a binary
+  # sequence of two statements; `function_definition` takes exactly one body
+  # (zsh's takes `repeat1` names, which is why *its* spec still claims it);
+  # `raw_string`, `ansi_c_string` and `simple_expansion` have no children at
+  # all. The rest reach a repeat only through a category rule or an alias, so
+  # the repetition belongs to the `word` or `binary_expression` underneath
+  # rather than to the node itself.
+  "list",
+  "function_definition",
+  "test_command",
+  "variable_assignment",
+  "raw_string",
+  "ansi_c_string",
+  "subscript",
+  "ternary_expression",
+  "simple_expansion",
 ]
 
 lift_marker = "Bash"
