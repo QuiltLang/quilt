@@ -30,6 +30,11 @@ quilt = {workspace = true, features = [
   "zsh",
 ]}
 miette = {workspace = true, features = ["fancy"]}
+# The wire format of the `py↓` / `rs↓` protocol: a generated Python stage sends
+# its result back as postcard bytes and the Rust side decodes them (see
+# `langs/rust/ops.rs`). The corpus pins those bytes, so this end can encode and
+# decode them exactly as `quilt-python`'s binding does (issue #192).
+postcard = {workspace = true, features = ["alloc", "use-std"]}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 toml = {workspace = true}
@@ -55,3 +60,10 @@ workspace = true
 [[bin]]
 name = "gen-matrix"
 path = "src/bin/gen_matrix.rs"
+
+# Derives the variadic-container tables from the vendored grammars and writes
+# `quilt/src/langs/arity.rs` (issue #202). Run by `bin/gen-arity`; gated by
+# `bin/check-arity`.
+[[bin]]
+name = "gen-arity"
+path = "src/bin/gen_arity.rs"

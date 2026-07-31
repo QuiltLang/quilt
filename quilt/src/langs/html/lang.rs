@@ -75,18 +75,10 @@ impl TSProvider for HtmlProvider {
         Ok((qterm.squash(), kind))
     }
 
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            // The containers with `repeat(…)` children in the grammar.
-            "document"
-            | "element"
-            | "script_element"
-            | "style_element"
-            | "start_tag"
-            | "self_closing_tag"
-            | "quoted_attribute_value" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::HTML, tag)
     }
 
     fn hashbang(&self) -> Option<&'static str> {

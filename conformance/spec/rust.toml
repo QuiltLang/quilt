@@ -16,7 +16,23 @@ blurb = """
 The primary host. Its `MetaLanguage` is generated from `mk_meta.rs.quilt` by the \
 two-stage bootstrap, so the expander that produces Rust is itself written in Quilt."""
 
-variadic = ["block", "source_file"]
+# Derived from the grammar's `REPEAT` rules (#202). `block` and `source_file`
+# were the whole hand-written table; the rest are containers the derivation
+# added, which is the expressiveness gain — emit (`←`) can now splice a sequence
+# into an argument list, an array literal or an impl body.
+#
+# `function_item` stays pinned as a leaf: it is the case that rules out the
+# obvious-but-wrong scrape of `node-types.json`'s `children.multiple`, which is
+# true for any node with several distinct child slots.
+variadic = [
+  "block",
+  "source_file",
+  "arguments",
+  "array_expression",
+  "declaration_list",
+  "match_block",
+  "parameters",
+]
 not_variadic = ["binary_expression", "let_declaration", "function_item"]
 
 lift_marker = "Rust"

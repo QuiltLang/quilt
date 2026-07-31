@@ -11,8 +11,13 @@ A quotable target and a string-based host. Generate definitions, theorems and \
 tactic proofs at build time; as a host, a `.lean.quilt` metaprogram expands to \
 plain Lean that builds the output with `s!"…"` interpolation."""
 
-variadic = ["module", "by"]
-not_variadic = ["binary_op", "def", "theorem"]
+# Derived from the grammar's `REPEAT` rules (#202). `def` and `theorem` were
+# pinned as *not* variadic while the table was hand-written; the grammar
+# disagrees, and it is right — both take `optional($._binders)`, which is a
+# `repeat1` of binder nodes, so `def f (a : A) (b : B) := …` really does have a
+# variable number of direct children.
+variadic = ["module", "by", "do_block", "def", "theorem"]
+not_variadic = ["binary_op"]
 
 lift_marker = "Lean"
 lift_from = ["lean", "lean4"]

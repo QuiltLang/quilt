@@ -25,7 +25,13 @@ fn main() -> Result<()>{
         b_.nl();
         {
             for c in (1..=n).rev() {
-                tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&c.to_string().qlift()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
+                tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&{
+                    let mut b_ = tb("token_tree");
+                    sym("(").emit(&mut b_);
+                    c.to_string().qlift().emit(&mut b_);
+                    sym(")").emit(&mut b_);
+                    b_.b()
+                }).b()).c(&sym(";")).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
             tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "Happy New Year!")).c(&sym("\"")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);

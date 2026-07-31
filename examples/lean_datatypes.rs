@@ -83,7 +83,23 @@ fn main() -> Result<()> {
         let idx = u32::try_from(i).unwrap();
         code = tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c")).w(" ").c(&sym("=")).w(" ").c(&ctor).b()).w(" ").c(&sym("then")).w(" ").c(&idx.qlift_to::<Lean>()).w(" ").c(&sym("else")).w(" ").c(&code).b();
     }
-    decls.push(tb("def").c(&sym("def")).w(" ").c(&leaf("identifier", "Color.code")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "c")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Color")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).w(" ").c(&sym(":=")).w(" ").c(&code).b().coparse());
+    decls.push({
+        let mut b_ = tb("def");
+        sym("def").emit(&mut b_);
+        b_.write(" ");
+        leaf("identifier", "Color.code").emit(&mut b_);
+        b_.write(" ");
+        tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "c")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Color")).c(&sym(")")).b()).b().emit(&mut b_);
+        b_.write(" ");
+        sym(":").emit(&mut b_);
+        b_.write(" ");
+        leaf("identifier", "Nat").emit(&mut b_);
+        b_.write(" ");
+        sym(":=").emit(&mut b_);
+        b_.write(" ");
+        code.emit(&mut b_);
+        b_.b()
+    }.coparse());
     
     // The bound is the channel count, lifted out of the Rust list. `decide`
     // closes each case, so a wrong bound would be a compile error downstream.
@@ -100,7 +116,23 @@ fn main() -> Result<()> {
         let proj = ident(&format!("p.{ch}"));
         total = tb("binary_op").c(&total).w(" ").c(&sym("+")).w(" ").c(&proj).b();
     }
-    decls.push(tb("def").c(&sym("def")).w(" ").c(&leaf("identifier", "Palette.total")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "p")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Palette")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).w(" ").c(&sym(":=")).w(" ").c(&total).b().coparse());
+    decls.push({
+        let mut b_ = tb("def");
+        sym("def").emit(&mut b_);
+        b_.write(" ");
+        leaf("identifier", "Palette.total").emit(&mut b_);
+        b_.write(" ");
+        tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "p")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Palette")).c(&sym(")")).b()).b().emit(&mut b_);
+        b_.write(" ");
+        sym(":").emit(&mut b_);
+        b_.write(" ");
+        leaf("identifier", "Nat").emit(&mut b_);
+        b_.write(" ");
+        sym(":=").emit(&mut b_);
+        b_.write(" ");
+        total.emit(&mut b_);
+        b_.b()
+    }.coparse());
     
     // State what `total` computes on a literal `Palette.mk`. True by `rfl`:
     // `total` is a plain sum, so both sides are definitionally equal.
@@ -125,7 +157,23 @@ fn main() -> Result<()> {
     // `mk` is an application, so it is parenthesised before `.total`: a splice
     // carries a term, not a precedence level.
     decls.push(
-        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Palette.total_mk")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&binder_group).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("proj").c(&tb("paren").c(&sym("(")).c(&mk).c(&sym(")")).b()).c(&sym(".")).c(&leaf("identifier", "total")).b()).w(" ").c(&sym("=")).w(" ").c(&rhs).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).w(" ").c(&leaf("identifier", "rfl")).b()).b()
+        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Palette.total_mk")).w(" ").c(&tb("binders").c(&{
+            let mut b_ = tb("explicit_binder");
+            sym("(").emit(&mut b_);
+            binder_group.emit(&mut b_);
+            b_.write(" ");
+            sym(":").emit(&mut b_);
+            b_.write(" ");
+            leaf("identifier", "Nat").emit(&mut b_);
+            sym(")").emit(&mut b_);
+            b_.b()
+        }).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("proj").c(&{
+            let mut b_ = tb("paren");
+            sym("(").emit(&mut b_);
+            mk.emit(&mut b_);
+            sym(")").emit(&mut b_);
+            b_.b()
+        }).c(&sym(".")).c(&leaf("identifier", "total")).b()).w(" ").c(&sym("=")).w(" ").c(&rhs).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).w(" ").c(&leaf("identifier", "rfl")).b()).b()
         .coparse(),
     );
     
@@ -147,7 +195,13 @@ fn main() -> Result<()> {
         {
             for ch in channels {
                 let ctor = ident(&format!("Color.{ch}"));
-                tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&ch.qlift_to::<Lean>()).w(" ").c(&sym("++")).w(" ").c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w(" -> ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("proj").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&tb("paren").c(&sym("(")).c(&ctor).c(&sym(")")).b()).b()).c(&sym(".")).c(&leaf("identifier", "code")).b()).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);
+                tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&ch.qlift_to::<Lean>()).w(" ").c(&sym("++")).w(" ").c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w(" -> ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("proj").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
+                    let mut b_ = tb("paren");
+                    sym("(").emit(&mut b_);
+                    ctor.emit(&mut b_);
+                    sym(")").emit(&mut b_);
+                    b_.b()
+                }).b()).c(&sym(".")).c(&leaf("identifier", "code")).b()).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("interpolated_str").c(&sym("s!\"")).w("total = ").c(&tb("interpolation").c(&sym("{")).c(&tb("proj").c(&tb("paren").c(&sym("(")).c(&tb("app").c(&tb("app").c(&tb("app").c(&leaf("identifier", "Palette.mk")).w(" ").c(&leaf("num_lit", "1")).b()).w(" ").c(&leaf("num_lit", "2")).b()).w(" ").c(&leaf("num_lit", "3")).b()).c(&sym(")")).b()).c(&sym(".")).c(&leaf("identifier", "total")).b()).c(&sym("}")).b()).c(&sym("\"")).b()).b().emit(&mut b_);

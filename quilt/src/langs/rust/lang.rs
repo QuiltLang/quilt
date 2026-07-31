@@ -62,11 +62,10 @@ impl TSProvider for RustProvider {
         })
     }
 
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "block" | "source_file" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::RUST, tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {
