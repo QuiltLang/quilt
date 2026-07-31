@@ -77,7 +77,31 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         Ok("QTerm")
     }
 
+    /// No spelling: `←` needs a named `b_` accumulator in scope, and this host
+    /// has none (issue #152). Same shape as Python's — see
+    /// [`PythonMetaLanguage::emit_str`](crate::langs::python::meta::PythonMetaLanguage::emit_str)
+    /// for the full reasoning.
+    ///
+    /// TypeScript *could* host an accumulator, since an IIFE gives it
+    /// statements in expression position — but `WasmBuilder::e` consumes and
+    /// returns the builder rather than mutating it, and `WasmQTerm` exposes no
+    /// `emit` method, so the runtime half does not exist either. Until it does,
+    /// a ground `←` fails here rather than expanding to generated TypeScript
+    /// that references an undefined `b_`.
+    ///
+    /// The working alternative is the same: build the sequence with your own
+    /// builder in ground code and splice the finished term with `↙…↘`.
+    ///
+    /// ```ts
+    /// let b = tb("statement_block");
+    /// for (const n of names) b = b.e(ts↖console.log(↙name(n)↘)↗);
+    /// const body = b.b();
+    /// ```
     fn emit_str(&self) -> Result<&'static str> {
-        Ok("emit(b_)")
+        miette::bail!(
+            "typescript can't emit `←`: the fluent `.e(child)` chain has no named `b_` \
+             accumulator to emit into — build the sequence with your own `tb(..)` builder in \
+             ground code and splice the finished term with `↙…↘`"
+        )
     }
 }

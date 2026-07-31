@@ -28,7 +28,7 @@ highlights = {status = "supported"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported"}
-emit = {status = "partial", note = "no statement-splice: the fluent `.e(child)` chain has no named `b_` accumulator the way the Rust variadic block does, so emit from a ground loop is unavailable", issue = 152}
+emit = {status = "unsupported", note = "no statement-splice: Rust's variadic block is a *block expression* and can bind `let mut b_ = tb(..)`, but Python has no statement-block in expression position, so the block is built as a fluent `tb(..).e(child).b()` chain with no named accumulator — and the runtime exposes no `emit` method on a term either. A ground `←` is therefore a hard error naming the alternative: build the sequence with your own `tb(..)` builder in ground code and splice the finished term with `↙…↘`. Automatic emission of children into a variadic container is a separate mechanism (`wrap_child`) and is unaffected", issue = 152}
 pattern-match = {status = "unsupported", note = "`PythonMetaLanguage` sets no `pattern_tag`, so a Python host cannot write `let ↖…↗ = …`. Python *fragments* can still be destructured by a Rust host, which is what `expand_rust.rs::pattern_let_runtime` exercises"}
 runnable = {status = "supported"}
 runtime-binding = {status = "supported"}
@@ -120,7 +120,8 @@ binary_operator = "expr"
 call = "expr"
 
 [meta]
-emit = "emit(b_)"
+# No `←`: the fluent `.e(child)` chain binds no `b_` for emit to append to.
+emit_error = "your own `tb(..)` builder"
 type_str = "QTerm"
 name_str = "name"
 reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]

@@ -128,3 +128,41 @@ fn expand_backslashes() -> Result<()> {
     assert!(out.contains(r"a\\nb"));
     Ok(())
 }
+
+/// A TypeScript host has no `b_` accumulator to emit into — the same
+/// fluent-chain shape as Python (issue #152). A *ground* `←` therefore fails
+/// loudly instead of expanding to TypeScript referencing an undefined `b_`,
+/// and the message points at the alternative that does work.
+#[test]
+fn host_emit_unsupported() {
+    for code in [
+        // Inside a host unquote, in a variadic block.
+        indoc! {r#"
+            const out = ts↖function f() {
+                console.log("start");
+                ↙
+                for (const n of names) {
+                    ts↖console.log(↙name(n)↘)↗.←
+                }
+                ↘
+            }↗;
+        "#},
+        // …and at plain ground position.
+        "const x = ←;\n",
+    ] {
+        let msg = expand(&["ts"], code).unwrap_err().to_string();
+        assert!(msg.contains("typescript can't emit"), "{msg}");
+        assert!(msg.contains("your own `tb(..)` builder"), "{msg}");
+    }
+}
+
+/// A `←` at sky depth belongs to a *later* stage, so it is still deferred as
+/// its glyph rather than rejected here.
+#[test]
+fn host_emit_deferred_in_quote() -> Result<()> {
+    insta::assert_snapshot!(expand(
+        &["ts"],
+        "const x = ts↖const y = ts↖const z = ←↗↗;\n"
+    )?);
+    Ok(())
+}

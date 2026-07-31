@@ -1,0 +1,5 @@
+---
+source: quilt/tests/expand_python.rs
+expression: "expand_py(\"x = ↖y = ↖z = ←↗↗\")?"
+---
+x = tb("assignment").c(leaf("identifier", "y")).w(" ").c(sym("=")).w(" ").c(quote("identifier", 1, "py", tb("assignment").c(leaf("identifier", "z")).w(" ").c(sym("=")).w(" ").c(leaf("identifier", "←")).b(), [cmd(write("↖")), HOLE, cmd(write("↗"))])).b()
