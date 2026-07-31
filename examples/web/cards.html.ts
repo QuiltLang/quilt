@@ -19,13 +19,13 @@ import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_htm
 // entity-escaped HTML text; the surrounding unquote splices that text into the
 // hole. Try editing a title or body and re-running.
 function card(title, body) {
-  return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "article")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "card")).e(sym("\"")).b()).b()).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "h2")).e(sym(">")).b()).e(qlift_html(title)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "p")).e(sym(">")).b()).e(qlift_html(body)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "p")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "article")).c(sym(">")).b()).b();
+  return tb("element").c(tb("start_tag").c(sym("<")).c(leaf("tag_name", "article")).w(" ").c(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").c(sym("\"")).c(leaf("attribute_value", "card")).c(sym("\"")).b()).b()).c(sym(">")).b()).p("  ").n().c(tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "h2")).c(sym(">")).b()).e(qlift_html(title)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().c(tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "p")).c(sym(">")).b()).e(qlift_html(body)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "p")).c(sym(">")).b()).b()).x().n().c(tb("end_tag").c(sym("</")).c(leaf("tag_name", "article")).c(sym(">")).b()).b();
 }
 
 // One list item, again a quoted fragment with its text lifted in. Returning a
 // term (not a string) lets the caller splice it into another quote.
 function bullet(text) {
-  return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "li")).e(sym(">")).b()).e(qlift_html(text)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "li")).c(sym(">")).b()).b();
+  return tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "li")).c(sym(">")).b()).e(qlift_html(text)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "li")).c(sym(">")).b()).b();
 }
 
 // A card whose body is a nested <ul>: the <li> fragments are built separately
@@ -36,7 +36,7 @@ function pipeline() {
   const step1 = bullet("This .quilt source was expanded to TypeScript,");
   const step2 = bullet("by the Quilt expander, itself compiled to WebAssembly,");
   const step3 = bullet("then run against the quilt-wasm runtime to build this HTML.");
-  return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "article")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "card")).e(sym("\"")).b()).b()).e(sym(">")).b()).p("  ").n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "h2")).e(sym(">")).b()).e(qlift_html(heading)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().e(tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "ul")).e(sym(">")).b()).p("  ").n().e(step1).n().e(step2).n().e(step3).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "ul")).c(sym(">")).b()).b()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "article")).c(sym(">")).b()).b();
+  return tb("element").c(tb("start_tag").c(sym("<")).c(leaf("tag_name", "article")).w(" ").c(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").c(sym("\"")).c(leaf("attribute_value", "card")).c(sym("\"")).b()).b()).c(sym(">")).b()).p("  ").n().c(tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "h2")).c(sym(">")).b()).e(qlift_html(heading)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().c(tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "ul")).c(sym(">")).b()).p("  ").n().e(step1).n().e(step2).n().e(step3).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "ul")).c(sym(">")).b()).b()).x().n().c(tb("end_tag").c(sym("</")).c(leaf("tag_name", "article")).c(sym(">")).b()).b();
 }
 
 // Build the page fragment by splicing the card terms into a quoted section and
@@ -50,5 +50,5 @@ export function render() {
     "Escaping is automatic",
     "Values like <script> & \"quotes\" splice in inert.",
   );
-  return tb("element").e(tb("start_tag").e(sym("<")).e(leaf("tag_name", "section")).w(" ").e(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").e(sym("\"")).e(leaf("attribute_value", "cards")).e(sym("\"")).b()).b()).e(sym(">")).b()).p("  ").n().e(intro).n().e(escaped).n().e(pipeline()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "section")).c(sym(">")).b()).b();
+  return tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "section")).w(" ").c(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").c(sym("\"")).c(leaf("attribute_value", "cards")).c(sym("\"")).b()).b()).c(sym(">")).b()).p("  ").n().e(intro).n().e(escaped).n().e(pipeline()).x().n().e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "section")).c(sym(">")).b()).b();
 }

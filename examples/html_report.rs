@@ -32,259 +32,31 @@ fn main() -> Result<()> {
     // html[...] quotes an HTML document fragment inside Rust source.
     // Unquoting with raw(...) splices a Rust value as raw text content.
     // .coparse() serializes the QTerm back to an HTML string.
-    let page = {
-        let mut b_ = tb("document");
-        tb("doctype").c(&sym("<!")).c(&leaf("doctype", "DOCTYPE")).w(" html").c(&sym(">")).b().emit(&mut b_);
-        b_.nl();
-        {
-            let mut b_ = tb("element");
-            {
-                let mut b_ = tb("start_tag");
-                sym("<").emit(&mut b_);
-                leaf("tag_name", "html").emit(&mut b_);
-                b_.write(" ");
-                tb("attribute").c(&leaf("attribute_name", "lang")).c(&sym("=")).c(&{
-                    let mut b_ = tb("quoted_attribute_value");
-                    sym("\"").emit(&mut b_);
-                    leaf("attribute_value", "en").emit(&mut b_);
-                    sym("\"").emit(&mut b_);
-                    b_.b()
-                }).b().emit(&mut b_);
-                sym(">").emit(&mut b_);
-                b_.b()
-            }.emit(&mut b_);
-            b_.nl();
-            {
-                let mut b_ = tb("element");
-                {
-                    let mut b_ = tb("start_tag");
-                    sym("<").emit(&mut b_);
-                    leaf("tag_name", "head").emit(&mut b_);
-                    sym(">").emit(&mut b_);
-                    b_.b()
-                }.emit(&mut b_);
-                b_.push("  ");
-                b_.nl();
-                {
-                    let mut b_ = tb("element");
-                    {
-                        let mut b_ = tb("start_tag");
-                        sym("<").emit(&mut b_);
-                        leaf("tag_name", "meta").emit(&mut b_);
-                        b_.write(" ");
-                        tb("attribute").c(&leaf("attribute_name", "charset")).c(&sym("=")).c(&{
-                            let mut b_ = tb("quoted_attribute_value");
-                            sym("\"").emit(&mut b_);
-                            leaf("attribute_value", "utf-8").emit(&mut b_);
-                            sym("\"").emit(&mut b_);
-                            b_.b()
-                        }).b().emit(&mut b_);
-                        sym(">").emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    b_.nl();
-                    b_.b()
-                }.emit(&mut b_);
-                {
-                    let mut b_ = tb("element");
-                    {
-                        let mut b_ = tb("start_tag");
-                        sym("<").emit(&mut b_);
-                        leaf("tag_name", "title").emit(&mut b_);
-                        sym(">").emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    raw(title).emit(&mut b_);
-                    tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "title")).c(&sym(">")).b().emit(&mut b_);
-                    b_.b()
-                }.emit(&mut b_);
-                b_.nl();
-                {
-                    let mut b_ = tb("style_element");
-                    {
-                        let mut b_ = tb("start_tag");
-                        sym("<").emit(&mut b_);
-                        leaf("tag_name", "style").emit(&mut b_);
-                        sym(">").emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    tb("raw_text").n().w("  body { font-family: sans-serif; padding: 1rem; max-width: 480px; }").n().w("  h1   { font-size: 1.2rem; }").n().w("  table { border-collapse: collapse; width: 100%; }").n().w("  th, td { border: 1px solid #ccc; padding: 4px 1rem; text-align: left; }").n().w("  th { background: #eee; }").n().w("  .good { background: #dfd; }").n().w("  .ok   { background: #ffd; }").n().w("  tfoot td { font-weight: bold; background: #f5f5f5; }").n().b().emit(&mut b_);
-                    tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "style")).c(&sym(">")).b().emit(&mut b_);
-                    b_.b()
-                }.emit(&mut b_);
-                b_.pop();
-                b_.nl();
-                tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "head")).c(&sym(">")).b().emit(&mut b_);
-                b_.b()
-            }.emit(&mut b_);
-            b_.nl();
-            {
-                let mut b_ = tb("element");
-                {
-                    let mut b_ = tb("start_tag");
-                    sym("<").emit(&mut b_);
-                    leaf("tag_name", "body").emit(&mut b_);
-                    sym(">").emit(&mut b_);
-                    b_.b()
-                }.emit(&mut b_);
-                b_.push("  ");
-                b_.nl();
-                {
-                    let mut b_ = tb("element");
-                    {
-                        let mut b_ = tb("start_tag");
-                        sym("<").emit(&mut b_);
-                        leaf("tag_name", "h1").emit(&mut b_);
-                        sym(">").emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    raw(title).emit(&mut b_);
-                    tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "h1")).c(&sym(">")).b().emit(&mut b_);
-                    b_.b()
-                }.emit(&mut b_);
-                b_.nl();
-                {
-                    let mut b_ = tb("element");
-                    {
-                        let mut b_ = tb("start_tag");
-                        sym("<").emit(&mut b_);
-                        leaf("tag_name", "table").emit(&mut b_);
-                        sym(">").emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    b_.push("  ");
-                    b_.nl();
-                    {
-                        let mut b_ = tb("element");
-                        {
-                            let mut b_ = tb("start_tag");
-                            sym("<").emit(&mut b_);
-                            leaf("tag_name", "thead").emit(&mut b_);
-                            sym(">").emit(&mut b_);
-                            b_.b()
-                        }.emit(&mut b_);
-                        {
-                            let mut b_ = tb("element");
-                            {
-                                let mut b_ = tb("start_tag");
-                                sym("<").emit(&mut b_);
-                                leaf("tag_name", "tr").emit(&mut b_);
-                                sym(">").emit(&mut b_);
-                                b_.b()
-                            }.emit(&mut b_);
-                            {
-                                let mut b_ = tb("element");
-                                {
-                                    let mut b_ = tb("start_tag");
-                                    sym("<").emit(&mut b_);
-                                    leaf("tag_name", "th").emit(&mut b_);
-                                    sym(">").emit(&mut b_);
-                                    b_.b()
-                                }.emit(&mut b_);
-                                leaf("text", "Name").emit(&mut b_);
-                                tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "th")).c(&sym(">")).b().emit(&mut b_);
-                                b_.b()
-                            }.emit(&mut b_);
-                            {
-                                let mut b_ = tb("element");
-                                {
-                                    let mut b_ = tb("start_tag");
-                                    sym("<").emit(&mut b_);
-                                    leaf("tag_name", "th").emit(&mut b_);
-                                    sym(">").emit(&mut b_);
-                                    b_.b()
-                                }.emit(&mut b_);
-                                leaf("text", "Score").emit(&mut b_);
-                                tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "th")).c(&sym(">")).b().emit(&mut b_);
-                                b_.b()
-                            }.emit(&mut b_);
-                            tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tr")).c(&sym(">")).b().emit(&mut b_);
-                            b_.b()
-                        }.emit(&mut b_);
-                        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "thead")).c(&sym(">")).b().emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    b_.nl();
-                    {
-                        let mut b_ = tb("element");
-                        {
-                            let mut b_ = tb("start_tag");
-                            sym("<").emit(&mut b_);
-                            leaf("tag_name", "tbody").emit(&mut b_);
-                            sym(">").emit(&mut b_);
-                            b_.b()
-                        }.emit(&mut b_);
-                        raw(&rows).emit(&mut b_);
-                        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tbody")).c(&sym(">")).b().emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    b_.nl();
-                    {
-                        let mut b_ = tb("element");
-                        {
-                            let mut b_ = tb("start_tag");
-                            sym("<").emit(&mut b_);
-                            leaf("tag_name", "tfoot").emit(&mut b_);
-                            sym(">").emit(&mut b_);
-                            b_.b()
-                        }.emit(&mut b_);
-                        {
-                            let mut b_ = tb("element");
-                            {
-                                let mut b_ = tb("start_tag");
-                                sym("<").emit(&mut b_);
-                                leaf("tag_name", "tr").emit(&mut b_);
-                                sym(">").emit(&mut b_);
-                                b_.b()
-                            }.emit(&mut b_);
-                            {
-                                let mut b_ = tb("element");
-                                {
-                                    let mut b_ = tb("start_tag");
-                                    sym("<").emit(&mut b_);
-                                    leaf("tag_name", "td").emit(&mut b_);
-                                    sym(">").emit(&mut b_);
-                                    b_.b()
-                                }.emit(&mut b_);
-                                leaf("text", "Average").emit(&mut b_);
-                                tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "td")).c(&sym(">")).b().emit(&mut b_);
-                                b_.b()
-                            }.emit(&mut b_);
-                            {
-                                let mut b_ = tb("element");
-                                {
-                                    let mut b_ = tb("start_tag");
-                                    sym("<").emit(&mut b_);
-                                    leaf("tag_name", "td").emit(&mut b_);
-                                    sym(">").emit(&mut b_);
-                                    b_.b()
-                                }.emit(&mut b_);
-                                raw(avg).emit(&mut b_);
-                                tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "td")).c(&sym(">")).b().emit(&mut b_);
-                                b_.b()
-                            }.emit(&mut b_);
-                            tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tr")).c(&sym(">")).b().emit(&mut b_);
-                            b_.b()
-                        }.emit(&mut b_);
-                        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tfoot")).c(&sym(">")).b().emit(&mut b_);
-                        b_.b()
-                    }.emit(&mut b_);
-                    b_.pop();
-                    b_.nl();
-                    tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "table")).c(&sym(">")).b().emit(&mut b_);
-                    b_.b()
-                }.emit(&mut b_);
-                b_.pop();
-                b_.nl();
-                tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "body")).c(&sym(">")).b().emit(&mut b_);
-                b_.b()
-            }.emit(&mut b_);
-            b_.nl();
-            tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "html")).c(&sym(">")).b().emit(&mut b_);
-            b_.b()
-        }.emit(&mut b_);
+    let page = tb("document").c(&tb("doctype").c(&sym("<!")).c(&leaf("doctype", "DOCTYPE")).w(" html").c(&sym(">")).b()).n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "html")).w(" ").c(&tb("attribute").c(&leaf("attribute_name", "lang")).c(&sym("=")).c(&tb("quoted_attribute_value").c(&sym("\"")).c(&leaf("attribute_value", "en")).c(&sym("\"")).b()).b()).c(&sym(">")).b()).n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "head")).c(&sym(">")).b()).p("  ").n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "meta")).w(" ").c(&tb("attribute").c(&leaf("attribute_name", "charset")).c(&sym("=")).c(&tb("quoted_attribute_value").c(&sym("\"")).c(&leaf("attribute_value", "utf-8")).c(&sym("\"")).b()).b()).c(&sym(">")).b()).n().b()).c(&{
+        let mut b_ = tb("element");
+        tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "title")).c(&sym(">")).b().emit(&mut b_);
+        raw(title).emit(&mut b_);
+        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "title")).c(&sym(">")).b().emit(&mut b_);
         b_.b()
-    };
+    }).n().c(&tb("style_element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "style")).c(&sym(">")).b()).c(&tb("raw_text").n().w("  body { font-family: sans-serif; padding: 1rem; max-width: 480px; }").n().w("  h1   { font-size: 1.2rem; }").n().w("  table { border-collapse: collapse; width: 100%; }").n().w("  th, td { border: 1px solid #ccc; padding: 4px 1rem; text-align: left; }").n().w("  th { background: #eee; }").n().w("  .good { background: #dfd; }").n().w("  .ok   { background: #ffd; }").n().w("  tfoot td { font-weight: bold; background: #f5f5f5; }").n().b()).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "style")).c(&sym(">")).b()).b()).x().n().c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "head")).c(&sym(">")).b()).b()).n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "body")).c(&sym(">")).b()).p("  ").n().c(&{
+        let mut b_ = tb("element");
+        tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "h1")).c(&sym(">")).b().emit(&mut b_);
+        raw(title).emit(&mut b_);
+        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "h1")).c(&sym(">")).b().emit(&mut b_);
+        b_.b()
+    }).n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "table")).c(&sym(">")).b()).p("  ").n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "thead")).c(&sym(">")).b()).c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "tr")).c(&sym(">")).b()).c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "th")).c(&sym(">")).b()).c(&leaf("text", "Name")).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "th")).c(&sym(">")).b()).b()).c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "th")).c(&sym(">")).b()).c(&leaf("text", "Score")).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "th")).c(&sym(">")).b()).b()).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tr")).c(&sym(">")).b()).b()).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "thead")).c(&sym(">")).b()).b()).n().c(&{
+        let mut b_ = tb("element");
+        tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "tbody")).c(&sym(">")).b().emit(&mut b_);
+        raw(&rows).emit(&mut b_);
+        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tbody")).c(&sym(">")).b().emit(&mut b_);
+        b_.b()
+    }).n().c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "tfoot")).c(&sym(">")).b()).c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "tr")).c(&sym(">")).b()).c(&tb("element").c(&tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "td")).c(&sym(">")).b()).c(&leaf("text", "Average")).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "td")).c(&sym(">")).b()).b()).c(&{
+        let mut b_ = tb("element");
+        tb("start_tag").c(&sym("<")).c(&leaf("tag_name", "td")).c(&sym(">")).b().emit(&mut b_);
+        raw(avg).emit(&mut b_);
+        tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "td")).c(&sym(">")).b().emit(&mut b_);
+        b_.b()
+    }).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tr")).c(&sym(">")).b()).b()).c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "tfoot")).c(&sym(">")).b()).b()).x().n().c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "table")).c(&sym(">")).b()).b()).x().n().c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "body")).c(&sym(">")).b()).b()).n().c(&tb("end_tag").c(&sym("</")).c(&leaf("tag_name", "html")).c(&sym(">")).b()).b()).b();
     
     println!("{}", page.coparse());
     Ok(())

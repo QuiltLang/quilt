@@ -206,6 +206,10 @@ impl MetaLanguage for BootstrapMetaLanguage {
         Some("let_declaration")
     }
 
+    fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
+        crate::qmatch::pattern_binding_at(terms, "=", Some(":"))
+    }
+
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
         Ok(crate::qmatch::pattern_var_code(name))
     }

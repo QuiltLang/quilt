@@ -17,29 +17,7 @@ fn main() -> Result<()> {
     
     // Wrap the specialized body in a test harness that exercises it on a few
     // base values so we can verify the output immediately.
-    let program = tb("expression_statement").c(&{
-        let mut b_ = tb("block");
-        sym("{").emit(&mut b_);
-        b_.push("    ");
-        b_.nl();
-        tb("let_declaration").c(&sym("let")).w(" ").c(&leaf("identifier", "f")).w(" ").c(&sym("=")).w(" ").c(&tb("closure_expression").c(&tb("closure_parameters").c(&sym("|")).c(&tb("parameter").c(&leaf("identifier", "b")).c(&sym(":")).w(" ").c(&leaf("primitive_type", "u64")).b()).c(&sym("|")).b()).w(" ").c(&sym("->")).w(" ").c(&leaf("primitive_type", "u64")).w(" ").c(&body).b()).c(&sym(";")).b().emit(&mut b_);
-        b_.nl();
-        tb("expression_statement").c(&tb("for_expression").c(&sym("for")).w(" ").c(&leaf("identifier", "b")).w(" ").c(&sym("in")).w(" ").c(&tb("array_expression").c(&sym("[")).c(&leaf("integer_literal", "2u64")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "3")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "5")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "7")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "11")).c(&sym("]")).b()).w(" ").c(&{
-            let mut b_ = tb("block");
-            sym("{").emit(&mut b_);
-            b_.push("    ");
-            b_.nl();
-            tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "{}^{} = {}")).c(&sym("\"")).b()).c(&sym(",")).w(" ").c(&leaf("identifier", "b")).c(&sym(",")).w(" ").c(&p_lit).c(&sym(",")).w(" ").c(&leaf("identifier", "f")).c(&tb("token_tree").c(&sym("(")).c(&leaf("identifier", "b")).c(&sym(")")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
-            b_.pop();
-            b_.nl();
-            sym("}").emit(&mut b_);
-            b_.b()
-        }).b()).b().emit(&mut b_);
-        b_.pop();
-        b_.nl();
-        sym("}").emit(&mut b_);
-        b_.b()
-    }).b();
+    let program = tb("expression_statement").c(&tb("block").c(&sym("{")).p("    ").n().c(&tb("let_declaration").c(&sym("let")).w(" ").c(&leaf("identifier", "f")).w(" ").c(&sym("=")).w(" ").c(&tb("closure_expression").c(&tb("closure_parameters").c(&sym("|")).c(&tb("parameter").c(&leaf("identifier", "b")).c(&sym(":")).w(" ").c(&leaf("primitive_type", "u64")).b()).c(&sym("|")).b()).w(" ").c(&sym("->")).w(" ").c(&leaf("primitive_type", "u64")).w(" ").c(&body).b()).c(&sym(";")).b()).n().c(&tb("expression_statement").c(&tb("for_expression").c(&sym("for")).w(" ").c(&leaf("identifier", "b")).w(" ").c(&sym("in")).w(" ").c(&tb("array_expression").c(&sym("[")).c(&leaf("integer_literal", "2u64")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "3")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "5")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "7")).c(&sym(",")).w(" ").c(&leaf("integer_literal", "11")).c(&sym("]")).b()).w(" ").c(&tb("block").c(&sym("{")).p("    ").n().c(&tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "{}^{} = {}")).c(&sym("\"")).b()).c(&sym(",")).w(" ").c(&leaf("identifier", "b")).c(&sym(",")).w(" ").c(&p_lit).c(&sym(",")).w(" ").c(&leaf("identifier", "f")).c(&tb("token_tree").c(&sym("(")).c(&leaf("identifier", "b")).c(&sym(")")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b()).x().n().c(&sym("}")).b()).b()).b()).x().n().c(&sym("}")).b()).b();
     
     println!("=== Specialized pow(b, {p}) by exponentiation by squaring ===");
     println!("{}", program.coparse());
@@ -52,26 +30,10 @@ fn main() -> Result<()> {
 /// closure binds as its parameter.
 fn pow_body(p: u32) -> Result<Arc<QTerm>> {
     if p == 0 {
-        return Ok(tb("expression_statement").c(&{
-            let mut b_ = tb("block");
-            sym("{").emit(&mut b_);
-            b_.write(" ");
-            leaf("integer_literal", "1u64").emit(&mut b_);
-            b_.write(" ");
-            sym("}").emit(&mut b_);
-            b_.b()
-        }).b());
+        return Ok(tb("expression_statement").c(&tb("block").c(&sym("{")).w(" ").c(&leaf("integer_literal", "1u64")).w(" ").c(&sym("}")).b()).b());
     }
     if p == 1 {
-        return Ok(tb("expression_statement").c(&{
-            let mut b_ = tb("block");
-            sym("{").emit(&mut b_);
-            b_.write(" ");
-            leaf("identifier", "b").emit(&mut b_);
-            b_.write(" ");
-            sym("}").emit(&mut b_);
-            b_.b()
-        }).b());
+        return Ok(tb("expression_statement").c(&tb("block").c(&sym("{")).w(" ").c(&leaf("identifier", "b")).w(" ").c(&sym("}")).b()).b());
     }
     let (stmts, result) = pow_squaring(p)?;
     Ok(tb("expression_statement").c(&{

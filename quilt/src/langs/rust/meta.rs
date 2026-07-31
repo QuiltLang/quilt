@@ -7,7 +7,7 @@ use super::ops::{
 use crate::lang::Arity;
 use crate::meta::OuterKind;
 use crate::prelude::{Index, *};
-use crate::qmatch::{pattern_let_code, pattern_var_code};
+use crate::qmatch::{pattern_binding_at, pattern_let_code, pattern_var_code};
 use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
 
 /**************************************************************/
@@ -65,6 +65,10 @@ impl MetaLanguage for RustMetaLanguage {
 
     fn pattern_tag(&self) -> Option<&'static str> {
         Some("let_declaration")
+    }
+
+    fn pattern_binding(&self, terms: &[Arc<QTerm>]) -> Option<(usize, usize)> {
+        pattern_binding_at(terms, "=", Some(":"))
     }
 
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
