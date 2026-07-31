@@ -28,6 +28,15 @@ const corpus = JSON.parse(
 );
 const cases = corpus.cases.filter((c) => (c.runtimes ?? [RUNTIME]).includes(RUNTIME));
 
+// The corpus-declared invariants this runner knows how to check (issue #192).
+// An invariant that applies to wasm and is not in here is a *failure*, not a
+// skip: the corpus decides what a runtime owes, so a runner must not quietly
+// opt out of the property it has no coverage for.
+const IMPLEMENTED_INVARIANTS = new Set(["stringify"]);
+const invariants = (corpus.invariants ?? [])
+  .filter((i) => (i.runtimes ?? [RUNTIME]).includes(RUNTIME))
+  .map((i) => i.name);
+
 function buildCmds(cmds) {
   return cmds.map((c) => {
     // The corpus spells a cmd abstractly ("NL", "HOLE", {write: s}) and every
@@ -84,11 +93,39 @@ if (cases.length === 0) {
 }
 
 const failures = [];
+
+for (const name of invariants) {
+  if (!IMPLEMENTED_INVARIANTS.has(name)) {
+    failures.push(
+      `invariant "${name}" applies to ${RUNTIME} but this runner does not implement it — implement it or narrow its \`runtimes\``,
+    );
+  }
+}
+const checkStringify = invariants.includes("stringify");
+
+let stringifyChecked = 0;
 for (const c of cases) {
   try {
-    const got = build(c.term).coparse();
+    const term = build(c.term);
+    const got = term.coparse();
     if (got !== c.coparse) {
       failures.push(`${c.name}: coparse is ${JSON.stringify(got)}, corpus says ${JSON.stringify(c.coparse)}`);
+    }
+    // `toString` and `coparse` are both exported and a caller may reasonably
+    // use either, so they must not drift. quilt-python's `__str__` is the same
+    // promise on the other runtime, checked against these same cases.
+    // Going through String() rather than .toString() is deliberate: it is what
+    // string concatenation and template literals do, so it also proves the
+    // `js_name = toString` export is actually wired to the prototype.
+    if (checkStringify) {
+      stringifyChecked++;
+      const str = String(term);
+      if (str !== got) {
+        failures.push(`${c.name}: String(term) is ${JSON.stringify(str)} but coparse() is ${JSON.stringify(got)}`);
+      }
+      if (`${term}` !== got) {
+        failures.push(`${c.name}: template interpolation is ${JSON.stringify(`${term}`)} but coparse() is ${JSON.stringify(got)}`);
+      }
     }
   } catch (e) {
     failures.push(`${c.name}: build failed: ${e.message ?? e}`);
@@ -151,7 +188,7 @@ for (const [label, fn] of [["qlift", q.qlift], ["qlift_html", q.qlift_html]]) {
   }
 }
 
-console.log(`${RUNTIME}: ${cases.length - failures.length}/${cases.length} corpus cases passed, ${lawChecked} lift-law checks, 2 non-consumption checks`);
+console.log(`${RUNTIME}: ${cases.length} corpus cases, ${stringifyChecked} stringify checks, ${lawChecked} lift-law checks, 2 non-consumption checks — ${failures.length} failure(s)`);
 if (failures.length > 0) {
   console.error(`\n${failures.length} failure(s):`);
   for (const f of failures) console.error(`  • ${f}`);
