@@ -149,7 +149,9 @@ jobs:
         run: |
           rustup toolchain install nightly --profile minimal
           command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --locked
-      # ~10 minutes total: three targets at 200s each, plus build time.
+      # 10 minutes of actual fuzzing (three targets at 200s each). Measured
+      # ~14 min wall clock on a cold cache — the sanitizer build of the three
+      # targets dominates the rest — and less once fuzz/target is restored.
       - run: bin/fuzz 200
       # A crash is the entire point of the job, so make it downloadable and
       # replayable (`cargo +nightly fuzz run <target> <artifact>`) rather than
