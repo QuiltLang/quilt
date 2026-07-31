@@ -66,40 +66,13 @@ not_variadic = [
   "ternary_expression",
   "simple_expansion",
 ]
-]
-# Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
-# All five are kinds both shell grammars define.
-not_variadic = [
-  "word",
-  "variable_name",
-  "comment",
-  "test_operator",
-  "file_descriptor",
-  # Declared variadic by the hand-written table until #202, and wrong: the bash
-  # grammar gives none of these a repeated child. `list` (`a && b`) is a binary
-  # sequence of two statements; `function_definition` takes exactly one body
-  # (zsh's takes `repeat1` names, which is why *its* spec still claims it);
-  # `raw_string`, `ansi_c_string` and `simple_expansion` have no children at
-  # all. The rest reach a repeat only through a category rule or an alias, so
-  # the repetition belongs to the `word` or `binary_expression` underneath
-  # rather than to the node itself.
-  "list",
-  "function_definition",
-  "test_command",
-  "variable_assignment",
-  "raw_string",
-  "ansi_c_string",
-  "subscript",
-  "ternary_expression",
-  "simple_expansion",
-]
 
 lift_marker = "Bash"
 
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
-variadic-containers = {status = "supported", note = "agrees with zsh's table on every node kind both grammars define"}
+variadic-containers = {status = "supported", note = "derived from the grammar's `REPEAT` rules by `bin/gen-arity`; agrees with zsh's table on every shared node kind except `function_definition`, where the two grammars themselves differ"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl", issue = 149}
 highlights = {status = "supported"}

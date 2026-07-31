@@ -72,18 +72,36 @@ fn is_variadic_form(out: &str, tag: &str) -> bool {
 const SHARED_CONTAINERS: &[(&str, &str)] = &[
     ("for_statement", "for x in ↙items↘; do\n    echo hi\ndone"),
     ("while_statement", "while ↙cond↘; do\n    echo hi\ndone"),
-    ("function_definition", "↙name↘() {\n    echo hi\n}"),
     (
         "c_style_for_statement",
         "for ((↙init↘; i<3; i++)); do\n    echo hi\ndone",
     ),
-    ("variable_assignment", "X=↙v↘"),
     ("file_redirect", "echo hi > ↙f↘"),
-    ("test_command", "[[ ↙cond↘ ]]"),
     // Not reconciled by #150 — already variadic in both — but cheap to pin as
     // the control group.
     ("if_statement", "if true; then\n    ↙body↘\nfi"),
     ("case_statement", "case ↙x↘ in\n    a) echo a ;;\nesac"),
+];
+
+/// Constructs #150 reconciled as variadic that the grammars say are *not*, with
+/// the rule that settles each. Since #202 the tables are derived from the
+/// grammars, so these expand as fixed-arity nodes in both shells.
+///
+/// They are pinned here rather than deleted because the reconciliation made a
+/// specific claim about them, and "the grammar disagreed" is the answer — worth
+/// keeping visible, and worth failing on if it silently reverses.
+///
+/// `bash::function_definition` is absent from *both* lists: it is the one shared
+/// kind where the grammars genuinely differ, so it is fixed-arity in bash and
+/// variadic in zsh. See `SHELL_DIVERGENCES` in
+/// `quilt-conformance/tests/grammar_tags.rs`.
+const SHARED_LEAVES: &[(&str, &str)] = &[
+    // `X=↙v↘` — one name, one value. The only repeat the rule can reach is
+    // inside the `word` an alias puts the value in.
+    ("variable_assignment", "X=↙v↘"),
+    // `[[ ↙cond↘ ]]` — the repeat belongs to the `binary_expression` the
+    // condition parses as, not to the test.
+    ("test_command", "[[ ↙cond↘ ]]"),
 ];
 
 /// Every shared container is variadic in **both** shells (issue #150).
@@ -110,6 +128,65 @@ fn shared_containers_are_variadic_in_both_shells() -> Result<()> {
         "{} shell container(s) did not expand as variadic (issue #150):\n\n{}",
         wrong.len(),
         wrong.join("\n"),
+    );
+    Ok(())
+}
+
+/// The constructs the grammars do not give a repeated child expand as
+/// fixed-arity nodes, in both shells (issue #202).
+///
+/// The mirror of the test above, and the reason it is worth having: an emit into
+/// one of these was never going to append a sequence — the tree has nowhere to
+/// put it — so treating it as a container was a claim the shells could not keep.
+#[test]
+fn shared_leaves_are_fixed_arity_in_both_shells() -> Result<()> {
+    let mut wrong = Vec::new();
+
+    for (tag, fragment) in SHARED_LEAVES {
+        for shell in ["bash", "zsh"] {
+            let out = expand_in(shell, fragment)?;
+            if is_variadic_form(&out, tag) {
+                wrong.push(format!(
+                    "  {shell} {tag}: expected the fixed-arity .c(&…) chain, got:\n{out}"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "{} shell construct(s) expanded as variadic that their grammars give no \
+         repeated child (issue #202):\n\n{}\n\n\
+         The tables come from `bin/gen-arity`; if the grammar really did gain a repeat \
+         here, move the tag to SHARED_CONTAINERS and update conformance/spec/{{bash,zsh}}.toml.",
+        wrong.len(),
+        wrong.join("\n"),
+    );
+    Ok(())
+}
+
+/// Zsh's `function_definition` is variadic and bash's is not, because the
+/// grammars differ: zsh's rule is `repeat1(field('name', …))`, so
+/// `function a b c { … }` defines three functions at once and bash has no such
+/// syntax.
+///
+/// #150 reconciled the two tables by hand and made both variadic, which is how a
+/// bash construct came to be treated as a container on the strength of zsh's
+/// grammar. Deriving each from its own grammar (#202) separates them again.
+#[test]
+fn function_definition_follows_each_shell_grammar() -> Result<()> {
+    let fragment = "↙name↘() {\n    echo hi\n}";
+
+    let bash = expand_in("bash", fragment)?;
+    assert!(
+        !is_variadic_form(&bash, "function_definition"),
+        "bash's function_definition takes exactly one name, so it is not a container; got:\n{bash}"
+    );
+
+    let zsh = expand_in("zsh", fragment)?;
+    assert!(
+        is_variadic_form(&zsh, "function_definition"),
+        "zsh's function_definition takes repeat1(name), so it is a container; got:\n{zsh}"
     );
     Ok(())
 }
