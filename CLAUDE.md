@@ -51,7 +51,8 @@ main lint             # cargo clippy --tests   (= lint)
 main fmt              # cargo fmt --all
 main check            # pre-commit gate: fmt, clippy, tests, bootstrap,
                       #   quilt grammar, support matrix, examples
-main check --all      # …plus feature matrix, vendored grammars, python runtime
+main check --all      # …plus feature matrix, vendored grammars, the python
+                      #   and typescript runtimes
 main <script> [args]  # any other bin/ script, e.g. `main sync-grammars`
 
 # Build / test / lint / format (from repo root)

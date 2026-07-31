@@ -28,6 +28,14 @@ export QUILT
 echo "==> reduce tests (node)"
 node "$ROOT/quilt-wasm/test/reduce.mjs"
 
+# The `quilt run` tests in quilt/tests/cli.rs skip themselves when the runtime
+# is not built, so a plain `cargo test` stays green without wasm-pack — which
+# means the CI `Test` job, which never builds it, skips every one of them. This
+# is the only place they run for real, so run them here rather than leaving the
+# end-to-end path covered by nothing.
+echo "==> cli integration tests (quilt run, with the runtime built)"
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" -p quiltlang --test cli
+
 echo "==> run self-contained .ts.quilt examples"
 for ex in staged_pow; do
   echo "--- $ex.ts.quilt"
