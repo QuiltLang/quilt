@@ -37,7 +37,7 @@ fn main() -> Result<()> {
                 if i > 0 { " ".emit(&mut b_); }
                 d.qlift_to::<Nix>().emit(&mut b_);
             }
-        }.emit(&mut b_);
+        };
         b_.write(" ");
         sym("]").emit(&mut b_);
         b_.b()

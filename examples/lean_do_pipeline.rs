@@ -76,7 +76,7 @@ fn main() -> Result<()> {
             // emit into an already-indented block needs care. A single-line
             // `if … then … else …` sidesteps it and is idiomatic Lean anyway.
             tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "total")).w(" ").c(&sym(">")).w(" ").c(&budget.qlift_to::<Lean>()).b()).w(" ").c(&sym("then")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("over budget").c(&sym("\"")).b()).b()).w(" ").c(&sym("else")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("within budget").c(&sym("\"")).b()).b()).b().emit(&mut b_);
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();

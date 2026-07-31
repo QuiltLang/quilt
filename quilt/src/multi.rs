@@ -629,13 +629,45 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                             let mut okind = Default::default();
                             if arity == Arity::Variadic {
                                 okind = OuterKind::Emit;
+                                // A ground unquote (`index == d`) whose body is
+                                // code — a statement, an item, or a *sequence*
+                                // of them — is host code to run, so it is
+                                // spliced verbatim. Only a value-shaped body is
+                                // emitted into the enclosing builder.
+                                //
+                                // Two things this has to get right:
+                                //
+                                // * The body is **ground** code, so it is
+                                //   classified with `self.lang`, not `lang1`.
+                                //   `lang1` is the quoted language, which the
+                                //   body is not written in — asking
+                                //   `html↖<input value="↙w↘">↗` whether HTML
+                                //   thinks the Rust expression `w` is a
+                                //   statement is meaningless.
+                                // * `is_code_like`, not `is_stmt_like`: a
+                                //   multi-statement body parses with the file
+                                //   root (`source_file`), and emitting one
+                                //   appended `.emit(&mut b_);` to whatever its
+                                //   last statement happened to be. That is a
+                                //   syntax error unless the statement is
+                                //   block-shaped (`for`/`if`/`{…}`), where it
+                                //   silently hit the no-op `impl Emit for ()`
+                                //   instead — which is why `mk_meta.rs.quilt`
+                                //   bootstrapped straight past it.
+                                //
+                                // The two interact: `Language::typ` *defaults*
+                                // to `InnerKind::File`, so widening to
+                                // `is_code_like` while still asking `lang1`
+                                // would read every non-classifying target
+                                // language (html, wgsl, bash, zsh) as "always
+                                // code" and splice splices that must be emitted.
                                 if let QTerm::Unquote {
                                     index, term: child, ..
                                 } = &**term
                                 {
                                     if index == d {
                                         if let QTerm::Tuple { tag, .. } = &**child {
-                                            if self.langs.get(lang1)?.typ(tag).is_stmt_like() {
+                                            if self.langs.get(self.lang)?.typ(tag).is_code_like() {
                                                 okind = OuterKind::Splice;
                                             }
                                         }

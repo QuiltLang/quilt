@@ -1,0 +1,23 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: out
+---
+let p = {
+    let mut b_ = tb("source_file");
+    tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "keep")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).w(" ").c(&{
+        let mut b_ = tb("block");
+        sym("{").emit(&mut b_);
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).b().emit(&mut b_);
+    b_.nl();
+    b_.nl();
+        let n = 3;
+        tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "made")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).w(" ").c(&{
+            let mut b_ = tb("block");
+            sym("{").emit(&mut b_);
+            sym("}").emit(&mut b_);
+            b_.b()
+        }).b().emit(&mut b_);;
+    b_.b()
+};

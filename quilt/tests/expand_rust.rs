@@ -139,6 +139,35 @@ fn ground_unit_unquote_spliced() -> Result<()> {
 }
 
 #[test]
+fn ground_stmt_sequence_unquote_spliced() -> Result<()> {
+    // The same rule for a body holding *several* statements, which parses with
+    // the file root rather than a statement one.
+    //
+    // This used to be emitted, appending `.emit(&mut b_);` after the body's
+    // last statement — `…emit(&mut b_);.emit(&mut b_);` here, which does not
+    // parse. It went unnoticed because the failure is invisible whenever the
+    // last statement is block-shaped (`for`, `if`, `{…}`): those are valid
+    // method receivers evaluating to `()`, so the stray call landed on the
+    // no-op `impl Emit for ()`. `mk_meta.rs.quilt` ends its unquote with a
+    // `for`, so the bootstrap bootstrapped right past it.
+    let out = expand_both(indoc! {r#"
+        let p = ↖
+            fn keep() {}
+
+            ↙
+                let n = 3;
+                ↖fn made() {}↗.←;
+            ↘
+        ↗;
+    "#})?;
+    assert!(!out.contains(";.emit(&mut b_)"), "{out}");
+    // The body is spliced verbatim, statements and all.
+    assert!(out.contains("let n = 3;"), "{out}");
+    insta::assert_snapshot!(out);
+    Ok(())
+}
+
+#[test]
 fn pattern_let() -> Result<()> {
     // A quote in the binding position of a `let` is a pattern (issue #18):
     // its ground unquotes become metavariables and the statement destructures

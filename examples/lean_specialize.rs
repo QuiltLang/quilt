@@ -79,7 +79,7 @@ fn main() -> Result<()> {
                 tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("app").c(&name).w(" ").c(&leaf("num_lit", "5")).b()).c(&sym(")")).b()).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
-        }.emit(&mut b_);
+        };
         b_.pop();
         b_.b()
     }).b();

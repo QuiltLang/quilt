@@ -44,6 +44,21 @@ impl InnerKind {
     pub fn is_stmt_like(self) -> bool {
         matches!(self, InnerKind::Stmt | InnerKind::Item)
     }
+
+    /// Whether a fragment of this kind is *code to run* rather than a value to
+    /// insert — [`is_stmt_like`](Self::is_stmt_like) widened to include a whole
+    /// sequence of statements.
+    ///
+    /// The two differ for exactly one case, and it matters: a ground unquote
+    /// holding **several** statements parses with the file root
+    /// (`source_file` / `module`), so `is_stmt_like` says `false` even though a
+    /// statement sequence is the least value-like thing there is. The expander
+    /// asks this when deciding whether to splice a ground unquote or emit it;
+    /// see `Expander::expand`.
+    #[must_use]
+    pub fn is_code_like(self) -> bool {
+        self.is_stmt_like() || matches!(self, InnerKind::File)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
