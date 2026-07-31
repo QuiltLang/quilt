@@ -1,0 +1,10 @@
+---
+source: quilt/tests/ui.rs
+expression: run_check(fixture)
+---
+$ quilt check no_quilt_suffix
+exit: 1
+
+no_quilt_suffix:   × expected a .quilt file
+
+Error:   × 1 of 1 file(s) failed to check

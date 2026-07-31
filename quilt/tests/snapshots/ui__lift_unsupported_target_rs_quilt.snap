@@ -1,0 +1,10 @@
+---
+source: quilt/tests/ui.rs
+expression: run_check(fixture)
+---
+$ quilt check lift_unsupported_target.rs.quilt
+exit: 1
+
+lift_unsupported_target.rs.quilt:   × rust can't lift into "html": no spelling/LiftTo impls registered
+
+Error:   × 1 of 1 file(s) failed to check

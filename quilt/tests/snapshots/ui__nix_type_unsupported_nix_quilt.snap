@@ -1,0 +1,11 @@
+---
+source: quilt/tests/ui.rs
+expression: run_check(fixture)
+---
+$ quilt check nix_type_unsupported.nix.quilt
+exit: 1
+
+nix_type_unsupported.nix.quilt:   × nix has no type for `⟨T⟩`: Nix is untyped, and a generated fragment is
+  │ just a string — drop the annotation
+
+Error:   × 1 of 1 file(s) failed to check

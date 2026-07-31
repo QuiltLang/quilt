@@ -1,0 +1,10 @@
+---
+source: quilt/tests/ui.rs
+expression: run_check(fixture)
+---
+$ quilt check text_meta_unavailable.txt.quilt
+exit: 1
+
+text_meta_unavailable.txt.quilt:   × "txt" can't be used as MetaLanguage
+
+Error:   × 1 of 1 file(s) failed to check

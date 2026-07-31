@@ -1,0 +1,7 @@
+---
+source: quilt/tests/ui.rs
+expression: "String::from_utf8_lossy(&out.stderr).trim_end()"
+---
+does_not_exist.rs.quilt:   × No such file or directory (os error 2)
+
+Error:   × 1 of 1 file(s) failed to check

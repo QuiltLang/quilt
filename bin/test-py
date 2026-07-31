@@ -4,7 +4,8 @@
 # `python` job runs build-py then test-py).
 #
 #   1. pytest the binding tests in quilt-python/tests/.
-#   2. `quilt run` the self-contained .py.quilt examples and assert they exit 0.
+#   2. the `quilt run` CLI tests, which need the module importable.
+#   3. `quilt run` the self-contained .py.quilt examples and assert they exit 0.
 #
 # examples/issue_triage.html.py.quilt is intentionally excluded from (2): it
 # shells out to `gh` (network + auth), so it is only `check`ed by
@@ -20,6 +21,15 @@ fi
 
 echo "==> binding tests (pytest)"
 ( cd "$ROOT/quilt-python" && PYTHONPATH=. python3 -m pytest -q tests/ )
+
+# The `quilt run` tests in quilt/tests/cli.rs skip themselves when the runtime
+# is not built, so a plain `cargo test` stays green without maturin — which
+# means the CI `Test` job, which never builds it, skips the python ones. This is
+# the only place they run for real, so run them here rather than leaving the
+# end-to-end path (PYTHONPATH injection, shebang stripping, exit codes) covered
+# by nothing. Mirrors the same step in bin/test-ts for the other runtime.
+echo "==> cli integration tests (quilt run, with the runtime built)"
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" -p quiltlang --test cli
 
 echo "==> run self-contained .py.quilt examples"
 for ex in hello expr_compose pow_specialize staged_pow reduce upper_tri_mul; do

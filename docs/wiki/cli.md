@@ -154,6 +154,8 @@ Runs `wasm-pack build quilt-wasm --target nodejs --out-dir pkg` — CommonJS wit
 
 Exercise each runtime end to end: `test-py` runs the pytest binding tests and the self-contained `.py.quilt` examples; `test-ts` runs the Node `↓` tests (`quilt-wasm/test/reduce.mjs`) and the self-contained `.ts.quilt` examples. Each needs its runtime built first.
 
+Both also re-run `cargo test -p quiltlang --test cli`, because the `quilt run` tests in `quilt/tests/cli.rs` skip themselves when their runtime isn't built — a plain `cargo test` stays green without maturin or wasm-pack, so these scripts are the only place the Python and Node runner paths execute for real.
+
 ```sh
 build-py && test-py
 build-ts && test-ts
@@ -190,6 +192,26 @@ cargo fmt                         # format
 
 cargo build -p quilt-lsp          # build the LSP server
 cargo test -p quilt-lsp           # run LSP tests
+```
+
+---
+
+## Testing the CLI
+
+Two suites, both driving the real binary through `CARGO_BIN_EXE_quilt`:
+
+| Suite | Covers |
+|---|---|
+| `quilt/tests/cli.rs` | The happy paths and the exit codes — `check`, `expand` (sibling file, header comment, chain derivation), `run` for each runner, `-m omni` vs `-m bootstrap`, `--help`. |
+| `quilt/tests/ui.rs` + `quilt/tests/ui/` | A corpus of deliberately **invalid** inputs whose full rendered `miette` diagnostic is snapshotted — error text, help, and above all where the caret lands. |
+
+The `ui/` corpus is what regression-tests spans and error wording. Every fixture must *fail with a diagnostic*: the harness asserts a non-zero exit, so a fixture that starts passing (because the capability it probes got implemented) fails loudly and asks to be reclassified, and a `todo!()` on one of these paths shows up as a panic in the snapshot instead of as a green test.
+
+Adding a case is a fixture plus a line in the `CASES` table saying what it probes — the two are checked against each other, so neither can exist without the other.
+
+```sh
+cargo test -p quiltlang --test ui   # run the corpus
+cargo insta review                  # accept a changed diagnostic
 ```
 
 ---
