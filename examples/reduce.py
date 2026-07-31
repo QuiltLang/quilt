@@ -30,5 +30,5 @@ print("cube(10)    =", cube(10))   # 1000
 
 print("\n=== Generate a family of threshold filters ===")
 for threshold in [leaf("integer", "2"), leaf("integer", "5"), leaf("integer", "8")]:
-    above = (tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "xs")).b()).c(sym(":")).w(" ").c(tb("list_comprehension").c(sym("[")).c(leaf("identifier", "x")).w(" ").c(tb("for_in_clause").c(sym("for")).w(" ").c(leaf("identifier", "x")).w(" ").c(sym("in")).w(" ").c(leaf("identifier", "xs")).b()).w(" ").c(tb("if_clause").c(sym("if")).w(" ").c(tb("comparison_operator").c(leaf("identifier", "x")).w(" ").c(sym(">")).w(" ").c(threshold).b()).b()).c(sym("]")).b()).b()).reduce()
+    above = (tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "xs")).b()).c(sym(":")).w(" ").c(tb("list_comprehension").c(sym("[")).c(leaf("identifier", "x")).w(" ").c(tb("for_in_clause").c(sym("for")).w(" ").c(leaf("identifier", "x")).w(" ").c(sym("in")).w(" ").c(leaf("identifier", "xs")).b()).w(" ").c(tb("if_clause").c(sym("if")).w(" ").c(tb("comparison_operator").e(leaf("identifier", "x")).w(" ").e(sym(">")).w(" ").e(threshold).b()).b()).c(sym("]")).b()).b()).reduce()
     print(f"  threshold={threshold.coparse()}: {above(list(range(10)))}")
