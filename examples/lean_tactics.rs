@@ -81,11 +81,7 @@ fn main() -> Result<()> {
     // distinct -- a term is emitted into exactly one parent.
     let value_thm = tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "bump_chain")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&chain).w(" ").c(&sym("=")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("+")).w(" ").c(&total.qlift_to::<Lean>()).b()).b()).w(" ").c(&sym(":=")).w(" ").c(&{
         let mut b_ = tb("by");
-        {
-            let mut b_ = tb("by");
-            b_.write("by");
-            b_.b()
-        }.emit(&mut b_);
+        sym("by").emit(&mut b_);
         b_.push("    ");
         b_.nl();
         {
@@ -105,11 +101,7 @@ fn main() -> Result<()> {
     // increasing. Same tactics, so the generator reuses the shape verbatim.
     let bound_thm = tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "bump_chain_ge")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("≤")).w(" ").c(&chain).b()).w(" ").c(&sym(":=")).w(" ").c(&{
         let mut b_ = tb("by");
-        {
-            let mut b_ = tb("by");
-            b_.write("by");
-            b_.b()
-        }.emit(&mut b_);
+        sym("by").emit(&mut b_);
         b_.push("    ");
         b_.nl();
         {

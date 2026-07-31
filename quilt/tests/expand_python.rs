@@ -32,21 +32,36 @@ fn quote_expr() -> Result<()> {
 
 #[test]
 fn variadic() -> Result<()> {
-    // The `block` (suite) is variadic: its statements are emitted via the fluent
-    // `.e(..)` chain rather than Rust's imperative `{ let mut b_ = ..; .. }` block.
+    // The `block` (suite) is variadic: when it holds a dynamic child its
+    // statements go through the fluent `.e(..)` emit chain rather than Rust's
+    // imperative `{ let mut b_ = ..; .. }` block. `.e` is what lets one child
+    // contribute several statements.
     let out = expand_py(indoc! {r#"
+        ↖def foo():
+            ↙stmts↘
+            print("World")
+        ↗
+    "#})?;
+    assert!(
+        out.contains(r#"tb("block").e("#),
+        "a block with a dynamic child should use a fluent .e() emit chain; got:\n{out}"
+    );
+
+    // With no dynamic child there is nothing to append, so the same block is
+    // built with plain `.c(..)` children — the same term, less generated code.
+    let literal = expand_py(indoc! {r#"
         ↖def foo():
             print("Hello")
             print("World")
         ↗
     "#})?;
     assert!(
-        out.contains(r#"tb("block").e(tb("expression_statement")"#),
-        "variadic block should use a fluent .e() emit chain; got:\n{out}"
+        literal.contains(r#"tb("block").c(tb("expression_statement")"#),
+        "a hole-free block should use plain .c() children; got:\n{literal}"
     );
     assert!(
-        out.ends_with(".b()"),
-        "expansion should end with a .b() build call; got:\n{out}"
+        literal.ends_with(".b()"),
+        "expansion should end with a .b() build call; got:\n{literal}"
     );
     Ok(())
 }
@@ -123,7 +138,7 @@ fn inline_body_is_not_dedented() -> Result<()> {
     // sits at column 0 and bounds the common indent to nothing.
     let out = expand_py("x = ↖def f():\n    return 1\n↗")?;
     assert!(
-        out.contains(r#".p("    ").n().c(tb("block").e(tb("return_statement")"#),
+        out.contains(r#".p("    ").n().c(tb("block").c(tb("return_statement")"#),
         "inline-opened body keeps its meaningful indentation (return nested in \
          the function block, not dedented to a sibling); got:\n{out}"
     );

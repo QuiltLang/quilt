@@ -44,23 +44,7 @@ fn main() -> Result<()> {
     };
     
     // Splice the scalars and the generated list into a derivation skeleton.
-    let drv = tb("function_expression").c(&{
-        let mut b_ = tb("formals");
-        sym("{").emit(&mut b_);
-        b_.write(" ");
-        tb("formal").c(&leaf("identifier", "pkgs")).w(" ").c(&sym("?")).w(" ").c(&tb("apply_expression").c(&tb("apply_expression").c(&tb("variable_expression").c(&leaf("identifier", "import")).b()).w(" ").c(&leaf("spath_expression", "<nixpkgs>")).b()).w(" ").c(&tb("attrset_expression").c(&sym("{")).w(" ").c(&sym("}")).b()).b()).b().emit(&mut b_);
-        b_.write(" ");
-        sym("}").emit(&mut b_);
-        b_.b()
-    }).c(&sym(":")).n().c(&tb("apply_expression").c(&tb("select_expression").c(&tb("variable_expression").c(&leaf("identifier", "pkgs")).b()).c(&sym(".")).c(&tb("attrpath").c(&leaf("identifier", "stdenv")).c(&sym(".")).c(&leaf("identifier", "mkDerivation")).b()).b()).w(" ").c(&tb("attrset_expression").c(&sym("{")).p("  ").n().c(&{
-        let mut b_ = tb("binding_set");
-        tb("binding").c(&tb("attrpath").c(&leaf("identifier", "pname")).b()).w(" ").c(&sym("=")).w(" ").c(&pname.qlift_to::<Nix>()).c(&sym(";")).b().emit(&mut b_);
-        b_.nl();
-        tb("binding").c(&tb("attrpath").c(&leaf("identifier", "version")).b()).w(" ").c(&sym("=")).w(" ").c(&version.qlift_to::<Nix>()).c(&sym(";")).b().emit(&mut b_);
-        b_.nl();
-        tb("binding").c(&tb("attrpath").c(&leaf("identifier", "buildInputs")).b()).w(" ").c(&sym("=")).w(" ").c(&build_inputs).c(&sym(";")).b().emit(&mut b_);
-        b_.b()
-    }).x().n().c(&sym("}")).b()).b()).b();
+    let drv = tb("function_expression").c(&tb("formals").c(&sym("{")).w(" ").c(&tb("formal").c(&leaf("identifier", "pkgs")).w(" ").c(&sym("?")).w(" ").c(&tb("apply_expression").c(&tb("apply_expression").c(&tb("variable_expression").c(&leaf("identifier", "import")).b()).w(" ").c(&leaf("spath_expression", "<nixpkgs>")).b()).w(" ").c(&tb("attrset_expression").c(&sym("{")).w(" ").c(&sym("}")).b()).b()).b()).w(" ").c(&sym("}")).b()).c(&sym(":")).n().c(&tb("apply_expression").c(&tb("select_expression").c(&tb("variable_expression").c(&leaf("identifier", "pkgs")).b()).c(&sym(".")).c(&tb("attrpath").c(&leaf("identifier", "stdenv")).c(&sym(".")).c(&leaf("identifier", "mkDerivation")).b()).b()).w(" ").c(&tb("attrset_expression").c(&sym("{")).p("  ").n().c(&tb("binding_set").c(&tb("binding").c(&tb("attrpath").c(&leaf("identifier", "pname")).b()).w(" ").c(&sym("=")).w(" ").c(&pname.qlift_to::<Nix>()).c(&sym(";")).b()).n().c(&tb("binding").c(&tb("attrpath").c(&leaf("identifier", "version")).b()).w(" ").c(&sym("=")).w(" ").c(&version.qlift_to::<Nix>()).c(&sym(";")).b()).n().c(&tb("binding").c(&tb("attrpath").c(&leaf("identifier", "buildInputs")).b()).w(" ").c(&sym("=")).w(" ").c(&build_inputs).c(&sym(";")).b()).b()).x().n().c(&sym("}")).b()).b()).b();
     
     println!("{}", drv.coparse());
     Ok(())

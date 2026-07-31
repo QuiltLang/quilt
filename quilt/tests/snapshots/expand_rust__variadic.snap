@@ -2,16 +2,4 @@
 source: quilt/tests/expand_rust.rs
 expression: out
 ---
-tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "foo")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).w(" ").c(&{
-    let mut b_ = tb("block");
-    sym("{").emit(&mut b_);
-    b_.push("    ");
-    b_.nl();
-    tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "Hello")).c(&sym("\"")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
-    b_.nl();
-    tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "World")).c(&sym("\"")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
-    b_.pop();
-    b_.nl();
-    sym("}").emit(&mut b_);
-    b_.b()
-}).b()
+tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "foo")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).w(" ").c(&tb("block").c(&sym("{")).p("    ").n().c(&tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "Hello")).c(&sym("\"")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b()).n().c(&tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&tb("string_literal").c(&sym("\"")).c(&leaf("string_content", "World")).c(&sym("\"")).b()).c(&sym(")")).b()).b()).c(&sym(";")).b()).x().n().c(&sym("}")).b()).b()
