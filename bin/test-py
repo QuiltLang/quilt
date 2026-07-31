@@ -21,6 +21,15 @@ fi
 echo "==> binding tests (pytest)"
 ( cd "$ROOT/quilt-python" && PYTHONPATH=. python3 -m pytest -q tests/ )
 
+# The `quilt run` tests in quilt/tests/cli.rs skip themselves when the runtime
+# is not built, so a plain `cargo test` stays green without maturin — which
+# means the CI `Test` job, which never builds it, skips every Python one. This
+# is the only place they run for real (the mirror of what bin/test-ts does for
+# the Node runtime), so run them here rather than leaving argument forwarding,
+# exit codes and symlinked entry points covered by nothing.
+echo "==> cli integration tests (quilt run, with the runtime built)"
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" -p quiltlang --test cli
+
 echo "==> run self-contained .py.quilt examples"
 for ex in hello expr_compose pow_specialize staged_pow reduce upper_tri_mul; do
   echo "--- $ex.py.quilt"

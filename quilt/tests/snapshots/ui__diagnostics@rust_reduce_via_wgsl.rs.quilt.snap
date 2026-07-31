@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/rust_reduce_via_wgsl.rs.quilt
+---
+  × rust can't reduce via "wgsl": no reduce_spelling registered
