@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/pattern_non_identifier.rs.quilt
+---
+  × pattern metavariable must be a plain identifier, got "1 + 2"

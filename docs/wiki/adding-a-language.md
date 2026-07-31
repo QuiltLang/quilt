@@ -255,3 +255,24 @@ Add ordinary `#[test]`s too, for anything the battery's shape does not cover
 cargo test -p quiltlang your_lang
 cargo test -p quilt-conformance your_lang
 ```
+
+### Pin your refusals in `quilt/tests/ui/`
+
+The matrix records *that* an operator is unsupported; `quilt/tests/ui/` records
+what the user is told when they try it. Every `unsupported` capability you
+declared above should have a case here — the message is the only thing standing
+between a contributor and a mystery, and it is the part that rots silently.
+
+A case is one file holding the smallest input that provokes the error, named
+`<what>.<chain>.quilt` so the extensions are the language chain, exactly as on
+the command line:
+
+```sh
+printf 'def gen : String := lean↖[↙←frags↘]↗\n' > quilt/tests/ui/lean_emit.lean.quilt
+cargo insta review                     # accept the rendered diagnostic
+$EDITOR quilt/tests/ui.rs              # add the file to the `corpus_is_complete` roster
+```
+
+The rendered `miette` output — message, source snippet, caret position and help
+— is snapshotted, so improving an error message is a reviewable diff rather than
+an invisible change. A case that stops failing is itself a test failure.

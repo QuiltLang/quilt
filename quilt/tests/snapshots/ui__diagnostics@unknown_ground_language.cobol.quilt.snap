@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/unknown_ground_language.cobol.quilt
+---
+  × "cobol" can't be used as Language

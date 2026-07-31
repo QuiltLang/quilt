@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/python_lift_into_wgsl.py.quilt
+---
+  × python can't lift into "wgsl": no spelling registered
