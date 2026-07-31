@@ -171,7 +171,7 @@ pub fn build(t: &Term) -> Result<Arc<QTerm>> {
                 b = match step {
                     Step::W(s) => b.w(s),
                     Step::C(child) => b.c(&build(child)?),
-                    Step::E(child) => b.e(build(child)?),
+                    Step::E(child) => b.e(&build(child)?),
                     Step::P(s) => b.p(s),
                     Step::N => b.n(),
                     Step::X => b.x(),

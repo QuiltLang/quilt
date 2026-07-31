@@ -110,7 +110,7 @@ impl WasmBuilder {
 
     /// Emit a child term (for an `Arc<QTerm>` this is the same as [`c`]).
     pub fn e(self, child: &WasmQTerm) -> WasmBuilder {
-        WasmBuilder(self.0.e(child.0.clone()))
+        WasmBuilder(self.0.e(&child.0))
     }
 
     /// Build the term. Consumes the builder.
