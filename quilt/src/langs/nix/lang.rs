@@ -64,19 +64,19 @@ impl TSProvider for NixProvider {
         Ok((qterm.squash(), InnerKind::Expr))
     }
 
-    /// Nix sequence containers — list literals (`[ … ]`), attribute/binding
-    /// sets (`{ … }`, `let … in`, `rec { … }`), `inherit (…) a b;` attr lists,
-    /// and function formals (`{ a, b, ... }:`) — hold a variable number of
-    /// same-kind children, so their host expansion is a `build_variadic_block`
-    /// that emits each child. Everything else has a fixed shape and is rebuilt
-    /// positionally.
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
+    ///
+    /// The sequence containers this picks out are the expected ones — list
+    /// literals (`[ … ]`), attribute/binding sets (`{ … }`, `let … in`, `rec
+    /// { … }`), `inherit (…) a b;` attr lists and function formals
+    /// (`{ a, b, ... }:`) — each holding a variable number of same-kind
+    /// children, so their host expansion is a `build_variadic_block` that emits
+    /// each child. `source_code` is the one the hand-written table had and the
+    /// grammar does not: its only field is a single optional expression, so a
+    /// Nix file is not a sequence the way a Rust `source_file` is.
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "source_code" | "list_expression" | "binding_set" | "inherited_attrs" | "formals" => {
-                Arity::Variadic
-            }
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::NIX, tag)
     }
 
     /// Every Nix fragment is an expression (its node tag ends in `_expression`),

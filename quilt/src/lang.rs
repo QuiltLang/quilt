@@ -69,6 +69,28 @@ pub enum Arity {
     Variadic,
 }
 
+impl Arity {
+    /// Look a node kind up in one of the derived tables in
+    /// [`langs::arity`](crate::langs::arity).
+    ///
+    /// `table` must be sorted — the generated ones are, and this binary searches
+    /// them rather than scanning, because `arity` is asked once per node per
+    /// expansion.
+    ///
+    /// A miss is [`Unknown`](Arity::Unknown), not `Const`: the grammar says only
+    /// whether a kind *can* repeat, and a node that cannot still has whatever
+    /// fixed number of children its rule spells out. Nothing in the expander
+    /// distinguishes the two, so there is no arity to invent here.
+    #[must_use]
+    pub fn from_table(table: &[&str], tag: &str) -> Arity {
+        if table.binary_search(&tag).is_ok() {
+            Arity::Variadic
+        } else {
+            Arity::Unknown
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Hole {
     pub otag: Box<str>, // outer tag: where this hole appears in the outer language

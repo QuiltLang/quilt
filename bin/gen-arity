@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Regenerate quilt/src/langs/arity.rs — the per-language tables of node kinds
+# that are variadic containers — from the tree-sitter grammars vendored under
+# quilt/grammars/:
+#
+#   quilt/grammars/<lang>/grammar.json   (vendored by bin/sync-grammars,
+#        │                                same pinned rev as parser.c)
+#        │  REPEAT rules, per quilt-conformance/src/arity.rs
+#        ▼
+#   quilt/src/langs/arity.rs   → each Language::arity reads its table
+#
+# These tables used to be hand-written per language, which is how bash and zsh
+# came to classify eleven shared constructs differently (#150) and how a grammar
+# bump that renamed a node kind could silently stop treating it as a container
+# (#174). See issue #202. `bin/check-arity` is the CI gate that this was run.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec cargo run --quiet --manifest-path "$ROOT/Cargo.toml" \
+  -p quilt-conformance --bin gen-arity "$@"

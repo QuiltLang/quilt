@@ -61,64 +61,17 @@ impl TSProvider for BashProvider {
         Ok((qterm.squash(), kind))
     }
 
-    /// See [`super::super::zsh`]'s table, which is kept in the same order: the
-    /// two grammars share a lineage, so every node kind both define must
-    /// classify the same way in both, enforced by
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
+    ///
+    /// Bash and zsh no longer need their tables kept in step by hand (#150):
+    /// both come from their own grammar, so a construct the two spell the same
+    /// way classifies the same way unless the *grammars* differ.
     /// `bash_and_zsh_agree_on_shared_kinds` in
-    /// `quilt-conformance/tests/grammar_tags.rs` (#150).
+    /// `quilt-conformance/tests/grammar_tags.rs` now guards that weaker,
+    /// truthful claim.
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "program"
-            | "compound_statement"
-            | "subshell"
-            | "list"
-            | "pipeline"
-            | "command"
-            | "command_name"
-            | "command_substitution"
-            | "process_substitution"
-            | "if_statement"
-            | "elif_clause"
-            | "else_clause"
-            | "case_statement"
-            | "case_item"
-            | "do_group"
-            | "for_statement"
-            | "c_style_for_statement"
-            | "while_statement"
-            | "function_definition"
-            | "redirected_statement"
-            | "file_redirect"
-            | "heredoc_redirect"
-            | "herestring_redirect"
-            | "variable_assignment"
-            | "variable_assignments"
-            | "declaration_command"
-            | "unset_command"
-            | "negated_command"
-            | "test_command"
-            | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
-            | "concatenation"
-            | "array"
-            | "expansion"
-            // Bash's one entry with no zsh counterpart: zsh spells the same
-            // construct `dollar_variable` / `variable_ref`.
-            | "simple_expansion"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "binary_expression"
-            | "unary_expression"
-            | "ternary_expression"
-            | "postfix_expression"
-            | "parenthesized_expression"
-            | "subscript"
-            | "number"
-            | "heredoc_body" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::BASH, tag)
     }
 
     /// The shell grammars have no `identifier` node kind at all — a bare word is
