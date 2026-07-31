@@ -1,0 +1,34 @@
+#!/usr/bin/env quilt
+# Nix as a *host*, using emit to fill a variadic container (issue #155).
+#
+# The Nix host has no QTerm runtime: a generated fragment is a plain Nix string
+# (see nix_host.nix.quilt). Nix is also a pure expression language -- there are
+# no statements and nothing to mutate -- so the imperative reading of emit
+# ("append one term to the b_ accumulator, once around the loop") has no
+# counterpart here. The functional reading does: build the list of fragments
+# with `map`, then hand the whole list to the emit operator, which joins it into
+# the surrounding container. Emit spells `builtins.concatStringsSep "\n"`, so it
+# needs no runtime library either.
+#
+# Joined fragments are not re-indented -- the separator is a bare newline --
+# which is why the newline is the separator: it is the one that keeps both a
+# whitespace-insensitive Nix list and a line-oriented script correct.
+#
+#   quilt expand examples/nix_emit.nix.quilt
+#   nix eval --raw --file examples/nix_emit.nix packages
+#   nix eval --raw --file examples/nix_emit.nix start
+let
+  services = [ "web" "db" "cache" ];
+
+  # A shell script for any target, not just Nix: one command per service.
+  start = bash↖
+    set -euo pipefail
+    ↙← (map (s: bash↖systemctl start ↙s↘↗) services)↘
+  ↗;
+in
+  {
+    inherit start;
+
+    # A variadic Nix list -- one element per service.
+    packages = nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗;
+  }

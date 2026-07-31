@@ -30,9 +30,13 @@ const cases = corpus.cases.filter((c) => (c.runtimes ?? [RUNTIME]).includes(RUNT
 
 function buildCmds(cmds) {
   return cmds.map((c) => {
-    // NL / POP / HOLE are *functions* here and *constants* in the Python
-    // runtime — a real API divergence the wasm source itself notes ("the HOLE
-    // constant in the Python runtime"). See issue #167.
+    // The corpus spells a cmd abstractly ("NL", "HOLE", {write: s}) and every
+    // runner maps it to its own API, so this is the same mapping the Rust and
+    // Python runners do — not a special case for wasm. It just happens to be
+    // where the one recorded divergence shows: NL/POP/HOLE are functions here
+    // and constants in Python, because wasm-bindgen cannot export a
+    // module-scope constant and a singleton would be consumed by its first use.
+    // Weighed and kept in issue #167; quilt-wasm/README.md has the reasoning.
     if (c === "HOLE") return q.HOLE();
     if (c === "NL") return q.cmd(q.NL());
     if (c === "POP") return q.cmd(q.POP());

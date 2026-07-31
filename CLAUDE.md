@@ -2,11 +2,58 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Work modes
+
+A prompt may select a work mode with `mode=<name>` (e.g. `mode=merge`). If no
+mode is given, use `mode=pr`.
+
+**Always work in a dedicated git worktree — never check out a branch in the
+main working directory.** Create a fresh worktree for every task (e.g. via the
+`EnterWorktree` tool, or `git worktree add`) rather than `git checkout`/`git
+switch`-ing branches in place. This keeps `main` clean and lets work proceed in
+isolation.
+
+| Mode                | Delivery                       | Questions                                                |
+| ------------------- | ------------------------------ | -------------------------------------------------------- |
+| `pr` **(default)**  | Cut a PR                       | Ask as necessary                                         |
+| `fast+pr`           | Cut a PR                       | Don't stop — leave them as comments on the PR            |
+| `merge`             | Merge to `main` without asking | Ask as necessary                                         |
+| `fast`              | Merge to `main` without asking | Don't stop — file them as GitHub issues to discuss later |
+
+Details:
+
+- **`mode=pr`** — The default. Work in a worktree and cut a PR. Ask questions as
+  necessary.
+- **`mode=fast+pr`** — Like `pr`, but don't stop to ask questions; put them in
+  the PR as comments.
+- **`mode=merge`** — Work in a worktree, then merge to `main` without asking.
+  Resolve any merge conflicts as necessary. Ask questions as necessary.
+- **`mode=fast`** — Like `merge`, but don't stop to ask questions. File them as
+  GitHub issues to discuss later, labeled `question`.
+
+In every mode, get `main check` green before merging or cutting a PR — it runs
+the same `bin/` gates the CI matrix does (see Commands below).
+
 ## Commands
 
-Cargo commands run from the repo root (the Cargo workspace root). The `bin/` scripts work from anywhere when the direnv env is active.
+`main` is the front door: `main` on its own lists everything, and any other
+`bin/` script is reachable as `main <script>`. The `bin/` scripts also work
+directly, from anywhere, when the direnv env is active. Cargo commands run from
+the repo root (the Cargo workspace root).
 
 ```sh
+main                  # what's available
+main run <file>       # run a .quilt file      (= quilt <file>)
+main expand <file>    # expand a .quilt file   (= quilt expand <file>)
+main build            # cargo build
+main test [args]      # cargo test             (= ctest)
+main lint             # cargo clippy --tests   (= lint)
+main fmt              # cargo fmt --all
+main check            # pre-commit gate: fmt, clippy, tests, bootstrap,
+                      #   quilt grammar, support matrix, examples
+main check --all      # …plus feature matrix, vendored grammars, python runtime
+main <script> [args]  # any other bin/ script, e.g. `main sync-grammars`
+
 # Build / test / lint / format (from repo root)
 cargo build
 cargo test                 # or `ctest` (wrapper that works from anywhere)
@@ -97,7 +144,7 @@ The file stem determines the **language chain**: reading the extensions right-to
 
 ## Workspace layout
 
-Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment).
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts, fronted by `bin/main`), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment, which also puts `bin/` on `PATH`).
 
 The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 
@@ -154,11 +201,11 @@ Two trait families:
 - `meta.rs` — implements `MetaLanguage`. Rust's is **generated** by bootstrap from `mk_meta.rs.quilt`; python's is hand-written. The `expand_*` methods are thin wrappers that delegate to `ops.rs`, and each meta also supplies the operator spellings (`lift_str`/`reduce_str`/`emit_str`/`type_str`/`name_str`) that the `↑ ↓ ← ⟨T⟩ ⟨N⟩` glyphs expand to.
 - `ops.rs` — hand-written helpers that build the output `QTerm` **directly** via the builder: `build_tuple_code` / `build_quote_code` / `build_unquote_code` / `build_variadic_block`, plus `name` (and, for rust, `qlift` and `reduce`).
 
-**Target-only languages** (wgsl, html, zsh, bash) provide just `lang.rs` — they can be quoted (`wgsl↖...↗`) but have no `MetaLanguage`, so the host's meta drives expansion. **Text** additionally has a minimal hand-written `meta.rs`.
+**Target-only languages** (wgsl, html, zsh, bash) provide just `lang.rs` — they can be quoted (`wgsl↖...↗`) but have no `MetaLanguage`, so the host's meta drives expansion. **Text** additionally has a `meta.rs`: the **identity** meta. Where the other hosts translate a quoted fragment into code that rebuilds it (builder calls for rust/python, string literals for nix/lean), text has no expressions to translate into, so it *holds the object-level code as unparsed lines* — same tags, same `cmds`, same text. The operator spellings are the other half of that: `↑ ↓ ← ⟨T⟩ ⟨N⟩` each need a host expression, so each returns an error naming a real host. Text is absent from `omni.rs`'s `metas` section, so the meta is reachable only by wiring it into a `Single`/`DictMulti` by hand.
 
 **Lean** (`lean`/`lean4`) is, like Nix, both a quotable target *and* a string-based host: `langs/lean/meta.rs` + `ops.rs` reconstruct fragments as Lean interpolated strings (`s!"…"`), mapping a host unquote `↙x↘` onto Lean's own `{x}` interpolation and `↑` onto `toString` (issue #132). Its hole (`__QUILT_HOLE__`) needs no grammar patch — it is already a valid Lean identifier, so it parses in term, tactic, do-element, name and binder position. Command position is reached by a fallback in `parse_pre`: holes alone on their own line are wrapped in `#check …` and the wrapper stripped from the parsed tree. Emit into a top-level command *sequence* still needs the grammar change in issue #133. A hole's kind comes from its *parent* (`hole_kind`), since the token is spelled the same everywhere. Lean's `module` holds commands rather than terms, so `LeanLanguage` retries a failed parse inside `#check …` and strips the wrapper, which is what lets a bare term fragment (`lean↖n + 1↗`) parse at all.
 
-**Nix** is both a quotable target *and* a host: `langs/nix/meta.rs` + `ops.rs` implement a **string-based** `MetaLanguage` — instead of emitting builder calls into a `QTerm` runtime (which Nix has none of), it reconstructs each fragment as a Nix string literal, mapping a host unquote `↙x↘` onto Nix's own `${x}` antiquotation and `↑` onto `toString`. A `.nix.quilt` file therefore expands to a plain Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. The string model is language-agnostic (a Nix host can generate any target), but has no `b_` accumulator, so emit/splice in *ground* loops is unsupported — build sequences functionally (`map`, `concatStringsSep`).
+**Nix** is both a quotable target *and* a host: `langs/nix/meta.rs` + `ops.rs` implement a **string-based** `MetaLanguage` — instead of emitting builder calls into a `QTerm` runtime (which Nix has none of), it reconstructs each fragment as a Nix string literal, mapping a host unquote `↙x↘` onto Nix's own `${x}` antiquotation and `↑` onto `toString`. A `.nix.quilt` file therefore expands to a plain Nix metaprogram that, evaluated (`nix eval`), yields the generated code as a string. The string model is language-agnostic (a Nix host can generate any target), but has no `b_` accumulator, so emit is functional rather than imperative: `←` spells `builtins.concatStringsSep "\n"` and takes the whole list of fragments (built with `map`), joining it into the surrounding container — `nix↖[ ↙← (map f xs)↘ ]↗` (issue #155).
 
 **Bootstrap** (`langs/bootstrap/`) is internal-only: its `lang.rs` re-exports the tree-sitter `RustLanguage` unchanged, and only its *meta* is special — `strlift.rs` lifts to a string and re-parses it, a slower shortcut used only for bootstrapping. (No language currently implements `Language` without tree-sitter; `langs/text/lang.rs` is a `todo!()` stub. The trait itself has no tree-sitter dependency, so one could.)
 

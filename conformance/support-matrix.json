@@ -31,22 +31,30 @@
         },
         {
           "axis": "variadic-containers",
-          "status": "partial",
-          "note": "the arity table has drifted from zsh's despite the two being documented as equivalent: bash lists `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, which zsh's table omits",
-          "issue": 150,
+          "status": "supported",
           "verified_by": "variadic-containers/bash",
           "detail": [
             "program",
             "compound_statement",
+            "do_group",
             "command",
             "list",
             "pipeline",
-            "variable_assignment",
+            "if_statement",
+            "case_statement",
             "variable_assignments",
             "for_statement",
+            "c_style_for_statement",
             "while_statement",
             "function_definition",
-            "if_statement"
+            "test_command",
+            "variable_assignment",
+            "file_redirect",
+            "raw_string",
+            "ansi_c_string",
+            "subscript",
+            "ternary_expression",
+            "simple_expansion"
           ]
         },
         {
@@ -541,12 +549,12 @@
         },
         {
           "axis": "emit",
-          "status": "planned",
-          "note": "`emit_str` fails unconditionally: the string model has no `b_` accumulator for `←` to append to. Build sequences functionally with `map` / `concatStringsSep`, which is what the error says",
+          "status": "partial",
+          "note": "the string model has no `b_` accumulator, so `←` is the *functional* reading of emit: it takes the whole list of fragments and joins it into the surrounding container (`builtins.concatStringsSep \"\\n\"`, applied prefix like `↑`). Building that list is `map`, not a ground loop, and joined fragments are not re-indented",
           "issue": 155,
           "verified_by": "emit/nix",
           "detail": [
-            "← unsupported (fails with guidance)",
+            "← → (builtins.concatStringsSep \"\\n\")",
             "type_str unsupported",
             "name_str → toString"
           ]
@@ -1393,20 +1401,37 @@
         },
         {
           "axis": "variadic-containers",
-          "status": "partial",
-          "note": "the arity table has drifted from bash's: zsh omits `variable_assignment`, `for_statement`, `while_statement` and `function_definition`, so an emit into a zsh `for` body behaves differently from the identical bash one",
-          "issue": 150,
+          "status": "supported",
           "verified_by": "variadic-containers/zsh",
           "detail": [
             "program",
             "compound_statement",
-            "compound_statement_no_always",
+            "do_group",
             "command",
             "list",
             "pipeline",
-            "variable_assignments",
             "if_statement",
-            "arithmetic_expansion"
+            "case_statement",
+            "variable_assignments",
+            "arithmetic_expansion",
+            "for_statement",
+            "c_style_for_statement",
+            "while_statement",
+            "function_definition",
+            "test_command",
+            "variable_assignment",
+            "file_redirect",
+            "raw_string",
+            "ansi_c_string",
+            "subscript",
+            "ternary_expression",
+            "compound_statement_no_always",
+            "expansion_default_list",
+            "select_statement",
+            "repeat_statement",
+            "dollar_variable",
+            "variable_ref",
+            "zsh_array_subscript_flags"
           ]
         },
         {

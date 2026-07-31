@@ -1,6 +1,9 @@
 local
 .DS_Store
 /.direnv
-.claude
+# Claude Code local overrides and worktrees (see .envrc). Shared agent config
+# under .claude/ is trackable; these two are per-machine and are not.
+.claude/settings.local.json
+.claude/worktrees/
 .claire
 /target
