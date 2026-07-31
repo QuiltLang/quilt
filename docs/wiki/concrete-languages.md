@@ -124,6 +124,8 @@ let shader = ↖
 
 Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. Both are target-only: they can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) but have no `MetaLanguage`. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
 
+The two are near-equivalent by design, and their `Language::arity` tables are held to that: for every node kind **both** grammars define, bash and zsh must return the same `Arity`. The two `match` arms are written in the same order to make them diffable by eye, and `shell_arity_tables_agree` (`quilt-conformance/tests/grammar_tags.rs`) fails if they drift. This matters because arity decides whether the expander treats a node as a variadic container, so a construct that is variadic in one shell and not the other would make an emit into a zsh `for` body behave differently from the identical bash one, with no diagnostic — which is exactly what had happened before issue #150. Genuine grammar differences are exempt, since they are outside the intersection: `simple_expansion` exists only in bash (zsh spells it `dollar_variable` / `variable_ref`), while `compound_statement_no_always`, `select_statement`, `repeat_statement`, `expansion_default_list` and `zsh_array_subscript_flags` exist only in zsh.
+
 ---
 
 ## Nix (`nix`) — target *and* host
