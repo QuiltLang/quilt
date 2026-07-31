@@ -50,7 +50,7 @@ Columns:
 | **Python** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **TypeScript** | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/153) | [🟡](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
+| **TypeScript** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Zsh** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/151) | ⬜ |
 

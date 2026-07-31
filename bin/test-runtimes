@@ -37,14 +37,21 @@ fi
 ( cd "$ROOT/quilt-python" && PYTHONPATH=. python3 -m pytest -q tests/test_runtime_corpus.py ) || fail=1
 
 step "wasm (quilt-wasm)"
+# Missing wasm-pack used to skip this third with a note. That made the whole
+# point of the script — comparing the runtimes — quietly optional, and it is
+# exactly what happened in CI: the nightly job's installer never managed to
+# place the binary, so for its whole life this reported parity after testing
+# two runtimes of three. wasm-pack is in the flake devShell now, so its absence
+# means the environment is wrong, not that there is less to check.
 if ! command -v wasm-pack >/dev/null 2>&1; then
-  echo "    wasm-pack not found — skipping. Install: https://rustwasm.github.io/wasm-pack/"
-else
-  # --target nodejs so the runner can require() it without a fetch/init dance.
-  # The npm package ships --target web; the API surface is identical.
-  wasm-pack build "$ROOT/quilt-wasm" --target nodejs --out-dir pkg >/dev/null 2>&1
-  node "$ROOT/quilt-wasm/test/corpus.mjs" || fail=1
+  echo "error: wasm-pack not found — run this inside the devShell (direnv/nix develop)" >&2
+  exit 1
 fi
+# bin/build-ts is the same --target nodejs build `quilt run` needs, so the
+# flags live in one place. (The npm package ships --target web; the API
+# surface is identical.)
+"$ROOT/bin/build-ts" >/dev/null 2>&1
+node "$ROOT/quilt-wasm/test/corpus.mjs" || fail=1
 
 echo
 if [ "$fail" -ne 0 ]; then

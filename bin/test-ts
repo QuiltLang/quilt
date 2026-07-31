@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Test the TypeScript runtime path: the Node runtime (quilt-wasm/node) and the
+# .ts.quilt example programs that target it. Build the wasm first with
+# `bin/build-ts` (the CI `typescript` job runs build-ts then test-ts) — the
+# mirror of bin/build-py / bin/test-py for the other runtime.
+#
+#   1. node tests for the `↓` (reduce) operator the Node runtime adds.
+#   2. `quilt run` the self-contained .ts.quilt examples and assert they exit 0.
+#
+# examples/web/*.ts.quilt are intentionally excluded from (2): they are browser
+# programs (they build HTML for a page to mount, and the playground's staged
+# dashboard calls setInterval), so they are only `check`ed by bin/check-examples.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+if [ ! -f "$ROOT/quilt-wasm/pkg/quilt_wasm.js" ]; then
+  echo "error: quilt-wasm not built for Node — run 'bin/build-ts' first" >&2
+  exit 1
+fi
+
+# Build once so the expander the reduce tests shell out to is a real binary
+# rather than a `cargo run` per invocation.
+cargo build --quiet --manifest-path "$ROOT/Cargo.toml" -p quiltlang
+QUILT="$ROOT/target/debug/quilt"
+export QUILT
+
+echo "==> reduce tests (node)"
+node "$ROOT/quilt-wasm/test/reduce.mjs"
+
+# The `quilt run` tests in quilt/tests/cli.rs skip themselves when the runtime
+# is not built, so a plain `cargo test` stays green without wasm-pack — which
+# means the CI `Test` job, which never builds it, skips every one of them. This
+# is the only place they run for real, so run them here rather than leaving the
+# end-to-end path covered by nothing.
+echo "==> cli integration tests (quilt run, with the runtime built)"
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" -p quiltlang --test cli
+
+echo "==> run self-contained .ts.quilt examples"
+for ex in staged_pow; do
+  echo "--- $ex.ts.quilt"
+  "$QUILT" "examples/$ex.ts.quilt" >/dev/null
+done
+echo "ts runtime OK ✓"

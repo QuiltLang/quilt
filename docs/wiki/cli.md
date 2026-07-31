@@ -43,6 +43,7 @@ Expand a `.quilt` file to a temp file and run it immediately. The file's inner e
 |-----------|-------------------------------------------------------------|
 | `.rs`     | `rust-script`                                               |
 | `.py`     | `python3` (with `PYTHONPATH` set to include `quilt-python`) |
+| `.ts`     | `node --experimental-strip-types` (with a `node_modules` binding the runtime) |
 
 The runner is read from `Language::hashbang()`. If the language does not return a hashbang, `quilt` errors.
 
@@ -55,8 +56,19 @@ Since `run` is the default subcommand, the `run` keyword can be omitted:
 ```sh
 quilt examples/hello.rs.quilt World
 quilt examples/hello.py.quilt
+quilt examples/staged_pow.ts.quilt
 quilt examples/countdown.rs.quilt 5
 ```
+
+#### Binding the runtime
+
+Each host needs its runtime importable, and each language wants that spelled its own way:
+
+- **Rust** gets the cargo manifest above.
+- **Python** gets `PYTHONPATH`.
+- **TypeScript** gets a `node_modules`. Node's ESM resolver ignores `NODE_PATH`, so a bare `import … from "quilt"` resolves only against a `node_modules` directory *above* the importing file — and a temp file has none. `quilt run` therefore gives the script a private directory holding a `node_modules` with two entries, mirroring the browser demos' import map: `quilt` → `quilt-wasm/node` (the runtime plus `↓`) and `quilt-wasm` → `quilt-wasm/pkg` (the raw wasm-pack package). Build them first with [`bin/build-ts`](#build-ts); until then `quilt run` on a `.ts.quilt` file errors telling you so.
+
+Python and TypeScript runs also inherit `$QUILT` (the path of the running expander) and, for TypeScript, `$QUILT_CHAIN` (the file's language chain, ground first). That is what lets `↓` re-expand a *generated* stage — one whose source still contains Quilt glyphs — without needing `quilt` on `PATH`. See [Reduce on the CLI](concrete-languages.md#reduce-on-the-cli).
 
 ### Shebang scripts
 
@@ -127,6 +139,25 @@ build-py
 ```
 
 Builds with maturin and installs the abi3 module as `quilt-python/quilt/_quilt.abi3.so`, which Python can import as `import quilt`.
+
+### `build-ts`
+
+The TypeScript counterpart: build the `quilt-wasm` runtime for Node. Required before running `.ts.quilt` files. Rebuild after editing the wasm bindings.
+
+```sh
+build-ts
+```
+
+Runs `wasm-pack build quilt-wasm --target nodejs --out-dir pkg` — CommonJS with the wasm instantiated on `require`, so a CLI run needs no `fetch`/`init` dance. (The npm package and the browser demos use `--target web`, which `examples/web/build.mjs` puts in `pkg-web/`; the API surface is the same.) `quilt run` layers `quilt-wasm/node` on top, which is what adds `↓`.
+
+### `test-py` / `test-ts`
+
+Exercise each runtime end to end: `test-py` runs the pytest binding tests and the self-contained `.py.quilt` examples; `test-ts` runs the Node `↓` tests (`quilt-wasm/test/reduce.mjs`) and the self-contained `.ts.quilt` examples. Each needs its runtime built first.
+
+```sh
+build-py && test-py
+build-ts && test-ts
+```
 
 ### `ts-gen`
 
