@@ -1,19 +1,19 @@
 //! Do the hand-written tag tables still match the grammars they describe?
 //!
 //! Quilt's per-language providers carry tables of tree-sitter node kinds as Rust
-//! string literals: `Language::arity`'s variadic allowlist (50 entries for bash),
-//! `Language::typ`'s exact-match arms, `is_expr_tag`, `MetaLanguage::pattern_tag`,
-//! plus the tags declared in `conformance/spec/*.toml`. Nothing checked any of
-//! them against the grammar.
+//! string literals: `Language::arity`'s variadic allowlist (56 entries for the
+//! two shells), `Language::typ`'s exact-match arms, `is_expr_tag`,
+//! `MetaLanguage::pattern_tag`, plus the tags declared in
+//! `conformance/spec/*.toml`. Nothing checked any of them against the grammar.
 //!
 //! The failure mode is silent. A tag that is misspelled, or that a grammar bump
 //! under `bin/sync-grammars` renamed, simply stops matching: `arity` falls
 //! through to `Arity::Unknown` and the expander quietly stops treating that node
 //! as variadic, changing emit/splice behaviour with no diagnostic. Issue #150
-//! (bash and zsh arity tables drifted apart) is one instance; issue #174 is the
-//! survey.
+//! (bash and zsh arity tables drifted apart) was one instance, fixed by giving
+//! the two dialects one shared table; issue #174 is the survey.
 //!
-//! Two checks here, both derived from the grammar rather than from a second copy
+//! Four checks here, all derived from the grammar rather than from a second copy
 //! of the table:
 //!
 //! 1. [`spec_tags_are_real_node_kinds`] — a hard assertion that every tag any
@@ -23,6 +23,11 @@
 //!    grammar. A grammar bump that renames or drops a kind shows up as a
 //!    reviewable diff instead of a silent behaviour change (the #157 approach:
 //!    review a diff, don't hand-maintain N literals).
+//! 3. [`ident_tags_are_real_node_kinds`] — the one tag the expander constructs
+//!    rather than parses (`Language::ident_tag`) must also be a kind its grammar
+//!    defines (#174, finding E2).
+//! 4. [`shell_dialects_agree_on_shared_kinds`] — the fix for #150: bash and zsh
+//!    must answer `arity` identically for every node kind both grammars define.
 
 use quilt::lang::{Arity, Language};
 use quilt_conformance::{registry, spec::Spec, spec_dir};
@@ -175,49 +180,48 @@ fn ident_tags_are_real_node_kinds() {
 /// The two are documented as near-equivalent — `concrete-languages.md` says of
 /// bash: *"Same as Zsh — a separate target with Bash-specific quoting
 /// semantics"* — and zsh's grammar is a fork of bash's. But their `arity` tables
-/// were maintained by hand and independently, and had drifted by eleven tags:
+/// were maintained by hand and independently, and had drifted by twelve tags:
 /// `for_statement`, `while_statement`, `function_definition`, `test_command`,
-/// `variable_assignment`, `c_style_for_statement`, `file_redirect`,
-/// `raw_string`, `ansi_c_string`, `subscript` and `ternary_expression` were
-/// variadic in bash and not in zsh, even though the zsh grammar defines all
-/// eleven and parses them to structurally identical trees. Arity decides whether
-/// the expander treats a node as a container to emit into, so an emit into a zsh
-/// `for` body behaved differently from the identical bash one, with no
-/// diagnostic (#150).
+/// `c_style_for_statement`, `file_redirect`, `raw_string`, `ansi_c_string`,
+/// `subscript` and `ternary_expression` among them, every one of which the zsh
+/// grammar also defines and parses to a structurally identical tree. Arity
+/// decides whether the expander treats a node as a container to emit into, so an
+/// emit into a zsh `for` body behaved differently from the identical bash one,
+/// with no diagnostic (#150).
 ///
 /// Restricting to the shared kinds is what makes this a real invariant rather
 /// than a wish: it says nothing about the constructs only one shell has (zsh's
 /// `repeat_statement`, bash's `simple_expansion`), so a legitimate
 /// grammar-specific tag never trips it, while a tag that both grammars define
 /// cannot be classified two ways again.
+///
+/// The shared table in `quilt::langs::shell` is what makes this hold; this test
+/// is what keeps it holding.
 #[test]
-fn bash_and_zsh_agree_on_shared_kinds() {
+fn shell_dialects_agree_on_shared_kinds() {
     let bash_grammar = registry::grammar("bash").expect("bash grammar");
     let zsh_grammar = registry::grammar("zsh").expect("zsh grammar");
     let bash = registry::language("bash").expect("bash language builds");
     let zsh = registry::language("zsh").expect("zsh language builds");
 
-    let shared: BTreeSet<&str> = registry::node_kinds(&bash_grammar)
-        .intersection(&registry::node_kinds(&zsh_grammar))
-        .copied()
-        .collect();
+    let bash_kinds = registry::node_kinds(&bash_grammar);
+    let zsh_kinds = registry::node_kinds(&zsh_grammar);
 
-    let mut disagreements = Vec::new();
-    for kind in shared {
-        let (b, z) = (bash.arity(kind), zsh.arity(kind));
-        if b != z {
-            disagreements.push(format!("  {kind}: bash {b:?}, zsh {z:?}"));
-        }
-    }
+    let disagreements: Vec<String> = bash_kinds
+        .intersection(&zsh_kinds)
+        .filter_map(|kind| {
+            let (b, z) = (bash.arity(kind), zsh.arity(kind));
+            (b != z).then(|| format!("  {kind}: bash says {b:?}, zsh says {z:?}"))
+        })
+        .collect();
 
     assert!(
         disagreements.is_empty(),
-        "bash and zsh disagree on the arity of {} node kind(s) that both grammars define:\n{}\n\n\
-         Zsh's grammar is a fork of bash's, so a kind both define is the same construct \
-         and must classify the same way — otherwise emit/splice into it silently behaves \
-         differently between the two shells (#150). Fix the table in \
-         quilt/src/langs/{{bash,zsh}}/lang.rs, not this test; only kinds a grammar does \
-         not define may be listed on one side alone.",
+        "{} node kind(s) that both shell grammars define are classified \
+         differently by the two dialects:\n\n{}\n\n\
+         Both providers delegate to `quilt::langs::shell::arity`, so a \
+         disagreement means one of them has grown a table of its own again — \
+         see issue #150.",
         disagreements.len(),
         disagreements.join("\n"),
     );

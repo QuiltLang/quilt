@@ -159,11 +159,11 @@ let shader = ↖
 
 ## Zsh (`zsh`) and Bash (`bash`) — target only
 
-**Files:** `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
+**Files:** `langs/shell.rs`, `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
 
 Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. Both are target-only: they can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) but have no `MetaLanguage`. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
 
-The two are near-equivalent by design, and their `Language::arity` tables are held to that: for every node kind **both** grammars define, bash and zsh must return the same `Arity`. The two `match` arms are written in the same order to make them diffable by eye, and `shell_arity_tables_agree` (`quilt-conformance/tests/grammar_tags.rs`) fails if they drift. This matters because arity decides whether the expander treats a node as a variadic container, so a construct that is variadic in one shell and not the other would make an emit into a zsh `for` body behave differently from the identical bash one, with no diagnostic — which is exactly what had happened before issue #150. Genuine grammar differences are exempt, since they are outside the intersection: `simple_expansion` exists only in bash (zsh spells it `dollar_variable` / `variable_ref`), while `compound_statement_no_always`, `select_statement`, `repeat_statement`, `expansion_default_list` and `zsh_array_subscript_flags` exist only in zsh.
+`tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the two dialects share almost all of their node kinds. They therefore share one tag table, `langs/shell.rs`, which answers both `Language::arity` and the `is_expr_tag` classification for either provider. That used to be two independently maintained `match` arms in two files, and they drifted: bash claimed `for_statement`, `while_statement`, `function_definition` and nine more kinds that zsh's table omitted despite zsh's grammar defining every one, so an emit into a zsh `for` body compiled differently from the identical bash one with no diagnostic (issue #150). Kinds only one grammar defines — bash's `simple_expansion`, zsh's `always_clause`, `terse_for_statement`, `select_statement`, `repeat_statement`, `coprocess_statement` and expansion vocabulary — live in the same table and simply never match for the other dialect; `conformance/spec/{bash,zsh}.toml` declare them in a marked dialect-only block, and `grammar_tags::shell_dialects_agree_on_shared_kinds` fails if the two ever stop agreeing on a shared kind.
 
 ---
 

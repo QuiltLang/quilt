@@ -10,53 +10,76 @@ A target-only shell language. Generate scripts with correct quoting: a lifted \
 Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks \
 escaped, so the value stays inert data."""
 
-# Bash and zsh are documented as near-identical and zsh's grammar is a fork of
-# bash's, so the block below is deliberately identical to zsh.toml's, in the same
-# order; only the entries one grammar has no node kind for follow it. A future
-# divergence therefore shows up as a diff between these two files as well.
-# The eleven tags marked below are the ones whose classification had drifted
-# between the two (#150); pinning them on both sides keeps the reconciliation
-# from quietly coming undone.
+# Bash and zsh are documented as near-identical and share a grammar lineage, so
+# both declare the same shell containers (#150). Everything from here to the
+# dialect-only block is byte-identical with zsh.toml on purpose: a future
+# divergence shows up as a diff between the two files rather than as a silent
+# behaviour difference. `quilt::langs::shell` is the single table both providers
+# answer from, and `grammar_tags::shell_dialects_agree_on_shared_kinds` fails if
+# they ever stop agreeing.
 variadic = [
+  # Scripts and statement containers.
   "program",
   "compound_statement",
   "subshell",
   "list",
   "pipeline",
-  "command",
   "do_group",
   "if_statement",
   "elif_clause",
   "else_clause",
   "case_statement",
   "case_item",
-  # The eleven that had drifted. Both grammars define all of them.
   "for_statement",
   "c_style_for_statement",
   "while_statement",
   "function_definition",
+  "redirected_statement",
+  "negated_command",
+  "command",
+  "command_name",
+  "declaration_command",
+  "unset_command",
   "test_command",
-  "variable_assignment",
+  # Redirections.
   "file_redirect",
+  "heredoc_redirect",
+  "herestring_redirect",
+  "heredoc_body",
+  # Only the plural assignment node is a container; see `not_variadic`.
+  "variable_assignments",
+  # Words and expansions.
+  "string",
   "raw_string",
   "ansi_c_string",
-  "subscript",
-  "ternary_expression",
-  # Shared containers that never drifted.
-  "redirected_statement",
-  "variable_assignments",
-  "declaration_command",
-  "string",
+  "translated_string",
   "concatenation",
   "array",
+  "subscript",
   "expansion",
+  "command_substitution",
+  "process_substitution",
   "arithmetic_expansion",
-  # Bash-only: zsh spells this `dollar_variable` / `variable_ref`.
+  # Arithmetic and test expressions.
+  "brace_expression",
+  "parenthesized_expression",
+  "binary_expression",
+  "unary_expression",
+  "ternary_expression",
+  "postfix_expression",
+  "number",
+  # --- bash-only kinds below this line ---
+  # `$x`. zsh's grammar has no `simple_expansion`; it spells this
+  # `variable_ref` / `dollar_variable`, which zsh.toml claims instead.
   "simple_expansion",
 ]
-# Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
-# All five are kinds both shell grammars define.
+# `variable_assignment` (singular) is a fixed name/`=`/value triple, not a
+# sequence — `variable_assignments` (plural) is the `X=1 Y=2` repeat. bash's
+# table claimed both, which is the copy-paste divergence #150 names.
+# Over-declaring variadicity silently changes emit behaviour, so the leaves are
+# pinned as negative controls too; every kind here is one both grammars define.
 not_variadic = [
+  "variable_assignment",
   "word",
   "variable_name",
   "comment",
@@ -69,7 +92,7 @@ lift_marker = "Bash"
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
-variadic-containers = {status = "supported", note = "agrees with zsh's table on every node kind both grammars define"}
+variadic-containers = {status = "supported", note = "shares one table with zsh (`quilt::langs::shell`), so the two dialects classify every node kind their grammars share identically"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Bash>` impl", issue = 149}
 highlights = {status = "supported"}
