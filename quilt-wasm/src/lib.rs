@@ -288,7 +288,10 @@ pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
         return Ok(WasmQTerm(mk_leaf("text", &fmt_number(n))));
     }
     if let Some(s) = value.as_string() {
-        return Ok(WasmQTerm(mk_leaf("text", &escape_html(&s))));
+        // The core's `escape_html`, not a local copy: quilt-python had a
+        // byte-identical twin of this table and neither had a direct test
+        // (issue #192).
+        return Ok(WasmQTerm(mk_leaf("text", &quilt::lift::escape_html(&s))));
     }
     Err(JsError::new(
         "qlift_html: unsupported type (expected number, string, boolean, or QTerm)",
@@ -394,21 +397,5 @@ fn ts_string_lit(s: &str) -> String {
         }
     }
     out.push('"');
-    out
-}
-
-/// Escape `& < > " '` so the result is inert HTML wherever a hole can sit.
-fn escape_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#x27;"),
-            _ => out.push(c),
-        }
-    }
     out
 }

@@ -19,6 +19,13 @@
     "to mean all three. Every narrowing needs a `why`, so a gap is a recorded",
     "decision and not an accident.",
     "",
+    "`checks` are the cross-cutting ones: instead of a term and its expected",
+    "text, a check is a property every case's term must satisfy, so it covers",
+    "each shape in the corpus without restating any of them. Each names the",
+    "runtimes that have the API it needs, with the same `why` obligation. A",
+    "runner must fail on a check that names it and that it does not implement —",
+    "adding one here is a request the runners cannot silently ignore.",
+    "",
     "The governing law for lift is ↓(↑(x)) == x: ↑ maps a value to a term whose",
     "code evaluates back to it. These cases compare coparse() text, which cannot",
     "see that law directly — checking it needs the reduce backends, so it lives",
@@ -29,6 +36,26 @@
     "evaluates back to it, so lifting a *term* yields constructor code. All three",
     "runtimes satisfy it as of #166; the eval-based checks that prove it live in",
     "the Python and Node runners, which can actually evaluate the generated code."
+  ],
+  "checks": [
+    {
+      "name": "postcard_roundtrip",
+      "runtimes": [
+        "rust",
+        "python"
+      ],
+      "why": "quilt-wasm exposes no postcard entry points; quilt-python has the pair (postcard_bytes / from_postcard_bytes), and the Rust side owns the serde derives both ends decode with",
+      "what": "from_postcard_bytes(postcard_bytes(x)) coparses to the same text as x, and re-serializes to the same bytes. This pair is the wire format of the heterogeneous reduce protocol and neither half had a test. Covered: every shape the corpus builds survives the round trip, and the two derives stay inverses of each other - postcard is positional and self-describes nothing, so an asymmetry decodes as a *different term* rather than as an error. Not covered: a *symmetric* schema change. The corpus constructs its terms, so their QTerm::span is always None, and a serde(skip) on both ends round-trips cleanly here while breaking the cross-process protocol the field's no-skip comment warns about. Only a parsed term carries a span and only Rust can build one, so that case is a Rust test - qterm::tests::postcard_round_trip_preserves_spans."
+    },
+    {
+      "name": "stringify_agrees_with_coparse",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "Rust has no Display impl on QTerm, so it has nothing that could disagree with coparse. Python spells this str(x) (__str__) and quilt-wasm spells it toString",
+      "what": "The runtime's native stringification is coparse. Both are exported and a caller may reasonably reach for either - in JS every string interpolation reaches for toString implicitly - so the two must not drift apart."
+    }
   ],
   "cases": [
     {
@@ -449,6 +476,18 @@
         "qlift_html": "a \"<b>\" & c"
       },
       "coparse": "a &quot;&lt;b&gt;&quot; &amp; c"
+    },
+    {
+      "name": "qlift_html_escapes_both_attribute_quotings",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149. The apostrophe was the one entry in the escape table with no coverage in either binding (issue #192): a hole inside `title='…'` breaks out of the attribute exactly the way `\"` does inside a double-quoted one",
+      "term": {
+        "qlift_html": "\" onclick='x'"
+      },
+      "coparse": "&quot; onclick=&#x27;x&#x27;"
     },
     {
       "name": "qlift_html_is_idempotent_on_terms",

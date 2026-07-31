@@ -681,4 +681,52 @@ mod tests {
         let expected = tb("block").c(&sym("a")).c(&sym("b")).c(&sym("c")).build();
         assert_eq!(qterm, expected);
     }
+
+    /// A term with `span`s set, nested inside a tuple, survives postcard.
+    ///
+    /// This is the guard the `span` fields' "no serde skip" comments ask for.
+    /// The shared runtime corpus round-trips every shape it builds
+    /// (`conformance/runtime/cases.json`, issue #192), but those terms are all
+    /// *constructed*, so their spans are all `None` — and a `None` that is
+    /// dropped on both ends re-encodes to the same bytes and coparses to the
+    /// same text, so the corpus cannot see it go. Only a parsed term carries a
+    /// span, and only Rust can build one, so the check lives here.
+    ///
+    /// It has to assert on the spans directly: [`PartialEq`] ignores them by
+    /// design and `coparse` never renders them, so the two obvious assertions
+    /// both pass on a term that lost them.
+    #[test]
+    fn postcard_round_trip_preserves_spans() {
+        let inner = qunquote_at("x", 1, "rs", sym("n"), &[HOLE], Some(7..12)).into();
+        let quoted = qquote_at("q", 0, "py", inner, &[HOLE], Some(3..20)).into();
+        let term: Arc<QTerm> = tb("block").w("[").c(&quoted).w("]").b();
+
+        let bytes = postcard::to_allocvec(&term).expect("serializes");
+        let back: Arc<QTerm> = postcard::from_bytes(&bytes).expect("deserializes");
+
+        assert_eq!(back, term, "round trip changed the tree");
+        assert_eq!(
+            back.coparse(),
+            term.coparse(),
+            "round trip changed the text"
+        );
+        assert_eq!(
+            postcard::to_allocvec(&back).expect("re-serializes"),
+            bytes,
+            "round trip re-serializes to different bytes"
+        );
+
+        // The part neither equality above can see.
+        let QTerm::Tuple { terms, .. } = &*back else {
+            panic!("expected a tuple");
+        };
+        let QTerm::Quote { span, term, .. } = &*terms[0] else {
+            panic!("expected a quote");
+        };
+        assert_eq!(*span, Some(3..20), "the quote's span was lost");
+        let QTerm::Unquote { span, .. } = &**term else {
+            panic!("expected an unquote");
+        };
+        assert_eq!(*span, Some(7..12), "the nested unquote's span was lost");
+    }
 }

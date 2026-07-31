@@ -14,7 +14,7 @@ import json
 import pathlib
 
 import pytest
-from quilt import HOLE, NL, POP, cmd, leaf, name, push, qlift, qlift_html
+from quilt import HOLE, NL, POP, cmd, from_postcard_bytes, leaf, name, push, qlift, qlift_html
 from quilt import quote as mk_quote
 from quilt import sym, tb
 from quilt import unquote as mk_unquote
@@ -25,10 +25,20 @@ CORPUS = (
     pathlib.Path(__file__).resolve().parents[2] / "conformance" / "runtime" / "cases.json"
 )
 
+# The cross-cutting checks this runner knows how to run. The corpus says which
+# runtimes each of its checks applies to; anything it names us for that is not
+# in here is a failure, not a skip — see test_every_declared_check_is_implemented.
+IMPLEMENTED_CHECKS = {"postcard_roundtrip", "stringify_agrees_with_coparse"}
+
 
 def load_cases():
     data = json.loads(CORPUS.read_text())
     return [c for c in data["cases"] if RUNTIME in c.get("runtimes", [RUNTIME])]
+
+
+def load_checks():
+    data = json.loads(CORPUS.read_text())
+    return [c for c in data.get("checks", []) if RUNTIME in c["runtimes"]]
 
 
 def build_cmds(cmds):
@@ -100,6 +110,8 @@ def build(t):
 
 
 CASES = load_cases()
+CHECKS = load_checks()
+CHECK_NAMES = {c["name"] for c in CHECKS}
 
 
 def test_corpus_is_reachable():
@@ -111,6 +123,84 @@ def test_case(case):
     got = build(case["term"]).coparse()
     assert got == case["coparse"], (
         f"{case['name']}: coparse is {got!r}, corpus says {case['coparse']!r}"
+    )
+
+
+# ── the cross-cutting checks ────────────────────────────────────────────────
+#
+# A check is a property every corpus shape must have, rather than a term and its
+# expected text, so it covers the whole corpus without restating any of it.
+
+
+def test_every_declared_check_is_implemented():
+    """A check naming this runtime that it cannot run is a failure, not a skip.
+
+    Otherwise adding one to the corpus would quietly do nothing here while
+    passing everywhere it *is* implemented — the silent-gap failure mode the
+    conformance epic (#144) exists to close.
+    """
+    unknown = sorted(CHECK_NAMES - IMPLEMENTED_CHECKS)
+    assert not unknown, (
+        f"corpus check(s) {unknown} name the {RUNTIME} runtime, but this runner has no "
+        f"implementation of them ({CORPUS})"
+    )
+
+
+@pytest.mark.skipif(
+    "postcard_roundtrip" not in CHECK_NAMES,
+    reason="the corpus does not declare postcard_roundtrip for this runtime",
+)
+@pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
+def test_postcard_roundtrip(case):
+    """`from_postcard_bytes(x.postcard_bytes())` must give back `x` (issue #192).
+
+    This pair is the wire format of the heterogeneous reduce protocol: `rs↓` in
+    Python decodes bytes the Rust expander wrote, and `py↓` in Rust decodes
+    bytes written here. Nothing tested either direction.
+
+    The bytes assertion is not redundant with the text one: `postcard` is
+    positional and self-describes nothing, so an asymmetry between encode and
+    decode does not fail — it produces a *different term*, which may still
+    coparse the same.
+
+    What no corpus case can see is a *symmetric* schema change, because these
+    terms are all constructed and so carry no spans. That one is a Rust test
+    (`qterm::tests::postcard_round_trip_preserves_spans`), where a spanned term
+    can actually be built.
+    """
+    x = build(case["term"])
+    data = x.postcard_bytes()
+    back = from_postcard_bytes(data)
+    assert back.coparse() == x.coparse(), (
+        f"{case['name']}: postcard round trip coparses to {back.coparse()!r}, "
+        f"term is {x.coparse()!r}"
+    )
+    assert back.postcard_bytes() == data, (
+        f"{case['name']}: postcard round trip re-serializes to "
+        f"{len(back.postcard_bytes())} bytes, not the original {len(data)} — "
+        "a field is being lost on decode"
+    )
+
+
+@pytest.mark.skipif(
+    "stringify_agrees_with_coparse" not in CHECK_NAMES,
+    reason="the corpus does not declare stringify_agrees_with_coparse for this runtime",
+)
+@pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
+def test_stringify_agrees_with_coparse(case):
+    """`str(x)` is `x.coparse()` (issue #192).
+
+    Both are exported next to `coparse`, and an f-string reaches for `__str__`
+    without the author choosing it, so the two must not drift apart.
+
+    `repr` is only checked for shape: it wraps the *quoted* source, and the
+    quoting is Rust's `Debug` for `str`, whose escaping is not Python's `!r`.
+    """
+    x = build(case["term"])
+    assert str(x) == x.coparse(), f"{case['name']}: str(x) is {str(x)!r}"
+    r = repr(x)
+    assert r.startswith('QTerm("') and r.endswith('")'), (
+        f"{case['name']}: repr(x) is {r!r}, expected QTerm(\"…\")"
     )
 
 

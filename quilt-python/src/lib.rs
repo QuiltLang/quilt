@@ -303,27 +303,14 @@ fn qlift_html(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
         return Ok(PyQTerm(mk_leaf("text", &format!("{f:?}"))));
     }
     if let Ok(s) = value.extract::<String>() {
-        return Ok(PyQTerm(mk_leaf("text", &escape_html(&s))));
+        // Shares the core's `escape_html`, for the same reason `qlift` shares
+        // `py_string_term`: this rule had a byte-identical twin in quilt-wasm
+        // and no direct test on either side (issue #192).
+        return Ok(PyQTerm(mk_leaf("text", &quilt::lift::escape_html(&s))));
     }
     Err(pyo3::exceptions::PyTypeError::new_err(
         "qlift_html: unsupported type (expected bool, int, float, str, or QTerm)",
     ))
-}
-
-/// Escape `& < > " '` so the result is inert HTML wherever a hole can sit.
-fn escape_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#x27;"),
-            _ => out.push(c),
-        }
-    }
-    out
 }
 
 /**************************************************************/

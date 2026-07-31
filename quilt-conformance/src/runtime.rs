@@ -41,9 +41,34 @@ impl Case {
     }
 }
 
+/// A cross-cutting check: a property every case's term must satisfy, rather
+/// than a term and its expected text. Declared once in the corpus and run over
+/// every shape, so the properties that are *about* the shapes — surviving a
+/// postcard round trip, stringifying to the same text as `coparse` — cover the
+/// whole corpus without restating any of it.
+#[derive(Debug, Deserialize)]
+pub struct Check {
+    pub name: String,
+    /// Which runtimes have the API this check needs.
+    pub runtimes: Vec<String>,
+    /// Why it is narrowed to those.
+    pub why: String,
+    /// What the check asserts, and what it is guarding. Documentation only.
+    #[serde(default)]
+    pub what: Option<String>,
+}
+
+impl Check {
+    pub fn applies_to(&self, runtime: &str) -> bool {
+        self.runtimes.iter().any(|r| r == runtime)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Corpus {
     pub cases: Vec<Case>,
+    #[serde(default)]
+    pub checks: Vec<Check>,
 }
 
 /// A term constructor, mirroring the JSON tagging.
@@ -196,11 +221,91 @@ pub fn build(t: &Term) -> Result<Arc<QTerm>> {
     })
 }
 
-/// Run every case that applies to the Rust runtime; return the failures.
+/// `postcard_roundtrip`, for the Rust runtime.
+///
+/// The Rust side owns the `serde` derives that `quilt-python`'s
+/// `postcard_bytes` / `from_postcard_bytes` pair — and the heterogeneous
+/// `reduce` protocol either side of it — decode with, so it is worth checking
+/// here too, where the fast `cargo test` path reaches it.
+///
+/// Three assertions — text, structure, bytes — because `postcard` is positional
+/// and self-describes nothing: an asymmetry between the two derives decodes as a
+/// *different term* rather than as an error, and which of the three notices
+/// depends on where the asymmetry lands.
+///
+/// What this cannot see is a *symmetric* schema change. Every term the corpus
+/// builds is constructed, so its `QTerm::span` is always `None`, and a
+/// `serde(skip)` on both ends round-trips cleanly here — same text, same tree
+/// (`PartialEq` ignores spans), same bytes. That is the case the `span` fields'
+/// "no serde skip" comments are actually about, and it needs a *parsed*-shaped
+/// term, which only Rust can build: see
+/// `quilt::qterm::tests::postcard_round_trip_preserves_spans`.
+fn postcard_roundtrip(name: &str, term: &Arc<QTerm>, failures: &mut Vec<String>) {
+    let bytes = match postcard::to_allocvec(term) {
+        Ok(b) => b,
+        Err(e) => {
+            failures.push(format!("{name}: postcard serialization failed: {e}"));
+            return;
+        }
+    };
+    let back: Arc<QTerm> = match postcard::from_bytes(&bytes) {
+        Ok(t) => t,
+        Err(e) => {
+            failures.push(format!(
+                "{name}: postcard deserialization failed: {e} ({} bytes)",
+                bytes.len()
+            ));
+            return;
+        }
+    };
+    let (want, got) = (term.coparse(), back.coparse());
+    if got != want {
+        failures.push(format!(
+            "{name}: postcard round trip coparses to {got:?}, term is {want:?}"
+        ));
+    }
+    if back != *term {
+        failures.push(format!(
+            "{name}: postcard round trip is structurally different (same text, different tree)"
+        ));
+    }
+    match postcard::to_allocvec(&back) {
+        Ok(again) if again != bytes => failures.push(format!(
+            "{name}: postcard round trip re-serializes to {} bytes, not the original {} — \
+             a field is being lost on decode",
+            again.len(),
+            bytes.len()
+        )),
+        Err(e) => failures.push(format!("{name}: re-serializing the round trip failed: {e}")),
+        Ok(_) => {}
+    }
+}
+
+/// Run every case and every check that applies to the Rust runtime; return the
+/// failures.
 pub fn run() -> Result<Vec<String>> {
     let corpus = load()?;
     let mut failures = Vec::new();
     let mut ran = 0;
+
+    // A check this runner has no implementation for is a failure, not a skip:
+    // the corpus names the runtimes a check applies to, so an unrecognized one
+    // means the corpus is asking for something and being ignored.
+    let known = ["postcard_roundtrip"];
+    let wanted: Vec<&Check> = corpus
+        .checks
+        .iter()
+        .filter(|c| c.applies_to("rust"))
+        .collect();
+    for check in &wanted {
+        if !known.contains(&check.name.as_str()) {
+            failures.push(format!(
+                "check {:?} names the rust runtime, but this runner has no implementation of it",
+                check.name
+            ));
+        }
+    }
+    let wants = |n: &str| wanted.iter().any(|c| c.name == n);
 
     for case in &corpus.cases {
         if !case.applies_to("rust") {
@@ -215,6 +320,9 @@ pub fn run() -> Result<Vec<String>> {
                         "{}: coparse is {got:?}, corpus says {:?}",
                         case.name, case.coparse
                     ));
+                }
+                if wants("postcard_roundtrip") {
+                    postcard_roundtrip(&case.name, &term, &mut failures);
                 }
             }
             Err(e) => failures.push(format!("{}: build failed: {e}", case.name)),

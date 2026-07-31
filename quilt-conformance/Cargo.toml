@@ -30,6 +30,10 @@ quilt = {workspace = true, features = [
   "zsh",
 ]}
 miette = {workspace = true, features = ["fancy"]}
+# The corpus's `postcard_roundtrip` check (issue #192): the serde derives live
+# in quilt, but the wire format they produce is what the heterogeneous reduce
+# protocol and quilt-python's postcard_bytes / from_postcard_bytes pair agree on.
+postcard = {workspace = true, features = ["alloc", "use-std"]}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
 toml = {workspace = true}

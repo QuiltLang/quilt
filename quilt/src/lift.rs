@@ -230,6 +230,42 @@ impl<T: LiftTo<Python>> LiftTo<Python> for Vec<T> {
 }
 
 /**************************************************************/
+// HTML. There is no `LiftTo<Html>` marker yet (issue #149), so this is a free
+// function rather than an impl — but the escaping rule already has two callers,
+// and that is what it is here for.
+
+/// Escape `& < > " '` so `s` is inert HTML wherever a hole can sit: as text
+/// content, and inside a single- or double-quoted attribute value.
+///
+/// Public for the same reason as [`py_dquote_escape`]: the `quilt-python` and
+/// `quilt-wasm` runtimes each need exactly this rule for their `qlift_html`,
+/// and each had grown its own byte-identical copy. Three copies of an escaping
+/// table is three chances to fix a hole in one of them — the class of bug the
+/// conformance epic (#144) exists to close — so the rule lives here and the
+/// bindings call it. Tested directly here; issue #192 is where the two copies
+/// having no direct test at all was written up.
+///
+/// Not idempotent, and deliberately so: escaping `&amp;` yields `&amp;amp;`,
+/// because the input is a *value*, not markup. A caller lifting an
+/// already-escaped fragment wants the term pass-through both `qlift_html`
+/// implementations do, not a second trip through this function.
+#[must_use]
+pub fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/**************************************************************/
 // Shell lifts (Zsh, Bash). A Rust string lifts to a double-quoted `string`
 // literal so the value is treated as inert data: characters the shell would
 // interpret inside `"…"` (`"`, `\`, `$`, `` ` ``) are backslash-escaped.
@@ -736,6 +772,54 @@ mod tests {
             panic!("expected tuple");
         };
         assert_eq!(&**tag, "list_lit");
+    }
+
+    /// The whole escape table, one character at a time. The runtime corpus
+    /// reaches `escape_html` only through `qlift_html`, and only with a string
+    /// containing `& < > "` — so `'` was the one entry in the table with no
+    /// coverage anywhere, in either binding (issue #192).
+    #[test]
+    fn html_escape_table() {
+        assert_eq!(escape_html("&"), "&amp;");
+        assert_eq!(escape_html("<"), "&lt;");
+        assert_eq!(escape_html(">"), "&gt;");
+        assert_eq!(escape_html("\""), "&quot;");
+        assert_eq!(escape_html("'"), "&#x27;");
+    }
+
+    /// A single-quoted attribute value is why `'` is in the table: without it,
+    /// `<a title='…'>` breaks out of the attribute the same way `"` does.
+    #[test]
+    fn html_escape_closes_both_attribute_quotings() {
+        assert_eq!(
+            escape_html("\" onclick='x'"),
+            "&quot; onclick=&#x27;x&#x27;"
+        );
+        assert_eq!(
+            escape_html("<script>alert(1)</script>"),
+            "&lt;script&gt;alert(1)&lt;/script&gt;"
+        );
+    }
+
+    /// `&` is escaped first in the sense that matters: the replacements
+    /// themselves introduce `&`, and a rule that rescanned its own output would
+    /// turn `<` into `&amp;lt;`. One pass over the *input* is the fix, so this
+    /// pins that a mixed string escapes each character exactly once.
+    #[test]
+    fn html_escape_does_not_rescan_its_own_output() {
+        assert_eq!(escape_html("a & b < c"), "a &amp; b &lt; c");
+        // Not idempotent, by design: the input is a value, not markup.
+        assert_eq!(escape_html("&amp;"), "&amp;amp;");
+    }
+
+    /// Everything outside the table is passed through byte-for-byte — the
+    /// runtime must not apply Quilt's own glyph escaping to target text.
+    #[test]
+    fn html_escape_leaves_everything_else_alone() {
+        assert_eq!(escape_html(""), "");
+        assert_eq!(escape_html("plain text"), "plain text");
+        assert_eq!(escape_html("héllo ← ↖ 世界"), "héllo ← ↖ 世界");
+        assert_eq!(escape_html("a\nb\t\\c"), "a\nb\t\\c");
     }
 
     #[test]

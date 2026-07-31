@@ -70,8 +70,15 @@ cmd(strcmd)     # CmdOrHole::Cmd(strcmd)
 
 ```python
 term.coparse()      # serialize to a string
+str(term)           # the same string (repr() quotes it)
 term.qlift()        # lift to builder code (like Rust's QLift trait)
+term.postcard_bytes()   # serialize the term itself, for the `py↓` protocol
 ```
+
+`from_postcard_bytes(data)` is the other half of that pair — the `rs↓`
+direction, decoding bytes the Rust expander wrote. Both ends, and the agreement
+between `str()` and `coparse()`, are checked over every shape in the shared
+runtime corpus (`conformance/runtime/cases.json`, issue #192).
 
 ### Other functions
 
