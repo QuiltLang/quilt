@@ -1,0 +1,9 @@
+# libFuzzer's working state: the evolving corpus, crash artifacts, coverage
+# data, build output, and the lock file cargo-fuzz generates for its own
+# workspace. The *seed* corpus (fuzz/seeds/) is committed — it is input, not
+# state.
+corpus/
+artifacts/
+coverage/
+target/
+Cargo.lock

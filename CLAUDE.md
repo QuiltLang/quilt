@@ -145,6 +145,26 @@ test-runtimes
 # wasm32-unknown-unknown. Also builds each language feature alone.
 check-features
 
+# Properties and fuzzing (issue #161) — the invariants the battery asserts for
+# a handful of spec values, re-stated over generated input.
+#
+# Properties live in quilt-conformance/tests/properties.rs and are driven by the
+# same conformance/spec/*.toml corpora, so a new language gets them from its
+# spec file. They run in the normal `cargo test` at a few hundred cases each;
+# the nightly job re-runs them at 20000. Failures shrink to a minimal case and
+# are saved to quilt-conformance/tests/proptest-regressions/.
+PROPTEST_CASES=20000 cargo test -p quilt-conformance --test properties
+
+# cargo-fuzz targets over the Quilt surface syntax and the expander: arbitrary
+# input must return Err, never panic. Nightly + on demand, never a gate — it
+# needs a *nightly* toolchain (libFuzzer wants -Zsanitizer) while the repo is
+# pinned to stable, so it is the one thing not runnable from the devShell as-is:
+#   cargo install cargo-fuzz --locked && rustup toolchain install nightly
+fuzz              # every target, 60s each
+fuzz 300          # every target, 300s each
+fuzz parse_quilt  # one target
+fuzz list         # the targets
+
 # Build/install the editor tooling: cargo-installs quilt-lsp, npm-installs the
 # VS Code extension, symlinks tools/quilt into ~/.vscode/extensions
 install_tools

@@ -15,6 +15,11 @@ default-members = [
   "quilt-conformance",
   "quilt-lsp",
 ]
+# The cargo-fuzz targets are their own workspace (fuzz/Cargo.toml declares an
+# empty `[workspace]`): libFuzzer needs a nightly toolchain and `-Zsanitizer`,
+# and nothing else here does. Excluding it keeps `cargo build` / `cargo test`
+# at the root from ever reaching for them. Run them with `bin/fuzz`.
+exclude = ["fuzz"]
 members = [
   "quilt",
   "quilt-conformance",
@@ -70,6 +75,7 @@ insta = "1"
 miette = "7.4"
 postcard = "1.1"
 pretty_assertions = "1.4"
+proptest = "1"
 pyo3 = "0.29"
 regex = "1.12"
 serde = "1.0"

@@ -149,12 +149,27 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 return qsym(hole_str);
             }
 
-            // A multiline *leaf* token (e.g. HTML `raw_text`): its lines are
-            // real content, not inter-child whitespace, so write them
-            // verbatim — continuation lines minus the current prefix. (The
-            // gap logic below would misread them as indentation and drop
-            // them.)
-            if node.child_count() == 0 && start.row != end.row {
+            // A multiline *token*: its lines are real content, not inter-child
+            // whitespace, so write them verbatim — continuation lines minus the
+            // current prefix. (The gap logic below would misread them as
+            // indentation and drop them.)
+            //
+            // "Token" is `no named children`, not `no children at all`. A leaf
+            // like HTML's `raw_text` has none; but Rust's `block_comment` has
+            // two *anonymous* ones, `/*` and `*/`, and so used to fall through
+            // to the gap logic — which read the text before `*/` on the last
+            // line as an indentation prefix and repeated it over every line of
+            // the comment. A node whose children are all anonymous has no
+            // structure to recurse into, so nothing is lost by treating it as
+            // one token, and a hole cannot hide inside it (a hole parses as a
+            // *named* node). Found by `bin/fuzz`, issue #161.
+            let all_anonymous = (0..node.child_count()).all(|i| {
+                u32::try_from(i)
+                    .ok()
+                    .and_then(|i| node.child(i))
+                    .is_some_and(|c| !c.is_named())
+            });
+            if all_anonymous && start.row != end.row {
                 let mut builder = tb(node.kind());
                 builder.write(drop_last(&lines[start.row][start.column..]));
                 let pre = prefix.concat();
@@ -256,8 +271,26 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                     col = new_col;
                 }
                 FlatNode::Str(s) => {
-                    lines.last_mut().unwrap().push_str(s);
-                    col += s.len();
+                    // A `Str` can carry raw newlines: a multi-line `/* … */`
+                    // plain comment reaches here as one node, newlines and all.
+                    // `lines` must stay one entry per *physical* line, because
+                    // every `Point` tree-sitter hands back below indexes it by
+                    // row — an embedded `\n` that did not push a new entry
+                    // leaves the two counting differently, and the tree then
+                    // addresses rows this vector does not have. Found by
+                    // `bin/fuzz` (issue #161): `lines[p1.row]` panicked with an
+                    // index out of bounds, and a plain `/* a\nb */` failed to
+                    // parse at all.
+                    let mut parts = s.split('\n');
+                    let first = parts.next().unwrap_or_default();
+                    lines.last_mut().unwrap().push_str(first);
+                    col += first.len();
+                    for part in parts {
+                        lines.last_mut().unwrap().push('\n');
+                        lines.push(part.to_string());
+                        row += 1;
+                        col = part.len();
+                    }
                 }
                 FlatNode::NewLine => {
                     // Lines must end with a newline character, except possibly the last line.

@@ -371,6 +371,7 @@
             "u32:3 → 3",
             "i32:-7 → -7",
             "bool:true → true",
+            "bool:false → false",
             "str:plain → \"hi\"",
             "str:tricky → \"a\\\"b\\\\c${d}\""
           ]
@@ -526,7 +527,9 @@
           "detail": [
             "u32:3 → 3",
             "f32:1.5 → 1.5",
+            "f32:-1.5 → -1.5",
             "bool:true → true",
+            "bool:false → false",
             "str:plain → \"hi\"",
             "str:tricky → \"a\\\"b\\\\c\\${d}\""
           ]
@@ -688,7 +691,9 @@
             "u32:3 → 3",
             "i32:-7 → -7",
             "f32:1.5 → 1.5",
+            "f32:-1.5 → -1.5",
             "bool:true → True",
+            "bool:false → False",
             "str:plain → \"hi\"",
             "str:tricky → \"a\\\"b\\\\c${d}\""
           ]
@@ -863,7 +868,9 @@
             "u32:3 → 3",
             "i32:-7 → -7",
             "f32:1.5 → 1.5",
+            "f32:-1.5 → -1.5",
             "bool:true → true",
+            "bool:false → false",
             "str:plain → \"hi\"",
             "str:tricky → \"a\\\"b\\\\c${d}\""
           ]
@@ -1315,7 +1322,9 @@
             "u32:3 → 3u",
             "i32:-7 → -7i",
             "f32:1.5 → 1.5f",
-            "bool:true → true"
+            "f32:-1.5 → -1.5f",
+            "bool:true → true",
+            "bool:false → false"
           ]
         },
         {

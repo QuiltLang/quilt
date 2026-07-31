@@ -261,3 +261,37 @@ fn py_hetero_reduce_rs_expands_to_reduce_rs() -> Result<()> {
     );
     Ok(())
 }
+
+/// A multi-line `/* … */` plain comment reaches the language parser as a single
+/// `FlatNode::Str` with raw newlines in it. The line table that `Point`s index
+/// used to be built by appending that whole string to the current line, so a
+/// comment spanning N lines left the table N-1 rows short of what tree-sitter
+/// saw — which made an ordinary file fail to parse, and, when a later node's
+/// row ran off the end, panic with an index out of bounds.
+///
+/// Found by `bin/fuzz` (issue #161); the crashing input is kept as
+/// `fuzz/seeds/multiline_block_comment`.
+#[test]
+fn multiline_plain_block_comment_round_trips() -> Result<()> {
+    roundtrip(indoc! {r#"
+        /* a
+           b */
+        fn f() {
+            println!("hi");
+        }
+    "#})
+}
+
+/// The same, with the comment indented inside a block: the continuation line
+/// carries a prefix, which is the case the row bookkeeping feeds into.
+#[test]
+fn indented_multiline_plain_block_comment_round_trips() -> Result<()> {
+    roundtrip(indoc! {r#"
+        fn f() {
+            /* one
+               two
+               three */
+            let x = 1;
+        }
+    "#})
+}

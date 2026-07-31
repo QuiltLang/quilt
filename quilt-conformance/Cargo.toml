@@ -48,6 +48,11 @@ tree-sitter = {workspace = true}
 # change (the #157 approach; see tests/grammar_tags.rs).
 insta = {workspace = true}
 pretty_assertions = {workspace = true}
+# Tier 6 (issue #161): the invariants the battery asserts for a few dozen
+# hand-picked values are *properties*. `tests/properties.rs` re-states them over
+# generated input, driven by the same `conformance/spec/*.toml` corpora — so a
+# new language gets property coverage from its spec file, with no new test code.
+proptest = {workspace = true}
 
 [lints]
 workspace = true

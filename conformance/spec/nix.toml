@@ -77,9 +77,19 @@ tag = "float_expression"
 text = "1.5"
 
 [[lift]]
+value = "f32:-1.5"
+tag = "float_expression"
+text = "-1.5"
+
+[[lift]]
 value = "bool:true"
 tag = "variable_expression"
 text = "true"
+
+[[lift]]
+value = "bool:false"
+tag = "variable_expression"
+text = "false"
 
 [[lift]]
 value = "str:plain"

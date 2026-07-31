@@ -83,6 +83,11 @@ tag = "true_const"
 text = "true"
 
 [[lift]]
+value = "bool:false"
+tag = "false_const"
+text = "false"
+
+[[lift]]
 value = "str:plain"
 tag = "str_lit"
 text = '"hi"'
