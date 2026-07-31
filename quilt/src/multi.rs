@@ -313,6 +313,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // parse this level and get hole types of children
         let post = self.get_lang_mut(lang)?.parse_pre(hole.ikind, &code)?;
         let mut holes = post.holes().iter();
+        // How *this* language spells a bare identifier, for the deferred
+        // operator placeholders below.
+        let ident_tag = self.get_lang(lang)?.ident_tag();
 
         // parse children using hole types
         let mut plugs = Vec::new();
@@ -325,19 +328,19 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     holes
                         .next()
                         .ok_or_else(|| miette!("Ran out of holes for lift: {n:?}"))?;
-                    plugs.push(leaf("identifier", "↑"));
+                    plugs.push(leaf(ident_tag, "↑"));
                 }
                 Node::Reduce { anno } if sky_depth > 0 => {
                     holes
                         .next()
                         .ok_or_else(|| miette!("Ran out of holes for reduce: {n:?}"))?;
-                    plugs.push(leaf("identifier", &format!("{anno}↓")));
+                    plugs.push(leaf(ident_tag, &format!("{anno}↓")));
                 }
                 Node::Emit if sky_depth > 0 => {
                     holes
                         .next()
                         .ok_or_else(|| miette!("Ran out of holes for emit: {n:?}"))?;
-                    plugs.push(leaf("identifier", "←"));
+                    plugs.push(leaf(ident_tag, "←"));
                 }
                 Node::Content(_)
                 | Node::NewLine
@@ -502,10 +505,14 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                 QTerm::Unquote { span, .. } => Err(unquote_depth_error(span.as_ref())),
                 QTerm::Tuple { tag, terms, cmds } => {
                     // `let ↖pattern↗ = value;` — a quote in binding position
-                    // destructures the value instead of building a term.
+                    // destructures the value instead of building a term. The
+                    // meta-language locates the two positions, since neither the
+                    // separator token nor the child index is universal.
                     if self.meta.pattern_tag() == Some(&**tag) {
-                        if let Some(QTerm::Quote { .. }) = terms.get(1).map(AsRef::as_ref) {
-                            return self.expand_pattern_let(tag, terms, cmds);
+                        if let Some((p, v)) = self.meta.pattern_binding(terms) {
+                            if let Some(QTerm::Quote { .. }) = terms.get(p).map(AsRef::as_ref) {
+                                return self.expand_pattern_let(tag, terms, cmds, p, v);
+                            }
                         }
                     }
                     let arity = self.langs.get(self.lang)?.arity(tag);
@@ -650,29 +657,24 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
     /// names collected via `pattern_vars`), and the statement is rewritten to
     /// destructure the result of matching the pattern against the value:
     /// `let [a, b] = qmatch_n(&<pattern>, &<value>);` (see `crate::qmatch`).
+    /// `pat` and `val` are the child indices the meta-language reported via
+    /// [`MetaLanguage::pattern_binding`]; the expander no longer knows the
+    /// separator token or where the pattern sits.
     fn expand_pattern_let(
         &mut self,
         tag: &str,
         terms: &[Arc<QTerm>],
         cmds: &[CmdOrHole],
+        pat: usize,
+        val: usize,
     ) -> Result<Arc<QTerm>> {
-        // the value is the expression after `=`
-        let eq = terms
-            .iter()
-            .position(
-                |t| matches!(&**t, QTerm::Tuple { tag, terms, .. } if &**tag == "=" && terms.is_empty()),
-            )
-            .ok_or_else(|| miette!("pattern let without `= value`"))?;
-        let val = eq + 1;
-        ensure!(val < terms.len(), "pattern let without `= value`");
-
         // expand the pattern quote with ground unquotes as metavariables
         ensure!(
             self.pattern_vars.is_none(),
             "pattern let nested inside another pattern"
         );
         self.pattern_vars = Some(Vec::new());
-        let pattern = self.expand(&Stage::Ground, &terms[1]);
+        let pattern = self.expand(&Stage::Ground, &terms[pat]);
         let names = self.pattern_vars.take().unwrap();
         let pattern = pattern?;
         for (i, name) in names.iter().enumerate() {
@@ -689,7 +691,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
             .iter()
             .enumerate()
             .map(|(i, term)| match i {
-                1 => Ok(binder.clone()),
+                _ if i == pat => Ok(binder.clone()),
                 _ if i == val => Ok(call.clone()),
                 _ => self.expand(&Stage::Ground, term),
             })

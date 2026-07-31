@@ -41,6 +41,14 @@ impl TSProvider for HtmlProvider {
         "__QUILT_HOLE__"
     }
 
+    /// HTML has no `identifier` node kind, so the trait default would tag a
+    /// deferred operator with a kind this grammar does not define. `text` is the
+    /// nearest thing: character data, which is where an operator inside an
+    /// `html↖ … ↗` quote sits.
+    fn ident_tag(&self) -> &'static str {
+        "text"
+    }
+
     /// Squash the `document` wrapper around a single quoted fragment so the
     /// term is the fragment itself (element / text / …). A multi-node fragment
     /// (a whole page) stays a `document`.

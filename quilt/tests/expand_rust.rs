@@ -147,6 +147,34 @@ fn pattern_let() -> Result<()> {
     Ok(())
 }
 
+/// `let mut ↖p↗ = v;` is a pattern-let too.
+///
+/// The expander used to take the pattern from a fixed `terms[1]`, which is the
+/// `mutable_specifier` here, not the pattern. The quote then expanded as an
+/// ordinary term-builder *in binding position*, so `quilt expand` happily wrote
+/// Rust that does not compile:
+///
+/// ```text
+/// let mut tb("binary_expression").c(&a) … .b() = v;
+/// ```
+///
+/// The meta-language now reports the pattern and value positions relative to its
+/// own separator token, so an extra child cannot shift them (#174, finding E3).
+#[test]
+fn pattern_let_with_mut() -> Result<()> {
+    let out = expand_both("let mut ↖1 + ↙x↘↗ = rhs;")?;
+    assert!(
+        out.contains("qmatch_n"),
+        "`let mut` should still be a pattern-let: {out}"
+    );
+    assert!(
+        !out.contains("tb(\"binary_expression\").c(&x)"),
+        "the pattern must not expand as a term builder in binding position: {out}"
+    );
+    insta::assert_snapshot!(out);
+    Ok(())
+}
+
 #[test]
 fn pattern_let_value_quote_untouched() -> Result<()> {
     // Only the binding position triggers pattern matching: a value quote and
