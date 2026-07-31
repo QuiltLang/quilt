@@ -79,9 +79,10 @@ impl TSProvider for YourProvider {
     }
 
     fn arity(&self, tag: &str) -> Arity {
-        // Return Variadic for nodes that accept arbitrarily many children
-        // (e.g. block-like constructs). Default: Unknown.
-        Arity::Unknown
+        // Don't write this table. Add your language to `derive_all` in
+        // quilt-conformance/src/arity.rs, run `bin/gen-arity`, and point at the
+        // table it generates from your grammar's REPEAT rules (issue #202).
+        Arity::from_table(crate::langs::arity::YOUR_LANG, tag)
     }
 
     fn hashbang(&self) -> Option<&'static str> {
@@ -229,7 +230,7 @@ What you declare, and what the battery does with it:
 | `[[fragments]]` | parses, round-trips to identical source, produces the declared root tag, is structurally sound (every child has a hole to be written into), and reparses idempotently |
 | `[[holes]]` | each `@` marker lands in a hole with the declared `InnerKind` |
 | `[kinds]` | `Language::typ` classifies each tag as declared |
-| `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour |
+| `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour. Both are claims about your *grammar*, since the table is derived from it: `variadic` says the rule has a repeat over direct children, `not_variadic` says it does not |
 | `lift_marker` + `[[lift]]` | values lift to the declared tag and text, **and the lifted literal reparses in your grammar** — the check that catches escaping bugs |
 | `lift_from` / `lift_from_unsupported` | your `MetaLanguage::lift_str` spells exactly the targets you claim, and refuses the rest |
 | `[capabilities]` | each claim matches reality; `partial`/`unsupported` must carry a `note`, and `partial`/`planned` a tracking `issue` |
