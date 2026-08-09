@@ -146,7 +146,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/bash",
+          "detail": [
+            "no Quilt glyph is bash syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -283,7 +287,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/html",
+          "detail": [
+            "no Quilt glyph is html syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -442,8 +450,16 @@
         {
           "axis": "glyph-collisions",
           "status": "partial",
-          "note": "`←` is Lean's monadic bind and is eaten by the emit glyph; `↑` (coercion) and `↓` (lowering) are also real Lean notation. The ASCII alias `<-` is the current workaround, and `\\←` does not escape because `←` is missing from the grammar's escape class",
-          "issue": 141
+          "note": "Five of the nine glyphs are Lean notation: `←` (monadic bind), `↑` (coercion), `↓` (lowering), and `⟨`/`⟩` (anonymous constructor). All five are escapable — `\\←` has parsed to content since #141 put `←` in the grammar's escape class — so the limit is that a Lean fragment using them must spell them `\\←`, `\\⟨1, 2\\⟩` and so on inside a quote. `<-` remains an ASCII alternative for bind. The sharpest case is an anonymous constructor of one variable: `⟨T⟩` and `⟨N⟩` are whole Quilt tokens, so both delimiters must be escaped for Lean to see them at all. The escape survives into the term but not back out: `QTerm::coparse` writes content verbatim, so such a fragment does not round-trip to source (#223)",
+          "issue": 141,
+          "verified_by": "glyph-collisions/lean",
+          "detail": [
+            "← — monadic bind — `let x ← f` in a `do` block, where Quilt reads `←` as emit (`do let x ← f`)",
+            "↑ — coercion, where Quilt reads `↑` as lift (`def n := ↑x`)",
+            "↓ — lowering, where Quilt reads `↓` as reduce (`def n := ↓x`)",
+            "⟨ — opens an anonymous constructor, where Quilt reads `⟨T⟩` / `⟨N⟩` as the type and name placeholders (`def p := ⟨1, 2⟩`)",
+            "⟩ — closes an anonymous constructor (`def p := ⟨1, 2⟩`)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -598,7 +614,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/nix",
+          "detail": [
+            "no Quilt glyph is nix syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -772,7 +792,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/python",
+          "detail": [
+            "no Quilt glyph is python syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -955,7 +979,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/rust",
+          "detail": [
+            "no Quilt glyph is rust syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -1086,7 +1114,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/text",
+          "detail": [
+            "no Quilt glyph is text syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -1241,7 +1273,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/typescript",
+          "detail": [
+            "no Quilt glyph is typescript syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -1381,7 +1417,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/wgsl",
+          "detail": [
+            "no Quilt glyph is wgsl syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",
@@ -1565,7 +1605,11 @@
         },
         {
           "axis": "glyph-collisions",
-          "status": "supported"
+          "status": "supported",
+          "verified_by": "glyph-collisions/zsh",
+          "detail": [
+            "no Quilt glyph is zsh syntax (declared, not probed)"
+          ]
         },
         {
           "axis": "chain-member",

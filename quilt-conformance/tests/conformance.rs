@@ -206,6 +206,32 @@ fn lift_errors_name_both_ends() {
     );
 }
 
+/// Every declared glyph collision (#195), driven through a real quote from
+/// every host. The battery checks the escape and the fragment separately; this
+/// is the composition of the two, which is what a user actually writes.
+#[test]
+fn glyph_escapes_survive_a_quote() {
+    let specs = Spec::load_all(&spec_dir()).expect("specs load");
+    let (failures, checked) = quilt_conformance::cross::check_glyph_escapes(&specs).expect("runs");
+    assert!(
+        failures.is_empty(),
+        "{} of {checked} glyph-escape check(s) failed:\n\n{}\n\nA glyph a language declares \
+         as its own syntax must be writable as `\\<glyph>` inside a quote of it — that is \
+         the whole content of #141.",
+        failures.len(),
+        failures
+            .iter()
+            .map(|f| format!("  • {f}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    assert!(
+        checked > 0,
+        "no language declares a glyph collision — conformance/spec/lean.toml should declare \
+         at least `←`, and an empty run would make this test vacuous",
+    );
+}
+
 /// Every language must work as the non-ground member of a `.a.b.quilt` chain,
 /// which is what the `chain-member` axis claims (#158).
 #[test]

@@ -84,6 +84,34 @@ pub struct LiftProbe {
     pub text: String,
 }
 
+/// A Quilt glyph that is also this language's own syntax, and a fragment that
+/// uses it as such (#195).
+///
+/// The axis this feeds is irreducibly part declaration: whether `↑` *means*
+/// coercion in Lean is a fact about Lean, not something a probe can discover.
+/// What an entry here makes checkable is that the declaration has teeth — the
+/// glyph is one Quilt actually reserves, `\<glyph>` escapes it, and a real
+/// fragment of the language using it survives both round trips. `code` is
+/// written **bare**, the way the language spells it; the battery derives the
+/// escaped form with `node::escape`, so the two can never disagree.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GlyphProbe {
+    /// The colliding glyph; must be one character and must be in `node::GLYPHS`.
+    pub glyph: String,
+    /// What it means in this language, e.g. "monadic bind". Rendered as the
+    /// cell's detail, so the matrix says *why* the glyph collides.
+    pub means: String,
+    /// A fragment using the glyph as this language's own syntax, spelled bare.
+    pub code: String,
+    /// The `InnerKind` to parse at; omit to exercise `parse_auto`.
+    #[serde(default)]
+    pub kind: Option<Kind>,
+    /// Expected root tuple tag of `code` — the check that the glyph really
+    /// parsed as syntax rather than being tolerated as filler.
+    pub tag: String,
+}
+
 /// The host half of a spec: what this language's `MetaLanguage` spells.
 ///
 /// Every field is a spelling the expander will emit verbatim into generated
@@ -185,6 +213,12 @@ pub struct Spec {
     #[serde(default)]
     pub lift_from_unsupported: Vec<String>,
 
+    /// Quilt glyphs that are also this language's own syntax. Empty means the
+    /// language claims none — which is what `glyph-collisions = supported`
+    /// says, and the battery holds the two to each other.
+    #[serde(default)]
+    pub glyphs: Vec<GlyphProbe>,
+
     /// Host-only: the operator spellings this language's `MetaLanguage` emits.
     #[serde(default)]
     pub meta: MetaSpec,
@@ -283,6 +317,27 @@ impl Spec {
             .collect();
         if !unknown.is_empty() {
             bail!("{}: unknown capability keys {unknown:?}", self.name);
+        }
+
+        // Structural only — that the glyph is one Quilt reserves, and that the
+        // fragment really parses, is the battery's job (`glyph-collisions`).
+        for g in &self.glyphs {
+            let mut chars = g.glyph.chars();
+            let (Some(c), None) = (chars.next(), chars.next()) else {
+                bail!(
+                    "{}: glyph {:?} must be exactly one character",
+                    self.name,
+                    g.glyph
+                );
+            };
+            if !g.code.contains(c) {
+                bail!(
+                    "{}: glyph {:?} declares the fragment {:?}, which does not contain it",
+                    self.name,
+                    g.glyph,
+                    g.code
+                );
+            }
         }
 
         if !matches!(self.meta_kind.as_str(), "runtime" | "string" | "none") {
