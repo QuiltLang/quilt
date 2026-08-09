@@ -122,7 +122,7 @@ impl PyBuilder {
     /// Emit a child term (for `Arc<QTerm>` this is the same as [`c`]).
     fn e<'py>(mut slf: PyRefMut<'py, Self>, child: &PyQTerm) -> PyRefMut<'py, Self> {
         if let Some(b) = slf.inner.as_mut() {
-            b.emit(child.0.clone());
+            b.emit(&child.0);
         }
         slf
     }

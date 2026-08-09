@@ -40,7 +40,7 @@ def make_pow_lambda(p):
     bindings, result = pow_squaring(p)
     # Encode bindings inside-out as nested lambda applications.
     for var, rhs in reversed(bindings):
-        result = tb("call").c(tb("parenthesized_expression").c(sym("(")).c(tb("lambda").c(sym("lambda")).w(" ").c(var).c(sym(":")).w(" ").c(result).b()).c(sym(")")).b()).c(tb("argument_list").c(sym("(")).c(rhs).c(sym(")")).b()).b()
+        result = tb("call").c(tb("parenthesized_expression").c(sym("(")).c(tb("lambda").c(sym("lambda")).w(" ").c(var).c(sym(":")).w(" ").c(result).b()).c(sym(")")).b()).c(tb("argument_list").e(sym("(")).e(rhs).e(sym(")")).b()).b()
     return tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "b")).b()).c(sym(":")).w(" ").c(result).b()
 
 p = 10

@@ -28,7 +28,7 @@ def idx(n, i, j):
 def nodes(terms):
     out = None
     for t in terms:
-        out = t if out is None else tb("expression_statement").c(out).c(sym(",")).w(" ").c(t).b()
+        out = t if out is None else tb("expression_statement").e(out).e(sym(",")).w(" ").e(t).b()
     return out
 
 
@@ -39,7 +39,7 @@ def entry(n, i, j):
     total = None
     for k in range(i, j + 1):
         # The prefix lift turns each computed index into an integer term.
-        prod = tb("binary_operator").c(tb("subscript").c(leaf("identifier", "a")).c(sym("[")).c(qlift(idx(n, i, k))).c(sym("]")).b()).w(" ").c(sym("*")).w(" ").c(tb("subscript").c(leaf("identifier", "b")).c(sym("[")).c(qlift(idx(n, k, j))).c(sym("]")).b()).b()
+        prod = tb("binary_operator").c(tb("subscript").e(leaf("identifier", "a")).e(sym("[")).e(qlift(idx(n, i, k))).e(sym("]")).b()).w(" ").c(sym("*")).w(" ").c(tb("subscript").e(leaf("identifier", "b")).e(sym("[")).e(qlift(idx(n, k, j))).e(sym("]")).b()).b()
         total = prod if total is None else tb("binary_operator").c(total).w(" ").c(sym("+")).w(" ").c(prod).b()
     return total
 
@@ -50,7 +50,7 @@ def make_multiplier(n):
     trailing comma keeps the result a tuple even when n = 1 leaves a single
     entry."""
     entries = nodes(entry(n, i, j) for i in range(n) for j in range(i, n))
-    return tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "a")).c(sym(",")).w(" ").c(leaf("identifier", "b")).b()).c(sym(":")).w(" ").c(tb("tuple").c(sym("(")).c(entries).c(sym(",")).c(sym(")")).b()).b()
+    return tb("lambda").c(sym("lambda")).w(" ").c(tb("lambda_parameters").c(leaf("identifier", "a")).c(sym(",")).w(" ").c(leaf("identifier", "b")).b()).c(sym(":")).w(" ").c(tb("tuple").e(sym("(")).e(entries).e(sym(",")).e(sym(")")).b()).b()
 
 
 def dense(n, flat):

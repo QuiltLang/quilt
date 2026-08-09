@@ -30,9 +30,10 @@ quilt = {workspace = true, features = [
   "zsh",
 ]}
 miette = {workspace = true, features = ["fancy"]}
-# The corpus's `postcard_roundtrip` check (issue #192): the serde derives live
-# in quilt, but the wire format they produce is what the heterogeneous reduce
-# protocol and quilt-python's postcard_bytes / from_postcard_bytes pair agree on.
+# The wire format of the `py↓` / `rs↓` protocol: a generated Python stage sends
+# its result back as postcard bytes and the Rust side decodes them (see
+# `langs/rust/ops.rs`). The corpus pins those bytes, so this end can encode and
+# decode them exactly as `quilt-python`'s binding does (issue #192).
 postcard = {workspace = true, features = ["alloc", "use-std"]}
 serde = {workspace = true, features = ["derive"]}
 serde_json = {workspace = true}
@@ -47,6 +48,11 @@ tree-sitter = {workspace = true}
 # change (the #157 approach; see tests/grammar_tags.rs).
 insta = {workspace = true}
 pretty_assertions = {workspace = true}
+# Tier 6 (issue #161): the invariants the battery asserts for a few dozen
+# hand-picked values are *properties*. `tests/properties.rs` re-states them over
+# generated input, driven by the same `conformance/spec/*.toml` corpora — so a
+# new language gets property coverage from its spec file, with no new test code.
+proptest = {workspace = true}
 
 [lints]
 workspace = true
@@ -54,3 +60,10 @@ workspace = true
 [[bin]]
 name = "gen-matrix"
 path = "src/bin/gen_matrix.rs"
+
+# Derives the variadic-container tables from the vendored grammars and writes
+# `quilt/src/langs/arity.rs` (issue #202). Run by `bin/gen-arity`; gated by
+# `bin/check-arity`.
+[[bin]]
+name = "gen-arity"
+path = "src/bin/gen_arity.rs"

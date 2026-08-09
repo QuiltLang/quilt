@@ -822,6 +822,22 @@ mod tests {
         assert_eq!(escape_html("a\nb\t\\c"), "a\nb\t\\c");
     }
 
+    /// The rule *set*, not just the rules that happen to have a line above: a
+    /// sixth escape added without a test shows up right here. Came from the
+    /// per-binding copies this function replaced, and is the reason the table
+    /// is worth having in one place — it can only be stated once.
+    #[test]
+    fn html_escape_table_is_exactly_five_characters() {
+        let changed: String = (0u8..=127)
+            .map(char::from)
+            .filter(|c| {
+                let s = c.to_string();
+                escape_html(&s) != s
+            })
+            .collect();
+        assert_eq!(changed, "\"&'<>");
+    }
+
     #[test]
     fn nix_tags() {
         let QTerm::Tuple { tag, .. } = &*3u32.qlift_to::<Nix>() else {

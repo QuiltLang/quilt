@@ -1,0 +1,54 @@
+# Tier 6 fuzz targets (issue #161, phase 5 of #144).
+#
+# Its own workspace, which is the cargo-fuzz convention and also a requirement
+# here: libFuzzer builds with `-Zsanitizer` on a nightly toolchain, and the
+# repo's `rust-toolchain.toml` pins stable 1.96.0 for everything else. Keeping
+# this out of the root workspace means a plain `cargo build` / `cargo test`
+# never tries to compile it, and `bin/fuzz` is the only entry point.
+[workspace]
+
+[package]
+name = "quilt-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# Deliberately not the default feature set. The targets exercise the Quilt
+# surface parser and the rust/python hosts, and every other language feature
+# adds a vendored `parser.c` to compile *with sanitizers* — Lean's alone is
+# ~44 MB (#134). This keeps a fuzz build minutes rather than tens of minutes,
+# which is what makes a 10-minute nightly budget mostly fuzzing instead of
+# mostly compiling.
+quilt = {path = "../quilt", package = "quiltlang", default-features = false, features = [
+  "parse",
+  "python",
+  "rust",
+]}
+
+# Fuzz targets are not run by `cargo test` and have no docs or benches; saying
+# so keeps cargo from building harnesses for them.
+[[bin]]
+name = "parse_quilt"
+path = "fuzz_targets/parse_quilt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "expand_quilt"
+path = "fuzz_targets/expand_quilt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "escape_roundtrip"
+path = "fuzz_targets/escape_roundtrip.rs"
+test = false
+doc = false
+bench = false

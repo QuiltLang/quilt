@@ -35,15 +35,10 @@ impl TSProvider for TypeScriptProvider {
         Some("#!/usr/bin/env -S node --experimental-strip-types")
     }
 
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            // The block-like containers with `repeat(…)` children.
-            "program" | "statement_block" | "class_body" | "object" | "array" | "arguments"
-            | "named_imports" | "object_pattern" | "array_pattern" | "switch_body" => {
-                Arity::Variadic
-            }
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::TYPESCRIPT, tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {

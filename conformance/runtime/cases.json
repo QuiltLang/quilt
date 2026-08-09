@@ -19,13 +19,6 @@
     "to mean all three. Every narrowing needs a `why`, so a gap is a recorded",
     "decision and not an accident.",
     "",
-    "`checks` are the cross-cutting ones: instead of a term and its expected",
-    "text, a check is a property every case's term must satisfy, so it covers",
-    "each shape in the corpus without restating any of them. Each names the",
-    "runtimes that have the API it needs, with the same `why` obligation. A",
-    "runner must fail on a check that names it and that it does not implement —",
-    "adding one here is a request the runners cannot silently ignore.",
-    "",
     "The governing law for lift is ↓(↑(x)) == x: ↑ maps a value to a term whose",
     "code evaluates back to it. These cases compare coparse() text, which cannot",
     "see that law directly — checking it needs the reduce backends, so it lives",
@@ -35,26 +28,41 @@
     "The lift law is reduce(lift(x)) == x: lift maps a value to a term whose code",
     "evaluates back to it, so lifting a *term* yields constructor code. All three",
     "runtimes satisfy it as of #166; the eval-based checks that prove it live in",
-    "the Python and Node runners, which can actually evaluate the generated code."
+    "the Python and Node runners, which can actually evaluate the generated code.",
+    "",
+    "`invariants` (issue #192) declares properties that hold of *every* applicable",
+    "case, rather than of one program. A case pins what a term coparses to; an",
+    "invariant pins something true of the term itself, which would otherwise need a",
+    "near-duplicate of the whole corpus per property. Each is narrowed by the same",
+    "`runtimes` + `why` rule as a case. A runner that meets an invariant it has not",
+    "implemented must FAIL rather than skip it — otherwise adding one here quietly",
+    "no-ops in exactly the runtime that lacks the coverage.",
+    "",
+    "`postcard` on a case pins that term's postcard encoding as lowercase hex: the",
+    "wire format of the py↓ / rs↓ protocol, where a generated Python stage returns",
+    "its result as bytes the Rust side decodes. It is pinned because a round-trip",
+    "alone cannot see a layout change — postcard is positional, so a reordered",
+    "field or a serde(skip) on `span` moves the wire format with both ends moving",
+    "together, and encode-then-decode stays green while two separately-built",
+    "runtimes stop understanding each other. Only a representative handful of cases",
+    "carry one, so re-pinning after a deliberate layout change is a short diff."
   ],
-  "checks": [
+  "invariants": [
     {
       "name": "postcard_roundtrip",
       "runtimes": [
         "rust",
         "python"
       ],
-      "why": "quilt-wasm exposes no postcard entry points; quilt-python has the pair (postcard_bytes / from_postcard_bytes), and the Rust side owns the serde derives both ends decode with",
-      "what": "from_postcard_bytes(postcard_bytes(x)) coparses to the same text as x, and re-serializes to the same bytes. This pair is the wire format of the heterogeneous reduce protocol and neither half had a test. Covered: every shape the corpus builds survives the round trip, and the two derives stay inverses of each other - postcard is positional and self-describes nothing, so an asymmetry decodes as a *different term* rather than as an error. Not covered: a *symmetric* schema change. The corpus constructs its terms, so their QTerm::span is always None, and a serde(skip) on both ends round-trips cleanly here while breaking the cross-process protocol the field's no-skip comment warns about. Only a parsed term carries a span and only Rust can build one, so that case is a Rust test - qterm::tests::postcard_round_trip_preserves_spans."
+      "why": "quilt-wasm exposes no postcard pair; the protocol it would serve (py↓ / rs↓) has no wasm side. Rust checks it through the core serde impls the binding calls, python through postcard_bytes/from_postcard_bytes — the two ends of the same wire. What it cannot see: the corpus *constructs* its terms, so every QTerm::span here is None, and a serde(skip) applied to both ends round-trips cleanly while breaking the cross-process protocol the field's no-skip comment warns about. Only a parsed term carries a span and only Rust can build one, so that case is a Rust test — qterm::tests::postcard_round_trip_preserves_spans."
     },
     {
-      "name": "stringify_agrees_with_coparse",
+      "name": "stringify",
       "runtimes": [
         "python",
         "wasm"
       ],
-      "why": "Rust has no Display impl on QTerm, so it has nothing that could disagree with coparse. Python spells this str(x) (__str__) and quilt-wasm spells it toString",
-      "what": "The runtime's native stringification is coparse. Both are exported and a caller may reasonably reach for either - in JS every string interpolation reaches for toString implicitly - so the two must not drift apart."
+      "why": "quilt-wasm exports toString and quilt-python __str__, both alongside coparse, so a caller may reasonably use either and they must not drift. The Rust QTerm implements no Display, so there is no second spelling to disagree with."
     }
   ],
   "cases": [
@@ -66,7 +74,8 @@
           "text": "42"
         }
       },
-      "coparse": "42"
+      "coparse": "42",
+      "postcard": "020f696e74656765725f6c69746572616c00010000023432"
     },
     {
       "name": "sym",
@@ -118,7 +127,8 @@
           ]
         }
       },
-      "coparse": "1 + 2"
+      "coparse": "1 + 2",
+      "postcard": "021162696e6172795f65787072657373696f6e03020f696e74656765725f6c69746572616c00010000013102012b00010000012b020f696e74656765725f6c69746572616c000100000132050100000120010000012001"
     },
     {
       "name": "builder_empty_tag_only",
@@ -176,7 +186,8 @@
           ]
         }
       },
-      "coparse": "{\n    body\n}"
+      "coparse": "{\n    body\n}",
+      "postcard": "0205626c6f636b00070000017b000204202020200001000004626f6479000300010000017d"
     },
     {
       "name": "builder_nested_children",
@@ -285,7 +296,8 @@
           ]
         }
       },
-      "coparse": "[5]"
+      "coparse": "[5]",
+      "postcard": "000178000270790207696e7465676572000100000135030000015b010000015d00"
     },
     {
       "name": "unquote_bare_hole",
@@ -305,7 +317,8 @@
           ]
         }
       },
-      "coparse": "5"
+      "coparse": "5",
+      "postcard": "010178010270790207696e7465676572000100000135010100"
     },
     {
       "name": "qlift_int",
@@ -552,6 +565,7 @@
         }
       },
       "coparse": "héllo ← ↖ 世界",
+      "postcard": "020e737472696e675f636f6e74656e74000100001568c3a96c6c6f20e2869020e2869620e4b896e7958c",
       "why": "the runtime must not apply Quilt's own glyph escaping to target text"
     }
   ]

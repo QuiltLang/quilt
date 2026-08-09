@@ -108,9 +108,15 @@ fn bare_tuple_quote() -> Result<()> {
     // statement; the quote must not try to squash past it. This is the
     // fold-through-a-quote join: `a, b` splices flat into expression
     // position, so folding it again stays a flat comma-separated list.
+    //
+    // The children are `.e`, not `.c`, because `expression_statement` is one of
+    // the containers the derived arity table picks up (#202) — its rule is
+    // `commaSep1(expression)`, which is exactly what a bare tuple exercises. For
+    // a single child the two are the same call; what `.e` adds is that an emit
+    // (`←`) can splice a whole sequence into the tuple.
     let out = expand_py("p = ↖↙a↘, ↙b↘↗")?;
     assert!(
-        out.contains(r#"tb("expression_statement").c(a).c(sym(",")).w(" ").c(b)"#),
+        out.contains(r#"tb("expression_statement").e(a).e(sym(",")).w(" ").e(b)"#),
         "a bare tuple quote should keep the expression_statement whole; got:\n{out}"
     );
     Ok(())
@@ -141,6 +147,65 @@ fn inline_body_is_not_dedented() -> Result<()> {
         out.contains(r#".p("    ").n().c(tb("block").c(tb("return_statement")"#),
         "inline-opened body keeps its meaningful indentation (return nested in \
          the function block, not dedented to a sibling); got:\n{out}"
+    );
+    Ok(())
+}
+
+/// A Python host has no `b_` accumulator to emit into: `build_variadic_block`
+/// builds the fluent `tb(..).e(child).b()` chain, which binds no name, and the
+/// runtime exposes no `emit` method on a term either. So a *ground* `←` fails
+/// loudly instead of expanding to Python that references an undefined `b_`
+/// (issue #152), and the message points at the alternative that does work.
+///
+/// This is the runtime-host half of #190: same silent-corruption failure, one
+/// step further along — the string hosts leaked `__EMIT__`, these leaked a
+/// plausible-looking but unbound `b_`.
+#[test]
+fn host_emit_unsupported() {
+    for code in [
+        // Inside a host unquote, in a variadic block — the case that used to
+        // expand to `.e(for n in names: ….emit(b_))`, which is not even
+        // syntactically valid Python.
+        indoc! {r#"
+            out = ↖def f():
+                print("start")
+                ↙
+                for n in names:
+                    ↖print(↙name(n)↘)↗.←
+                ↘
+            ↗"#},
+        // …and at plain ground position.
+        "x = ←",
+    ] {
+        let msg = expand_py(code).unwrap_err().to_string();
+        assert!(msg.contains("python can't emit"), "{msg}");
+        assert!(msg.contains("your own `tb(..)` builder"), "{msg}");
+    }
+}
+
+/// A `←` at sky depth belongs to a *later* stage, so it is still deferred as
+/// its glyph — rejecting ground emit for this host must not over-fire on quoted
+/// code the host merely passes through.
+#[test]
+fn host_emit_deferred_in_quote() -> Result<()> {
+    insta::assert_snapshot!(expand_py("x = ↖y = ↖z = ←↗↗")?);
+    Ok(())
+}
+
+/// The automatic emission of children into a variadic container goes through
+/// `wrap_child`, not `emit_str`, so it keeps working: rejecting the `←`
+/// operator must not disturb the `.e(..)` chain the expander builds itself.
+#[test]
+fn variadic_chain_survives_emit_rejection() -> Result<()> {
+    let out = expand_py(indoc! {r#"
+        ↖def foo():
+            ↙stmts↘
+            print("World")
+        ↗
+    "#})?;
+    assert!(
+        out.contains(r#"tb("block").e("#),
+        "wrap_child's .e() chain is independent of emit_str; got:\n{out}"
     );
     Ok(())
 }

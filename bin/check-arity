@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Verify the committed arity tables are current: regenerate them and fail if
+# anything changed. Same shape as bin/check-matrix and bin/check-bootstrap.
+#
+# A diff here means a vendored grammar and the table derived from it have parted
+# ways — in practice, that `bin/sync-grammars` pulled a rev which added, dropped
+# or renamed a repeat container. That changes where emit (`←`) may splice a
+# sequence, so it is exactly the kind of change that should be read in a PR
+# rather than discovered later as behaviour that quietly differs.
+#
+# For CI and pre-commit.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+TARGET=quilt/src/langs/arity.rs
+
+"$DIR/gen-arity"
+
+if ! git -C "$ROOT" diff --quiet -- "$TARGET"; then
+  echo "error: the committed arity tables are stale." >&2
+  echo "       Run 'bin/gen-arity' and commit $TARGET." >&2
+  git -C "$ROOT" --no-pager diff -- "$TARGET" >&2
+  exit 1
+fi
+
+echo "arity tables match the vendored grammars ✓"

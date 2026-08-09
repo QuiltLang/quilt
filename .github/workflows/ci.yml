@@ -62,6 +62,16 @@ jobs:
           - os: ubuntu-latest
             name: Support matrix (no drift)
             run: bin/check-matrix
+          # The variadic-container tables (issue #202): regenerate
+          # quilt/src/langs/arity.rs from the grammar.json files vendored under
+          # quilt/grammars/ and fail if it drifted. Arity decides where emit
+          # (`←`) may splice a sequence, so a grammar bump that adds, drops or
+          # renames a repeat container is a behaviour change that has to be read
+          # rather than discovered. Fast: reads JSON already in the tree, no
+          # network.
+          - os: ubuntu-latest
+            name: Arity tables (derived from the grammars)
+            run: bin/check-arity
           # The Quilt surface syntax — arrow brackets, escapes, comments — is
           # the one thing every language shares, and `tree-sitter test` ran
           # nowhere (issue #156). tree-sitter-quilt is a workspace member but

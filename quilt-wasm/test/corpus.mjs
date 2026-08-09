@@ -28,14 +28,14 @@ const corpus = JSON.parse(
 );
 const cases = corpus.cases.filter((c) => (c.runtimes ?? [RUNTIME]).includes(RUNTIME));
 
-// The cross-cutting checks: a property every corpus shape must have, rather
-// than a term and its expected text, so one declaration covers the whole
-// corpus. The corpus says which runtimes each applies to; one that names us and
-// is not implemented here is a failure, not a skip — otherwise adding a check
-// would quietly do nothing here while passing everywhere it *is* implemented.
-const IMPLEMENTED_CHECKS = new Set(["stringify_agrees_with_coparse"]);
-const checks = (corpus.checks ?? []).filter((c) => c.runtimes.includes(RUNTIME));
-const wants = (name) => checks.some((c) => c.name === name);
+// The corpus-declared invariants this runner knows how to check (issue #192).
+// An invariant that applies to wasm and is not in here is a *failure*, not a
+// skip: the corpus decides what a runtime owes, so a runner must not quietly
+// opt out of the property it has no coverage for.
+const IMPLEMENTED_INVARIANTS = new Set(["stringify"]);
+const invariants = (corpus.invariants ?? [])
+  .filter((i) => (i.runtimes ?? [RUNTIME]).includes(RUNTIME))
+  .map((i) => i.name);
 
 function buildCmds(cmds) {
   return cmds.map((c) => {
@@ -94,13 +94,16 @@ if (cases.length === 0) {
 
 const failures = [];
 
-for (const c of checks) {
-  if (!IMPLEMENTED_CHECKS.has(c.name)) {
-    failures.push(`check ${JSON.stringify(c.name)} names the ${RUNTIME} runtime, but this runner has no implementation of it`);
+for (const name of invariants) {
+  if (!IMPLEMENTED_INVARIANTS.has(name)) {
+    failures.push(
+      `invariant "${name}" applies to ${RUNTIME} but this runner does not implement it — implement it or narrow its \`runtimes\``,
+    );
   }
 }
+const checkStringify = invariants.includes("stringify");
 
-let checksRun = 0;
+let stringifyChecked = 0;
 for (const c of cases) {
   try {
     const term = build(c.term);
@@ -108,19 +111,20 @@ for (const c of cases) {
     if (got !== c.coparse) {
       failures.push(`${c.name}: coparse is ${JSON.stringify(got)}, corpus says ${JSON.stringify(c.coparse)}`);
     }
-    // `toString` is exported next to `coparse` and must not drift from it —
-    // every template literal and every `String(term)` reaches for it without
-    // the author choosing it, and until now nothing called it at all (#192).
-    if (wants("stringify_agrees_with_coparse")) {
-      checksRun++;
-      if (term.toString() !== got) {
-        failures.push(`${c.name}: toString() is ${JSON.stringify(term.toString())}, coparse() is ${JSON.stringify(got)}`);
+    // `toString` and `coparse` are both exported and a caller may reasonably
+    // use either, so they must not drift. quilt-python's `__str__` is the same
+    // promise on the other runtime, checked against these same cases.
+    // Going through String() rather than .toString() is deliberate: it is what
+    // string concatenation and template literals do, so it also proves the
+    // `js_name = toString` export is actually wired to the prototype.
+    if (checkStringify) {
+      stringifyChecked++;
+      const str = String(term);
+      if (str !== got) {
+        failures.push(`${c.name}: String(term) is ${JSON.stringify(str)} but coparse() is ${JSON.stringify(got)}`);
       }
       if (`${term}` !== got) {
-        failures.push(`${c.name}: template-literal interpolation is ${JSON.stringify(`${term}`)}, coparse() is ${JSON.stringify(got)}`);
-      }
-      if (String(term) !== got) {
-        failures.push(`${c.name}: String(term) is ${JSON.stringify(String(term))}, coparse() is ${JSON.stringify(got)}`);
+        failures.push(`${c.name}: template interpolation is ${JSON.stringify(`${term}`)} but coparse() is ${JSON.stringify(got)}`);
       }
     }
   } catch (e) {
@@ -184,7 +188,7 @@ for (const [label, fn] of [["qlift", q.qlift], ["qlift_html", q.qlift_html]]) {
   }
 }
 
-console.log(`${RUNTIME}: ${cases.length - failures.length}/${cases.length} corpus cases passed, ${checksRun} cross-cutting check(s) over ${checks.length} declared, ${lawChecked} lift-law checks, 2 non-consumption checks`);
+console.log(`${RUNTIME}: ${cases.length} corpus cases, ${stringifyChecked} stringify checks, ${lawChecked} lift-law checks, 2 non-consumption checks — ${failures.length} failure(s)`);
 if (failures.length > 0) {
   console.error(`\n${failures.length} failure(s):`);
   for (const f of failures) console.error(`  • ${f}`);

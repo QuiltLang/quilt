@@ -49,7 +49,13 @@ fn apply_chain(names: &[String], arg: Arc<QTerm>) -> Arc<QTerm> {
     let mut chain = tb("app").c(&first).w(" ").c(&arg).b();
     for name in &names[1..] {
         let f = ident(name);
-        chain = tb("app").c(&f).w(" ").c(&tb("paren").c(&sym("(")).c(&chain).c(&sym(")")).b()).b();
+        chain = tb("app").c(&f).w(" ").c(&{
+            let mut b_ = tb("paren");
+            sym("(").emit(&mut b_);
+            chain.emit(&mut b_);
+            sym(")").emit(&mut b_);
+            b_.b()
+        }).b();
     }
     chain
 }
@@ -66,7 +72,23 @@ fn main() -> Result<()> {
     // One `def` per increment.
     for (name, k) in names.iter().zip(increments) {
         let f = ident(name);
-        decls.push(tb("def").c(&sym("def")).w(" ").c(&f).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).w(" ").c(&sym(":=")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("+")).w(" ").c(&k.qlift_to::<Lean>()).b()).b().coparse());
+        decls.push({
+            let mut b_ = tb("def");
+            sym("def").emit(&mut b_);
+            b_.write(" ");
+            f.emit(&mut b_);
+            b_.write(" ");
+            tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b().emit(&mut b_);
+            b_.write(" ");
+            sym(":").emit(&mut b_);
+            b_.write(" ");
+            leaf("identifier", "Nat").emit(&mut b_);
+            b_.write(" ");
+            sym(":=").emit(&mut b_);
+            b_.write(" ");
+            tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("+")).w(" ").c(&k.qlift_to::<Lean>()).b().emit(&mut b_);
+            b_.b()
+        }.coparse());
     }
     
     // The nested application `bumpN (… (bump1 x))`, folded outward from the
@@ -134,7 +156,13 @@ fn main() -> Result<()> {
         b_.push("    ");
         b_.nl();
         {
-            tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w("chain 0 = ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&tb("paren").c(&sym("(")).c(&applied).c(&sym(")")).b()).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);
+            tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w("chain 0 = ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
+                let mut b_ = tb("paren");
+                sym("(").emit(&mut b_);
+                applied.emit(&mut b_);
+                sym(")").emit(&mut b_);
+                b_.b()
+            }).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);
         };
         b_.pop();
         b_.b()

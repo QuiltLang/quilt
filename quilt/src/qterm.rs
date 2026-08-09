@@ -595,21 +595,52 @@ pub fn tb(tag: &str) -> QTermBuilder {
 
 /**************************************************************/
 
+/// What a child of a variadic node may contribute to its parent's builder:
+/// exactly one term, several, or none.
+///
+/// # Why the impls are all on references
+///
+/// Expanded code calls this as `x.emit(&mut b_);`, where `x` is whatever
+/// expression the author unquoted. Implementing it for `Arc<QTerm>` made that
+/// call **move** `x` — fine when `x` is a freshly built term, fatal when the
+/// author named it and used it twice:
+///
+/// ```text
+/// let name = ident(&format!("pow{n}"));
+/// decls.push(lean↖def ↙name↘ (x : Nat) : Nat := ↙body(n)↘↗);
+/// decls.push(lean↖theorem ↙lemma↘ : ↙name↘ x = x ^ ↑n := by simp [↙name↘]↗);
+/// //                                  ^^^^ E0382: use of moved value
+/// ```
+///
+/// Nothing here needs ownership — every impl only reads — so the impls are on
+/// `&T` instead, and method-call auto-ref makes `x.emit(&mut b_)` borrow. The
+/// generated spelling is unchanged; it just stopped consuming its argument.
+///
+/// This only became reachable when the variadic tables started following the
+/// grammars (#202): with two tags per language, an unquote almost never sat
+/// directly under a variadic node, so the accumulator form was rare.
 pub trait Emit {
     fn emit(self, builder: &mut QTermBuilder);
 }
 
-impl Emit for Arc<QTerm> {
+impl Emit for &Arc<QTerm> {
     fn emit(self, builder: &mut QTermBuilder) {
-        builder.child(&self);
+        builder.child(self);
     }
 }
 
-impl Emit for () {
+impl Emit for &() {
     fn emit(self, _builder: &mut QTermBuilder) {}
 }
 
-impl<T: Emit> Emit for Vec<T> {
+/// A child that contributes several terms — what `←` produces.
+///
+/// The bound is `&T: Emit` rather than `T: Emit` so the elements are borrowed
+/// out of the vector too, keeping the whole chain non-consuming.
+impl<'a, T> Emit for &'a Vec<T>
+where
+    &'a T: Emit,
+{
     fn emit(self, builder: &mut QTermBuilder) {
         for item in self {
             item.emit(builder);
@@ -623,9 +654,9 @@ impl Emit for &str {
     }
 }
 
-impl Emit for StrCmd {
+impl Emit for &StrCmd {
     fn emit(self, builder: &mut QTermBuilder) {
-        builder.cmd(&self);
+        builder.cmd(self);
     }
 }
 
@@ -657,6 +688,38 @@ mod tests {
 
         let expected = tb("block").c(&sym("a")).c(&sym("b")).c(&sym("c")).build();
         assert_eq!(qterm, expected);
+    }
+
+    /// Emitting a named term must not consume it.
+    ///
+    /// This is the shape expanded code produces for a variadic node with an
+    /// unquoted child, and authors reuse such a binding constantly — `let name
+    /// = ident(…)` used in both a `def` and the theorem about it. While `Emit`
+    /// was implemented for `Arc<QTerm>` the emit *moved* it, so the second use
+    /// was E0382 and the generated program did not compile.
+    ///
+    /// It is a compile-time property, so the assertion is that this function
+    /// builds at all; the equality below just keeps it honest about emitting
+    /// the same term twice rather than dropping one.
+    #[test]
+    fn emit_borrows_rather_than_consuming() {
+        let name = sym("a");
+        let mut b_ = tb("block");
+        name.emit(&mut b_);
+        // Still usable: the emit above borrowed it.
+        name.emit(&mut b_);
+        let terms = vec![sym("b")];
+        terms.emit(&mut b_);
+        terms.emit(&mut b_);
+        assert_eq!(name, sym("a"));
+
+        let expected = tb("block")
+            .c(&sym("a"))
+            .c(&sym("a"))
+            .c(&sym("b"))
+            .c(&sym("b"))
+            .build();
+        assert_eq!(b_.build(), expected);
     }
 
     #[test]

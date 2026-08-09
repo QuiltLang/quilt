@@ -65,15 +65,10 @@ impl TSProvider for WgslProvider {
         Ok((qterm.squash(), kind))
     }
 
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "source_file"
-            | "compound_statement"
-            | "case_compound_statement"
-            | "switch_statement"
-            | "struct_declaration" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::WGSL, tag)
     }
 
     /// Classify a fully-parsed WGSL term as expression / statement / file.

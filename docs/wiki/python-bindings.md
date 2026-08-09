@@ -70,15 +70,9 @@ cmd(strcmd)     # CmdOrHole::Cmd(strcmd)
 
 ```python
 term.coparse()      # serialize to a string
-str(term)           # the same string (repr() quotes it)
+str(term)           # the same text — `__str__` is coparse
 term.qlift()        # lift to builder code (like Rust's QLift trait)
-term.postcard_bytes()   # serialize the term itself, for the `py↓` protocol
 ```
-
-`from_postcard_bytes(data)` is the other half of that pair — the `rs↓`
-direction, decoding bytes the Rust expander wrote. Both ends, and the agreement
-between `str()` and `coparse()`, are checked over every shape in the shared
-runtime corpus (`conformance/runtime/cases.json`, issue #192).
 
 ### Other functions
 
@@ -87,6 +81,27 @@ name("ident")       # identifier node (⟨N⟩ operator)
 qlift(value)        # lift int/str/QTerm to a Python term (↑ into a py quote)
 qlift_html(value)   # lift int/str/QTerm to HTML text, entity-escaped (↑ into an html quote)
 ```
+
+### Serialization
+
+```python
+term.postcard_bytes()      # -> bytes
+from_postcard_bytes(data)  # -> QTerm
+```
+
+The wire format of the `py↓` / `rs↓` protocol: a Rust meta-program runs a
+generated Python stage, and the stage returns its `QTerm` as these bytes for the
+Rust side to decode. You rarely call them by hand — `quilt` generates the script
+that does (`langs/rust/ops.rs`).
+
+`postcard` is a *positional* format, so the encoding is a contract between two
+separately-built runtimes rather than an implementation detail: a reordered
+`QTerm` field or a `serde(skip)` on `span` moves it, and both ends move with it,
+so an encode-then-decode round-trip cannot notice. The shared corpus therefore
+pins the bytes for a handful of terms (`postcard` on a case in
+`conformance/runtime/cases.json`) and checks them from *both* runtimes. If you
+change the `QTerm` layout deliberately, re-pin every one of them in the same
+commit.
 
 ### Running generated code
 

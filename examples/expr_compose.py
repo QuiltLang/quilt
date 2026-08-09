@@ -25,9 +25,9 @@ print("2 * 2**10    :", product.coparse())
 
 print("\n=== Nesting: comprehensions from quoted parts ===")
 # Each step quotes an expression referencing the previous step's QTerm.
-evens   = tb("list_comprehension").c(sym("[")).c(leaf("identifier", "x")).w(" ").c(tb("for_in_clause").c(sym("for")).w(" ").c(leaf("identifier", "x")).w(" ").c(sym("in")).w(" ").c(data).b()).w(" ").c(tb("if_clause").c(sym("if")).w(" ").c(tb("comparison_operator").c(tb("binary_operator").c(leaf("identifier", "x")).w(" ").c(sym("%")).w(" ").c(leaf("integer", "2")).b()).w(" ").c(sym("==")).w(" ").c(leaf("integer", "0")).b()).b()).c(sym("]")).b()
-doubled = tb("list_comprehension").c(sym("[")).c(tb("binary_operator").c(leaf("identifier", "x")).w(" ").c(sym("*")).w(" ").c(leaf("integer", "2")).b()).w(" ").c(tb("for_in_clause").c(sym("for")).w(" ").c(leaf("identifier", "x")).w(" ").c(sym("in")).w(" ").c(evens).b()).c(sym("]")).b()
-total   = tb("call").c(leaf("identifier", "sum")).c(tb("argument_list").c(sym("(")).c(doubled).c(sym(")")).b()).b()
+evens   = tb("list_comprehension").c(sym("[")).c(leaf("identifier", "x")).w(" ").c(tb("for_in_clause").e(sym("for")).w(" ").e(leaf("identifier", "x")).w(" ").e(sym("in")).w(" ").e(data).b()).w(" ").c(tb("if_clause").c(sym("if")).w(" ").c(tb("comparison_operator").c(tb("binary_operator").c(leaf("identifier", "x")).w(" ").c(sym("%")).w(" ").c(leaf("integer", "2")).b()).w(" ").c(sym("==")).w(" ").c(leaf("integer", "0")).b()).b()).c(sym("]")).b()
+doubled = tb("list_comprehension").c(sym("[")).c(tb("binary_operator").c(leaf("identifier", "x")).w(" ").c(sym("*")).w(" ").c(leaf("integer", "2")).b()).w(" ").c(tb("for_in_clause").e(sym("for")).w(" ").e(leaf("identifier", "x")).w(" ").e(sym("in")).w(" ").e(evens).b()).c(sym("]")).b()
+total   = tb("call").c(leaf("identifier", "sum")).c(tb("argument_list").e(sym("(")).e(doubled).e(sym(")")).b()).b()
 print("evens  :", evens.coparse())
 print("doubled:", doubled.coparse())
 print("total  :", total.coparse())

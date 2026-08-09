@@ -31,6 +31,12 @@ pub struct Case {
     pub why: Option<String>,
     pub term: Term,
     pub coparse: String,
+    /// The term's postcard encoding, lowercase hex — the wire format of the
+    /// `py↓` / `rs↓` protocol. Present on a representative handful of cases,
+    /// not all of them: it is a pinned value, so a deliberate layout change
+    /// should be a short reviewable diff rather than a 28-line one.
+    #[serde(default)]
+    pub postcard: Option<String>,
 }
 
 impl Case {
@@ -41,26 +47,31 @@ impl Case {
     }
 }
 
-/// A cross-cutting check: a property every case's term must satisfy, rather
-/// than a term and its expected text. Declared once in the corpus and run over
-/// every shape, so the properties that are *about* the shapes — surviving a
-/// postcard round trip, stringifying to the same text as `coparse` — cover the
-/// whole corpus without restating any of it.
+/// A property that holds of *every* applicable case, declared once so a new
+/// runner inherits it along with the cases (issue #192).
+///
+/// Cases pin what a program coparses to. An invariant pins something true of
+/// the term itself — that it survives a postcard round-trip, that stringifying
+/// it agrees with `coparse()` — which would otherwise need a near-duplicate of
+/// the corpus per property. A runner that meets an invariant it does not
+/// implement must fail rather than skip it, or adding one here would silently
+/// no-op in the runtimes that most need it.
 #[derive(Debug, Deserialize)]
-pub struct Check {
+pub struct Invariant {
     pub name: String,
-    /// Which runtimes have the API this check needs.
-    pub runtimes: Vec<String>,
-    /// Why it is narrowed to those.
-    pub why: String,
-    /// What the check asserts, and what it is guarding. Documentation only.
+    /// Which runtimes expose the API this invariant needs. Absent means all.
     #[serde(default)]
-    pub what: Option<String>,
+    pub runtimes: Option<Vec<String>>,
+    /// Why an invariant is narrowed. Documentation only.
+    #[serde(default)]
+    pub why: Option<String>,
 }
 
-impl Check {
+impl Invariant {
     pub fn applies_to(&self, runtime: &str) -> bool {
-        self.runtimes.iter().any(|r| r == runtime)
+        self.runtimes
+            .as_ref()
+            .is_none_or(|rs| rs.iter().any(|r| r == runtime))
     }
 }
 
@@ -68,7 +79,7 @@ impl Check {
 pub struct Corpus {
     pub cases: Vec<Case>,
     #[serde(default)]
-    pub checks: Vec<Check>,
+    pub invariants: Vec<Invariant>,
 }
 
 /// A term constructor, mirroring the JSON tagging.
@@ -196,7 +207,7 @@ pub fn build(t: &Term) -> Result<Arc<QTerm>> {
                 b = match step {
                     Step::W(s) => b.w(s),
                     Step::C(child) => b.c(&build(child)?),
-                    Step::E(child) => b.e(build(child)?),
+                    Step::E(child) => b.e(&build(child)?),
                     Step::P(s) => b.p(s),
                     Step::N => b.n(),
                     Step::X => b.x(),
@@ -221,91 +232,113 @@ pub fn build(t: &Term) -> Result<Arc<QTerm>> {
     })
 }
 
-/// `postcard_roundtrip`, for the Rust runtime.
+/// Lowercase hex, so the corpus can carry bytes in JSON.
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
+
+fn from_hex(s: &str) -> Result<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        bail!("hex string has an odd length ({})", s.len());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&s[i..i + 2], 16)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("bad hex at byte {}", i / 2))
+        })
+        .collect()
+}
+
+/// `postcard_roundtrip`, against the Rust side of the protocol.
 ///
-/// The Rust side owns the `serde` derives that `quilt-python`'s
-/// `postcard_bytes` / `from_postcard_bytes` pair — and the heterogeneous
-/// `reduce` protocol either side of it — decode with, so it is worth checking
-/// here too, where the fast `cargo test` path reaches it.
-///
-/// Three assertions — text, structure, bytes — because `postcard` is positional
-/// and self-describes nothing: an asymmetry between the two derives decodes as a
-/// *different term* rather than as an error, and which of the three notices
-/// depends on where the asymmetry lands.
-///
-/// What this cannot see is a *symmetric* schema change. Every term the corpus
-/// builds is constructed, so its `QTerm::span` is always `None`, and a
-/// `serde(skip)` on both ends round-trips cleanly here — same text, same tree
-/// (`PartialEq` ignores spans), same bytes. That is the case the `span` fields'
-/// "no serde skip" comments are actually about, and it needs a *parsed*-shaped
-/// term, which only Rust can build: see
-/// `quilt::qterm::tests::postcard_round_trip_preserves_spans`.
-fn postcard_roundtrip(name: &str, term: &Arc<QTerm>, failures: &mut Vec<String>) {
+/// Both halves matter and they catch different things. The round-trip catches
+/// a `Serialize`/`Deserialize` pair that disagree — a term that encodes and
+/// decodes to something *different* passes every coparse-only case. The pinned
+/// bytes catch what the round-trip structurally cannot: postcard is positional,
+/// so a `QTerm` layout change (a reordered field, a `serde(skip)` on `span`)
+/// moves the wire format while *both* ends move with it, and the round-trip
+/// stays green. `py↓` sends those bytes between two separately-built runtimes,
+/// which is exactly where that is fatal.
+fn check_postcard(case: &Case, term: &Arc<QTerm>, failures: &mut Vec<String>) {
     let bytes = match postcard::to_allocvec(term) {
         Ok(b) => b,
         Err(e) => {
-            failures.push(format!("{name}: postcard serialization failed: {e}"));
+            failures.push(format!("{}: postcard encode failed: {e}", case.name));
             return;
         }
     };
-    let back: Arc<QTerm> = match postcard::from_bytes(&bytes) {
-        Ok(t) => t,
-        Err(e) => {
-            failures.push(format!(
-                "{name}: postcard deserialization failed: {e} ({} bytes)",
-                bytes.len()
-            ));
-            return;
+    match postcard::from_bytes::<Arc<QTerm>>(&bytes) {
+        Ok(back) => {
+            let got = back.coparse();
+            if got != case.coparse {
+                failures.push(format!(
+                    "{}: postcard round-trip coparses to {got:?}, corpus says {:?}",
+                    case.name, case.coparse
+                ));
+            }
         }
+        Err(e) => failures.push(format!("{}: postcard decode failed: {e}", case.name)),
+    }
+
+    let Some(want) = case.postcard.as_deref() else {
+        return;
     };
-    let (want, got) = (term.coparse(), back.coparse());
+    let got = to_hex(&bytes);
     if got != want {
         failures.push(format!(
-            "{name}: postcard round trip coparses to {got:?}, term is {want:?}"
+            "{}: postcard bytes are {got}, corpus pins {want} — if the QTerm \
+             layout changed on purpose, re-pin every `postcard` field in the \
+             corpus (they are a wire format two runtimes share)",
+            case.name,
         ));
     }
-    if back != *term {
-        failures.push(format!(
-            "{name}: postcard round trip is structurally different (same text, different tree)"
-        ));
-    }
-    match postcard::to_allocvec(&back) {
-        Ok(again) if again != bytes => failures.push(format!(
-            "{name}: postcard round trip re-serializes to {} bytes, not the original {} — \
-             a field is being lost on decode",
-            again.len(),
-            bytes.len()
+    // The other direction: the pinned bytes must still decode here, which is
+    // what `rs↓` does with bytes a Python stage produced.
+    match from_hex(want).and_then(|b| postcard::from_bytes::<Arc<QTerm>>(&b).into_diagnostic()) {
+        Ok(back) => {
+            let got = back.coparse();
+            if got != case.coparse {
+                failures.push(format!(
+                    "{}: decoding the pinned bytes coparses to {got:?}, corpus says {:?}",
+                    case.name, case.coparse
+                ));
+            }
+        }
+        Err(e) => failures.push(format!(
+            "{}: decoding the pinned bytes failed: {e}",
+            case.name
         )),
-        Err(e) => failures.push(format!("{name}: re-serializing the round trip failed: {e}")),
-        Ok(_) => {}
     }
 }
 
-/// Run every case and every check that applies to the Rust runtime; return the
-/// failures.
+/// Run every case that applies to the Rust runtime; return the failures.
 pub fn run() -> Result<Vec<String>> {
     let corpus = load()?;
     let mut failures = Vec::new();
     let mut ran = 0;
 
-    // A check this runner has no implementation for is a failure, not a skip:
-    // the corpus names the runtimes a check applies to, so an unrecognized one
-    // means the corpus is asking for something and being ignored.
-    let known = ["postcard_roundtrip"];
-    let wanted: Vec<&Check> = corpus
-        .checks
-        .iter()
-        .filter(|c| c.applies_to("rust"))
-        .collect();
-    for check in &wanted {
-        if !known.contains(&check.name.as_str()) {
-            failures.push(format!(
-                "check {:?} names the rust runtime, but this runner has no implementation of it",
-                check.name
-            ));
+    // Which declared invariants this runner is on the hook for. An unknown
+    // name is a failure, not a skip: the corpus is the single source of truth
+    // for what a runtime must satisfy, so a runner may not quietly opt out.
+    let mut postcard_roundtrip = false;
+    for inv in &corpus.invariants {
+        if !inv.applies_to("rust") {
+            continue;
+        }
+        match inv.name.as_str() {
+            "postcard_roundtrip" => postcard_roundtrip = true,
+            other => failures.push(format!(
+                "invariant {other:?} applies to rust but this runner does not \
+                 implement it — implement it or narrow its `runtimes`"
+            )),
         }
     }
-    let wants = |n: &str| wanted.iter().any(|c| c.name == n);
 
     for case in &corpus.cases {
         if !case.applies_to("rust") {
@@ -321,8 +354,14 @@ pub fn run() -> Result<Vec<String>> {
                         case.name, case.coparse
                     ));
                 }
-                if wants("postcard_roundtrip") {
-                    postcard_roundtrip(&case.name, &term, &mut failures);
+                if postcard_roundtrip {
+                    check_postcard(case, &term, &mut failures);
+                } else if case.postcard.is_some() {
+                    failures.push(format!(
+                        "{}: pins postcard bytes, but the postcard_roundtrip \
+                         invariant does not apply to rust",
+                        case.name,
+                    ));
                 }
             }
             Err(e) => failures.push(format!("{}: build failed: {e}", case.name)),

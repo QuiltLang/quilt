@@ -63,7 +63,30 @@ Python uses the forked `tree-sitter-python` (hole placeholder `__HOLE__`). Its `
 | Builder method   | `.c(&child)`                                   | `.c(child)` (no `&`)                    |
 | Cmd sequences    | `&[..]` Rust slice literal                     | `[..]` Python list                      |
 | Variadic block   | `{ let mut b_ = tb(..); b_.emit(..); b_.b() }` | fluent chain `.e(child1).e(child2).b()` |
-| Statement-splice | supported (via named `b_`)                     | **not supported**                       |
+| Statement-splice | supported (via named `b_`)                     | **not supported** — ground `←` is an error |
+
+Rust's variadic block is a *block expression*, so it can bind `let mut b_ = tb(..)` and let ground statements append to it. Python has no statement-block in expression position, so the block is built as a fluent chain instead — which binds no name, and puts the hole in argument position where a ground `for` would not even parse. A ground `←` is therefore a hard error naming the alternative (`PythonMetaLanguage::emit_str`, issue [#152](https://github.com/QuiltLang/quilt/issues/152)); it used to expand to `emit(b_)`, referencing a name nothing had bound. A `←` at sky depth still defers to the next stage, as always.
+
+Build the sequence with your own builder in ground code and splice the finished term — this needs no accumulator from the expander, and goes through `wrap_child`'s `.e(..)` chain like any other child:
+
+```python
+b = tb("block")
+for i, n in enumerate(names):
+    if i:
+        b.n()          # the separator Rust's ground loop writes as `NL.←`
+    b.e(↖print(↙name(n)↘)↗)
+body = b.b()
+out = ↖def f():
+    ↙body↘
+↗
+print(out.coparse())
+```
+
+```python
+def f():
+    print(a)
+    print(b)
+```
 
 `quilt` invokes `python3` for Python files and sets `PYTHONPATH` to include the `quilt-python` directory.
 
@@ -92,11 +115,11 @@ TypeScript uses the forked `tree-sitter-typescript` (hole placeholder `__HOLE__`
 |--------|------------------------------------------------------------|
 | `↑(x)` | `qlift(x)` into TypeScript; `qlift_html(x)` into an HTML quote |
 | `↓`    | `reduce()` (postfix: `term.↓` → `term.reduce()`)           |
-| `←`    | `emit(b_)`                                                 |
+| `←`    | *no spelling* — ground emit is an error                    |
 | `⟨T⟩`  | `QTerm`                                                    |
 | `⟨N⟩`  | `name("ident")`                                            |
 
-Lift is written *prefix* (`↙↑(x)↘`), like Python's and for the same reason. Emit has Python's limitation too — a fluent chain with no named accumulator, so `←` from a *ground* loop is unavailable ([#152](https://github.com/QuiltLang/quilt/issues/152)).
+Lift is written *prefix* (`↙↑(x)↘`), like Python's and for the same reason. Emit has Python's limitation too — a fluent chain with no named accumulator — so a ground `←` is the same hard error, pointing at the same alternative ([#152](https://github.com/QuiltLang/quilt/issues/152)). TypeScript could host an accumulator where Python cannot, since an IIFE gives it statements in expression position; the blocker is the runtime half, where `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` exposes no `emit` method.
 
 ### Reduce on the CLI
 
@@ -163,7 +186,11 @@ let shader = ↖
 
 Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. Both are target-only: they can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) but have no `MetaLanguage`. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
 
-`tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the two dialects share almost all of their node kinds. They therefore share one tag table, `langs/shell.rs`, which answers both `Language::arity` and the `is_expr_tag` classification for either provider. That used to be two independently maintained `match` arms in two files, and they drifted: bash claimed `for_statement`, `while_statement`, `function_definition` and nine more kinds that zsh's table omitted despite zsh's grammar defining every one, so an emit into a zsh `for` body compiled differently from the identical bash one with no diagnostic (issue #150). Kinds only one grammar defines — bash's `simple_expansion`, zsh's `always_clause`, `terse_for_statement`, `select_statement`, `repeat_statement`, `coprocess_statement` and expansion vocabulary — live in the same table and simply never match for the other dialect; `conformance/spec/{bash,zsh}.toml` declare them in a marked dialect-only block, and `grammar_tags::shell_dialects_agree_on_shared_kinds` fails if the two ever stop agreeing on a shared kind.
+`tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the two dialects share almost all of their node kinds — and used to answer `Language::arity` from two independently maintained `match` arms that had drifted: bash claimed `for_statement`, `while_statement`, `function_definition` and nine more kinds that zsh's table omitted despite zsh's grammar defining every one, so an emit into a zsh `for` body compiled differently from the identical bash one with no diagnostic (issue #150).
+
+Each dialect now derives its own table from its own grammar (`bin/gen-arity`, issue #202), which fixes that at the source rather than by asking the two to share one hand-written answer: a construct both grammars spell the same way classifies the same way *because the grammars agree*, and a kind only one grammar defines simply never appears in the other's table. Where the forks genuinely part company the tables part company too — zsh's `function_definition` is `repeat1(field('name', …))`, since `function a b c { … }` defines three functions at once and bash has no such syntax. `grammar_tags::bash_and_zsh_agree_on_shared_kinds` holds the two to agreement on every shared kind, pinning each real exception with its reason so a *new* divergence still has to be looked at.
+
+`langs/shell.rs` remains, but only for the part no grammar rule answers: `is_expr_tag`, the Quilt-level judgement about which tags name an expression rather than a statement, which both providers still share for the reason #150 gives.
 
 ---
 

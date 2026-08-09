@@ -13,6 +13,7 @@
 //! which regenerates them and fails on drift — the same pattern as
 //! `bin/check-bootstrap` and `bin/check-grammars`.
 
+pub mod arity;
 pub mod battery;
 pub mod cross;
 

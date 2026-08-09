@@ -10,8 +10,12 @@ WebGPU Shading Language — a target-only language. Generate shader code at buil
 time from a Rust or Python host, lifting host values straight into WGSL literal \
 syntax."""
 
-variadic = ["source_file", "compound_statement"]
-not_variadic = ["function_declaration"]
+# Derived from the grammar's `REPEAT` rules (#202). `function_declaration` was
+# pinned as *not* variadic while the table was hand-written; it leads with
+# `repeat($.attribute)`, so `@vertex @workgroup_size(1) fn main() {}` gives it a
+# variable number of direct children and the grammar wins.
+variadic = ["source_file", "compound_statement", "function_declaration"]
+not_variadic = ["identifier", "int_literal"]
 
 lift_marker = "Wgsl"
 
@@ -65,9 +69,19 @@ tag = "float_literal"
 text = "1.5f"
 
 [[lift]]
+value = "f32:-1.5"
+tag = "float_literal"
+text = "-1.5f"
+
+[[lift]]
 value = "bool:true"
 tag = "bool_literal"
 text = "true"
+
+[[lift]]
+value = "bool:false"
+tag = "bool_literal"
+text = "false"
 
 [kinds]
 source_file = "file"
