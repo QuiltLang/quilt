@@ -54,7 +54,7 @@
         "rust",
         "python"
       ],
-      "why": "quilt-wasm exposes no postcard pair; the protocol it would serve (py↓ / rs↓) has no wasm side. Rust checks it through the core serde impls the binding calls, python through postcard_bytes/from_postcard_bytes — the two ends of the same wire."
+      "why": "quilt-wasm exposes no postcard pair; the protocol it would serve (py↓ / rs↓) has no wasm side. Rust checks it through the core serde impls the binding calls, python through postcard_bytes/from_postcard_bytes — the two ends of the same wire. What it cannot see: the corpus *constructs* its terms, so every QTerm::span here is None, and a serde(skip) applied to both ends round-trips cleanly while breaking the cross-process protocol the field's no-skip comment warns about. Only a parsed term carries a span and only Rust can build one, so that case is a Rust test — qterm::tests::postcard_round_trip_preserves_spans."
     },
     {
       "name": "stringify",
@@ -489,6 +489,18 @@
         "qlift_html": "a \"<b>\" & c"
       },
       "coparse": "a &quot;&lt;b&gt;&quot; &amp; c"
+    },
+    {
+      "name": "qlift_html_escapes_both_attribute_quotings",
+      "runtimes": [
+        "python",
+        "wasm"
+      ],
+      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149. The apostrophe was the one entry in the escape table with no coverage in either binding (issue #192): a hole inside `title='…'` breaks out of the attribute exactly the way `\"` does inside a double-quoted one",
+      "term": {
+        "qlift_html": "\" onclick='x'"
+      },
+      "coparse": "&quot; onclick=&#x27;x&#x27;"
     },
     {
       "name": "qlift_html_is_idempotent_on_terms",

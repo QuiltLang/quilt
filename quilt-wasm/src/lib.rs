@@ -288,7 +288,10 @@ pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
         return Ok(WasmQTerm(mk_leaf("text", &fmt_number(n))));
     }
     if let Some(s) = value.as_string() {
-        return Ok(WasmQTerm(mk_leaf("text", &escape_html(&s))));
+        // The core's `escape_html`, not a local copy: quilt-python had a
+        // byte-identical twin of this table and neither had a direct test
+        // (issue #192).
+        return Ok(WasmQTerm(mk_leaf("text", &quilt::lift::escape_html(&s))));
     }
     Err(JsError::new(
         "qlift_html: unsupported type (expected number, string, boolean, or QTerm)",
@@ -395,93 +398,4 @@ fn ts_string_lit(s: &str) -> String {
     }
     out.push('"');
     out
-}
-
-/// Escape `& < > " '` so the result is inert HTML wherever a hole can sit.
-fn escape_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#x27;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// Direct coverage for `escape_html` (issue #192).
-///
-/// It had none: the shared runtime corpus reaches it only through `qlift_html`,
-/// on one string, which pins the composite answer and not the rules. This is
-/// the function that decides whether a lifted value can close an attribute and
-/// open a tag, so each rule is worth its own line.
-///
-/// `quilt-python` carries a byte-identical copy of `escape_html` and this
-/// module, because the two bindings share no crate to put it in — the core has
-/// no `LiftTo<Html>` at all (issue #149, which is also where a de-duplicated
-/// home for it belongs). Keeping the tables identical is the point: the corpus
-/// checks the two agree on one string, and these check they agree on the rules.
-#[cfg(test)]
-mod tests {
-    use super::escape_html;
-
-    #[test]
-    fn escapes_each_markup_character() {
-        assert_eq!(escape_html("&"), "&amp;");
-        assert_eq!(escape_html("<"), "&lt;");
-        assert_eq!(escape_html(">"), "&gt;");
-        assert_eq!(escape_html("\""), "&quot;");
-        assert_eq!(escape_html("'"), "&#x27;");
-    }
-
-    /// The ordering bug this shape of function invites: escaping `&` *after*
-    /// the others turns `<` into `&amp;lt;`, which renders as literal `&lt;`.
-    #[test]
-    fn does_not_double_encode_its_own_output() {
-        assert_eq!(escape_html("<a>"), "&lt;a&gt;");
-        assert_eq!(escape_html("a & b < c"), "a &amp; b &lt; c");
-    }
-
-    /// Both quote styles, so the result is inert in either attribute spelling.
-    #[test]
-    fn neutralises_an_attribute_value() {
-        assert_eq!(
-            escape_html("\" onload='x()'"),
-            "&quot; onload=&#x27;x()&#x27;"
-        );
-    }
-
-    /// Everything else is passed through byte for byte — an escaper that
-    /// mangled target text would be caught here and nowhere else.
-    #[test]
-    fn leaves_everything_else_alone() {
-        assert_eq!(escape_html(""), "");
-        assert_eq!(escape_html("a/b=c;\n\t"), "a/b=c;\n\t");
-        assert_eq!(escape_html("héllo ← ↖ 世界"), "héllo ← ↖ 世界");
-    }
-
-    /// The rule set itself, not just the rules that happen to have a test: a
-    /// sixth escape added without a line above shows up right here.
-    #[test]
-    fn escapes_exactly_five_characters() {
-        let changed: String = (0u8..=127)
-            .map(char::from)
-            .filter(|c| {
-                let s = c.to_string();
-                escape_html(&s) != s
-            })
-            .collect();
-        assert_eq!(changed, "\"&'<>");
-    }
-
-    /// Not idempotent, deliberately — which is *why* `qlift_html` passes an
-    /// already-built term through instead of re-escaping it.
-    #[test]
-    fn is_not_idempotent() {
-        assert_eq!(escape_html(&escape_html("&")), "&amp;amp;");
-    }
 }

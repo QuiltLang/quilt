@@ -71,7 +71,7 @@ no-op, not a failure.
 wasm-pack build quilt-wasm --target nodejs   # or: bin/build-ts
 node quilt-wasm/test/smoke.cjs               # the builder API
 node quilt-wasm/test/corpus.mjs              # the shared runtime corpus (bin/test-runtimes)
-cargo test -p quilt-wasm --lib               # in-crate units (escape_html)
+cargo test -p quilt-wasm --lib               # in-crate units (none today; see quilt::lift for escape_html)
 QUILT=bin/quilt node quilt-wasm/test/reduce.mjs   # `↓`, in node/ (bin/test-ts)
 ```
 

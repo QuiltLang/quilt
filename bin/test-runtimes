@@ -34,8 +34,10 @@ step "binding internals (unit tests)"
 # libpython and a wasm-bindgen cdylib have no business in a bare `cargo test`
 # (see the note in the root Cargo.toml) — so their in-crate tests run nowhere
 # else. That is how `escape_html` ended up with two identical copies and no
-# direct test between them (issue #192). Both build for the host fine; only
-# their real *artifacts* need a special target.
+# direct test between them (issue #192) — it now lives once, in
+# `quilt::lift`, but anything else that grows here has the same blind spot.
+# Both build for the host fine; only their real *artifacts* need a special
+# target.
 cargo test --quiet --manifest-path "$ROOT/Cargo.toml" \
   -p quilt_python -p quilt-wasm --lib \
   || fail=1
