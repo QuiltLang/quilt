@@ -331,6 +331,66 @@ fn check_accepts_the_bootstrap_multi() {
     );
 }
 
+/// Documents a rough edge rather than asserting it is right. The bootstrap
+/// multi is a `Single`, and `Singleton::get` ignores the language key it is
+/// handed — so `-m bootstrap` parses *every* file as Rust, whatever the stem
+/// says. `lang_chain` in `bin.rs` peels extensions with
+/// `multi.get_lang(part).is_ok()`, which under Bootstrap succeeds for every
+/// extension, so chain derivation is meaningless there too. A `.py.quilt` file
+/// therefore fails with a Rust parse error naming Rust node kinds, rather than
+/// "the bootstrap multi only has rust".
+///
+/// It fails, which is the important half — `-m omni` accepts the same file. If
+/// `-m bootstrap` ever learns to refuse a non-Rust stem outright, this test is
+/// the one to rewrite.
+#[test]
+fn bootstrap_multi_parses_every_file_as_rust() {
+    let d = Dir::new("boot-py");
+    let f = d.write("p.py.quilt", "def f():\n    return ↖1 + 2↗\n");
+
+    let o = quilt()
+        .args(["check", "-m", "bootstrap"])
+        .arg(&f)
+        .output()
+        .expect("runs");
+    assert_eq!(o.status.code(), Some(1), "stdout:\n{}", stdout(&o));
+    assert!(
+        stderr(&o).contains("Parsed with errors"),
+        "expected a Rust parse error, got:\n{}",
+        stderr(&o)
+    );
+
+    let o = quilt()
+        .args(["check", "-m", "omni"])
+        .arg(&f)
+        .output()
+        .expect("runs");
+    assert!(
+        o.status.success(),
+        "omni should read the same file as Python; stderr:\n{}",
+        stderr(&o)
+    );
+}
+
+/// An unknown `-m` value is a clap error (exit 2), not a quilt one — so it is
+/// reported before any file is opened, and it lists what is available.
+#[test]
+fn unknown_multi_is_rejected() {
+    let d = Dir::new("multi-bad");
+    let f = d.write("m.rs.quilt", "let x = ↖1 + 2↗;\n");
+    let o = quilt()
+        .args(["check", "-m", "klingon"])
+        .arg(&f)
+        .output()
+        .expect("runs");
+    assert_eq!(o.status.code(), Some(2), "stderr:\n{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(
+        e.contains("omni") && e.contains("bootstrap"),
+        "stderr:\n{e}"
+    );
+}
+
 /* ── run: dispatch and the error paths ─────────────────────────────────── */
 
 /// Not every language has an interpreter. Nix and Lean are hosts — a
@@ -377,6 +437,32 @@ fn run_missing_file_exits_nonzero() {
     assert_eq!(o.status.code(), Some(1));
 }
 
+/* ── run: the rust-script backend ──────────────────────────────────────── */
+
+/// The Rust runner end to end — the one backend that needs nothing built first,
+/// and so the only `run` test that never skips: shebang stripped, the expanded
+/// program handed to `rust-script` with a cargo manifest pointing at *this*
+/// quilt crate, and the script's stdout passed through.
+///
+/// `rust-script` comes from the flake devShell and `quilt/tests/bootstrap.rs`
+/// already shells out to it, so this adds a runner rather than a dependency.
+#[test]
+fn run_rust_script_executes_the_program() {
+    let d = Dir::new("run-rs");
+    let f = d.write(
+        "hello.rs.quilt",
+        "#!/usr/bin/env quilt\n\
+         use quilt::prelude::*;\n\
+         fn main() {\n\
+         \x20   let frag = ↖1 + 2↗;\n\
+         \x20   println!(\"{}\", frag.coparse());\n\
+         }\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "1 + 2");
+}
+
 /* ── run: the Python backend ───────────────────────────────────────────── */
 
 /// The `quilt_python` extension module a `.py.quilt` program imports. Absent
@@ -416,6 +502,46 @@ fn run_python_resolves_the_runtime_import() {
     let o = run(&[Path::new("run"), &f]);
     assert!(o.status.success(), "stderr:\n{}", stderr(&o));
     assert_eq!(stdout(&o).trim(), "1 + 2");
+}
+
+/// The injection *prepends*: a caller's own `PYTHONPATH` survives, and quilt's
+/// entry wins over it. Replacing it outright would silently break a script that
+/// imports anything else, and appending would let a stale checkout on the
+/// caller's path shadow the runtime `run` just built.
+///
+/// Asserted on the variable the child actually sees, not on the run merely
+/// succeeding — a run with the inherited value dropped succeeds too, so that
+/// would pin nothing.
+#[test]
+fn run_python_prepends_to_an_inherited_pythonpath() {
+    if skip_without_python_runtime("run_python_prepends_to_an_inherited_pythonpath") {
+        return;
+    }
+    let d = Dir::new("run-py-path");
+    let f = d.write(
+        "path.py.quilt",
+        "import os\nprint(os.environ[\"PYTHONPATH\"])\n",
+    );
+    let o = quilt()
+        .env("PYTHONPATH", "/inherited-and-preserved")
+        .args([Path::new("run"), f.as_path()])
+        .output()
+        .expect("runs");
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+
+    let seen = stdout(&o);
+    let seen = seen.trim();
+    let (first, rest) = seen
+        .split_once(':')
+        .unwrap_or_else(|| panic!("expected quilt's entry *and* the inherited one, got {seen:?}"));
+    assert!(
+        first.ends_with("/quilt-python"),
+        "quilt's runtime should come first, got {seen:?}"
+    );
+    assert_eq!(
+        rest, "/inherited-and-preserved",
+        "the inherited PYTHONPATH should be kept verbatim after quilt's entry"
+    );
 }
 
 /// Everything after the filename belongs to the script, not to `quilt` — the

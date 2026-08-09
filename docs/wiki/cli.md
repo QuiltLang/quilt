@@ -154,6 +154,8 @@ Runs `wasm-pack build quilt-wasm --target nodejs --out-dir pkg` — CommonJS wit
 
 Exercise each runtime end to end: `test-py` runs the pytest binding tests and the self-contained `.py.quilt` examples; `test-ts` runs the Node `↓` tests (`quilt-wasm/test/reduce.mjs`) and the self-contained `.ts.quilt` examples. Each needs its runtime built first.
 
+Both also re-run `cargo test -p quiltlang --test cli`, because the `quilt run` tests in `quilt/tests/cli.rs` skip themselves when their runtime isn't built — a plain `cargo test` stays green without maturin or wasm-pack, so these scripts are the only place the Python and Node runner paths execute for real.
+
 ```sh
 build-py && test-py
 build-ts && test-ts
@@ -190,6 +192,28 @@ cargo fmt                         # format
 
 cargo build -p quilt-lsp          # build the LSP server
 cargo test -p quilt-lsp           # run LSP tests
+```
+
+---
+
+## Testing the CLI
+
+Two suites, splitting the work between the real binary and the rendering:
+
+| Suite | Covers |
+|---|---|
+| `quilt/tests/cli.rs` | The real binary, through `CARGO_BIN_EXE_quilt`: the happy paths and the exit codes — `check`, `expand` (sibling file, header comment, chain derivation), `run` for each of the three runners, `-m omni` vs `-m bootstrap`, `--help`. |
+| `quilt/tests/ui.rs` + `quilt/tests/ui/` | A corpus of deliberately **invalid** inputs whose full rendered `miette` diagnostic is snapshotted — error text, help, and above all where the caret lands. |
+
+The `ui/` corpus is what regression-tests spans and error wording. Every case must *fail with a diagnostic*: an input that expands cleanly is reported as an error, so a case that starts passing (because the capability it probes got implemented) fails loudly and asks to be reclassified.
+
+It renders in-process with an explicitly configured `GraphicalReportHandler` rather than by capturing the binary's stderr — the binary's rendering is miette's global hook, whose width, colour and box-drawing charset are all sniffed from the environment, so a committed snapshot would differ between a laptop and a CI container. `cli.rs` separately asserts that the real binary renders a snippet with a `line:col`, which covers the other half.
+
+Adding a case is a fixture in `tests/ui/` plus a line in the `corpus_is_complete` roster saying which error kind it pins — the two are checked against each other, so neither can exist without the other.
+
+```sh
+cargo test -p quiltlang --test ui   # run the corpus
+cargo insta review                  # accept a changed diagnostic
 ```
 
 ---

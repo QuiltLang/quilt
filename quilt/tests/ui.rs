@@ -151,6 +151,10 @@ fn corpus_is_complete() {
         // the language registry
         "unknown_annotation.rs.quilt",
         "unknown_ground_language.cobol.quilt",
+        // registered as a Language but not as a MetaLanguage: text has a meta,
+        // but it is deliberately absent from Omni, so a .txt.quilt file parses
+        // and then has nothing to host it
+        "text_meta_unavailable.txt.quilt",
         // a target's own grammar rejecting the fragment
         "target_parse_error.rs.quilt",
         // heterogeneous operators with no spelling for that pair
