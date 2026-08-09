@@ -1,0 +1,8 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/nix_reduce.nix.quilt
+---
+  × nix can't reduce `↓`: the string-based meta has no `QTerm` runtime to
+  │ evaluate a fragment — compute the value in ordinary Nix and splice it with
+  │ `↙…↘`

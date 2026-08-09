@@ -1,2 +1,0 @@
-let v = 1;
-let page = html↖<p>↙↑v↘</p>↗;

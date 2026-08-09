@@ -79,9 +79,10 @@ impl TSProvider for YourProvider {
     }
 
     fn arity(&self, tag: &str) -> Arity {
-        // Return Variadic for nodes that accept arbitrarily many children
-        // (e.g. block-like constructs). Default: Unknown.
-        Arity::Unknown
+        // Don't write this table. Add your language to `derive_all` in
+        // quilt-conformance/src/arity.rs, run `bin/gen-arity`, and point at the
+        // table it generates from your grammar's REPEAT rules (issue #202).
+        Arity::from_table(crate::langs::arity::YOUR_LANG, tag)
     }
 
     fn hashbang(&self) -> Option<&'static str> {
@@ -229,7 +230,7 @@ What you declare, and what the battery does with it:
 | `[[fragments]]` | parses, round-trips to identical source, produces the declared root tag, is structurally sound (every child has a hole to be written into), and reparses idempotently |
 | `[[holes]]` | each `@` marker lands in a hole with the declared `InnerKind` |
 | `[kinds]` | `Language::typ` classifies each tag as declared |
-| `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour |
+| `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour. Both are claims about your *grammar*, since the table is derived from it: `variadic` says the rule has a repeat over direct children, `not_variadic` says it does not |
 | `lift_marker` + `[[lift]]` | values lift to the declared tag and text, **and the lifted literal reparses in your grammar** — the check that catches escaping bugs |
 | `lift_from` / `lift_from_unsupported` | your `MetaLanguage::lift_str` spells exactly the targets you claim, and refuses the rest |
 | `[capabilities]` | each claim matches reality; `partial`/`unsupported` must carry a `note`, and `partial`/`planned` a tracking `issue` |
@@ -248,6 +249,31 @@ Three rules worth knowing before you start:
   ([#141](https://github.com/QuiltLang/quilt/issues/141)) precisely because
   nothing asked the question when Lean landed.
 
+### Your spec also generates property tests
+
+The same file drives `quilt-conformance/tests/properties.rs`
+([#161](https://github.com/QuiltLang/quilt/issues/161)), so declaring a
+`lift_marker` and `[[lift]]` probes buys more than the six literals you wrote
+down: each probe declares a *row* of the lift grid — a Rust type plus, where it
+changes the spelling, the sign or value — and the property then generates
+arbitrary values of that row and requires every one of them to lift to the
+declared tag and reparse in your grammar. That is the escaping net, and it is
+where a target's quoting rules meet input nobody thought to write by hand.
+
+Two consequences when you add a language:
+
+- **Add a `lift_arbitrary` arm** in `properties.rs` for every row your spec
+  declares. A declared row with no arm is a test failure, not a silent skip —
+  the spec is what says the cell exists.
+- **Declare both spellings when the value picks one.** Lean gives `false` its
+  own tag (`false_const`, not `true_const`) and lifts a negative integer as a
+  `unary_op`; Rust lifts a negative float as a `unary_expression`. If your
+  language does something similar, write the second `[[lift]]` probe —
+  otherwise half that row's domain goes unchecked.
+
+Nothing here needs a nightly toolchain: the properties run in the ordinary
+`cargo test`. The `bin/fuzz` targets are separate and are not per-language.
+
 Add ordinary `#[test]`s too, for anything the battery's shape does not cover
 (unusual recovery paths, language-specific expander behaviour):
 
@@ -255,3 +281,24 @@ Add ordinary `#[test]`s too, for anything the battery's shape does not cover
 cargo test -p quiltlang your_lang
 cargo test -p quilt-conformance your_lang
 ```
+
+### Pin your refusals in `quilt/tests/ui/`
+
+The matrix records *that* an operator is unsupported; `quilt/tests/ui/` records
+what the user is told when they try it. Every `unsupported` capability you
+declared above should have a case here — the message is the only thing standing
+between a contributor and a mystery, and it is the part that rots silently.
+
+A case is one file holding the smallest input that provokes the error, named
+`<what>.<chain>.quilt` so the extensions are the language chain, exactly as on
+the command line:
+
+```sh
+printf 'def gen : String := lean↖[↙←frags↘]↗\n' > quilt/tests/ui/lean_emit.lean.quilt
+cargo insta review                     # accept the rendered diagnostic
+$EDITOR quilt/tests/ui.rs              # add the file to the `corpus_is_complete` roster
+```
+
+The rendered `miette` output — message, source snippet, caret position and help
+— is snapshotted, so improving an error message is a reviewable diff rather than
+an invisible change. A case that stops failing is itself a test failure.

@@ -7,6 +7,7 @@
 
 use crate::{
     lang::{Arity, InnerKind},
+    langs::shell,
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -55,70 +56,25 @@ impl TSProvider for BashProvider {
             return Ok((qterm, InnerKind::File));
         }
         let kind = match &*terms[0] {
-            QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+            QTerm::Tuple { tag, .. } if shell::is_expr_tag(tag) => InnerKind::Expr,
             _ => InnerKind::Stmt,
         };
         Ok((qterm.squash(), kind))
     }
 
-    /// See [`super::super::zsh`]'s table, which is kept in the same order: the
-    /// two grammars share a lineage, so every node kind both define must
-    /// classify the same way in both, enforced by
-    /// `bash_and_zsh_agree_on_shared_kinds` in
-    /// `quilt-conformance/tests/grammar_tags.rs` (#150).
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
+    ///
+    /// Bash and zsh no longer need their tables kept in step by hand (#150):
+    /// both come from their own grammar, so a construct the two spell the same
+    /// way classifies the same way unless the *grammars* differ. That is a
+    /// stronger guarantee than the shared hand-written table #150 first reached
+    /// for, and it replaces it — [`crate::langs::shell`] keeps only the tag sets
+    /// that *aren't* derivable. `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` now guards that weaker,
+    /// truthful claim.
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "program"
-            | "compound_statement"
-            | "subshell"
-            | "list"
-            | "pipeline"
-            | "command"
-            | "command_name"
-            | "command_substitution"
-            | "process_substitution"
-            | "if_statement"
-            | "elif_clause"
-            | "else_clause"
-            | "case_statement"
-            | "case_item"
-            | "do_group"
-            | "for_statement"
-            | "c_style_for_statement"
-            | "while_statement"
-            | "function_definition"
-            | "redirected_statement"
-            | "file_redirect"
-            | "heredoc_redirect"
-            | "herestring_redirect"
-            | "variable_assignment"
-            | "variable_assignments"
-            | "declaration_command"
-            | "unset_command"
-            | "negated_command"
-            | "test_command"
-            | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
-            | "concatenation"
-            | "array"
-            | "expansion"
-            // Bash's one entry with no zsh counterpart: zsh spells the same
-            // construct `dollar_variable` / `variable_ref`.
-            | "simple_expansion"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "binary_expression"
-            | "unary_expression"
-            | "ternary_expression"
-            | "postfix_expression"
-            | "parenthesized_expression"
-            | "subscript"
-            | "number"
-            | "heredoc_body" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::BASH, tag)
     }
 
     /// The shell grammars have no `identifier` node kind at all — a bare word is
@@ -131,32 +87,6 @@ impl TSProvider for BashProvider {
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env bash")
     }
-}
-
-/// Tags that are Bash "expressions" (used only to label squashed
-/// single-fragment quotes; the label is advisory).
-fn is_expr_tag(tag: &str) -> bool {
-    matches!(
-        tag,
-        "word"
-            | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
-            | "number"
-            | "binary_expression"
-            | "unary_expression"
-            | "ternary_expression"
-            | "postfix_expression"
-            | "parenthesized_expression"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "command_substitution"
-            | "process_substitution"
-            | "expansion"
-            | "simple_expansion"
-            | "concatenation"
-    )
 }
 
 pub type BashLanguage = TSLanguage<BashProvider>;

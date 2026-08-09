@@ -7,6 +7,7 @@
 
 use crate::{
     lang::{Arity, InnerKind},
+    langs::shell,
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -55,81 +56,27 @@ impl TSProvider for ZshProvider {
             return Ok((qterm, InnerKind::File));
         }
         let kind = match &*terms[0] {
-            QTerm::Tuple { tag, .. } if is_expr_tag(tag) => InnerKind::Expr,
+            QTerm::Tuple { tag, .. } if shell::is_expr_tag(tag) => InnerKind::Expr,
             _ => InnerKind::Stmt,
         };
         Ok((qterm.squash(), kind))
     }
 
-    /// Kept deliberately in the same order as [`super::super::bash`]'s table, so
-    /// the two read side by side. Zsh shares bash's grammar lineage, so every
-    /// node kind both grammars define must classify the same way in both — an
-    /// emit into a zsh `for` body has no business behaving differently from the
-    /// identical bash one (#150). `bash_and_zsh_agree_on_shared_kinds` in
-    /// `quilt-conformance/tests/grammar_tags.rs` enforces exactly that, so the
-    /// only entries that may differ are the ones the other grammar has no kind
-    /// for, grouped at the end.
+    /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
+    /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
+    ///
+    /// Zsh's grammar is a fork of bash's, so the two tables mostly coincide
+    /// without being maintained in step (#150) and without the shared
+    /// hand-written table that issue first reached for. Where they part company
+    /// it is now a grammar fact rather than drift: `function_definition` is
+    /// variadic here and not in bash because zsh's rule takes
+    /// `repeat1(field('name', …))` — `function a b c { … }` defines three
+    /// functions at once, which bash has no syntax for.
+    /// `bash_and_zsh_agree_on_shared_kinds` in
+    /// `quilt-conformance/tests/grammar_tags.rs` pins the exceptions, so a
+    /// *new* divergence still has to be looked at.
     fn arity(&self, tag: &str) -> Arity {
-        match tag {
-            "program"
-            | "compound_statement"
-            | "subshell"
-            | "list"
-            | "pipeline"
-            | "command"
-            | "command_name"
-            | "command_substitution"
-            | "process_substitution"
-            | "if_statement"
-            | "elif_clause"
-            | "else_clause"
-            | "case_statement"
-            | "case_item"
-            | "do_group"
-            | "for_statement"
-            | "c_style_for_statement"
-            | "while_statement"
-            | "function_definition"
-            | "redirected_statement"
-            | "file_redirect"
-            | "heredoc_redirect"
-            | "herestring_redirect"
-            | "variable_assignment"
-            | "variable_assignments"
-            | "declaration_command"
-            | "unset_command"
-            | "negated_command"
-            | "test_command"
-            | "string"
-            | "raw_string"
-            | "ansi_c_string"
-            | "translated_string"
-            | "concatenation"
-            | "array"
-            | "expansion"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "binary_expression"
-            | "unary_expression"
-            | "ternary_expression"
-            | "postfix_expression"
-            | "parenthesized_expression"
-            | "subscript"
-            | "number"
-            | "heredoc_body"
-            // Zsh-only kinds — the bash grammar defines none of these, which is
-            // why bash's table has no counterpart to them. (Bash's one unshared
-            // entry is `simple_expansion`; zsh spells the same construct
-            // `dollar_variable` / `variable_ref`.)
-            | "compound_statement_no_always"
-            | "expansion_default_list"
-            | "select_statement"
-            | "repeat_statement"
-            | "dollar_variable"
-            | "variable_ref"
-            | "zsh_array_subscript_flags" => Arity::Variadic,
-            _ => Arity::Unknown,
-        }
+        Arity::from_table(crate::langs::arity::ZSH, tag)
     }
 
     /// The shell grammars have no `identifier` node kind at all — a bare word is
@@ -142,28 +89,6 @@ impl TSProvider for ZshProvider {
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env zsh")
     }
-}
-
-/// Tags that are Zsh "expressions".
-fn is_expr_tag(tag: &str) -> bool {
-    matches!(
-        tag,
-        "word"
-            | "string"
-            | "number"
-            | "binary_expression"
-            | "unary_expression"
-            | "postfix_expression"
-            | "ternary_expression"
-            | "parenthesized_expression"
-            | "brace_expression"
-            | "arithmetic_expansion"
-            | "command_substitution"
-            | "variable_ref"
-            | "dollar_variable"
-            | "expansion"
-            | "concatenation"
-    )
 }
 
 pub type ZshLanguage = TSLanguage<ZshProvider>;

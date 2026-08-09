@@ -1,0 +1,13 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/unbalanced_bracket.rs.quilt
+---
+  × malformed Quilt syntax (source bytes 8..18)
+   ╭─[unbalanced_bracket.rs.quilt:1:9]
+ 1 │ let x = ↖1 + 2;
+   ·         ────┬───
+   ·             ╰── here
+   ╰────
+  help: Quilt brackets must be balanced and nested: `↖…↗` quotes and `↙…↘`
+        unquotes. A glyph meant as literal text needs a `\` escape.

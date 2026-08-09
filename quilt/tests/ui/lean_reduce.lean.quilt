@@ -1,0 +1,1 @@
+def gen : String := ↓lean↖1 + 1↗

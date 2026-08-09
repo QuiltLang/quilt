@@ -1,234 +1,181 @@
-//! The `tests/ui/` diagnostic corpus (issue #160, the last open Tier 5 item of
-//! the conformance epic #144).
+//! The `tests/ui/` diagnostic corpus (issue #160, Tier 5 of the conformance
+//! epic #144): a directory of **invalid** `.quilt` inputs whose rendered
+//! diagnostics are snapshotted, so error *text* and *span positions* are
+//! regression-tested rather than incidentally exercised.
 //!
-//! `tests/cli.rs` covers the error *paths* — that a bad file exits 1, that a
-//! snippet is rendered somewhere in the output. It asserts on substrings, so the
-//! thing a contributor actually reads (the full rendered diagnostic, and above
-//! all *where the caret lands*) was still not regression-tested. Spans were
-//! their own issue (#4) and "no `unimplemented!` panics" was another (#11);
-//! neither had a gate that would notice them regressing.
+//! Spans were their own issue (#4) and only a handful of tests assert them; the
+//! CLI tests in `cli.rs` cover the error *paths* (a bad file exits 1, a snippet
+//! is rendered) but not what each error kind actually reads like. A wrong span
+//! or a message that stops naming both ends of a failed lift is a silent
+//! regression today. Here it is a snapshot diff.
 //!
-//! So: a directory of deliberately *invalid* inputs, each run through the real
-//! binary, with the whole rendered `miette` report snapshotted. A change to an
-//! error message, a help text, a label, or a span becomes a reviewable snapshot
-//! diff rather than something nobody sees until a user hits it.
+//! ## What a case is
 //!
-//! # What each case must do
+//! One file per case, `ui/<name>.<chain>.quilt`, holding the smallest input
+//! that provokes the error. The extensions before `.quilt` are the language
+//! chain, exactly as on the command line — `nix_reduce.nix.quilt` is a Nix
+//! host, `python_lift_into_wgsl.py.quilt` a Python one — so a case reads the
+//! way a user would write it. Add a case by dropping in a file, running
+//! `cargo insta review`, and listing it in `corpus_is_complete` below.
 //!
-//! Every fixture has to **fail with a diagnostic** — not panic, not succeed.
-//! `run_check` asserts a non-zero exit, so a fixture that starts *passing*
-//! (because we implemented the thing it probes) fails this suite loudly and asks
-//! to be reclassified, the same bidirectional honesty `bin/check-matrix` applies
-//! to the support matrix. Because the whole corpus goes through one `Command`,
-//! a `todo!()`/`unimplemented!` on any of these paths shows up as a signal
-//! (exit 101, "panicked at") in the snapshot rather than as a green test.
+//! Every case must fail: a file that expands cleanly is reported as an error,
+//! because a "ui test" that stopped being a diagnostic has stopped testing
+//! anything.
 //!
-//! # Adding a case
+//! ## Why it renders in-process instead of running the binary
 //!
-//! Drop the fixture in `tests/ui/`, add a line to [`CASES`] saying what it
-//! probes, and run `cargo insta review`. [`every_fixture_is_declared`] fails in
-//! both directions, so a fixture can't be added without a rationale and a
-//! rationale can't outlive its fixture.
+//! The rendering is done here with an explicitly configured
+//! [`GraphicalReportHandler`] rather than by spawning `quilt check` and
+//! capturing stderr. The binary's rendering is miette's global hook, whose
+//! width, colour and box-drawing charset are all sniffed from the environment
+//! (`supports-unicode` consults `LANG`/`TERM`) — so a committed snapshot would
+//! differ between a developer's terminal and CI. Pinning the handler makes the
+//! snapshot a property of quilt, not of the machine.
 //!
-//! # Determinism
-//!
-//! The rendering has to be identical on a developer's machine and on CI, so
-//! `quilt()` pins everything `miette` reads from the environment: colour off
-//! (`NO_COLOR`, and the `FORCE_COLOR`/`CLICOLOR_FORCE` overrides that beat it),
-//! unicode box-drawing on (`LC_ALL`), and no `RUST_LOG` line from the dev
-//! shell. Width is not pinned because miette falls back to 80 columns whenever
-//! stderr is not a terminal, which it never is under `Command::output`.
-//!
-//! Fixtures are invoked by *relative* path from `tests/ui/`, so the filename
-//! miette prints is the fixture name rather than a machine-specific absolute
-//! path.
+//! What the CLI *adds* on top — attaching the file's source, blanking a
+//! shebang so line numbers stay true — is reproduced faithfully below, and
+//! `cli.rs` separately asserts the real binary renders a snippet with a
+//! `line:col`. Between them the whole path is covered.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use miette::{GraphicalReportHandler, GraphicalTheme, NamedSource};
+use quilt::langs::omni::Omni;
+use quilt::multi::{Languages, MetaLanguages, Multi};
+use quilt::term::STerm;
+use std::path::Path;
 
-/// Every fixture in `tests/ui/`, and what it is here to pin.
-///
-/// The second field is documentation, not an assertion — but the pairing is
-/// enforced (see [`every_fixture_is_declared`]), which is what stops the
-/// directory from accumulating fixtures nobody can explain.
-const CASES: &[(&str, &str)] = &[
-    // ── spanned diagnostics: the ones #4 was about ──────────────────────────
-    (
-        "unquote_depth.rs.quilt",
-        "an unquote at ground level: the canonical span-carrying error",
-    ),
-    (
-        "unbalanced_bracket.rs.quilt",
-        "a quote that is never closed — the Quilt grammar's own syntax error, \
-         with a span and a help",
-    ),
-    // ── the object language rejecting a fragment ────────────────────────────
-    (
-        "object_parse_error.rs.quilt",
-        "a quote whose body is not valid Rust",
-    ),
-    // ── language resolution ─────────────────────────────────────────────────
-    (
-        "unknown_annotation.rs.quilt",
-        "an annotation naming a language that is not registered",
-    ),
-    (
-        "unknown_ground_language.klingon.quilt",
-        "the same, reached through the file stem instead: chain derivation \
-         falling off the end of the registry",
-    ),
-    (
-        "text_meta_unavailable.txt.quilt",
-        "text has a MetaLanguage, but it is deliberately absent from Omni, so \
-         a .txt.quilt file cannot be a host",
-    ),
-    // ── operators a host does not support ───────────────────────────────────
-    (
-        "lift_unsupported_target.rs.quilt",
-        "`↑` into a target with no LiftTo impls — the ragged corner of the lift \
-         grid (#149)",
-    ),
-    (
-        "lean_emit_unsupported.lean.quilt",
-        "`←` from the string-based Lean host, which has no `b_` accumulator \
-         (#132) — must refuse rather than leak `__EMIT__` (#190)",
-    ),
-    (
-        "nix_reduce_unsupported.nix.quilt",
-        "`↓` from the string-based Nix host, which has no QTerm runtime (#155)",
-    ),
-    (
-        "nix_type_unsupported.nix.quilt",
-        "`⟨T⟩` in a host with no type syntax to name",
-    ),
-    // ── pattern-let ─────────────────────────────────────────────────────────
-    (
-        "pattern_let_non_ident.rs.quilt",
-        "a metavariable that is not a plain identifier",
-    ),
-    (
-        "pattern_let_duplicate_var.rs.quilt",
-        "the same metavariable bound twice",
-    ),
-    // ── the CLI's own argument-level refusals ───────────────────────────────
-    (
-        "no_quilt_suffix",
-        "an extension-less shebang script: `run` executes these, `check` \
-         refuses them (#188)",
-    ),
-];
-
-fn ui_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ui")
+/// Render a report the way the CLI would, but deterministically: a fixed
+/// 80-column width, unicode box drawing, no colour.
+fn render(report: &miette::Report) -> String {
+    let mut out = String::new();
+    GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor())
+        .with_width(80)
+        .render_report(&mut out, report.as_ref())
+        .expect("render");
+    out
 }
 
-/// The binary, with every environment input to the rendering pinned. See the
-/// module docs for why each one is here.
-fn quilt() -> Command {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_quilt"));
-    c.current_dir(ui_dir());
-    // The dev shell exports RUST_LOG=info (see .envrc), which puts tracing's
-    // `running: …` line in the output.
-    c.env_remove("RUST_LOG");
-    // NO_COLOR is honoured by miette, but FORCE_COLOR / CLICOLOR_FORCE outrank
-    // it — and a developer shell may well set them (this one does).
-    c.env_remove("FORCE_COLOR");
-    c.env_remove("CLICOLOR_FORCE");
-    c.env_remove("CLICOLOR");
-    c.env("NO_COLOR", "1");
-    // miette picks ASCII box-drawing when the locale doesn't advertise UTF-8,
-    // which is a bare CI container. Pin the UTF-8 rendering everywhere.
-    c.env("LC_ALL", "C.UTF-8");
-    c.env("LANG", "C.UTF-8");
-    c
+/// The language chain a `.quilt` stem names, mirroring `lang_chain` in
+/// `bin.rs`: read right-to-left, every extension that names a registered
+/// language joins the chain (rightmost = ground), and the basename never
+/// counts. An unrecognised final extension is still passed through, so a
+/// mistyped language reports itself instead of silently becoming Rust — which
+/// is what `unknown_ground_language.cobol.quilt` pins.
+fn lang_chain<'a, LS: Languages, MS: MetaLanguages>(
+    multi: &Multi<LS, MS>,
+    stem: &'a str,
+) -> Vec<&'a str> {
+    let parts: Vec<&str> = stem.split('.').collect();
+    let mut chain: Vec<&str> = parts[1..]
+        .iter()
+        .rev()
+        .copied()
+        .take_while(|part| multi.get_lang(part).is_ok())
+        .collect();
+    if chain.is_empty() {
+        chain.push(parts.last().copied().unwrap_or(""));
+    }
+    chain
 }
 
-/// `quilt check <fixture>` rendered for snapshotting: the exit status plus
-/// stderr, which is where `check` writes diagnostics.
-///
-/// stdout carries only the `<file>: ok` lines, which `tests/cli.rs` covers; a
-/// fixture here never produces one.
-fn run_check(fixture: &str) -> String {
-    let out = quilt()
-        .arg("check")
-        .arg(fixture)
-        .output()
-        .expect("quilt runs");
+/// Parse + expand one case exactly as `quilt check` does, returning the
+/// rendered diagnostic — or `Err(the expanded output)` if it did not fail.
+fn diagnose(path: &Path) -> std::result::Result<String, String> {
+    let file_name = path.file_name().unwrap().to_str().unwrap();
+    let stem = file_name.strip_suffix(".quilt").expect("a .quilt case");
+    let input = std::fs::read_to_string(path).expect("read case");
 
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    // Blank a shebang rather than dropping the line, like `check_file` does, so
+    // every byte offset — and hence every reported line — stays exact.
+    let input = if input.starts_with("#!") {
+        let end = input.find('\n').unwrap_or(input.len());
+        format!("{}{}", " ".repeat(end), &input[end..])
+    } else {
+        input
+    };
 
-    assert!(
-        !out.status.success(),
-        "{fixture} is in the UI corpus but `quilt check` accepted it.\n\
-         Either it stopped being invalid — in which case move it to \
-         tests/cli.rs or examples/ — or the error it probed regressed into \
-         silence.\nstdout:\n{stdout}\nstderr:\n{stderr}"
-    );
-    assert!(
-        !stderr.contains('\u{1b}'),
-        "{fixture}: ANSI escapes leaked into the diagnostic, so the snapshot \
-         would depend on the developer's terminal. Check the env scrubbing in \
-         `quilt()`.\nstderr:\n{stderr}"
-    );
+    // The source is attached under the case's *file name*, never its path: the
+    // snapshot has to read the same from a worktree, a CI checkout and a
+    // vendored crate.
+    let with_src =
+        |e: miette::Report| render(&e.with_source_code(NamedSource::new(file_name, input.clone())));
 
-    format!(
-        "$ quilt check {fixture}\nexit: {}\n\n{}",
-        out.status
-            .code()
-            .map_or_else(|| "signal (no exit code)".to_string(), |c| c.to_string()),
-        stderr.trim_end()
-    )
-}
-
-/// The corpus. One snapshot per fixture, named after it.
-#[test]
-fn diagnostics() {
-    for (fixture, _why) in CASES {
-        let name = fixture.replace(['.', '-'], "_");
-        insta::assert_snapshot!(name, run_check(fixture));
+    let mut multi = Omni::default();
+    let chain = lang_chain(&multi, stem);
+    let sterm = match multi.parse_chain(&chain, &input) {
+        Ok(sterm) => sterm,
+        Err(e) => return Ok(with_src(e)),
+    };
+    match multi.expand_lang(chain[0], &sterm) {
+        Ok(expanded) => Err(expanded.coparse()),
+        Err(e) => Ok(with_src(e)),
     }
 }
 
-/// The directory and [`CASES`] must agree. Without this a fixture could be
-/// added with no rationale (and, more importantly, no snapshot — the loop above
-/// only visits what is declared), or a rationale could outlive the file it
-/// describes.
+/// Every file in `ui/`, snapshotted. `insta::glob!` runs the body once per
+/// case and reports *all* mismatches at the end rather than stopping at the
+/// first, which is what makes a bulk review (`cargo insta review`) work after a
+/// deliberate change to a message.
 #[test]
-fn every_fixture_is_declared() {
-    let mut on_disk: Vec<String> = std::fs::read_dir(ui_dir())
-        .expect("tests/ui exists")
-        .map(|e| {
-            e.expect("dir entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    on_disk.sort();
-
-    let mut declared: Vec<String> = CASES.iter().map(|(f, _)| (*f).to_string()).collect();
-    declared.sort();
-
-    assert_eq!(
-        on_disk, declared,
-        "tests/ui/ and the CASES table disagree — every fixture needs an entry \
-         saying what it probes, and every entry needs a fixture"
-    );
+fn diagnostics() {
+    insta::glob!("ui/*.quilt", |path| {
+        match diagnose(path) {
+            Ok(rendered) => insta::assert_snapshot!(rendered),
+            Err(expanded) => panic!(
+                "{}: expected a diagnostic, but it expanded cleanly to:\n{expanded}\n\
+                 A ui case must fail — if this input is now legal, move it to the \
+                 matching expand_*.rs test.",
+                path.display()
+            ),
+        }
+    });
 }
 
-/// `check` on a path that isn't there. Not a fixture for the obvious reason,
-/// but the same class of thing: a message a user reads.
+/// The corpus is only worth as much as its coverage, and a case file is easy to
+/// add and easy to forget. Pin the roster so deleting one is a deliberate diff
+/// rather than a quiet loss, and so the list of error kinds under test is
+/// readable in one place.
 #[test]
-fn missing_file() {
-    let out = quilt()
-        .arg("check")
-        .arg("does_not_exist.rs.quilt")
-        .output()
-        .expect("quilt runs");
-    assert!(!out.status.success());
-    insta::assert_snapshot!(
-        "missing_file",
-        String::from_utf8_lossy(&out.stderr).trim_end()
+fn corpus_is_complete() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ui");
+    let mut found: Vec<String> = std::fs::read_dir(&dir)
+        .expect("tests/ui")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .filter(|n| Path::new(n).extension().is_some_and(|e| e == "quilt"))
+        .collect();
+    found.sort();
+
+    let expected = [
+        // bracket structure and depth
+        "unbalanced_bracket.rs.quilt",
+        "unquote_depth.rs.quilt",
+        // the language registry
+        "unknown_annotation.rs.quilt",
+        "unknown_ground_language.cobol.quilt",
+        // registered as a Language but not as a MetaLanguage: text has a meta,
+        // but it is deliberately absent from Omni, so a .txt.quilt file parses
+        // and then has nothing to host it
+        "text_meta_unavailable.txt.quilt",
+        // a target's own grammar rejecting the fragment
+        "target_parse_error.rs.quilt",
+        // heterogeneous operators with no spelling for that pair
+        "python_lift_into_wgsl.py.quilt",
+        "rust_lift_into_html.rs.quilt",
+        "rust_reduce_via_wgsl.rs.quilt",
+        // pattern-let (issue #18)
+        "pattern_duplicate_metavar.rs.quilt",
+        "pattern_non_identifier.rs.quilt",
+        // the string-based hosts refusing what they have no runtime for
+        "lean_emit.lean.quilt",
+        "lean_reduce.lean.quilt",
+        "nix_reduce.nix.quilt",
+        "nix_type_annotation.nix.quilt",
+    ];
+    let mut expected: Vec<String> = expected.iter().map(ToString::to_string).collect();
+    expected.sort();
+
+    assert_eq!(
+        found, expected,
+        "tests/ui/ has drifted from the roster in this test — add the new case here \
+         (with a comment saying which error kind it pins) or restore the deleted one"
     );
 }

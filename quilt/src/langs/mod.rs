@@ -1,3 +1,4 @@
+pub mod arity;
 #[cfg(feature = "bash")]
 pub mod bash;
 #[cfg(feature = "bootstrap")]
@@ -14,6 +15,8 @@ pub mod omni;
 pub mod python;
 #[cfg(any(feature = "rust", feature = "bootstrap"))]
 pub mod rust;
+#[cfg(any(feature = "bash", feature = "zsh"))]
+pub mod shell;
 #[cfg(feature = "text")]
 pub mod text;
 #[cfg(feature = "typescript")]

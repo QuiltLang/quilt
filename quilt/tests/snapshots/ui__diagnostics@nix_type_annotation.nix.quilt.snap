@@ -1,0 +1,7 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/nix_type_annotation.nix.quilt
+---
+  × nix has no type for `⟨T⟩`: Nix is untyped, and a generated fragment is
+  │ just a string — drop the annotation

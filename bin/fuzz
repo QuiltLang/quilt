@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Run the cargo-fuzz targets (issue #161, phase 5 of #144).
+#
+#   fuzz                    # every target, 60s each
+#   fuzz 300                # every target, 300s each
+#   fuzz parse_quilt        # one target, 60s
+#   fuzz parse_quilt 300    # one target, 300s
+#   fuzz list               # the targets
+#
+# Each target gets its own evolving corpus under fuzz/corpus/<target>, seeded
+# from the committed fuzz/seeds/. A crash is written to fuzz/artifacts/<target>
+# and replayed with:
+#
+#   cargo +nightly fuzz run <target> fuzz/artifacts/<target>/<file>
+#
+# NOT part of `main check`. Fuzzing is time-boxed exploration, not a gate: it
+# is unbounded by nature and its useful runtime is minutes, so it belongs in
+# the nightly workflow and in an explicit local run — the same split the repo
+# already makes for bin/test-runtimes.
+#
+# Needs a nightly toolchain: libFuzzer builds with `-Zsanitizer`, which stable
+# does not accept. Everything else in the repo runs on the pinned stable
+# (rust-toolchain.toml), so nightly is required *only* here.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+TARGETS=(parse_quilt expand_quilt escape_roundtrip)
+
+usage() {
+  awk 'NR < 3 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+}
+
+case "${1:-}" in
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
+  list)
+    printf '%s\n' "${TARGETS[@]}"
+    exit 0
+    ;;
+esac
+
+# Arguments are positional and order-free enough to be forgiving: a number is
+# the per-target budget, anything else is a target name.
+secs=60
+picked=()
+for arg in "$@"; do
+  if [[ "$arg" =~ ^[0-9]+$ ]]; then
+    secs="$arg"
+  else
+    picked+=("$arg")
+  fi
+done
+[ "${#picked[@]}" -gt 0 ] || picked=("${TARGETS[@]}")
+
+for t in "${picked[@]}"; do
+  found=0
+  for known in "${TARGETS[@]}"; do [ "$t" = "$known" ] && found=1; done
+  if [ "$found" -ne 1 ]; then
+    echo "fuzz: unknown target '$t' (try: fuzz list)" >&2
+    exit 1
+  fi
+done
+
+if ! command -v cargo-fuzz >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+error: cargo-fuzz is not installed.
+
+    cargo install cargo-fuzz --locked
+    rustup toolchain install nightly
+
+It is deliberately not in the Nix devShell: it is needed only by this script,
+and pulling a second toolchain into the shell every developer enters would cost
+everyone for a check almost nobody runs locally.
+EOF
+  exit 1
+fi
+
+if ! rustup toolchain list 2>/dev/null | grep -q '^nightly'; then
+  echo "error: no nightly toolchain (libFuzzer needs -Zsanitizer)." >&2
+  echo "       rustup toolchain install nightly" >&2
+  exit 1
+fi
+
+fail=0
+for t in "${picked[@]}"; do
+  printf '\n==> fuzzing %s for %ss\n' "$t" "$secs"
+  mkdir -p "fuzz/corpus/$t"
+  # Two corpus directories: the first is where libFuzzer *writes* newly
+  # interesting inputs, the rest are read-only seeds. Passing fuzz/seeds every
+  # run is what makes a fresh checkout (or a cold CI cache) start from the
+  # interesting shapes instead of from random bytes.
+  if cargo +nightly fuzz run "$t" "fuzz/corpus/$t" fuzz/seeds -- \
+      -max_total_time="$secs" -print_final_stats=1; then
+    echo "    ok  $t"
+  else
+    echo "error: $t found a crash — artifacts in fuzz/artifacts/$t/" >&2
+    fail=1
+  fi
+done
+
+echo
+if [ "$fail" -ne 0 ]; then
+  echo "fuzz FAILED" >&2
+  exit 1
+fi
+echo "fuzz OK ✓"

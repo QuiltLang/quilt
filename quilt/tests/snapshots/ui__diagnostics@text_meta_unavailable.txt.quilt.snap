@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/text_meta_unavailable.txt.quilt
+---
+  × "txt" can't be used as MetaLanguage

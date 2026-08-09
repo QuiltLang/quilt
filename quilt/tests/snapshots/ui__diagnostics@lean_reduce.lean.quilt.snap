@@ -1,0 +1,8 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/lean_reduce.lean.quilt
+---
+  × lean can't reduce `↓`: the string-based meta has no `QTerm` runtime to
+  │ evaluate a fragment — compute the value in ordinary Lean and splice it
+  │ with `↙…↘`

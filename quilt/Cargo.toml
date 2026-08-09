@@ -49,7 +49,9 @@ indoc = {workspace = true}
 # Expander output is snapshotted rather than pinned with inline string
 # literals, so a deliberate cross-cutting change is a bulk review
 # (`cargo insta review`) instead of N hand edits. See issue #157.
-insta = {workspace = true}
+# `glob` drives the `tests/ui/` diagnostic corpus (issue #160): one snapshot per
+# case file, with every mismatch reported instead of stopping at the first.
+insta = {workspace = true, features = ["glob"]}
 pretty_assertions = {workspace = true}
 
 [lints]

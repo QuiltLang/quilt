@@ -33,7 +33,7 @@ hand-written tables in `lift.rs` answer from memory.
 |---|---|---|---|
 | 1 | [Heterogeneous lift impls](#1-heterogeneous-lift-impls-liftrs) | `lift.rs`, 726 lines, 28 hand-written `LiftTo` impls | **Do it** — and it fixes [#174](https://github.com/QuiltLang/quilt/issues/174) as a side effect |
 | 2 | [Builder-call emitters](#2-builder-call-emitters-langsops) | `langs/{rust,python,typescript}/ops.rs`, ~925 lines, ~90% cloned | **Do it, partially** — generate the fragment shapes, keep the fold |
-| 3 | [Arity tables from the grammar](#3-arity-tables-from-the-grammar) | 9 hand-written `match tag` allowlists | **Do it** — but from `REPEAT`, not `children.multiple`. Two calls left ([#202](https://github.com/QuiltLang/quilt/issues/202)) |
+| 3 | [Arity tables from the grammar](#3-arity-tables-from-the-grammar) | 9 hand-written `match tag` allowlists | **Done** — from `REPEAT`, not `children.multiple`; `bin/gen-arity` ([#202](https://github.com/QuiltLang/quilt/issues/202)) |
 | 4 | [String-based emitters](#4-string-based-emitters-nix-lean) | `langs/{nix,lean}/ops.rs`, 331 lines | **Don't** — the output is a string, not a term; Quilt adds nothing |
 | 5 | [`omni.rs` registry](#5-the-omni-registry) | 528 lines, already `macro_rules!` | **Don't** — `macro_rules!` is the right tool; Quilt would be worse |
 | 6 | [`strlift.rs`](#6-strliftrs-and-the-bootstrap-floor) | 200 lines of `format!` | **Can't** — it is the bootstrap's trusted base case |
@@ -297,20 +297,35 @@ both found by iterating against the test suite rather than by reading:
    (`_expression`) is a category, not structure. Following it inherits the repeats
    of every alternative and inflates the set (python 30 → 56 spuriously).
 
-With both, the derived set is a strict **superset** of what is declared today for
-six of nine languages, and matches html exactly:
+A third refinement came out of building the real generator, and it is the one that
+makes the numbers land:
+
+3. **`ALIAS` and `TOKEN` are leaves.** Each collapses to exactly one node, so a
+   repeat inside belongs to *that* node rather than to its parent. A token has no
+   children at all (bash's `raw_string`); and `alias($._simple_statements,
+   $.block)` puts its repeated statements under the `block`, which is why
+   python's `function_definition` is not variadic even though a repeat is
+   reachable through its `body` field — exactly as `conformance/spec/python.toml`
+   always claimed. The prototype descended into aliases and so counted
+   `function_definition` (python 56, lean 57); not descending is both more correct
+   and in better agreement with the hand-written claims (python 45, lean 50).
+
+Finally the result is intersected with the grammar's real node kinds, which drops
+rules that are always aliased away and so never appear as a tag — html's
+`script_start_tag` is spelled `start_tag` in every tree. That is what takes html
+from 9 to exactly the 7 it declared.
 
 | lang | declared | derived | declared but *not* derived |
 |---|---|---|---|
 | html | 7 | 7 | — |
 | rust | 2 | 35 | — |
-| python | 2 | 56 | — |
-| wgsl | 5 | 18 | — |
-| lean | 3 | 57 | — |
+| python | 2 | 45 | — |
+| wgsl | 5 | 19 | — |
+| lean | 3 | 50 | — |
 | typescript | 10 | 35 | — |
 | nix | 5 | 9 | `source_code` |
 | bash | 47 | 28 | 19 tags |
-| zsh | 42 | 40 | 15 tags |
+| zsh | 53 | 40 | 21 tags |
 
 Nothing currently declared is lost except in bash, zsh and nix — and those losses
 are exactly the entries that should go: `raw_string` (which the grammar gives *no*
@@ -318,6 +333,11 @@ children at all), `number`, `command_name`, `binary_expression`,
 `variable_assignment`, and nix's `source_code`, whose only field is a single
 optional expression. A Nix file *is* one expression; emitting a sequence into it
 produces invalid Nix.
+
+Each was checked against its rule before the claim was moved, and the pattern is
+uniform: either the rule contains no repeat at all, or the only repeat sits behind
+a category rule or an alias, so the repetition belongs to the `word` or
+`binary_expression` underneath.
 
 ### What made this look impossible, and why it no longer is
 
@@ -332,22 +352,35 @@ follow the grammar. Semantics were never the problem: with the derived tables
 installed across all nine languages, `cargo test -p quiltlang` passes end to end,
 including the Omni-vs-Bootstrap differential.
 
-### The two calls left
+### The two calls — both answered "let the grammar decide"
 
-Tracked in [#202](https://github.com/QuiltLang/quilt/issues/202), because they are
-design decisions rather than mechanical work:
+They were design decisions rather than mechanical work, so they were tracked in
+[#202](https://github.com/QuiltLang/quilt/issues/202) and answered there:
 
-1. **Adopt the ~150 newly-derived tags?** rust 2 → 35, python 2 → 56, lean 3 → 57.
-   This is an expressiveness gain — emitting into `arguments`, `array_expression`,
-   `parameters`, `match_block` — but it also widens where the emit heuristic fires.
-2. **Drop bash/zsh/nix's non-repeat entries?** `conformance/spec/bash.toml`
-   currently *requires* `list`, `function_definition` and `variable_assignment` to
-   be variadic, so dropping them moves declared claims.
+1. **Adopt the newly-derived tags.** rust 2 → 35, python 2 → 45, lean 3 → 50,
+   typescript 10 → 35. This is an expressiveness gain — emit can now splice into
+   `arguments`, `array_expression`, `parameters`, `match_block`,
+   `declaration_list` — and it widens where the emit heuristic fires, which is the
+   part that had to be weighed.
+2. **Drop bash/zsh/nix's non-repeat entries**, moving the spec claims from
+   `variadic` to `not_variadic` rather than deleting them, so the decision stays
+   pinned and a future regression is a test failure.
 
-Three tags stay contested under any rule: `wgsl::function_declaration` and
-`typescript::lexical_declaration` are real repeats (of attributes / declarators)
-that the specs say must not be variadic, and `lean::by` depends on which hidden
-rules get inlined.
+The three contested tags all went to the grammar, because in each case the repeat
+is over genuine direct children: `wgsl::function_declaration` leads with
+`repeat($.attribute)`, `typescript::lexical_declaration` is
+`commaSep1($.variable_declarator)`, and `lean::by` (plus `def` and `theorem`,
+which the spec had pinned as leaves) reach a `repeat1` of binders. `lean::by` was
+listed as depending on which hidden rules get inlined; under the rules above it is
+derived.
+
+One shared kind classifies differently in bash and zsh, and that too is the
+grammar talking: zsh's `function_definition` takes `repeat1(field('name', …))`
+because `function a b c { … }` defines three functions at once, which bash has no
+syntax for. `bash_and_zsh_agree_on_shared_kinds` now records that as an explicit
+exception instead of asserting the two tables are identical — a claim the
+reconciliation in #150 had made true of the *tables* while making it false of the
+grammars.
 
 ### Not a Quilt-dogfooding target
 
@@ -355,6 +388,16 @@ Worth saying, since this page is about dogfooding: the *generator* here should n
 be a `.quilt` file. It is a JSON-to-table transform with no interesting structure —
 the same reasoning that leaves `omni.rs` as a `macro_rules!`. It belongs next to
 `gen-matrix` in `quilt-conformance`, which already depends on `serde_json`.
+
+### As built
+
+`bin/sync-grammars` now vendors each fork's `grammar.json` beside its `parser.c`,
+from the same pinned rev — a table derived from a different rev than the parser in
+use would be the very drift this removes. `quilt-conformance/src/arity.rs` holds
+the derivation, `bin/gen-arity` writes `quilt/src/langs/arity.rs`, and
+`bin/check-arity` regenerates and fails on drift, mirroring
+`gen-matrix`/`check-matrix`. Every provider's `arity` is now one line:
+`Arity::from_table(crate::langs::arity::RUST, tag)`.
 
 ---
 
@@ -466,7 +509,7 @@ non-classifying target (html, wgsl, bash, zsh) as "always code".
 |---|---|
 | Ground-unquote splice bug | fixed — [#197](https://github.com/QuiltLang/quilt/pull/197) |
 | Hole-free variadic nodes build fluently | [#201](https://github.com/QuiltLang/quilt/pull/201) — prerequisite for finding 3 |
-| Derive the arity tables (finding 3) | [#202](https://github.com/QuiltLang/quilt/issues/202) — two calls left |
+| Derive the arity tables (finding 3) | done — [#202](https://github.com/QuiltLang/quilt/issues/202), `bin/gen-arity` + `bin/check-arity` |
 | Lift shapes match the parsers | mostly fixed by hand — #176, `fed278b`, guarded by `lift_fidelity.rs` |
 | Generate `lift.rs` (finding 1) | [#203](https://github.com/QuiltLang/quilt/issues/203) — stops the shapes re-drifting; two cases still need the #174 call |
 | Generate the `ops.rs` fragments (finding 2) | [#204](https://github.com/QuiltLang/quilt/issues/204) — do last |
@@ -476,9 +519,8 @@ Suggested order from here:
 1. **Decide the remaining #174 faithfulness question** — the two cases `fed278b`
    skipped because they move a declared conformance tag (`wgsl::int_literal` →
    `const_literal`, `python::integer` → `unary_operator` for `-7`).
-2. **Make the two calls in [#202](https://github.com/QuiltLang/quilt/issues/202).**
-   The derivation is written and verified; what is left is whether to adopt the
-   newly-derived tags and whether to move the bash/zsh spec claims.
+2. ~~Make the two calls in #202.~~ Done: both went to the grammar, and the
+   derivation ships as `bin/gen-arity` / `bin/check-arity`.
 3. **Generate `lift.rs`** (finding 1). Highest value: it removes the largest
    hand-written table *and* makes a class of #174 bug unrepresentable.
 4. **Generate the `ops.rs` fragment shapes** (finding 2). Last: it is the

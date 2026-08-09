@@ -198,16 +198,18 @@ cargo test -p quilt-lsp           # run LSP tests
 
 ## Testing the CLI
 
-Two suites, both driving the real binary through `CARGO_BIN_EXE_quilt`:
+Two suites, splitting the work between the real binary and the rendering:
 
 | Suite | Covers |
 |---|---|
-| `quilt/tests/cli.rs` | The happy paths and the exit codes — `check`, `expand` (sibling file, header comment, chain derivation), `run` for each runner, `-m omni` vs `-m bootstrap`, `--help`. |
+| `quilt/tests/cli.rs` | The real binary, through `CARGO_BIN_EXE_quilt`: the happy paths and the exit codes — `check`, `expand` (sibling file, header comment, chain derivation), `run` for each of the three runners, `-m omni` vs `-m bootstrap`, `--help`. |
 | `quilt/tests/ui.rs` + `quilt/tests/ui/` | A corpus of deliberately **invalid** inputs whose full rendered `miette` diagnostic is snapshotted — error text, help, and above all where the caret lands. |
 
-The `ui/` corpus is what regression-tests spans and error wording. Every fixture must *fail with a diagnostic*: the harness asserts a non-zero exit, so a fixture that starts passing (because the capability it probes got implemented) fails loudly and asks to be reclassified, and a `todo!()` on one of these paths shows up as a panic in the snapshot instead of as a green test.
+The `ui/` corpus is what regression-tests spans and error wording. Every case must *fail with a diagnostic*: an input that expands cleanly is reported as an error, so a case that starts passing (because the capability it probes got implemented) fails loudly and asks to be reclassified.
 
-Adding a case is a fixture plus a line in the `CASES` table saying what it probes — the two are checked against each other, so neither can exist without the other.
+It renders in-process with an explicitly configured `GraphicalReportHandler` rather than by capturing the binary's stderr — the binary's rendering is miette's global hook, whose width, colour and box-drawing charset are all sniffed from the environment, so a committed snapshot would differ between a laptop and a CI container. `cli.rs` separately asserts that the real binary renders a snippet with a `line:col`, which covers the other half.
+
+Adding a case is a fixture in `tests/ui/` plus a line in the `corpus_is_complete` roster saying which error kind it pins — the two are checked against each other, so neither can exist without the other.
 
 ```sh
 cargo test -p quiltlang --test ui   # run the corpus

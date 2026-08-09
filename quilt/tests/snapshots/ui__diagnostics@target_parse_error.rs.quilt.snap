@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/target_parse_error.rs.quilt
+---
+  × Parsed with errors: ["1 +"] (source_file (integer_literal) (ERROR))

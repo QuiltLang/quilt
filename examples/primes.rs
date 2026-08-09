@@ -39,7 +39,13 @@ fn main() -> Result<()> {
         b_.nl();
         {
             let title = format!("Primes up to {limit}: {count} found, sum = {sum}");
-            tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&title.qlift()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
+            tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&{
+                let mut b_ = tb("token_tree");
+                sym("(").emit(&mut b_);
+                title.qlift().emit(&mut b_);
+                sym(")").emit(&mut b_);
+                b_.b()
+            }).b()).c(&sym(";")).b().emit(&mut b_);
             NL.emit(&mut b_);
             for chunk in primes.chunks(10) {
                 let row: String = chunk
@@ -47,7 +53,13 @@ fn main() -> Result<()> {
                     .map(|p| format!("{p:5}"))
                     .collect::<Vec<_>>()
                     .join(" ");
-                tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&row.qlift()).c(&sym(")")).b()).b()).c(&sym(";")).b().emit(&mut b_);
+                tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "println")).c(&sym("!")).c(&{
+                    let mut b_ = tb("token_tree");
+                    sym("(").emit(&mut b_);
+                    row.qlift().emit(&mut b_);
+                    sym(")").emit(&mut b_);
+                    b_.b()
+                }).b()).c(&sym(";")).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
         };

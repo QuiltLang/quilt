@@ -9,38 +9,30 @@ blurb = """
 A target-only shell language, sharing bash's grammar lineage and escaping rules. \
 A lifted Rust string becomes a properly escaped double-quoted word."""
 
-# See bash.toml: the block below is deliberately identical to it, in the same
-# order; only the entries one grammar has no node kind for follow it, so a future
-# divergence shows up as a diff between these two files as well. The eleven tags
-# marked below are the ones whose classification had drifted between the two
-# (#150).
+# The table these are checked against is derived from the grammar's `REPEAT`
+# rules (#202). Zsh's grammar is a fork of bash's, so this list overlaps
+# bash.toml's heavily — but it is no longer maintained to *match* it: each side
+# now follows its own grammar, and `function_definition` is the one shared node
+# kind where the two genuinely differ (zsh's rule takes `repeat1(name)`, so
+# `function a b c { … }` defines three functions at once).
 variadic = [
   "program",
   "compound_statement",
   "subshell",
-  "list",
-  "pipeline",
-  "command",
   "do_group",
+  "command",
+  "pipeline",
   "if_statement",
   "elif_clause",
   "else_clause",
   "case_statement",
   "case_item",
-  # The eleven that had drifted. Both grammars define all of them.
   "for_statement",
   "c_style_for_statement",
   "while_statement",
   "function_definition",
-  "test_command",
-  "variable_assignment",
-  "file_redirect",
-  "raw_string",
-  "ansi_c_string",
-  "subscript",
-  "ternary_expression",
-  # Shared containers that never drifted.
   "redirected_statement",
+  "file_redirect",
   "variable_assignments",
   "declaration_command",
   "string",
@@ -52,19 +44,45 @@ variadic = [
   "compound_statement_no_always",
   "expansion_default_list",
   "select_statement",
-  "repeat_statement",
-  "dollar_variable",
-  "variable_ref",
-  "zsh_array_subscript_flags",
+  # Repeat containers the zsh grammar has always had and neither hand-written
+  # table declared, gained by deriving (#202).
+  "expansion_default",
+  "expansion_substring",
+  "expansion_modifier",
+  "terse_for_statement",
+  "expansion_array",
+  "expansion_pattern",
+  "expansion_with_modifier",
+  "arithmetic_call",
+  # Substitutions and heredocs, shared with bash — see the matching block there.
+  "command_substitution",
+  "process_substitution",
+  "heredoc_redirect",
+  "heredoc_body",
+  "unset_command",
 ]
 # Over-declaring variadicity silently changes emit behaviour, so pin leaves too.
-# All five are kinds both shell grammars define.
 not_variadic = [
   "word",
   "variable_name",
   "comment",
   "test_operator",
   "file_descriptor",
+  # Declared variadic by the hand-written table until #202, and wrong — see the
+  # matching block in bash.toml. `repeat_statement` is the zsh-specific one:
+  # `repeat N { … }` takes a count and a single body, so despite the name it
+  # repeats at *run* time, not in the tree.
+  "list",
+  "test_command",
+  "variable_assignment",
+  "raw_string",
+  "ansi_c_string",
+  "subscript",
+  "ternary_expression",
+  "repeat_statement",
+  "dollar_variable",
+  "variable_ref",
+  "zsh_array_subscript_flags",
 ]
 
 lift_marker = "Zsh"
@@ -72,7 +90,7 @@ lift_marker = "Zsh"
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
-variadic-containers = {status = "supported", note = "agrees with bash's table on every node kind both grammars define"}
+variadic-containers = {status = "supported", note = "derived from the grammar's `REPEAT` rules by `bin/gen-arity`; agrees with bash's table on every shared node kind except `function_definition`, whose zsh rule takes `repeat1(name)`"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Zsh>` impl", issue = 149}
 highlights = {status = "supported"}

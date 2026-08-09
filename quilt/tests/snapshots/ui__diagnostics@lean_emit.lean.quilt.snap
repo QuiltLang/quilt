@@ -1,0 +1,8 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/lean_emit.lean.quilt
+---
+  × lean can't emit `←`: the string-based meta has no `b_` accumulator to emit
+  │ into — build sequences functionally instead (`List.map` +
+  │ `String.intercalate`)

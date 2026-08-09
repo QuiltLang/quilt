@@ -9,8 +9,10 @@ A target-only language for code-generated pages, reports and templates. The \
 Python and TypeScript hosts lift values into it through `qlift_html`, which \
 entity-escapes so a lifted value is inert as text or as an attribute value."""
 
-variadic = ["element"]
-not_variadic = []
+# Derived from the grammar's `REPEAT` rules (#202) — the one language whose
+# hand-written table the derivation reproduced exactly.
+variadic = ["element", "document", "start_tag"]
+not_variadic = ["text", "attribute_name"]
 
 [capabilities]
 quotable = {status = "supported"}

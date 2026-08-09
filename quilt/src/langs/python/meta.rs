@@ -79,7 +79,41 @@ impl MetaLanguage for PythonMetaLanguage {
         Ok("QTerm")
     }
 
+    /// No spelling: `←` needs a named `b_` accumulator in scope, and this host
+    /// has none (issue #152).
+    ///
+    /// Rust's variadic block is a *block expression*, so it can bind
+    /// `let mut b_ = tb(..)` and let ground statements append to it. Python has
+    /// no statement-block in expression position, so
+    /// [`build_variadic_block`](super::ops::build_variadic_block) emits the
+    /// fluent `tb(..).e(child).b()` chain instead — nothing to bind, and the
+    /// hole sits in argument position where a ground `for` is a syntax error.
+    /// The `quilt_python` runtime also exposes no `emit` method on a term, so
+    /// even a `b_` in scope would have nothing to call.
+    ///
+    /// This used to return `"emit(b_)"`, which quietly expanded a ground `←`
+    /// into generated Python referencing an undefined name — the same
+    /// silent-corruption failure the string-based hosts had in #190, and the
+    /// reason this accessor returns `Result` at all.
+    ///
+    /// The working alternative needs no accumulator from *us*: ground Python
+    /// builds the sequence with its own builder and splices the finished term,
+    /// which goes through `wrap_child` and the `.e(..)` chain as usual.
+    ///
+    /// ```python
+    /// b = tb("block")
+    /// for n in names:
+    ///     b.e(↖print(↙name(n)↘)↗)
+    /// body = b.b()
+    /// out = ↖def f():
+    ///     ↙body↘
+    /// ↗
+    /// ```
     fn emit_str(&self) -> Result<&'static str> {
-        Ok("emit(b_)")
+        miette::bail!(
+            "python can't emit `←`: the fluent `.e(child)` chain has no named `b_` accumulator \
+             to emit into — build the sequence with your own `tb(..)` builder in ground code and \
+             splice the finished term with `↙…↘`"
+        )
     }
 }
