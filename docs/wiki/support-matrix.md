@@ -19,7 +19,7 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 
 | Language | Quotable | Holes | Variadic | Kinds | Lift in | Highlights |
 |---|---|---|---|---|---|---|
-| **Bash** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
+| **Bash** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/221) | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 | **HTML** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 | **Lean 4** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/133) | ✅ | ✅ | ✅ | ✅ |
 | **Nix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -28,7 +28,7 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 | **Plain text** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **TypeScript** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **WGSL** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | [⬜](https://github.com/QuiltLang/quilt/issues/22) |
-| **Zsh** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
+| **Zsh** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/221) | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 
 Columns:
 
@@ -43,7 +43,7 @@ Columns:
 
 | Language | Host | Lift out | Reduce ↓ | Emit ← | Patterns | Runnable | Runtime |
 |---|---|---|---|---|---|---|---|
-| **Bash** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/151) | ⬜ |
+| **Bash** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 | **HTML** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Lean 4** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/132) | [🔵](https://github.com/QuiltLang/quilt/issues/133) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/132) |
 | **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🟡](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
@@ -52,7 +52,7 @@ Columns:
 | **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **TypeScript** | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **Zsh** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/151) | ⬜ |
+| **Zsh** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
 
 Columns:
 
@@ -68,7 +68,7 @@ Columns:
 
 | Language | Glyphs | Chain | Header | LSP |
 |---|---|---|---|---|
-| **Bash** | ✅* | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
+| **Bash** | ✅* | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
 | **HTML** | ✅* | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
 | **Lean 4** | [🟡](https://github.com/QuiltLang/quilt/issues/141)* | ✅ | ✅ | ✅* |
 | **Nix** | ✅* | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
@@ -77,7 +77,7 @@ Columns:
 | **Plain text** | ✅* | ✅ | ⬜ | ⬜* |
 | **TypeScript** | ✅* | ✅ | ✅ | ⬜* |
 | **WGSL** | ✅* | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/22)* |
-| **Zsh** | ✅* | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
+| **Zsh** | ✅* | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
 
 Columns:
 
