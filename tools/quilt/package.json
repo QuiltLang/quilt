@@ -36,7 +36,8 @@
         "meta.embedded.block.wgsl": "wgsl",
         "meta.embedded.block.html": "html",
         "meta.embedded.block.shellscript": "shellscript",
-        "meta.embedded.block.lean4": "lean4"
+        "meta.embedded.block.lean4": "lean4",
+        "meta.embedded.block.sql": "sql"
       }
     }],
     "configuration": {
