@@ -133,7 +133,13 @@ fn clean() -> Result<()> {
 
 fn expand(args: &ExpandArgs) -> Result<()> {
     let input_filename = &args.filename;
-    let output_filename = input_filename.strip_suffix(".quilt").unwrap();
+    // `expand` genuinely needs the suffix — the output file *is* the input name
+    // with `.quilt` sliced off — so unlike `check` it is right to insist on one.
+    // It used to `unwrap()` here, which turned `quilt expand bin/issues` into a
+    // panic instead of a diagnostic (issue #188).
+    let output_filename = input_filename
+        .strip_suffix(".quilt")
+        .ok_or_else(|| miette!("expected a .quilt file: {input_filename}"))?;
 
     let canonical = fs::canonicalize(input_filename).unwrap_or_else(|_| input_filename.into());
     let path_key = canonical.to_string_lossy().into_owned();
@@ -201,10 +207,8 @@ fn check(args: &CheckArgs) -> Result<()> {
 }
 
 fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
-    let stem = filename
-        .strip_suffix(".quilt")
-        .ok_or_else(|| miette!("expected a .quilt file"))?;
-    let input = fs::read_to_string(filename).into_diagnostic()?;
+    let (path, stem) = resolve_stem(filename)?;
+    let input = fs::read_to_string(&path).into_diagnostic()?;
 
     // Strip a shebang line like `run` does, so executable scripts check clean.
     // Blank the line rather than removing it: every span the parser produces is
@@ -231,19 +235,48 @@ fn check_file(filename: &str, multi: &MultiOptions) -> Result<()> {
     match multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
-            let chain = lang_chain(&multi, stem);
+            let chain = lang_chain(&multi, &stem);
             let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
             multi.expand_lang(chain[0], &sterm).map_err(with_src)?;
         }
         #[cfg(feature = "bootstrap")]
         MultiOptions::Bootstrap => {
             let mut multi = Bootstrap::default();
-            let chain = lang_chain(&multi, stem);
+            let chain = lang_chain(&multi, &stem);
             let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
             multi.expand_lang(chain[0], &sterm).map_err(with_src)?;
         }
     }
     Ok(())
+}
+
+/// Where a file's language chain comes from: the *resolved* file's own name,
+/// with a `.quilt` suffix stripped if it has one. Returns the resolved path
+/// alongside it, so the caller reads the same file the name was taken from.
+///
+/// Symlinks are followed, so an extension-less entry point (`bin/issues ->
+/// ../examples/issue_triage.html.py.quilt`) derives its chain from the target's
+/// name, and only the file *name* counts, so dots in a directory can't leak
+/// into it.
+///
+/// `run` has always resolved names this way; `check` instead sliced `.quilt`
+/// off the path it was handed and refused anything without it — so a script
+/// that ships in a repo to be run could never be validated in CI (issue #188).
+/// The two now share this, because `check` is documented as validating a file
+/// "exactly as `expand` would", and two subcommands disagreeing about which
+/// files exist is the defect. A name that resolves to no registered language
+/// still fails, just later and with a message that names the language rather
+/// than the suffix.
+fn resolve_stem(filename: &str) -> Result<(std::path::PathBuf, String)> {
+    let path = fs::canonicalize(filename).into_diagnostic()?;
+    let stem = {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| miette!("invalid filename: {filename}"))?;
+        name.strip_suffix(".quilt").unwrap_or(name).to_owned()
+    };
+    Ok((path, stem))
 }
 
 /// Derive the language chain from a `.quilt` file's stem (the name with the
@@ -273,16 +306,7 @@ fn lang_chain<'a, LS: Languages, MS: MetaLanguages>(
 }
 
 fn run(args: &RunArgs) -> Result<()> {
-    // Resolve symlinks so an extension-less entry point (`bin/issues ->
-    // ../examples/issue_triage.html.py.quilt`) derives the language chain from
-    // the target's name, and use only the file name so dots in directories
-    // can't leak into it.
-    let input_path = fs::canonicalize(&args.filename).into_diagnostic()?;
-    let file_name = input_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| miette!("invalid filename: {}", args.filename))?;
-    let base = file_name.strip_suffix(".quilt").unwrap_or(file_name);
+    let (input_path, base) = resolve_stem(&args.filename)?;
     let lang = base.split('.').next_back().unwrap();
 
     let input = fs::read_to_string(&input_path).into_diagnostic()?;
@@ -306,7 +330,7 @@ fn run(args: &RunArgs) -> Result<()> {
     let (hashbang, chain_key) = match &args.multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
-            let chain = lang_chain(&multi, base);
+            let chain = lang_chain(&multi, &base);
             (
                 expand_to(&mut multi, &chain, &input, &path)?,
                 chain.join("."),
@@ -315,7 +339,7 @@ fn run(args: &RunArgs) -> Result<()> {
         #[cfg(feature = "bootstrap")]
         MultiOptions::Bootstrap => {
             let mut multi = Bootstrap::default();
-            let chain = lang_chain(&multi, base);
+            let chain = lang_chain(&multi, &base);
             (
                 expand_to(&mut multi, &chain, &input, &path)?,
                 chain.join("."),
@@ -381,7 +405,7 @@ fn run(args: &RunArgs) -> Result<()> {
         // none, so `quilt run foo.ts.quilt` died at the import before it could
         // run anything — which is why `↓` was browser-only (issue #153).
         let dir = node_workspace()?;
-        let script = dir.path().join(base);
+        let script = dir.path().join(&base);
         fs::rename(&path, &script).into_diagnostic()?;
         path = script.to_string_lossy().into_owned();
         // As for python: hand the running expander's own path to the script, so

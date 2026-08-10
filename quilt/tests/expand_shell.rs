@@ -1,5 +1,7 @@
 //! bash and zsh as *target* languages: `bash↖ … ↗` / `zsh↖ … ↗` fragments
-//! embedded in a Rust host, expanded by the Rust `MetaLanguage`.
+//! embedded in a Rust host, expanded by the Rust `MetaLanguage` — and, in the
+//! `host_*` tests at the bottom, as *host* languages driving generation with
+//! their shared string-based meta (`langs::shell::meta`, issue #151).
 //!
 //! `tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the same shell source
 //! must expand the same way in both — which it did not, before issue #150. The
@@ -430,4 +432,179 @@ fn bare_arithmetic_commands_still_parse_in_zsh() -> Result<()> {
         );
     }
     Ok(())
+}
+
+/* ── the shells as hosts (issue #151) ──────────────────────────────────── */
+
+/// Parse + expand `code` with a **shell as the host** (ground language),
+/// returning the coparsed shell metaprogram (string-based meta — see
+/// `langs::shell::meta`).
+fn host_expand(shell: &str, code: &str) -> Result<String> {
+    let mut omni = Omni::default();
+    let q = omni.parse_chain(&[shell], code)?;
+    Ok(omni.expand_lang(shell, &q)?.coparse())
+}
+
+/// The same host program under each dialect, asserted equal and returned once.
+///
+/// The two dialects share one `ShellMetaLanguage`, so this is the host-side
+/// counterpart of `the_same_shell_source_expands_identically_in_both_dialects`:
+/// a divergence would mean the shared meta had grown a dialect-dependent path.
+fn host_expand_both(template: &str) -> Result<String> {
+    let bash = host_expand("bash", &template.replace("SHELL", "bash"))?;
+    let zsh = host_expand("zsh", &template.replace("SHELL", "zsh"))?;
+    assert_eq!(
+        bash.replace("bash", "SHELL"),
+        zsh.replace("zsh", "SHELL"),
+        "the two dialects host-expanded differently"
+    );
+    Ok(bash)
+}
+
+/// The core of the model: a quote becomes a double-quoted word, and a host
+/// unquote is spliced into it **verbatim** — no `${…}` wrapper, because
+/// `$unit` already carries its own sigil. Wrapping is what Nix has to do and
+/// what a shell must not: `${$(cmd)}` is a syntax error.
+#[test]
+fn host_command_splice() -> Result<()> {
+    let out = host_expand_both("echo SHELL↖systemctl start ↙$unit↘↗\n")?;
+    assert_eq!(out, "echo \"systemctl start $unit\"\n");
+    Ok(())
+}
+
+/// Verbatim splicing is what lets an arbitrary expansion be the operand, not
+/// just a bare parameter — the case a `${…}` wrapper could not express at all.
+#[test]
+fn host_splices_any_expansion() -> Result<()> {
+    for body in ["$(hostname)", "${arr[0]}", "$((1 + 2))"] {
+        let out = host_expand("bash", &format!("echo bash↖echo ↙{body}↘↗\n"))?;
+        assert_eq!(out, format!("echo \"echo {body}\"\n"));
+    }
+    Ok(())
+}
+
+/// A fully literal fragment flattens to one flat string, rather than a tower of
+/// concatenated words from the nested tuple structure.
+#[test]
+fn host_literal_flattens() -> Result<()> {
+    let out = host_expand_both("echo SHELL↖if true; then echo hi; fi↗\n")?;
+    assert_eq!(out, "echo \"if true; then echo hi; fi\"\n");
+    Ok(())
+}
+
+/// The escaping half, and the one a shell host lives or dies by: `$`, a
+/// backtick, `"` and `\` in the *generated* code are data, so they are escaped
+/// on the way into the metaprogram's literal and expand in the generated script
+/// rather than in this one. The rule is `lift::sh_dquote_escape`, shared with
+/// the `LiftTo<Bash>` impl so a lifted value and the text around it cannot
+/// escape differently.
+#[test]
+fn host_escapes_generated_expansions() -> Result<()> {
+    let out = host_expand_both("echo SHELL↖cd \"$HOME\" && ls `pwd`↗\n")?;
+    assert_eq!(out, "echo \"cd \\\"\\$HOME\\\" && ls \\`pwd\\`\"\n");
+    Ok(())
+}
+
+/// The string model is language-agnostic, so a shell host generates any target
+/// the same way — here Rust, whose `"` and `{}` survive the round trip.
+#[test]
+fn host_generates_other_language() -> Result<()> {
+    let out = host_expand("bash", "echo rs↖fn main() { println!(\"{}\", ↙$n↘); }↗\n")?;
+    assert_eq!(out, "echo \"fn main() { println!(\\\"{}\\\", $n); }\"\n");
+    Ok(())
+}
+
+/// Multi-line fragments keep their newlines and indentation inside the literal.
+#[test]
+fn host_multiline() -> Result<()> {
+    let out = host_expand(
+        "bash",
+        indoc! {"
+            echo bash↖for u in ↙$units↘; do
+              systemctl start ↙$u↘
+            done↗
+        "},
+    )?;
+    assert_eq!(
+        out,
+        indoc! {"
+            echo \"for u in $units; do
+              systemctl start $u
+            done\"
+        "}
+    );
+    Ok(())
+}
+
+/// Ground shell code round-trips through parse + coparse under its own host.
+#[test]
+fn host_roundtrips() -> Result<()> {
+    let code = "unit=nginx\necho bash↖systemctl start ↙$unit↘↗\n";
+    let mut omni = Omni::default();
+    let q = omni.parse_chain(&["bash"], code)?;
+    assert_eq!(code, q.coparse());
+    Ok(())
+}
+
+/// `↑` has no spelling here: a shell value is already text, so the conversion
+/// `lift_str` names has nothing to do, and answering `""` would make the glyph
+/// an invisible no-op. The refusal must name the host *and* point at `↙…↘`,
+/// since "cannot lift" alone leaves the reader with no next move.
+#[test]
+fn host_lift_unsupported() {
+    for (shell, code) in [
+        ("bash", "echo bash↖echo ↙↑ n↘↗\n"),
+        ("zsh", "echo zsh↖echo ↙↑ n↘↗\n"),
+    ] {
+        let msg = host_expand(shell, code).unwrap_err().to_string();
+        assert!(msg.contains(&format!("{shell} can't lift")), "{msg}");
+        assert!(msg.contains("already text"), "{msg}");
+        assert!(msg.contains("↙…↘"), "{msg}");
+    }
+}
+
+/// `←` has no spelling either, for two independent reasons — no `b_`
+/// accumulator, and no prefix-applied word operator to borrow. The error has to
+/// carry the workaround, which is why the conformance spec pins `printf` as the
+/// needle: an unactionable error is nearly as bad as a leaked `__EMIT__`.
+#[test]
+fn host_emit_unsupported() {
+    for shell in ["bash", "zsh"] {
+        let msg = host_expand(shell, "gen=←\n").unwrap_err().to_string();
+        assert!(msg.contains(&format!("{shell} can't emit")), "{msg}");
+        assert!(msg.contains("printf"), "{msg}");
+    }
+}
+
+/// A `←` at sky depth belongs to a *later* stage, so it stays its glyph —
+/// refusing emit for this host must not over-fire on quoted code the host is
+/// only passing through.
+#[test]
+fn host_emit_deferred_in_quote() -> Result<()> {
+    let out = host_expand("bash", "echo bash↖echo ←↗\n")?;
+    assert_eq!(out, "echo \"echo ←\"\n");
+    Ok(())
+}
+
+/// `↓` needs the `QTerm` runtime no string host ships, and `⟨T⟩` has nothing to
+/// name in an untyped language. Both fail loudly rather than leak a
+/// placeholder; `⟨T⟩` is not staged, so it holds inside a quote too.
+#[test]
+fn host_reduce_and_type_unsupported() {
+    let msg = host_expand("bash", "gen=↓\n").unwrap_err().to_string();
+    assert!(msg.contains("bash can't reduce"), "{msg}");
+    for code in ["gen=⟨T⟩\n", "echo bash↖x=⟨T⟩↗\n"] {
+        let msg = host_expand("bash", code).unwrap_err().to_string();
+        assert!(msg.contains("bash has no type for"), "{msg}");
+    }
+}
+
+/// `⟨N⟩` is the identity in the string model and the shell has no identity
+/// function to spell it with, so it refuses for `↑`'s reason and points the
+/// same way.
+#[test]
+fn host_name_unsupported() {
+    let msg = host_expand("zsh", "gen=⟨N⟩\n").unwrap_err().to_string();
+    assert!(msg.contains("zsh has no spelling for"), "{msg}");
+    assert!(msg.contains("↙…↘"), "{msg}");
 }

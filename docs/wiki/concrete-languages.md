@@ -180,17 +180,49 @@ let shader = ↖
 
 ---
 
-## Zsh (`zsh`) and Bash (`bash`) — target only
+## Zsh (`zsh`) and Bash (`bash`) — target *and* host
 
-**Files:** `langs/shell.rs`, `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
+**Files:** `langs/shell/mod.rs`, `langs/shell/meta.rs`, `langs/shell/ops.rs`, `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
 
-Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. Both are target-only: they can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) but have no `MetaLanguage`. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
+Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. They can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) and, since issue #151, drive generation themselves. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
 
 `tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the two dialects share almost all of their node kinds — and used to answer `Language::arity` from two independently maintained `match` arms that had drifted: bash claimed `for_statement`, `while_statement`, `function_definition` and nine more kinds that zsh's table omitted despite zsh's grammar defining every one, so an emit into a zsh `for` body compiled differently from the identical bash one with no diagnostic (issue #150).
 
 Each dialect now derives its own table from its own grammar (`bin/gen-arity`, issue #202), which fixes that at the source rather than by asking the two to share one hand-written answer: a construct both grammars spell the same way classifies the same way *because the grammars agree*, and a kind only one grammar defines simply never appears in the other's table. Where the forks genuinely part company the tables part company too — zsh's `function_definition` is `repeat1(field('name', …))`, since `function a b c { … }` defines three functions at once and bash has no such syntax. `grammar_tags::bash_and_zsh_agree_on_shared_kinds` holds the two to agreement on every shared kind, pinning each real exception with its reason so a *new* divergence still has to be looked at.
 
-`langs/shell.rs` remains, but only for the part no grammar rule answers: `is_expr_tag`, the Quilt-level judgement about which tags name an expression rather than a statement, which both providers still share for the reason #150 gives.
+`langs/shell/mod.rs` remains, but only for the part no grammar rule answers: `is_expr_tag`, the Quilt-level judgement about which tags name an expression rather than a statement, which both providers still share for the reason #150 gives.
+
+### As a host (string-based meta)
+
+`ShellMetaLanguage` makes a shell drive generation, on the Nix and Lean model: no runtime library, generated code represented as plain **double-quoted shell words**. A `.bash.quilt` file therefore expands to an ordinary bash script that, run, prints the generated code — which is what makes the `#!/usr/bin/env bash` shebang `BashLanguage` has always declared reachable at last (issue #151, where the two were 🟡 for promising a `quilt run` that could not work). One implementation serves both dialects, carrying a `ShellDialect` marker, for the reason the tag tables are shared: they double-quote identically, so two copies would be two things to drift.
+
+```bash
+#!/usr/bin/env quilt
+units=(nginx postgres redis)
+for u in "${units[@]}"; do
+  echo ↖systemctl enable --now ↙$u↘↗
+done
+```
+
+expands to `echo "systemctl enable --now $u"` inside the same loop, and `quilt run` prints one `systemctl enable --now …` line per unit. See `examples/shell_host.bash.quilt`.
+
+**A host unquote splices verbatim** — the one place this host departs from the Nix template. Nix wraps its splices in `${…}` because a Nix expression carries no sigil of its own; every shell expression that produces a value already carries one (`$name`, `${arr[0]}`, `$(cmd)`, `$((1 + 2))`), and each interpolates as written inside `"…"` without word-splitting. Wrapping would be actively wrong: `${$(cmd)}` is a syntax error. Two consequences worth knowing: write the unquote body **unquoted**, since it lands inside the metaprogram's own `"…"` and adding quotes closes that literal and reopens it (leaving the value unquoted — shell concatenation, which is the one habit this model inverts); and a bare word body splices as literal text, because a word is not an expansion.
+
+Escaping is `lift::sh_dquote_escape`, shared with the `LiftTo<Bash>`/`LiftTo<Zsh>` impls so that a lifted value and the literal text around it — which land in the same generated word — cannot escape two different ways. `$`, `` ` ``, `"` and `\` in the *generated* code are data, so the generated script expands them, not the metaprogram.
+
+**Four of the five operator glyphs refuse.** An operator spelling is spliced into the ground source and applied *prefix* to what follows, and a shell has no prefix-applied word operators — juxtaposition is command invocation, and a command is not a word. So:
+
+| glyph | why there is no spelling | what to write instead |
+|---|---|---|
+| `↑` | a shell value is already text; the identity would spell as nothing, making the glyph an invisible no-op | `↙…↘` |
+| `⟨N⟩` | same — a name is its own text | `↙…↘` |
+| `←` | no `b_` accumulator (as Lean, #132) *and* the shell's join takes its operand inside a substitution, not after a prefix | collect and splice the join: `↙$(printf '%s\n' "${frags[@]}")↘` |
+| `↓` | needs the `QTerm` runtime no string host ships | compute in ordinary shell, splice with `↙…↘` |
+| `⟨T⟩` | the shell is untyped | drop the annotation |
+
+Each fails loudly with that advice rather than leaking a placeholder into a generated script; `conformance/spec/bash.toml` pins the errors so they stay actionable.
+
+One target-side limit shows up more often now that the shells are hosts: a hole must **be** a whole word, since it is found by byte range and `__QUILT_HOLE__` lexes as a plain `word`. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `"…"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Issue #221.
 
 ---
 
