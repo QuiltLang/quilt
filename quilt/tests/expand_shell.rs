@@ -373,3 +373,61 @@ fn string_fragments_round_trip_in_both_shells() -> Result<()> {
     }
     Ok(())
 }
+
+/// `((` inside a double-quoted string is literal text — in both shells
+/// (issue #212).
+///
+/// zsh's grammar offered the bare `((…))` arithmetic *command* opener as an
+/// alternative inside `string`, so the `((` token was in the lexer's valid set
+/// at every position in a string and won the same-length tie against
+/// `string_content`, whose `token(prec(-1, …))` loses it. `echo "(("` was a
+/// parse error, and so was every string a Rust `↑` lifted that happened to
+/// contain `((` — silently, since the lift itself succeeded. Bash, sharing the
+/// lineage, was never affected, which is what made this a grammar bug rather
+/// than a hole in `sh_dquote_escape`.
+///
+/// The two halves below are the whole shape of the fix. A `$`-less `((` is
+/// content; the `$`-sigil forms zsh really does expand inside a string still
+/// parse *as* an `arithmetic_expansion`, because restricting `string` to them is
+/// the fix rather than dropping arithmetic from strings altogether.
+#[test]
+fn double_parens_in_a_string_are_content_but_dollar_arithmetic_is_not() -> Result<()> {
+    for (fragment, want_arith) in [
+        ("echo \"((\"", false),
+        ("echo \"(())\"", false),
+        ("echo \"x = ((a+b))\"", false),
+        ("echo \"$((1 + 1))\"", true),
+        ("echo \"$[1 + 1]\"", true),
+    ] {
+        for shell in ["bash", "zsh"] {
+            let src = format!("const X: T = {shell}↖{fragment}↗;\n");
+            let mut omni = Omni::default();
+            let q = omni.parse(&src)?;
+            assert_eq!(src, q.coparse(), "{shell}: {fragment} did not round-trip");
+
+            let out = expand_in(shell, fragment)?;
+            assert_eq!(
+                out.contains(r#"tb("arithmetic_expansion")"#),
+                want_arith,
+                "{shell}: {fragment} should{} have parsed an arithmetic_expansion:\n{out}",
+                if want_arith { "" } else { " not" },
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The bare `((…))` arithmetic *command*, which the fix deliberately keeps —
+/// outside a string it is still an `arithmetic_expansion`, in the two positions
+/// zsh allows it (issue #212).
+#[test]
+fn bare_arithmetic_commands_still_parse_in_zsh() -> Result<()> {
+    for fragment in ["(( x > 1 ))", "if (( x > 1 )); then\n    echo hi\nfi"] {
+        let out = expand_in("zsh", fragment)?;
+        assert!(
+            out.contains(r#"tb("arithmetic_expansion")"#),
+            "zsh: {fragment} no longer parses as an arithmetic_expansion:\n{out}",
+        );
+    }
+    Ok(())
+}
