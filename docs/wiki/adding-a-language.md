@@ -233,6 +233,7 @@ What you declare, and what the battery does with it:
 | `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour. Both are claims about your *grammar*, since the table is derived from it: `variadic` says the rule has a repeat over direct children, `not_variadic` says it does not |
 | `lift_marker` + `[[lift]]` | values lift to the declared tag and text, **and the lifted literal reparses in your grammar** — the check that catches escaping bugs |
 | `lift_from` / `lift_from_unsupported` | your `MetaLanguage::lift_str` spells exactly the targets you claim, and refuses the rest |
+| `[[glyphs]]` | each Quilt glyph you declare as your language's own syntax is one Quilt actually reserves, `\<glyph>` escapes it, and the fragment you supply parses in your language with the declared tag — checked again end-to-end through a real quote, from every host |
 | `[capabilities]` | each claim matches reality; `partial`/`unsupported` must carry a `note`, and `partial`/`planned` a tracking `issue` |
 
 Three rules worth knowing before you start:
@@ -247,7 +248,12 @@ Three rules worth knowing before you start:
   glyphs are also your language's own syntax. Lean spells monadic bind `←` —
   the same glyph as emit — and that cost a real bug
   ([#141](https://github.com/QuiltLang/quilt/issues/141)) precisely because
-  nothing asked the question when Lean landed.
+  nothing asked the question when Lean landed. Half the answer is a declaration
+  no probe can check: whether `↑` *means* anything in your language is a fact
+  about your language. The other half is `[[glyphs]]`, one entry per colliding
+  glyph with a real fragment using it, and the status has to agree with the
+  list — `supported` means the list is empty, `partial` means it is not
+  ([#195](https://github.com/QuiltLang/quilt/issues/195)).
 
 ### Your spec also generates property tests
 

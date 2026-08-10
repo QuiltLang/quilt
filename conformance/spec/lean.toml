@@ -37,7 +37,7 @@ emit = {status = "planned", note = "`emit_str` fails unconditionally: the string
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; Lean fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "Lean has no interpreter shebang — a file runs via `lean file.lean` or `lake env lean`, and `#!` is not Lean comment syntax"}
 runtime-binding = {status = "planned", note = "string-based meta: no `QTerm` runtime library is shipped for Lean", issue = 132}
-glyph-collisions = {status = "partial", note = "`←` is Lean's monadic bind and is eaten by the emit glyph; `↑` (coercion) and `↓` (lowering) are also real Lean notation. The ASCII alias `<-` is the current workaround, and `\\←` does not escape because `←` is missing from the grammar's escape class", issue = 141}
+glyph-collisions = {status = "partial", note = "Five of the nine glyphs are Lean notation: `←` (monadic bind), `↑` (coercion), `↓` (lowering), and `⟨`/`⟩` (anonymous constructor). All five are escapable — `\\←` has parsed to content since #141 put `←` in the grammar's escape class — so the limit is that a Lean fragment using them must spell them `\\←`, `\\⟨1, 2\\⟩` and so on inside a quote. `<-` remains an ASCII alternative for bind. The sharpest case is an anonymous constructor of one variable: `⟨T⟩` and `⟨N⟩` are whole Quilt tokens, so both delimiters must be escaped for Lean to see them at all. The escape survives into the term but not back out: `QTerm::coparse` writes content verbatim, so such a fragment does not round-trip to source (#223)", issue = 141}
 chain-member = {status = "supported"}
 header-comment = {status = "supported", note = "generated Lean files use `--`, not `//!`"}
 lsp = {status = "supported", note = "Lean is a host with a `MetaLanguageAdapter` since #135"}
@@ -96,6 +96,40 @@ text = '"hi"'
 value = "str:tricky"
 tag = "str_lit"
 text = '"a\"b\\c${d}"'
+
+# Quilt glyphs that are also Lean notation (#195, #141). `code` is spelled the
+# way Lean spells it; the battery derives the `\`-escaped form the same way the
+# expander does, so the two cannot drift. Lean is the only language with any
+# entries here, which is the whole reason the axis exists.
+[[glyphs]]
+glyph = "←"
+means = "monadic bind — `let x ← f` in a `do` block, where Quilt reads `←` as emit"
+code = "do let x ← f"
+tag = "do_block"
+
+[[glyphs]]
+glyph = "↑"
+means = "coercion, where Quilt reads `↑` as lift"
+code = "def n := ↑x"
+tag = "def"
+
+[[glyphs]]
+glyph = "↓"
+means = "lowering, where Quilt reads `↓` as reduce"
+code = "def n := ↓x"
+tag = "def"
+
+[[glyphs]]
+glyph = "⟨"
+means = "opens an anonymous constructor, where Quilt reads `⟨T⟩` / `⟨N⟩` as the type and name placeholders"
+code = "def p := ⟨1, 2⟩"
+tag = "def"
+
+[[glyphs]]
+glyph = "⟩"
+means = "closes an anonymous constructor"
+code = "def p := ⟨1, 2⟩"
+tag = "def"
 
 [kinds]
 def = "item"

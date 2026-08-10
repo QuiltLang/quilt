@@ -185,6 +185,56 @@ fn roundtrip_do_block_ascii_bind() -> Result<()> {
     Ok(())
 }
 
+/// The other Lean collision with a Quilt *token* rather than an operator: an
+/// anonymous constructor. Both delimiters need escaping, and a one-element one
+/// spelled `⟨T⟩` would otherwise be read as the type placeholder outright.
+/// Declared in `conformance/spec/lean.toml` (#195), where the battery drives
+/// the same fragments from every host.
+#[test]
+fn expand_anonymous_constructor() -> Result<()> {
+    let out = expand("let p = lean↖def p : Nat × Nat := \\⟨1, 2\\⟩↗;")?;
+    assert!(out.contains("anon_ctor"), "{out}");
+    assert!(out.contains(r#"sym("⟨")"#), "{out}");
+    let one = expand("let q = lean↖def q : Squash T := \\⟨T\\⟩↗;")?;
+    assert!(one.contains("anon_ctor"), "{one}");
+    Ok(())
+}
+
+/// **Known gap — issue #223.** An escaped glyph survives *into* the term (the
+/// two tests above) but not back *out* of it: `QTerm::coparse` writes content
+/// verbatim, so the `\` is dropped and the source no longer round-trips.
+///
+/// Pinned here rather than left as a silent hole because the damage is not
+/// cosmetic: for both glyphs the coparsed source stops parsing, for different
+/// reasons. A bare `←` is Quilt's emit operator again, so the bind becomes a
+/// hole in a position Lean has no room for; a bare `⟨` is in no character class
+/// the Quilt grammar has, so it is malformed outright. When #223 lands, both
+/// cases below become plain `roundtrip(…)` calls.
+#[test]
+fn escaped_glyphs_do_not_survive_coparse() -> Result<()> {
+    let mut omni = Omni::default();
+
+    for src in [
+        indoc! {r#"
+            let m = lean↖def main : IO Unit := do
+              let stdout \← IO.getStdout
+              stdout.putStrLn "hi"↗;"#},
+        r"let p = lean↖def p : Nat × Nat := \⟨1, 2\⟩↗;",
+    ] {
+        let back = omni.parse(src)?.coparse();
+        assert_ne!(
+            back, src,
+            "#223 is fixed — replace this test with `roundtrip({src:?})`"
+        );
+        assert!(
+            omni.parse(&back).is_err(),
+            "the escape was dropped but the result still parses, so the loss is \
+             cosmetic after all — check what changed:\n  in:  {src:?}\n  out: {back:?}"
+        );
+    }
+    Ok(())
+}
+
 /// A hole inside a `do` block: do-elements are ordinary terms, so `↙…↘` reaches
 /// the bound expression alongside an escaped bind.
 #[test]

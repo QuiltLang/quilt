@@ -68,16 +68,16 @@ Columns:
 
 | Language | Glyphs | Chain | Header | LSP |
 |---|---|---|---|---|
-| **Bash** | ✅* | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
-| **HTML** | ✅* | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
-| **Lean 4** | [🟡](https://github.com/QuiltLang/quilt/issues/141)* | ✅ | ✅ | ✅* |
-| **Nix** | ✅* | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
-| **Python** | ✅* | ✅ | ✅ | ✅* |
-| **Rust** | ✅* | ✅ | ✅ | ✅* |
-| **Plain text** | ✅* | ✅ | ⬜ | ⬜* |
-| **TypeScript** | ✅* | ✅ | ✅ | ⬜* |
-| **WGSL** | ✅* | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/22)* |
-| **Zsh** | ✅* | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
+| **Bash** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
+| **HTML** | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
+| **Lean 4** | [🟡](https://github.com/QuiltLang/quilt/issues/141) | ✅ | ✅ | ✅* |
+| **Nix** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
+| **Python** | ✅ | ✅ | ✅ | ✅* |
+| **Rust** | ✅ | ✅ | ✅ | ✅* |
+| **Plain text** | ✅ | ✅ | ⬜ | ⬜* |
+| **TypeScript** | ✅ | ✅ | ✅ | ⬜* |
+| **WGSL** | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/22)* |
+| **Zsh** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
 
 Columns:
 
