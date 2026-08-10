@@ -24,12 +24,14 @@
         },
         {
           "axis": "hole-positions",
-          "status": "partial",
-          "note": "a hole must *be* a whole word: the fork's `quilt_hole` rule was never generated into `parser.c`, so `__QUILT_HOLE__` lexes as a plain `word` and is found by byte range. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `\"…\"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Predates the host (#151) and applies to bash as a target too",
-          "issue": 221,
+          "status": "supported",
+          "note": "a hole need not be a whole word: since #221 `build_nodes` splits the token around it, so besides command-argument, assignment-RHS, `[ … ]` and statement positions it also reaches inside a `\"…\"` string, inside a comment, and glued to adjacent text (`↙u↘.service`). The grammar is untouched — the fork's `quilt_hole` rule is still parked, since `tree-sitter generate` panics on it",
           "verified_by": "hole-positions/bash",
           "detail": [
-            "command_argument: file"
+            "command_argument: file",
+            "inside_a_string: file",
+            "glued_to_a_word: file",
+            "inside_a_comment: file"
           ]
         },
         {
@@ -663,7 +665,8 @@
           "status": "supported",
           "verified_by": "hole-positions/python",
           "detail": [
-            "assignment_value: expr"
+            "assignment_value: expr",
+            "inside_a_string: expr"
           ]
         },
         {
@@ -835,7 +838,8 @@
           "verified_by": "hole-positions/rust",
           "detail": [
             "stmt_then_expr: stmt, expr",
-            "fn_body_is_block: block"
+            "fn_body_is_block: block",
+            "inside_a_string: expr"
           ]
         },
         {
@@ -1438,12 +1442,14 @@
         },
         {
           "axis": "hole-positions",
-          "status": "partial",
-          "note": "a hole must *be* a whole word: the fork's `quilt_hole` rule was never generated into `parser.c`, so `__QUILT_HOLE__` lexes as a plain `word` and is found by byte range. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `\"…\"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Predates the host (#151) and applies to zsh as a target too",
-          "issue": 221,
+          "status": "supported",
+          "note": "a hole need not be a whole word: since #221 `build_nodes` splits the token around it, so besides command-argument, assignment-RHS, `[ … ]` and statement positions it also reaches inside a `\"…\"` string, inside a comment, and glued to adjacent text (`↙u↘.service`). The grammar is untouched — the fork's `quilt_hole` rule is still parked, since `tree-sitter generate` panics on it",
           "verified_by": "hole-positions/zsh",
           "detail": [
-            "command_argument: file"
+            "command_argument: file",
+            "inside_a_string: file",
+            "glued_to_a_word: file",
+            "inside_a_comment: file"
           ]
         },
         {

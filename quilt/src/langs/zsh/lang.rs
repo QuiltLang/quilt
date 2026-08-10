@@ -35,10 +35,14 @@ impl TSProvider for ZshProvider {
 
     fn hole_str(&self) -> &'static str {
         // The grammar.js fork already defines `quilt_hole` and adds it to
-        // statement/expression positions, but parser.c hasn't been regenerated
-        // yet (tree-sitter generate takes very long on this grammar).  Until
-        // then `__QUILT_HOLE__` parses as a `word` node, and range-based hole
-        // detection in `treesitter.rs` still works correctly.
+        // statement/expression positions, but parser.c has never been
+        // regenerated from it — and cannot be: `tree-sitter generate` panics on
+        // that rule, so the fork parks it (QuiltLang/tree-sitter-zsh#1).
+        //
+        // Nothing here depends on it. `__QUILT_HOLE__` parses as a `word`, and
+        // `treesitter.rs` finds a hole by byte range: as its own node where it
+        // stands alone, and otherwise by splitting the token that swallowed it
+        // — a string, a comment, or a longer word (issue #221).
         "__QUILT_HOLE__"
     }
 

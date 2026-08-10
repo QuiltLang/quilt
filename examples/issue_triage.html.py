@@ -18,10 +18,11 @@ from pathlib import Path
 # holes, lift (the up-arrow, expanding to the runtime's qlift_html) injects
 # plain Python values as entity-escaped HTML text, and only the finished page
 # is serialized (coparse) once, at the end.
-# Holes work in text, in node position, and in double-quoted attribute values
-# — but in an attribute value a hole must not follow literal text (the value's
-# maximal token swallows the marker), so dynamic attribute values are computed
-# first and spliced whole.
+# Holes work in text, in node position, and in double-quoted attribute values —
+# including *after* literal text in one, which used to be a parse error: the
+# value's maximal token swallowed the marker. Since issue #221 the parser splits
+# that token around the hole, so computing a dynamic attribute value first and
+# splicing it whole, as below, is a style choice rather than a workaround.
 
 
 # Join QTerms into one splice-able fragment by folding them through a quote

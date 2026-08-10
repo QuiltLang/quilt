@@ -89,6 +89,11 @@ name = "assignment_value"
 code = "x = @"
 ikinds = ["expr"]
 
+[[holes]]
+name = "inside_a_string"
+code = 'print("hi @ there")'
+ikinds = ["expr"]
+
 [[lift]]
 value = "u32:3"
 tag = "integer"

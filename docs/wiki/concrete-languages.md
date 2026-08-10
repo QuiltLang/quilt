@@ -222,7 +222,7 @@ Escaping is `lift::sh_dquote_escape`, shared with the `LiftTo<Bash>`/`LiftTo<Zsh
 
 Each fails loudly with that advice rather than leaking a placeholder into a generated script; `conformance/spec/bash.toml` pins the errors so they stay actionable.
 
-One target-side limit shows up more often now that the shells are hosts: a hole must **be** a whole word, since it is found by byte range and `__QUILT_HOLE__` lexes as a plain `word`. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `"…"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Issue #221.
+A hole used to have to **be** a whole word here: `__QUILT_HOLE__` lexes as a plain `word`, and hole detection matched a node whose byte range *equalled* the hole's, so inside a `"…"` string, inside a comment, or glued to adjacent text (`↙u↘.service` is one word) the surrounding token swallowed it and the parse failed. `build_nodes` now splits that token around the hole instead (issue #221), so all four positions work. The fix is in `treesitter.rs`, not in either shell grammar — the forks' `quilt_hole` rule is still parked, since `tree-sitter generate` panics on it — and being below the grammars it applies to every language at once.
 
 ---
 
