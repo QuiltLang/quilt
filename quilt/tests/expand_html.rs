@@ -12,7 +12,7 @@ use quilt::term::STerm;
 fn roundtrip(code: &str) -> Result<()> {
     let mut omni = Omni::default();
     let q = omni.parse(code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     Ok(())
 }
 
