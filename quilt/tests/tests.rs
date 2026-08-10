@@ -295,3 +295,55 @@ fn indented_multiline_plain_block_comment_round_trips() -> Result<()> {
         }
     "#})
 }
+
+/// A `//` line comment must not swallow the bracket that closes the quote it
+/// sits in (issue #226). The comment token runs to end of line, so before the
+/// fix the `↗` was comment text and the quote was never closed — a `malformed
+/// Quilt syntax` error on source that reads as obviously valid, with the
+/// workaround (a newline before the closer) discoverable only by accident.
+///
+/// The same applies to `↘`, and to Quilt's own `⟨//⟩` comment.
+#[test]
+fn a_line_comment_does_not_eat_the_closing_bracket() -> Result<()> {
+    roundtrip("let b = rs↖let x = 1; // hi↗;")?;
+    roundtrip("let u = rs↖let y = ↙f()↘; // hi↗;")?;
+    // The closer of an *unquote* is bounded too.
+    roundtrip("let n = rs↖let y = ↙f() // why↘;↗;")?;
+
+    // Quilt's own comment is meta-level, so it is stripped rather than passed
+    // through — `roundtrip` is the wrong assertion for it. What it shares with
+    // `//` is that it must not eat the closer.
+    let mut omni = Omni::default();
+    let out = omni
+        .parse_lang("rs", "let q = rs↖let x = 1; ⟨//⟩ note↗;")?
+        .coparse();
+    assert_eq!(out, "let q = rs↖let x = 1; ↗;");
+    Ok(())
+}
+
+/// …while a comment at *ground* level still runs to end of line and carries
+/// every glyph, closing arrows included. That is the half the #226 fix must not
+/// break, and it is not hypothetical: four files under `examples/` explain
+/// Quilt in a `//` comment and name the `↙…↘` brackets while doing it, so
+/// bounding the token everywhere turned them all into parse errors.
+#[test]
+fn a_ground_level_line_comment_still_reaches_end_of_line() -> Result<()> {
+    roundtrip(indoc! {r"
+        // prose about the ↙…↘ hole and the ↖…↗ brackets, with ↑ ↓ ← for good measure
+        let x = 1;
+    "})?;
+
+    let mut omni = Omni::default();
+    let out = omni
+        .parse_lang("rs", "⟨//⟩ a quilt comment about ↙…↘\nlet x = 1;")?
+        .coparse();
+    assert!(
+        !out.contains("quilt comment"),
+        "a `⟨//⟩` comment is stripped, not passed through: {out:?}"
+    );
+    assert!(
+        out.contains("let x = 1;"),
+        "the code after the comment survived: {out:?}"
+    );
+    Ok(())
+}

@@ -193,11 +193,24 @@ fn first_error(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
 /// [`miette::Report::with_source_code`] to render the snippet.
 fn syntax_error(root: tree_sitter::Node) -> miette::Report {
     let node = first_error(root).unwrap_or(root);
-    let span = node.start_byte()..node.end_byte();
-    let what = if node.is_missing() {
-        "expected something here"
-    } else {
-        "here"
+    // A `MISSING` node is zero-width, and at end of input there is nothing
+    // under it to underline: miette renders the snippet with no caret at all
+    // and the reader gets a byte offset one past the source. Point at the
+    // bracket that was left open instead — its opener is where the fix goes,
+    // and it is a span that exists.
+    let (span, what) = match (node.start_byte() == node.end_byte())
+        .then(|| node.parent().and_then(|p| p.child(0)))
+        .flatten()
+    {
+        Some(opener) => (
+            opener.start_byte()..opener.end_byte(),
+            "this bracket is never closed",
+        ),
+        None if node.is_missing() => (
+            node.start_byte()..node.end_byte(),
+            "expected something here",
+        ),
+        None => (node.start_byte()..node.end_byte(), "here"),
     };
     miette!(
         labels = vec![LabeledSpan::at(span.clone(), what)],

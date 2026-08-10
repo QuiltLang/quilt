@@ -138,3 +138,65 @@ let url = "https://example.com";
   (content)
   (plain_line_comment)
 )
+
+================================================================================
+Plain Line Comment Does Not Eat The Closing Quote
+================================================================================
+let b = rs↖let x = 1; // hi↗;
+--------------------------------------------------------------------------------
+
+(source_file
+  (content)
+  (quote
+    (left_quote)
+    (content)
+    (plain_line_comment)
+    (right_quote))
+  (content)
+)
+
+================================================================================
+Plain Line Comment Does Not Eat The Closing Unquote
+================================================================================
+rs↖let y = ↙f() // hi↘;↗
+--------------------------------------------------------------------------------
+
+(source_file
+  (quote
+    (left_quote)
+    (content)
+    (unquote
+      (left_unquote)
+      (content)
+      (plain_line_comment)
+      (right_unquote))
+    (content)
+    (right_quote))
+)
+
+================================================================================
+Quilt Line Comment Does Not Eat The Closing Quote
+================================================================================
+rs↖let x = 1; ⟨//⟩ note↗
+--------------------------------------------------------------------------------
+
+(source_file
+  (quote
+    (left_quote)
+    (content)
+    (right_quote))
+)
+
+================================================================================
+A Ground-Level Line Comment Still Reaches End Of Line
+================================================================================
+// prose about the ↙…↘ hole and the ↖…↗ brackets
+1 + 2
+⟨//⟩ and a quilt comment about ↙…↘ too
+--------------------------------------------------------------------------------
+
+(source_file
+  (plain_line_comment)
+  (newline)
+  (content)
+)
