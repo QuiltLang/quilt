@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Verify the committed lift shapes are current: regenerate them and fail if
+# anything changed. Same shape as bin/check-arity and bin/check-bootstrap.
+#
+# A diff here means a lift and the grammar it is supposed to match have parted
+# ways — in practice, that `bin/sync-grammars` pulled a rev which changed how a
+# literal is shaped. That changes what `↑` into a foreign quote builds, and so
+# what `smatch` / `sinstantiate` / `QTerm::rewrite` can match, which is exactly
+# the kind of change that should be read in a PR rather than found by the third
+# hand survey of parser output.
+#
+# For CI and pre-commit.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+TARGET=quilt/src/lift/gen.rs
+
+"$DIR/gen-lifts"
+
+if ! git -C "$ROOT" diff --quiet -- "$TARGET"; then
+  echo "error: the committed lift shapes are stale." >&2
+  echo "       Run 'bin/gen-lifts' and commit $TARGET." >&2
+  git -C "$ROOT" --no-pager diff -- "$TARGET" >&2
+  exit 1
+fi
+
+echo "lift shapes match what the grammars parse ✓"

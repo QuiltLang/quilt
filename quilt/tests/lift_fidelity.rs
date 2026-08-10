@@ -34,7 +34,10 @@
 //! and #174:
 //!
 //! * WGSL literals parse wrapped in `const_literal`; the lifts produce the inner
-//!   `int_literal` / `float_literal` / `bool_literal`.
+//!   `int_literal` / `float_literal` / `bool_literal`. `check` looks the lift's
+//!   own tag up *inside* the parse, so WGSL is covered under that wrapper — what
+//!   it cannot cover is a negative WGSL literal, which parses as a
+//!   `unary_expression` and shares no tag with the lift at all.
 //! * A negative Python or Nix integer parses as a `unary_operator` /
 //!   `unary_expression` over a positive literal; the lifts produce a single
 //!   signed literal.
@@ -45,9 +48,10 @@
 use quilt::lang::{flat_nodes, Language};
 use quilt::langs::{
     bash::lang::BashLanguage, lean::lang::LeanLanguage, nix::lang::NixLanguage,
-    python::lang::PythonLanguage, rust::lang::RustLanguage, zsh::lang::ZshLanguage,
+    python::lang::PythonLanguage, rust::lang::RustLanguage, wgsl::lang::WgslLanguage,
+    zsh::lang::ZshLanguage,
 };
-use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Zsh};
+use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Wgsl, Zsh};
 use quilt::prelude::*;
 
 /// The first subtree tagged `tag`, breadth-first (so an outer wrapper of the
@@ -152,6 +156,40 @@ fn lean_lifts_match_the_parser() {
             "Nat.succ".qlift_to::<Lean>(),
             vec![1u8, 2].qlift_to::<Lean>(),
             empty.qlift_to::<Lean>(),
+            // `-0.0` is not `< 0.0`, so a sign test against zero lifted it as a
+            // single `scientific_lit` spelled `-0.0` while the parser read the
+            // same text as a negation. Reading the sign off the rendered text
+            // instead is what makes this case pass (#203).
+            (-0.0f64).qlift_to::<Lean>(),
+        ],
+    );
+}
+
+/// WGSL, which nothing compared against the parser before.
+///
+/// It was left out because a WGSL literal parses inside a `const_literal` that
+/// the lifts do not build — but `check` searches the parse for the lift's own
+/// tag, so everything *below* that wrapper is comparable, and one thing under
+/// it was wrong: `bool_literal` holds the keyword as a child token, and the
+/// lift spelled it as the node's text. Both coparse to `true`, so no text-level
+/// assertion could see it; `smatch`/`rewrite` could. Generating the shape from
+/// the parse is what fixed it (#203).
+///
+/// Negative integers are not here: `-2i` parses as a `unary_expression` over a
+/// positive literal, so it shares no tag with the single signed `int_literal`
+/// the lift builds. That is the same open decision as the Python and Nix
+/// negatives above (#174).
+#[test]
+fn wgsl_lifts_match_the_parser() {
+    check(
+        &mut WgslLanguage::default(),
+        &[
+            3u32.qlift_to::<Wgsl>(),
+            7usize.qlift_to::<Wgsl>(),
+            2i32.qlift_to::<Wgsl>(),
+            1.5f32.qlift_to::<Wgsl>(),
+            true.qlift_to::<Wgsl>(),
+            false.qlift_to::<Wgsl>(),
         ],
     );
 }

@@ -1,0 +1,785 @@
+#!/usr/bin/env quilt
+⟨//⟩ Generate `quilt/src/lift/gen.rs` from parsed sample literals (issue #203).
+⟨//⟩
+⟨//⟩ Run with `bin/gen-lifts`; `bin/check-lifts` is the CI gate that it was.
+⟨//⟩
+⟨//⟩ The technique is the one `mk_meta.rs.quilt` uses for the numeric `Lift`
+⟨//⟩ impls, and the oracle is quilt itself: a quote parses its fragment with the
+⟨//⟩ vendored grammar, and `↑` on the resulting term prints the builder calls
+⟨//⟩ that rebuild it. So
+⟨//⟩
+⟨//⟩     py↖"s"↗.↑   ==>   tb("string").c(&leaf("string_start", "\""))
+⟨//⟩                          .c(&leaf("string_content", "s"))
+⟨//⟩                          .c(&leaf("string_end", "\"")).b()
+⟨//⟩
+⟨//⟩ is the shape tree-sitter-python builds, written as the code that builds it.
+⟨//⟩ Substituting the sample's own text (`"s"`) for a runtime expression turns
+⟨//⟩ that into a lift. Nobody transcribes a tag.
+⟨//⟩
+⟨//⟩ Each family below is a sample literal, a root tag to descend to, and the
+⟨//⟩ expression that replaces the sample's text. Adding a target is adding rows.
+use quilt::prelude::*;
+use quilt::term::CmdOrHole;
+use std::process::Command;
+
+/**************************************************************/
+/* Reading a shape off a parsed sample                        */
+
+/// The first subtree tagged `tag`, breadth-first.
+///
+/// Parsing a literal *standalone* is not always the literal alone: a shell
+/// parses `"s"` at top level as `(command (command_name (string …)))`, because
+/// a bare word in statement position is a command. Those wrappers are an
+/// artifact of parsing the value on its own, not part of the value — spliced
+/// into an argument position it is just the `string`. `lift_fidelity.rs` makes
+/// the same descent for the same reason.
+fn descend(term: &Arc<QTerm>, tag: &str) -> Arc<QTerm> {
+    let mut queue = std::collections::VecDeque::from([term.clone()]);
+    while let Some(t) = queue.pop_front() {
+        if matches!(&*t, QTerm::Tuple { tag: g, .. } if &**g == tag) {
+            return t;
+        }
+        match &*t {
+            QTerm::Tuple { terms, .. } => queue.extend(terms.iter().cloned()),
+            QTerm::Quote { term, .. } | QTerm::Unquote { term, .. } => queue.push_back(term.clone()),
+        }
+    }
+    panic!("no {tag:?} in {}", term.sexp())
+}
+
+/// The text of a leaf term — the sample literal's own spelling, which is what
+/// the generated code substitutes a runtime expression for.
+fn text_of(term: &Arc<QTerm>) -> String {
+    term.coparse()
+}
+
+/// The shape of `sample` as Rust code, with its own text replaced by `value`.
+///
+/// `sample.↑` is the builder-call source that rebuilds the parsed term; the
+/// only thing in it that must not be a constant is the literal's text, and
+/// that is a string literal we can find by value.
+fn shape_with(sample: &Arc<QTerm>, text: &str, value: &Arc<QTerm>) -> Arc<QTerm> {
+    let code = sample.↑;
+    let find = text.to_string().↑;
+    let out = code.rewrite_naive(&find, value);
+    assert_ne!(
+        out, code,
+        "sample {} has no literal {text:?} to substitute",
+        code.coparse()
+    );
+    out
+}
+
+/// `shape_with` over several samples that must agree once their text is out of
+/// the way — e.g. WGSL's `3u` and `3i`, which differ only in the suffix. If a
+/// grammar ever gives them different shapes this fails loudly instead of
+/// silently generating one of them for both.
+fn shape_of_all(samples: &[(Arc<QTerm>, String)], value: &Arc<QTerm>) -> Arc<QTerm> {
+    let mut it = samples
+        .iter()
+        .map(|(s, text)| shape_with(s, text, value));
+    let first = it.next().expect("no samples");
+    for other in it {
+        assert_eq!(
+            first.coparse(),
+            other.coparse(),
+            "samples disagree on the shape"
+        );
+    }
+    first
+}
+
+/**************************************************************/
+/* Containers: the loop stays hand-written, the sample supplies the pieces */
+
+/// One step of a term's serialization: a child, or a layout command.
+#[derive(Clone, Debug, PartialEq)]
+enum Piece {
+    Child(Arc<QTerm>),
+    Cmd(StrCmd),
+}
+
+/// A tuple's `cmds`, with each hole resolved to the child that fills it.
+fn pieces(term: &Arc<QTerm>) -> Vec<Piece> {
+    let QTerm::Tuple { terms, cmds, .. } = &**term else {
+        panic!("not a tuple: {}", term.sexp())
+    };
+    let mut i = 0;
+    let mut out = Vec::new();
+    for c in cmds {
+        match c {
+            CmdOrHole::Hole => {
+                out.push(Piece::Child(terms[i].clone()));
+                i += 1;
+            }
+            CmdOrHole::Cmd(sc) => out.push(Piece::Cmd(sc.clone())),
+        }
+    }
+    out
+}
+
+fn index_of(ps: &[Piece], child: &Arc<QTerm>) -> usize {
+    ps.iter()
+        .position(|p| matches!(p, Piece::Child(c) if c == child))
+        .expect("element not among the container's children")
+}
+
+/// Split three samples — `[]`, `[x]`, `[x, y]` — into the four pieces a
+/// container's serialization is made of:
+///
+/// ```text
+/// OPEN  (elem  (MID elem)*  END)?  CLOSE
+/// ```
+///
+/// Both idioms fall out of this. Python separates (`MID = ", "`, `END` empty);
+/// Nix terminates (`OPEN = "[ "`, `MID = END = " "`), which is why its empty
+/// list is `[ ]` and its last element still gets a trailing space.
+fn container_pieces(
+    empty: &Arc<QTerm>,
+    one: &Arc<QTerm>,
+    two: &Arc<QTerm>,
+    e1: &Arc<QTerm>,
+    e2: &Arc<QTerm>,
+) -> (Vec<Piece>, Vec<Piece>, Vec<Piece>, Vec<Piece>) {
+    let (pe, po, pt) = (pieces(empty), pieces(one), pieces(two));
+
+    let i = index_of(&po, e1);
+    let open = po[..i].to_vec();
+    assert!(pe.starts_with(&open), "empty container is not OPEN ++ CLOSE");
+    let close = pe[open.len()..].to_vec();
+    let end = po[i + 1..po.len() - close.len()].to_vec();
+
+    let (j1, j2) = (index_of(&pt, e1), index_of(&pt, e2));
+    assert_eq!(&pt[..j1], &open[..], "two-element OPEN differs");
+    let mid = pt[j1 + 1..j2].to_vec();
+    let mut tail = end.clone();
+    tail.extend(close.clone());
+    assert_eq!(&pt[j2 + 1..], &tail[..], "two-element tail differs");
+
+    (open, mid, end, close)
+}
+
+/// The statement that appends one piece to the builder `b`.
+fn piece_stmt(p: &Piece) -> Arc<QTerm> {
+    match p {
+        Piece::Child(c) => ↖b.child(&↙c.↑↘);↗,
+        Piece::Cmd(StrCmd::Write(s)) => ↖b.write(↙s.to_string().↑↘);↗,
+        Piece::Cmd(StrCmd::NewLine) => ↖b.nl();↗,
+        Piece::Cmd(StrCmd::Push(s)) => ↖b.push(↙s.to_string().↑↘);↗,
+        Piece::Cmd(StrCmd::Pop) => ↖b.pop();↗,
+    }
+}
+
+/// The container constructor for one target: `NAME(items) -> Arc<QTerm>`.
+fn container_fn(fname: &str, sample: &(Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<QTerm>)) -> Arc<QTerm> {
+    let (empty, one, two, e1, e2) = sample;
+    let (open, mid, end, close) = container_pieces(empty, one, two, e1, e2);
+    let QTerm::Tuple { tag, .. } = &**empty else {
+        panic!("not a tuple")
+    };
+    let tag = tag.to_string();
+    ⟨//⟩ A hole does not parse in function-name position (`pub fn {}(…)` is not
+    ⟨//⟩ Rust), so the name goes in as a placeholder and is rewritten after.
+    let generic: ⟨T⟩ = ↖
+        /// The container shape, with the elements as a parameter. Derived from
+        /// the empty, one- and two-element samples: what surrounds the first
+        /// element is the opener, what sits between two of them is the
+        /// separator, and what the empty container still writes is neither.
+        pub fn list_term(items: &[⟨T⟩]) -> ⟨T⟩ {
+            let mut b = tb(↙tag.↑↘);
+            ↙for p in &open { piece_stmt(p).← }↘
+            ↙
+                if mid.is_empty() {
+                    ↖
+                        for x in items {
+                            b.child(x);
+                        }
+                    ↗.←;
+                } else {
+                    ↖
+                        for (i, x) in items.iter().enumerate() {
+                            if i > 0 {
+                                ↙for p in &mid { piece_stmt(p).← }↘
+                            }
+                            b.child(x);
+                        }
+                    ↗.←;
+                }
+                if !end.is_empty() {
+                    ↖
+                        if !items.is_empty() {
+                            ↙for p in &end { piece_stmt(p).← }↘
+                        }
+                    ↗.←;
+                }
+            ↘
+            ↙for p in &close { piece_stmt(p).← }↘
+            b.b()
+        }
+    ↗;
+    generic.rewrite_naive(&⟨N⟩("list_term"), &⟨N⟩(fname))
+}
+
+/**************************************************************/
+/* The impls, which are all one call to a shape above          */
+
+⟨//⟩ A quote binds through a `let`, not a closure body: `|ty| ↖…↗` reads as an
+⟨//⟩ or-pattern once the quote is a hole, and a quote that is the tail of a
+⟨//⟩ block is a direct child of a variadic container, which the expander wraps
+⟨//⟩ in an emit into a `b_` that only exists inside a generated block.
+fn scalar_impls(marker: &str, types: &[&str], body: &Arc<QTerm>) -> Vec<Arc<QTerm>> {
+    let mut out = Vec::new();
+    for ty in types {
+        let item: ⟨T⟩ = ↖
+            impl LiftTo<↙⟨N⟩(marker)↘> for ↙⟨N⟩(ty)↘ {
+                fn lift_to(&self) -> ⟨T⟩ {
+                    ↙body.clone()↘
+                }
+            }
+        ↗;
+        out.push(item);
+    }
+    out
+}
+
+fn string_impls(marker: &str, body: &Arc<QTerm>) -> Vec<Arc<QTerm>> {
+    vec![
+        ↖
+            impl LiftTo<↙⟨N⟩(marker)↘> for str {
+                fn lift_to(&self) -> ⟨T⟩ {
+                    ↙body.clone()↘
+                }
+            }
+        ↗,
+        ↖
+            impl LiftTo<↙⟨N⟩(marker)↘> for String {
+                fn lift_to(&self) -> ⟨T⟩ {
+                    ↙body.clone()↘
+                }
+            }
+        ↗,
+    ]
+}
+
+fn list_impls(marker: &str, body: &Arc<QTerm>) -> Vec<Arc<QTerm>> {
+    vec![
+        ↖
+            impl<T: LiftTo<↙⟨N⟩(marker)↘>> LiftTo<↙⟨N⟩(marker)↘> for [T] {
+                fn lift_to(&self) -> ⟨T⟩ {
+                    ↙body.clone()↘
+                }
+            }
+        ↗,
+        ↖
+            impl<T: LiftTo<↙⟨N⟩(marker)↘>> LiftTo<↙⟨N⟩(marker)↘> for Vec<T> {
+                fn lift_to(&self) -> ⟨T⟩ {
+                    self.as_slice().lift_to()
+                }
+            }
+        ↗,
+    ]
+}
+
+/**************************************************************/
+
+fn main() -> Result<()> {
+    ⟨//⟩ ---- the samples, parsed by the vendored grammars ----
+
+    let text: ⟨T⟩ = ↖text↗;
+
+    ⟨//⟩ WGSL. `3u` and `3i` must agree once the suffix is out of the way.
+    let wgsl_int = shape_of_all(
+        &[
+            (descend(&wgsl↖3u↗, "int_literal"), "3u".to_string()),
+            (descend(&wgsl↖3i↗, "int_literal"), "3i".to_string()),
+        ],
+        &text,
+    );
+    let wgsl_float_sample = descend(&wgsl↖1.5f↗, "float_literal");
+    let wgsl_float = shape_with(&wgsl_float_sample, &text_of(&wgsl_float_sample), &text);
+    let wgsl_true = descend(&wgsl↖true↗, "bool_literal").↑;
+    let wgsl_false = descend(&wgsl↖false↗, "bool_literal").↑;
+
+    ⟨//⟩ Python.
+    let py_int_sample = descend(&py↖3↗, "integer");
+    let py_int = shape_with(&py_int_sample, &text_of(&py_int_sample), &text);
+    let py_float_sample = descend(&py↖1.5↗, "float");
+    let py_float = shape_with(&py_float_sample, &text_of(&py_float_sample), &text);
+    let py_true = descend(&py↖True↗, "true").↑;
+    let py_false = descend(&py↖False↗, "false").↑;
+    let py_str_empty = descend(&py↖""↗, "string").↑;
+    let py_str = shape_with(
+        &descend(&py↖"s"↗, "string"),
+        "s",
+        &↖&py_dquote_escape(s)↗,
+    );
+
+    ⟨//⟩ Shells. Derived per language rather than shared: bash and zsh have the
+    ⟨//⟩ same grammar lineage, and #150 is what assuming that costs.
+    let bash_num_sample = descend(&bash↖3↗, "number");
+    let bash_num = shape_with(&bash_num_sample, &text_of(&bash_num_sample), &text);
+    let bash_str_empty = descend(&bash↖""↗, "string").↑;
+    let bash_str = shape_with(
+        &descend(&bash↖"s"↗, "string"),
+        "s",
+        &↖&sh_dquote_escape(s)↗,
+    );
+    let zsh_num_sample = descend(&zsh↖3↗, "number");
+    let zsh_num = shape_with(&zsh_num_sample, &text_of(&zsh_num_sample), &text);
+    let zsh_str_empty = descend(&zsh↖""↗, "string").↑;
+    let zsh_str = shape_with(
+        &descend(&zsh↖"s"↗, "string"),
+        "s",
+        &↖&sh_dquote_escape(s)↗,
+    );
+
+    ⟨//⟩ Nix.
+    let nix_int_sample = descend(&nix↖3↗, "integer_expression");
+    let nix_int = shape_with(&nix_int_sample, &text_of(&nix_int_sample), &text);
+    let nix_float_sample = descend(&nix↖1.5↗, "float_expression");
+    let nix_float = shape_with(&nix_float_sample, &text_of(&nix_float_sample), &text);
+    let nix_true = descend(&nix↖true↗, "variable_expression").↑;
+    let nix_false = descend(&nix↖false↗, "variable_expression").↑;
+    let nix_str_empty = descend(&nix↖""↗, "string_expression").↑;
+    let nix_str = shape_with(
+        &descend(&nix↖"s"↗, "string_expression"),
+        "s",
+        &↖&nix_dquote_escape(s)↗,
+    );
+
+    ⟨//⟩ Lean. `num_lit` and `scientific_lit` are unsigned in the grammar, so a
+    ⟨//⟩ negative value is the `unary_op` `-` applied to its magnitude. That is a
+    ⟨//⟩ second sample rather than a special case: both branches are the shape
+    ⟨//⟩ the parser builds, with the same magnitude substituted into each.
+    let lean_num_sample = descend(&lean↖3↗, "num_lit");
+    let lean_num = shape_with(&lean_num_sample, &text_of(&lean_num_sample), &text);
+    let lean_num_neg_sample = descend(&lean↖-3↗, "unary_op");
+    let lean_num_neg = shape_with(
+        &lean_num_neg_sample,
+        &text_of(&descend(&lean_num_neg_sample, "num_lit")),
+        &text,
+    );
+    let lean_float_sample = descend(&lean↖1.5↗, "scientific_lit");
+    let lean_float = shape_with(&lean_float_sample, &text_of(&lean_float_sample), &text);
+    let lean_float_neg_sample = descend(&lean↖-1.5↗, "unary_op");
+    let lean_float_neg = shape_with(
+        &lean_float_neg_sample,
+        &text_of(&descend(&lean_float_neg_sample, "scientific_lit")),
+        &text,
+    );
+    let lean_true = descend(&lean↖true↗, "true_const").↑;
+    let lean_false = descend(&lean↖false↗, "false_const").↑;
+    let lean_str_empty = descend(&lean↖""↗, "str_lit").↑;
+    let lean_str = shape_with(
+        &descend(&lean↖"s"↗, "str_lit"),
+        "s",
+        &↖&lean_dquote_escape(s)↗,
+    );
+
+    ⟨//⟩ Containers: empty, one element, two elements, and the two elements.
+    let py_list = (
+        descend(&py↖[]↗, "list"),
+        descend(&py↖[1]↗, "list"),
+        descend(&py↖[1, 4]↗, "list"),
+        descend(&py↖1↗, "integer"),
+        descend(&py↖4↗, "integer"),
+    );
+    let nix_list = (
+        descend(&nix↖[ ]↗, "list_expression"),
+        descend(&nix↖[ 1 ]↗, "list_expression"),
+        descend(&nix↖[ 1 4 ]↗, "list_expression"),
+        descend(&nix↖1↗, "integer_expression"),
+        descend(&nix↖4↗, "integer_expression"),
+    );
+    let lean_list = (
+        descend(&lean↖[]↗, "list_lit"),
+        descend(&lean↖[1]↗, "list_lit"),
+        descend(&lean↖[1, 4]↗, "list_lit"),
+        descend(&lean↖1↗, "num_lit"),
+        descend(&lean↖4↗, "num_lit"),
+    );
+
+    ⟨//⟩ ---- the file ----
+
+    let out: ⟨T⟩ = ↖
+        use super::{
+            lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape, Bash, Lean,
+            LiftTo, Nix, Python, Wgsl, Zsh,
+        };
+        use crate::qterm::{leaf, sym, tb, QTerm};
+        use std::sync::Arc;
+
+        ↙
+            ⟨//⟩ ---------------- WGSL ----------------
+            ⟨//⟩ WGSL has no 64-bit integers, so u64/i64 get no impl — lifting
+            ⟨//⟩ one is a compile error in the expanded program rather than a
+            ⟨//⟩ silent truncation.
+            ↖
+                /// WGSL `3u` / `3i`. The parser wraps a literal in a
+                /// `const_literal`; this is the inner node, which is what
+                /// `conformance/spec/wgsl.toml` pins — see issue #174.
+                ///
+                /// WGSL has no 64-bit integers, so `u64`/`i64` get no impl
+                /// below: lifting one is a compile error in the expanded
+                /// program rather than a silent truncation.
+                pub fn wgsl_int_term(text: &str) -> ⟨T⟩ {
+                    ↙wgsl_int↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Wgsl", &["u8", "u16", "u32", "usize"], &↖wgsl_int_term(&format!("{self}u"))↗).←;
+            scalar_impls("Wgsl", &["i8", "i16", "i32", "isize"], &↖wgsl_int_term(&format!("{self}i"))↗).←;
+            NL.←;
+            ↖
+                /// WGSL `1.5f`.
+                pub fn wgsl_float_term(text: &str) -> ⟨T⟩ {
+                    ↙wgsl_float↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Wgsl", &["f32"], &↖wgsl_float_term(&format!("{self}f"))↗).←;
+            NL.←;
+            ↖
+                /// WGSL `true` / `false`. The keyword is a child token of the
+                /// `bool_literal`, not its text — a lift that spelled it as
+                /// text coparsed identically and matched nothing.
+                pub fn wgsl_bool_term(b: bool) -> ⟨T⟩ {
+                    if b {
+                        ↙wgsl_true↘
+                    } else {
+                        ↙wgsl_false↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Wgsl", &["bool"], &↖wgsl_bool_term(*self)↗).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- Python ----------------
+            ↖
+                /// Python `3`. Python integers are arbitrary-precision, so
+                /// every Rust integer width lifts losslessly.
+                pub fn py_int_term(text: &str) -> ⟨T⟩ {
+                    ↙py_int↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Python",
+                &["u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize"],
+                &↖py_int_term(&self.to_string())↗,
+            ).←;
+            NL.←;
+            ↖
+                /// Python `1.5`.
+                pub fn py_float_term(text: &str) -> ⟨T⟩ {
+                    ↙py_float↘
+                }
+            ↗.←;
+            NL.←;
+            ⟨//⟩ `{:?}` keeps the decimal point (`1.0`, not `1`), so the lifted
+            ⟨//⟩ literal stays a float.
+            scalar_impls("Python", &["f32", "f64"], &↖py_float_term(&format!("{self:?}"))↗).←;
+            NL.←;
+            ↖
+                /// Python `True` / `False` — two different node kinds, not one
+                /// kind with two spellings.
+                pub fn py_bool_term(b: bool) -> ⟨T⟩ {
+                    if b {
+                        ↙py_true↘
+                    } else {
+                        ↙py_false↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Python", &["bool"], &↖py_bool_term(*self)↗).←;
+            NL.←;
+            ↖
+                /// Python `"s"` — a three-child `string`, and for the empty
+                /// string a two-child one, because the parser emits no
+                /// `string_content` when there is no content.
+                ///
+                /// Public because `quilt-python`'s own `qlift` needs exactly
+                /// this shape: there were two implementations of "lift a string
+                /// into Python", and they disagreed (#176). Sharing the
+                /// constructor is what keeps them from drifting apart again —
+                /// and generating it is what keeps *this* one honest.
+                pub fn py_string_term(s: &str) -> ⟨T⟩ {
+                    if s.is_empty() {
+                        ↙py_str_empty↘
+                    } else {
+                        ↙py_str↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            string_impls("Python", &↖py_string_term(self)↗).←;
+            NL.←;
+            container_fn("py_list_term", &py_list).←;
+            NL.←;
+            list_impls(
+                "Python",
+                &↖py_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
+            ).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- Bash ----------------
+            ↖
+                /// Bash `3` — a bare `number` word.
+                pub fn bash_number_term(text: &str) -> ⟨T⟩ {
+                    ↙bash_num↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Bash",
+                &["u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize"],
+                &↖bash_number_term(&self.to_string())↗,
+            ).←;
+            NL.←;
+            ↖
+                /// Bash `"s"`. Double-quoted so the value is inert data:
+                /// everything the shell would interpret inside `"…"` is
+                /// backslash-escaped first.
+                pub fn bash_string_term(s: &str) -> ⟨T⟩ {
+                    if s.is_empty() {
+                        ↙bash_str_empty↘
+                    } else {
+                        ↙bash_str↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            string_impls("Bash", &↖bash_string_term(self)↗).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- Zsh ----------------
+            ↖
+                /// Zsh `3` — derived from the zsh grammar, not assumed equal to
+                /// bash's. Eleven constructs the two shells were assumed to
+                /// share had quietly drifted apart once already (#150).
+                pub fn zsh_number_term(text: &str) -> ⟨T⟩ {
+                    ↙zsh_num↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Zsh",
+                &["u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize"],
+                &↖zsh_number_term(&self.to_string())↗,
+            ).←;
+            NL.←;
+            ↖
+                /// Zsh `"s"`.
+                pub fn zsh_string_term(s: &str) -> ⟨T⟩ {
+                    if s.is_empty() {
+                        ↙zsh_str_empty↘
+                    } else {
+                        ↙zsh_str↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            string_impls("Zsh", &↖zsh_string_term(self)↗).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- Nix ----------------
+            ↖
+                /// Nix `3`. Nix integers are 64-bit, matching the shell widths.
+                pub fn nix_int_term(text: &str) -> ⟨T⟩ {
+                    ↙nix_int↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Nix",
+                &["u8", "u16", "u32", "u64", "usize", "i8", "i16", "i32", "i64", "isize"],
+                &↖nix_int_term(&self.to_string())↗,
+            ).←;
+            NL.←;
+            ↖
+                /// Nix `1.5`.
+                pub fn nix_float_term(text: &str) -> ⟨T⟩ {
+                    ↙nix_float↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Nix", &["f32", "f64"], &↖nix_float_term(&format!("{self:?}"))↗).←;
+            NL.←;
+            ↖
+                /// Nix `true` / `false`. They are builtins rather than
+                /// keywords, so the parser reads them as a variable reference
+                /// and the name is its own node.
+                pub fn nix_bool_term(b: bool) -> ⟨T⟩ {
+                    if b {
+                        ↙nix_true↘
+                    } else {
+                        ↙nix_false↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Nix", &["bool"], &↖nix_bool_term(*self)↗).←;
+            NL.←;
+            ↖
+                /// Nix `"s"`. Besides `"` and `\`, the antiquotation opener is
+                /// escaped, so the value stays data rather than interpolating.
+                pub fn nix_string_term(s: &str) -> ⟨T⟩ {
+                    if s.is_empty() {
+                        ↙nix_str_empty↘
+                    } else {
+                        ↙nix_str↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            string_impls("Nix", &↖nix_string_term(self)↗).←;
+            NL.←;
+            container_fn("nix_list_term", &nix_list).←;
+            NL.←;
+            list_impls(
+                "Nix",
+                &↖nix_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
+            ).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- Lean ----------------
+            ↖
+                /// Lean `3` and `-3`. `Nat`/`Int` are arbitrary-precision, so
+                /// every Rust integer width lifts losslessly; `num_lit` itself
+                /// is unsigned, so the sign is a node rather than a character.
+                pub fn lean_num_term(negative: bool, text: &str) -> ⟨T⟩ {
+                    if negative {
+                        ↙lean_num_neg↘
+                    } else {
+                        ↙lean_num↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Lean",
+                &["u8", "u16", "u32", "u64", "u128", "usize"],
+                &↖lean_num_term(false, &self.to_string())↗,
+            ).←;
+            scalar_impls(
+                "Lean",
+                &["i8", "i16", "i32", "i64", "i128", "isize"],
+                &↖lean_num_term(*self < 0, &self.unsigned_abs().to_string())↗,
+            ).←;
+            NL.←;
+            ↖
+                /// Lean `1.5` and `-1.5`.
+                pub fn lean_float_term(negative: bool, text: &str) -> ⟨T⟩ {
+                    if negative {
+                        ↙lean_float_neg↘
+                    } else {
+                        ↙lean_float↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            ⟨//⟩ `{:?}` keeps the decimal point so it stays a float, not a `Nat`.
+            ⟨//⟩ The sign is read off the rendered text rather than compared
+            ⟨//⟩ against zero, so `-0.0` — which is not `< 0.0` — still lifts to
+            ⟨//⟩ the negation the parser builds for it.
+            scalar_impls(
+                "Lean",
+                &["f32", "f64"],
+                &↖
+                    {
+                        let s = format!("{self:?}");
+                        match s.strip_prefix('-') {
+                            Some(mag) => lean_float_term(true, mag),
+                            None => lean_float_term(false, &s),
+                        }
+                    }
+                ↗,
+            ).←;
+            NL.←;
+            ↖
+                /// Lean `true` / `false`.
+                pub fn lean_bool_term(b: bool) -> ⟨T⟩ {
+                    if b {
+                        ↙lean_true↘
+                    } else {
+                        ↙lean_false↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Lean", &["bool"], &↖lean_bool_term(*self)↗).←;
+            NL.←;
+            ↖
+                /// Lean `"s"`. The quote tokens are children and the body sits
+                /// between them as raw text, not as a node of its own.
+                pub fn lean_string_term(s: &str) -> ⟨T⟩ {
+                    if s.is_empty() {
+                        ↙lean_str_empty↘
+                    } else {
+                        ↙lean_str↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            string_impls("Lean", &↖lean_string_term(self)↗).←;
+            NL.←;
+            container_fn("lean_list_term", &lean_list).←;
+            NL.←;
+            ⟨//⟩ A loop, not `list_impls(…).←;`, because the expander terminates
+            ⟨//⟩ the block's last statement itself: an emit in that position gets
+            ⟨//⟩ two `;` and warns on every run. A `for` needs no terminator.
+            for it in list_impls(
+                "Lean",
+                &↖lean_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
+            ) {
+                it.←;
+            }
+        ↘
+    ↗;
+
+    out.dump_with_cmds("src/lift/gen.rs", &header(), &[])?;
+    Command::new("cargo")
+        .args(["fmt", "--", "src/lift/gen.rs"])
+        .status()
+        .ok();
+    Ok(())
+}
+
+/// The `//!` block at the top of the generated file. Written as raw commands
+/// rather than parsed, so it never has to survive a round trip.
+fn header() -> Vec<StrCmd> {
+    let mut cmds = Vec::new();
+    for line in [
+        "//! `LiftTo` impls: the shape each target's parser builds for a literal.",
+        "//!",
+        "//! @generated by `bin/gen-lifts` from `quilt/src/lift/mk_lifts.rs.quilt` —",
+        "//! do not edit by hand. `bin/check-lifts` regenerates it and fails if it",
+        "//! differs, so a lift cannot drift from the grammar it is meant to match.",
+        "//!",
+        "//! Every shape below was read off a *parsed sample literal*. The generator",
+        "//! parses e.g. `py\u{2196}\"s\"\u{2197}` with the vendored grammar and lifts",
+        "//! with `↑`, which prints the builder calls that rebuild it; the sample's",
+        "//! own text is then replaced by the runtime expression. So the tags, the",
+        "//! child structure and the layout are the parser's, not a transcription of",
+        "//! it. Two hand surveys had to be done before this existed (#176, then",
+        "//! `fed278b`); generating it is issue #203.",
+        "//!",
+        "//! Three families are still deliberately *not* the parser's shape:",
+        "//!",
+        "//! * WGSL literals parse wrapped in a `const_literal`; these lifts produce",
+        "//!   the inner node, which is the tag `conformance/spec/wgsl.toml` pins.",
+        "//!   Adopting the wrapper moves a declared claim — the open call in #174.",
+        "//! * A negative Python or Nix integer parses as a `unary_operator` /",
+        "//!   `unary_expression` over a positive literal; these lift one signed",
+        "//!   literal. Same call. Lean's negatives *are* the parser's shape.",
+        "//! * A string containing escapes parses with `escape_sequence` children",
+        "//!   inside its content, which no runtime reproduces (#174, finding A2).",
+    ] {
+        cmds.push(write(line));
+        cmds.push(NL);
+    }
+    cmds.push(NL);
+    cmds
+}

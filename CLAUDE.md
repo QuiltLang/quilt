@@ -50,7 +50,8 @@ main test [args]      # cargo test             (= ctest)
 main lint             # cargo clippy --tests   (= lint)
 main fmt              # cargo fmt --all
 main check            # pre-commit gate: fmt, clippy, tests, bootstrap,
-                      #   quilt grammar, arity tables, support matrix, examples
+                      #   quilt grammar, arity tables, lift shapes,
+                      #   support matrix, examples
 main check --all      # …plus feature matrix, vendored grammars, the python
                       #   and typescript runtimes
 main <script> [args]  # any other bin/ script, e.g. `main sync-grammars`
@@ -124,6 +125,16 @@ cargo test -p quilt-conformance rust     # a single language
 # to quilt/src/langs/arity.rs, where every `Language::arity` reads them.
 gen-arity         # rewrite quilt/src/langs/arity.rs from the grammars
 check-arity       # gen-arity + fail if the file drifted (CI / pre-commit)
+
+# Lift shapes (issue #203). Every `LiftTo` impl — the shape `↑` builds when it
+# lifts a Rust value into a quote of another language — is derived from a sample
+# literal parsed by that language's vendored grammar, rather than transcribed
+# from parser output by hand (which is how #176 and fed278b happened). The
+# generator is quilt itself: `quilt/src/lift/mk_lifts.rs.quilt` parses e.g.
+# `py↖"s"↗`, lifts the term with `↑` to get the builder calls that rebuild it,
+# and substitutes the sample's own text for the runtime expression.
+gen-lifts         # rewrite quilt/src/lift/gen.rs from the sample literals
+check-lifts       # gen-lifts + fail if the file drifted (CI / pre-commit)
 
 # Expander output is snapshotted, not pinned with inline string literals
 # (issue #157), so a deliberate change to generated code is a bulk review
@@ -220,9 +231,9 @@ Two trait families:
 
 `Expander` inside `multi.rs` is the recursive expansion engine. `Stage` tracks quasi-quote depth: `Ground` (running code) vs `Sky(lang, depth)` (inside quotes).
 
-### Heterogeneous lifting (`quilt/src/lift.rs`)
+### Heterogeneous lifting (`quilt/src/lift/`)
 
-`↑` is target-directed: `MetaLanguage::lift_str(target)` picks the spelling, where `target` defaults to the language of the enclosing quote (threaded through `build_nodes` as `splice_target`). Rust's spellings (`langs::rust::ops::lift_spelling`) are `qlift()` for rust→rust and `qlift_to::<L>()` for the heterogeneous targets (python, wgsl, zsh, bash, nix, lean). `lift.rs` (always compiled, no parser deps — wasm consumers use it) defines `LiftTo<L>` keyed by marker types (`Rust`, `Python`, `Wgsl`, `Bash`, `Zsh`, `Nix`, `Lean`) plus the `QLiftTo` postfix helper; per-(type, language) impls own the target's tags and spellings (e.g. `LiftTo<Wgsl> for u32` → `leaf("int_literal", "3u")`, `LiftTo<Python> for Vec<T>` → a `list` literal).
+`↑` is target-directed: `MetaLanguage::lift_str(target)` picks the spelling, where `target` defaults to the language of the enclosing quote (threaded through `build_nodes` as `splice_target`). Rust's spellings (`langs::rust::ops::lift_spelling`) are `qlift()` for rust→rust and `qlift_to::<L>()` for the heterogeneous targets (python, wgsl, zsh, bash, nix, lean). `lift.rs` (always compiled, no parser deps — wasm consumers use it) defines `LiftTo<L>` keyed by marker types (`Rust`, `Python`, `Wgsl`, `Bash`, `Zsh`, `Nix`, `Lean`) plus the `QLiftTo` postfix helper; per-(type, language) impls own the target's tags and spellings (e.g. `LiftTo<Wgsl> for u32` → `leaf("int_literal", "3u")`, `LiftTo<Python> for Vec<T>` → a `list` literal). Those impls live in `lift/gen.rs` and are **generated** (issue #203): `bin/gen-lifts` runs `lift/mk_lifts.rs.quilt`, which parses a sample literal per family with the vendored grammar, lifts it with `↑` — the builder-call source that rebuilds it — and substitutes the sample's text for the runtime expression, so the tags and layout are the parser's rather than a transcription. `bin/check-lifts` is the drift gate. `lift/mod.rs` keeps what is not a shape: markers, the trait, and the `*_dquote_escape` rules the generated shapes call.
 
 ### Concrete languages (`quilt/src/langs/`)
 
