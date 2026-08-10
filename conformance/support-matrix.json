@@ -457,7 +457,7 @@
         {
           "axis": "glyph-collisions",
           "status": "partial",
-          "note": "Five of the nine glyphs are Lean notation: `←` (monadic bind), `↑` (coercion), `↓` (lowering), and `⟨`/`⟩` (anonymous constructor). All five are escapable — `\\←` has parsed to content since #141 put `←` in the grammar's escape class — so the limit is that a Lean fragment using them must spell them `\\←`, `\\⟨1, 2\\⟩` and so on inside a quote. `<-` remains an ASCII alternative for bind. The sharpest case is an anonymous constructor of one variable: `⟨T⟩` and `⟨N⟩` are whole Quilt tokens, so both delimiters must be escaped for Lean to see them at all. The escape survives into the term but not back out: `QTerm::coparse` writes content verbatim, so such a fragment does not round-trip to source (#223)",
+          "note": "Five of the nine glyphs are Lean notation: `←` (monadic bind), `↑` (coercion), `↓` (lowering), and `⟨`/`⟩` (anonymous constructor). All five are escapable — `\\←` has parsed to content since #141 put `←` in the grammar's escape class — so the limit is that a Lean fragment using them must spell them `\\←`, `\\⟨1, 2\\⟩` and so on inside a quote. `<-` remains an ASCII alternative for bind. The sharpest case is an anonymous constructor of one variable: `⟨T⟩` and `⟨N⟩` are whole Quilt tokens, so both delimiters must be escaped for Lean to see them at all. Such a fragment round-trips back to source through `coparse_quilt`, which renders a term as the `.quilt` file it came from rather than as the code it generates (#223)",
           "issue": 141,
           "verified_by": "glyph-collisions/lean",
           "detail": [
