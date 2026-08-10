@@ -12,7 +12,7 @@ fn roundtrip(code: &str) -> Result<()> {
     let term = omni.parse(code)?;
 
     println!("'{}'", term.coparse());
-    assert_eq!(code, term.coparse(), "code should roundtrip");
+    assert_eq!(code, term.coparse_quilt(), "code should roundtrip");
 
     println!("'{}'", term[5].coparse());
     assert!(

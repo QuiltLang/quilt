@@ -16,7 +16,7 @@ use quilt::term::STerm;
 fn roundtrip(code: &str) -> Result<()> {
     let mut omni = Omni::default();
     let q = omni.parse(code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     Ok(())
 }
 
@@ -140,8 +140,9 @@ fn expand_tactic_unquote() -> Result<()> {
 ///
 /// Note this is *not* a source-level round-trip: `coparse` of a `QTerm` emits
 /// **target** source (Lean), where the bind must be a literal `←`. The escape
-/// belongs to Quilt's surface syntax and is consumed when it is parsed — see
-/// `node::escape`, which re-escapes only on the `Node` (Quilt-source) path.
+/// belongs to Quilt's surface syntax and is consumed when it is parsed. The
+/// source-level reading is `coparse_quilt`, which puts the `\` back —
+/// `escaped_glyphs_survive_coparse` below asserts that half (#223).
 #[test]
 fn do_block_escaped_bind() -> Result<()> {
     let mut omni = Omni::default();
@@ -200,39 +201,22 @@ fn expand_anonymous_constructor() -> Result<()> {
     Ok(())
 }
 
-/// **Known gap — issue #223.** An escaped glyph survives *into* the term (the
-/// two tests above) but not back *out* of it: `QTerm::coparse` writes content
-/// verbatim, so the `\` is dropped and the source no longer round-trips.
-///
-/// Pinned here rather than left as a silent hole because the damage is not
-/// cosmetic: for both glyphs the coparsed source stops parsing, for different
-/// reasons. A bare `←` is Quilt's emit operator again, so the bind becomes a
-/// hole in a position Lean has no room for; a bare `⟨` is in no character class
-/// the Quilt grammar has, so it is malformed outright. When #223 lands, both
-/// cases below become plain `roundtrip(…)` calls.
+/// An escaped glyph survives *into* the term (the two tests above) and now back
+/// *out* of it: these were pinned as broken when the axis work found them, and
+/// #223 is the fix. Both used to lose the `\` and stop parsing on the way back
+/// — a bare `←` is Quilt's emit operator again, so the bind became a hole in a
+/// position Lean has no room for, and a bare `⟨` is in no character class the
+/// Quilt grammar has, so it was malformed outright.
 #[test]
-fn escaped_glyphs_do_not_survive_coparse() -> Result<()> {
-    let mut omni = Omni::default();
-
-    for src in [
-        indoc! {r#"
-            let m = lean↖def main : IO Unit := do
-              let stdout \← IO.getStdout
-              stdout.putStrLn "hi"↗;"#},
-        r"let p = lean↖def p : Nat × Nat := \⟨1, 2\⟩↗;",
-    ] {
-        let back = omni.parse(src)?.coparse();
-        assert_ne!(
-            back, src,
-            "#223 is fixed — replace this test with `roundtrip({src:?})`"
-        );
-        assert!(
-            omni.parse(&back).is_err(),
-            "the escape was dropped but the result still parses, so the loss is \
-             cosmetic after all — check what changed:\n  in:  {src:?}\n  out: {back:?}"
-        );
-    }
-    Ok(())
+fn escaped_glyphs_survive_coparse() -> Result<()> {
+    roundtrip(indoc! {r#"
+        let m = lean↖def main : IO Unit := do
+          let stdout \← IO.getStdout
+          stdout.putStrLn "hi"↗;"#})?;
+    roundtrip(r"let p = lean↖def p : Nat × Nat := \⟨1, 2\⟩↗;")?;
+    roundtrip(r"let q = lean↖def q : Squash T := \⟨T\⟩↗;")?;
+    roundtrip(r"let n = lean↖def n := \↑x↗;")?;
+    roundtrip(r"let d = lean↖def d := \↓x↗;")
 }
 
 /// A hole inside a `do` block: do-elements are ordinary terms, so `↙…↘` reaches

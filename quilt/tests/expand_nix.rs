@@ -15,7 +15,7 @@ use quilt::term::STerm;
 fn roundtrip(code: &str) -> Result<()> {
     let mut omni = Omni::default();
     let q = omni.parse(code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     Ok(())
 }
 
@@ -95,7 +95,7 @@ fn host_roundtrips() -> Result<()> {
     let code = "let key = \"enabled\"; in nix↖{ ↙key↘ = true; }↗";
     let mut omni = Omni::default();
     let q = omni.parse_chain(&["nix"], code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     Ok(())
 }
 
@@ -200,7 +200,7 @@ fn chain_default_quote_lang() -> Result<()> {
     "#};
     let mut omni = Omni::default();
     let q = omni.parse_chain(&["rs", "nix"], code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     let out = omni.expand_lang("rs", &q)?.coparse();
     println!("{out}");
 
