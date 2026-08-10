@@ -401,17 +401,18 @@ const LIFT_STR_CHARS: &[char] = &[
 /// Inputs whose lifted literal is known not to parse, with the issue tracking
 /// the fix: `(language, substring, issue)`.
 ///
-/// A quarantine, not an alphabet edit. Quietly dropping `(` from
+/// A quarantine, not an alphabet edit. Quietly dropping a character from
 /// [`LIFT_STR_CHARS`] would make the property green and lose the finding; this
 /// keeps generating the input, keeps the reason next to it, and makes deleting
 /// the entry the regression test for the fix.
-const KNOWN_UNPARSEABLE: &[(&str, &str, u32)] = &[
-    // tree-sitter-zsh lexes `((` as the arithmetic-expansion opener even inside
-    // a double-quoted string, so `"(("` is rejected — `echo "(("` too, so it is
-    // not an artifact of parsing a bare literal in command position. Bash
-    // shares the grammar lineage and gets it right.
-    ("zsh", "((", 212),
-];
+///
+/// Empty, and worth keeping empty. Its one entry was zsh's `((` (issue #212):
+/// the grammar offered the bare `((…))` arithmetic *command* opener inside a
+/// double-quoted string, so the lexer preferred that token over
+/// `string_content` and every lifted string containing `((` was rejected. Fixed
+/// in the `QuiltLang/tree-sitter-zsh` fork; `shell_lifts_match_the_parser` in
+/// `quilt/tests/lift_fidelity.rs` pins the case deterministically.
+const KNOWN_UNPARSEABLE: &[(&str, &str, u32)] = &[];
 
 fn quarantined(language: &str, text: &str) -> Option<u32> {
     KNOWN_UNPARSEABLE

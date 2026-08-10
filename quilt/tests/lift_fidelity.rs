@@ -156,6 +156,20 @@ fn lean_lifts_match_the_parser() {
     );
 }
 
+/// The shell strings below are the arithmetic-opener cases from issue #212.
+///
+/// `sh_dquote_escape` escapes `"`, `\`, `$` and backtick and nothing else,
+/// which is right for a real shell — `(` is ordinary text inside `"…"`. The zsh
+/// grammar disagreed: it offered the bare `((…))` arithmetic *command* opener as
+/// an alternative inside `string`, so `((` was in the lexer's valid-token set at
+/// every position in a string and won the same-length tie against
+/// `string_content` (`prec(-1)`). Every lifted string containing `((` therefore
+/// produced zsh that our own parser rejected — silently, at lift time. Fixed in
+/// the fork by restricting `string` to the `$`-sigil forms.
+///
+/// Both shells get the cases: bash was never affected, which is what made the
+/// divergence a grammar bug rather than an escaping one, and pinning it here
+/// keeps that true.
 #[test]
 fn shell_lifts_match_the_parser() {
     check(
@@ -164,6 +178,9 @@ fn shell_lifts_match_the_parser() {
             42u32.qlift_to::<Bash>(),
             "".qlift_to::<Bash>(),
             "/var/log".qlift_to::<Bash>(),
+            "((".qlift_to::<Bash>(),
+            "(())".qlift_to::<Bash>(),
+            "x = ((a+b))".qlift_to::<Bash>(),
         ],
     );
     check(
@@ -172,6 +189,9 @@ fn shell_lifts_match_the_parser() {
             42u32.qlift_to::<Zsh>(),
             "".qlift_to::<Zsh>(),
             "/var/log".qlift_to::<Zsh>(),
+            "((".qlift_to::<Zsh>(),
+            "(())".qlift_to::<Zsh>(),
+            "x = ((a+b))".qlift_to::<Zsh>(),
         ],
     );
 }

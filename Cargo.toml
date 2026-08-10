@@ -64,7 +64,13 @@ tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", r
 # is its tip, adding the `__HOLE__` interpolation token.
 tree-sitter-typescript = {git = "https://github.com/QuiltLang/tree-sitter-typescript.git", rev = "25f4db1700b970293b83c5964581ff8ef718106f"}
 tree-sitter-wgsl = {git = "https://github.com/QuiltLang/tree-sitter-wgsl.git", rev = "a83b84c4dd9ce8f28ee79d36b09ccbaef0f51d6b"}
-tree-sitter-zsh = {git = "https://github.com/QuiltLang/tree-sitter-zsh.git", rev = "6923371dfd93a273e6ef4af0ba27c12ec8e5ab1d"}
+# `((` inside a double-quoted string is content, not the arithmetic-command
+# opener (issue #212, QuiltLang/tree-sitter-zsh#1). The same commit parks the
+# fork's `quilt_hole` rule: it panics `tree-sitter generate` at
+# `render.rs:1253` on every CLI ≥0.26.9 and hangs on older ones, and it had
+# never reached a generated parser, so it was blocking regeneration outright.
+# Holes still parse as `word`, which is all `zsh/lang.rs` asks for.
+tree-sitter-zsh = {git = "https://github.com/QuiltLang/tree-sitter-zsh.git", rev = "c768088ca877105376e957aa7739a1b5d203806a"}
 
 # External crates (versions only; features are selected per-crate)
 anyhow = "1"
