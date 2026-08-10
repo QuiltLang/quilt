@@ -161,8 +161,13 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             // line as an indentation prefix and repeated it over every line of
             // the comment. A node whose children are all anonymous has no
             // structure to recurse into, so nothing is lost by treating it as
-            // one token, and a hole cannot hide inside it (a hole parses as a
-            // *named* node). Found by `bin/fuzz`, issue #161.
+            // one token. Found by `bin/fuzz`, issue #161.
+            //
+            // A hole *can* hide inside one, though — this comment used to say
+            // otherwise, on the grounds that a hole parses as a named node. It
+            // does only when it stands alone; inside a multi-line string or
+            // comment the token swallows it (issue #221), which is why the rows
+            // below go through [`write_run`] rather than `builder.write`.
             let all_anonymous = (0..node.child_count()).all(|i| {
                 u32::try_from(i)
                     .ok()
@@ -171,32 +176,136 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             });
             if all_anonymous && start.row != end.row {
                 let mut builder = tb(node.kind());
-                builder.write(drop_last(&lines[start.row][start.column..]));
+                let first = &lines[start.row][start.column..];
+                write_run(
+                    provider,
+                    node,
+                    &mut builder,
+                    lines,
+                    hole_points,
+                    holes,
+                    prefix,
+                    start.row,
+                    start.column,
+                    start.column + drop_last(first).len(),
+                );
                 let pre = prefix.concat();
                 let rows = lines.iter().enumerate();
                 for (row, line) in rows.take(end.row + 1).skip(start.row + 1) {
-                    let line = if row == end.row {
-                        &line[..end.column]
+                    let c1 = if row == end.row {
+                        end.column
                     } else {
-                        drop_last(line)
+                        drop_last(line).len()
                     };
+                    // The continuation lines are written minus the current
+                    // prefix, so the run starts after it — and a hole's column
+                    // is an index into the *whole* line, which is why this is a
+                    // column rather than a `strip_prefix` on the slice.
+                    let c0 = usize::from(line[..c1].starts_with(&pre)) * pre.len();
                     builder.nl();
-                    builder.write(line.strip_prefix(&pre).unwrap_or(line));
+                    write_run(
+                        provider,
+                        node,
+                        &mut builder,
+                        lines,
+                        hole_points,
+                        holes,
+                        prefix,
+                        row,
+                        c0,
+                        c1,
+                    );
                 }
                 return builder.build();
             }
 
+            // Write `lines[row][c0..c1]`, splitting the run at any hole point
+            // that falls inside it.
+            //
+            // `__QUILT_HOLE__` is spelled so it lexes as an ordinary
+            // identifier/word, and hole detection matches a node whose range
+            // *equals* the hole's. That holds only where the hole stands alone:
+            // inside a string, inside a comment, or glued to neighbouring text
+            // (`__QUILT_HOLE__.service` is one word), the token around it
+            // swallows it, no node ever matches, and the point went unconsumed —
+            // surfacing much later, and somewhere else, as "Ran out of holes"
+            // (issue #221).
+            //
+            // Splitting the run is what a dedicated `quilt_hole` token in each
+            // grammar would otherwise have to do — and cannot, since
+            // `tree-sitter generate` panics on that rule (see the forks). It is
+            // also strictly more general: it asks nothing of the grammar, so
+            // every language gets it at once, and the resulting term is the one
+            // you want either way — the hole becomes a child of the token it
+            // sits in, with the text on each side written around it.
+            //
+            // This cannot steal a point from a node that would have matched it
+            // exactly: a run is either a leaf's own text or a gap between
+            // children, traversal is in document order, and an exact match is
+            // consumed at the top of [`f`] before any run is written.
+            #[allow(clippy::too_many_arguments)]
+            fn write_run<P: TSProvider>(
+                provider: &P,
+                node: tree_sitter::Node,
+                builder: &mut QTermBuilder,
+                lines: &[&str],
+                hole_points: &mut Peekable<IntoIter<(usize, usize, usize)>>,
+                holes: &mut Vec<Hole>,
+                prefix: &[Box<str>],
+                row: usize,
+                c0: usize,
+                c1: usize,
+            ) {
+                let mut col = c0;
+                while let Some(&(r, s, e)) = hole_points.peek() {
+                    if r != row || s < col || e > c1 {
+                        break;
+                    }
+                    hole_points.next();
+                    if s > col {
+                        builder.write(&lines[row][col..s]);
+                    }
+                    holes.push(Hole {
+                        // The token the hole sits inside is the closest thing to
+                        // a node of its own that it has.
+                        otag: node.kind().into(),
+                        ikind: Some(provider.hole_kind(node)),
+                        prefix: prefix.to_vec().into(),
+                    });
+                    builder.child(&arc(qsym(provider.hole_str())));
+                    col = e;
+                }
+                builder.write(&lines[row][col..c1]);
+            }
+
             // otherwise, recurse into children
-            fn process<'a>(
+            #[allow(clippy::too_many_arguments)]
+            fn process<'a, P: TSProvider>(
+                provider: &P,
+                node: tree_sitter::Node,
                 builder: &'a mut QTermBuilder, // TODO: use TupleBuilder
                 depth: &mut i32,
                 lines: &[&str],
+                hole_points: &mut Peekable<IntoIter<(usize, usize, usize)>>,
+                holes: &mut Vec<Hole>,
                 prefix: &mut Vec<Box<str>>,
                 p0: Point,
                 p1: Point,
             ) -> &'a mut QTermBuilder {
                 if p0.row == p1.row {
-                    builder.write(&lines[p0.row][p0.column..p1.column])
+                    write_run(
+                        provider,
+                        node,
+                        builder,
+                        lines,
+                        hole_points,
+                        holes,
+                        prefix,
+                        p0.row,
+                        p0.column,
+                        p1.column,
+                    );
+                    builder
                 } else {
                     // drop the trailing newline
                     builder.write(drop_last(&lines[p0.row][p0.column..]));
@@ -231,9 +340,13 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 let child = node.child(u32::try_from(i).unwrap()).unwrap();
                 let crange = child.range();
                 process(
+                    provider,
+                    node,
                     &mut builder,
                     &mut depth,
                     lines,
+                    hole_points,
+                    holes,
                     prefix,
                     point,
                     crange.start_point,
@@ -249,7 +362,18 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                     false,
                 )));
             }
-            process(&mut builder, &mut depth, lines, prefix, point, end);
+            process(
+                provider,
+                node,
+                &mut builder,
+                &mut depth,
+                lines,
+                hole_points,
+                holes,
+                prefix,
+                point,
+                end,
+            );
             for _ in 0..depth {
                 prefix.pop();
                 builder.pop();

@@ -34,11 +34,15 @@ echo ↖echo "logs in $HOME/log on `hostname`"↗
 # own would close that literal and reopen it, leaving the value unquoted --
 # concatenation, which is the one shell habit this model inverts.
 #
-# A hole has to *be* a whole node, too: it is found by byte range. Splice a
-# whole word, as below, rather than part of one -- an unquote glued to adjacent
-# text lexes as one long word ("__QUILT_HOLE__.service") and fails to parse, as
-# does a hole inside a "..." string or a comment. See issue #221.
+# A hole no longer has to *be* a whole word: since issue #221 the parser splits
+# the token around it, so an unquote also works inside a "..." string, inside a
+# comment, and glued to neighbouring text -- see the .service line below.
 echo ↖readonly UNITS=↙$(IFS=,; echo "${units[*]}")↘↗
+
+# Glued to adjacent text, and inside a generated string: both were parse errors
+# until #221.
+echo ↖systemctl start ↙${units[0]}↘.service↗
+echo ↖echo "started ↙${units[0]}↘"↗
 
 # The string model is language-agnostic, so a shell host can generate any
 # target, not only shell.

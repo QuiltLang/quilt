@@ -223,6 +223,69 @@ pub fn check_lift_errors(specs: &[Spec]) -> Result<Vec<Failure>> {
     Ok(failures)
 }
 
+/// Every declared glyph collision (#195), driven through a real `lang↖…↗` quote
+/// in the full engine — from every host, since the escape is the *surface*
+/// parser's job and must not depend on who is quoting.
+///
+/// The battery checks the same fragments one layer down: `Node::parse` for the
+/// escape, `Language::parse_as` for the fragment. This is the composition of
+/// the two, which is the thing a user actually writes. #141 is the reason it is
+/// worth having both: `←` was escapable in `node.rs`'s table and not in the
+/// grammar, so only a real parse of a real quote disagreed.
+pub fn check_glyph_escapes(specs: &[Spec]) -> Result<(Vec<Failure>, usize)> {
+    let hosts: Vec<&Spec> = specs.iter().filter(|s| s.cross.wrapper.is_some()).collect();
+    if hosts.is_empty() {
+        bail!("no host with a `[cross] wrapper` to quote a glyph fragment from");
+    }
+
+    let mut omni = Omni::default();
+    let mut failures = Vec::new();
+    let mut checked = 0;
+
+    for host in &hosts {
+        let wrapper = host.cross.wrapper.as_deref().expect("filtered");
+        for spec in specs {
+            for g in &spec.glyphs {
+                checked += 1;
+                let target = spec.name.as_str();
+                let escaped = quilt::node::escape(&g.code);
+                let src = wrapper.replace('@', &format!("{target}↖{escaped}↗"));
+                let mut fail = |detail: String| {
+                    failures.push(Failure {
+                        host: host.name.clone(),
+                        target: target.to_string(),
+                        probe: format!("glyph {}", g.glyph),
+                        detail,
+                    });
+                };
+
+                match omni.parse_chain(&[&host.name], &src) {
+                    Ok(parsed) => match find_quote(&parsed, target) {
+                        Some(q) => {
+                            let inner =
+                                q.children().next().map(|c| c.coparse()).unwrap_or_default();
+                            if inner != g.code {
+                                fail(format!(
+                                    "`\\{}` in {src:?} did not survive the quote:\n  in:  \
+                                     {:?}\n  out: {inner:?}",
+                                    g.glyph, g.code
+                                ));
+                            }
+                        }
+                        None => fail(format!(
+                            "{src:?} parsed, but no {target} quote came out of it — the escaped \
+                             glyph broke the bracket structure"
+                        )),
+                    },
+                    Err(e) => fail(format!("parsing {src:?} failed: {e}")),
+                }
+            }
+        }
+    }
+
+    Ok((failures, checked))
+}
+
 /// A language is a usable *chain member* when a two-element chain makes a bare
 /// `↖…↗` default to it — the `shaders.wgsl.rs.quilt` case, where the ground
 /// language is Rust and un-annotated quotes are WGSL.

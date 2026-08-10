@@ -3,17 +3,6 @@
   "name": "zsh",
   "word": "_word",
   "rules": {
-    "quilt_hole": {
-      "type": "TOKEN",
-      "content": {
-        "type": "PREC",
-        "value": 10,
-        "content": {
-          "type": "STRING",
-          "value": "__QUILT_HOLE__"
-        }
-      }
-    },
     "program": {
       "type": "CHOICE",
       "members": [
@@ -353,10 +342,6 @@
         {
           "type": "SYMBOL",
           "name": "function_definition"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "quilt_hole"
         }
       ]
     },
@@ -5689,10 +5674,6 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "quilt_hole"
-        },
-        {
-          "type": "SYMBOL",
           "name": "qualified_expression"
         },
         {
@@ -5865,6 +5846,98 @@
                     "value": "(("
                   }
                 ]
+              },
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_arithmetic_expression"
+                  },
+                  {
+                    "type": "REPEAT",
+                    "content": {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "STRING",
+                          "value": ","
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "_arithmetic_expression"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "STRING",
+                "value": "))"
+              }
+            ]
+          },
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_bare_dollar"
+                    },
+                    {
+                      "type": "STRING",
+                      "value": "["
+                    }
+                  ]
+                },
+                "named": false,
+                "value": "$["
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_arithmetic_expression"
+              },
+              {
+                "type": "STRING",
+                "value": "]"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "_dollar_arithmetic_expansion": {
+      "type": "PREC",
+      "value": 4,
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_bare_dollar"
+                    },
+                    {
+                      "type": "STRING",
+                      "value": "(("
+                    }
+                  ]
+                },
+                "named": false,
+                "value": "$(("
               },
               {
                 "type": "SEQ",
@@ -7551,12 +7624,13 @@
                     "name": "command_substitution"
                   },
                   {
-                    "type": "SYMBOL",
-                    "name": "arithmetic_expansion"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "quilt_hole"
+                    "type": "ALIAS",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "_dollar_arithmetic_expansion"
+                    },
+                    "named": true,
+                    "value": "arithmetic_expansion"
                   }
                 ]
               },

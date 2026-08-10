@@ -78,12 +78,24 @@ module.exports = grammar({
     escape: $ => /\\[↖↗↙↘↑↓←⟨⟩]/,
 
     newline: $ => /\n/,
-    left_quote: $ => /[a-z]*↖/,
+    // NOTE: the three annotated openers below must all spell the language name
+    // the same way — a lowercase letter followed by letters or digits, or
+    // nothing at all for the un-annotated form. Digits are here because `lean4`
+    // is a registered alias (see `metas` in quilt/src/langs/omni.rs) that
+    // `[a-z]*` could not express, so `lean4↖…↗` was the content `lean4`
+    // followed by an *un-annotated* quote and failed far from the cause
+    // (issue #222).
+    //
+    // The leading letter is required, and that is the whole reason this is not
+    // simply `[a-z0-9]*`: a number that happens to abut the glyph must stay
+    // content. `x = 42↖…↗` is the literal `42` and a bare quote, not a quote of
+    // some language "42" — and the corpus pins it.
+    left_quote: $ => /([a-z][a-z0-9]*)?↖/,
     right_quote: $ => "↗",
-    left_unquote: $ => /[a-z]*↙/,
+    left_unquote: $ => /([a-z][a-z0-9]*)?↙/,
     right_unquote: $ => "↘",
     lift: $ => "↑",
-    reduce: $ => /[a-z]*↓/,
+    reduce: $ => /([a-z][a-z0-9]*)?↓/,
     emit: $ => "←",
     type: $ => "⟨T⟩",
     name: $ => "⟨N⟩",

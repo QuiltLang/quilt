@@ -78,6 +78,8 @@ let wgsl_frag = wgsl↖vec4<f32>(1.0, 0.0, 0.0, 1.0)↗;
 
 An un-annotated `↖…↗` defaults to the host language, or to the second language in the file's extension chain (e.g. `shaders.wgsl.rs.quilt` → bare quotes default to WGSL).
 
+An annotation is a lowercase letter followed by letters or digits — `lean4↖…↗` as well as `lean↖…↗`, since both are registered names for the same language. The leading letter is what keeps a number that happens to abut the glyph as ordinary content: `x = 42↖…↗` is the literal `42` and a *bare* quote, not a quote of some language named `42`. The same shape spells the annotation on `↙…↘` and on `↓`.
+
 ### Unquote `↙…↘`
 
 An unquote bracket splices an already-built term *into* a quote:

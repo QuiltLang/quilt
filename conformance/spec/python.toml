@@ -23,7 +23,7 @@ not_variadic = ["binary_operator", "assignment", "function_definition"]
 
 lift_marker = "Python"
 lift_from = ["python", "py", "html"]
-lift_from_unsupported = ["rust", "rs", "wgsl", "nix", "lean", "typescript", "ts", "text", "txt"]
+lift_from_unsupported = ["rust", "rs", "wgsl", "nix", "lean", "lean4", "typescript", "ts", "text", "txt"]
 
 [capabilities]
 quotable = {status = "supported"}
@@ -87,6 +87,11 @@ tag = "module"
 [[holes]]
 name = "assignment_value"
 code = "x = @"
+ikinds = ["expr"]
+
+[[holes]]
+name = "inside_a_string"
+code = 'print("hi @ there")'
 ikinds = ["expr"]
 
 [[lift]]

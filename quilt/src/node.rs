@@ -125,9 +125,9 @@ impl Node {
 
     /// Split a `quote`/`unquote` node into its language annotation and body.
     ///
-    /// The opener token is `[a-z]*↖` (resp. `[a-z]*↙`) per the grammar, so the
-    /// annotation is the opener's text with the glyph stripped. The body is
-    /// every child between the opener and the closer.
+    /// The opener token is `([a-z][a-z0-9]*)?↖` (resp. `…↙`) per the grammar,
+    /// so the annotation is the opener's text with the glyph stripped. The body
+    /// is every child between the opener and the closer.
     fn bracket(node: &tree_sitter::Node, code: &str, glyph: char) -> Result<Bracket> {
         let open = node
             .child(0)
@@ -168,10 +168,14 @@ type Bracket = (Box<str>, Box<[Arc<Node>]>);
 /// Strip the trailing `glyph` from an opener/operator token's text, leaving its
 /// language annotation.
 ///
-/// The grammar spells these tokens `[a-z]*↖` / `[a-z]*↙` / `[a-z]*↓`, so this is
-/// exact. It replaces `text[..text.len() - ARROW_LEN]`, which assumed the glyph's
-/// byte width and would slice mid-codepoint (a panic) if a glyph of another width
-/// were ever added.
+/// The grammar spells these tokens `([a-z][a-z0-9]*)?↖` / `…↙` / `…↓`, so this
+/// is exact. It replaces `text[..text.len() - ARROW_LEN]`, which assumed the
+/// glyph's byte width and would slice mid-codepoint (a panic) if a glyph of
+/// another width were ever added.
+///
+/// Nothing here constrains the annotation's *shape* — that lives entirely in
+/// the grammar, which is why widening it to admit `lean4` (issue #222) needed
+/// no change on this side.
 fn strip_glyph(text: &str, glyph: char) -> Result<&str> {
     text.strip_suffix(glyph)
         .ok_or_else(|| miette!("Quilt parser: expected {text:?} to end with {glyph:?}"))
@@ -404,6 +408,37 @@ mod tests {
         assert!(matches!(&nodes[4], Node::Reduce { anno } if &**anno == "rs"));
         let roundtrip = &*Node::coparse(&nodes);
         assert_eq!(roundtrip, source_code);
+        Ok(())
+    }
+
+    /// An annotation may carry digits after its first letter, in all three
+    /// annotated openers — so the registered alias `lean4` can be *written*
+    /// (issue #222). It could not be, under the old `[a-z]*↖`: `lean4↖…↗` was
+    /// the content `lean4` followed by an un-annotated quote, and the mistake
+    /// surfaced somewhere else entirely.
+    #[test]
+    fn annotations_take_digits_after_the_first_letter() -> Result<()> {
+        let source_code = "lean4↖x↗ lean4↙y↘ lean4↓";
+        let nodes = Node::parse(source_code)?;
+        assert_eq!(nodes.len(), 5); // quote, space, unquote, space, reduce
+        assert!(matches!(&nodes[0], Node::Quote { anno, .. } if &**anno == "lean4"));
+        assert!(matches!(&nodes[2], Node::Unquote { anno, .. } if &**anno == "lean4"));
+        assert!(matches!(&nodes[4], Node::Reduce { anno } if &**anno == "lean4"));
+        assert_eq!(&*Node::coparse(&nodes), source_code);
+        Ok(())
+    }
+
+    /// The other half of that rule, and the reason it is not simply
+    /// `[a-z0-9]*`: a *number* abutting the glyph stays content. `42↖…↗` is the
+    /// literal `42` and a bare quote — which defaults to the host language —
+    /// not a quote of some language named "42".
+    #[test]
+    fn a_bare_number_is_not_an_annotation() -> Result<()> {
+        let source_code = "x = 42↖1↗";
+        let nodes = Node::parse(source_code)?;
+        assert!(matches!(&nodes[0], Node::Content(s) if &**s == "x = 42"));
+        assert!(matches!(&nodes[1], Node::Quote { anno, .. } if anno.is_empty()));
+        assert_eq!(&*Node::coparse(&nodes), source_code);
         Ok(())
     }
 

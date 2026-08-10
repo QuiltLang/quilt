@@ -29,6 +29,7 @@ use crate::registry::{self, BoxLang};
 use crate::spec::{Kind, Spec};
 use miette::Result;
 use quilt::lang::{flat_nodes, Arity, FlatNode, Language as _, LanguagePost as _};
+use quilt::node::Node;
 use quilt::prelude::*;
 use quilt::term::Term as _;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -193,6 +194,7 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
         probe_variadic(&mut ctx, &lang);
         probe_runnable(&mut ctx, &lang);
         probe_lift_into(&mut ctx, &mut lang);
+        probe_glyphs(&mut ctx, &mut lang);
     }
 
     probe_host(&mut ctx);
@@ -205,12 +207,13 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
     probe_chain_member(&mut ctx);
     probe_header_comment(&mut ctx);
 
-    // Axes no tier reaches yet. Listing them explicitly (rather than letting
-    // them fall through) is what keeps the matrix rectangular and makes the
-    // unverified set an obvious, countable backlog.
-    for axis in [Axis::GlyphCollisions, Axis::Lsp] {
-        ctx.declared(axis);
-    }
+    // The one axis no tier reaches. Recording it explicitly (rather than
+    // letting it fall through) is what keeps the matrix rectangular and keeps
+    // the unverified set an obvious, countable backlog — now a set of one:
+    // `lsp` is out of scope in #144 by construction, since the LSP has its own
+    // suite and a matrix column for it needs the adapter grid that issue defers
+    // to a follow-up.
+    ctx.declared(Axis::Lsp);
 
     ctx.cells.sort_by_key(|c| c.axis);
 
@@ -1157,6 +1160,226 @@ fn probe_runtime_binding(ctx: &mut Ctx) {
         Some(r) => vec![format!("{r}: {covered} shared corpus case(s)")],
         None => Vec::new(),
     };
+    ctx.verified(axis, detail);
+}
+
+/// Quilt glyphs that are also this language's own syntax (#195).
+///
+/// Half of this axis cannot be probed and never will be: whether `↑` *means*
+/// coercion in Lean is a fact about Lean, and no amount of parsing establishes
+/// that Rust has no use for `←`. So the spec keeps declaring it. What the
+/// probes add is that a declaration cannot be prose:
+///
+/// 1. the glyph is one Quilt actually reserves (`node::GLYPHS`) — a spec that
+///    names `→` is talking about nothing;
+/// 2. `\<glyph>` escapes it: the escaped fragment parses to plain content
+///    holding the bare glyph, and `coparse` puts the `\` back. This is the
+///    check that would have failed for `←` before #141, when the glyph was
+///    missing from the grammar's escape class;
+/// 3. the bare fragment parses in *this* language with the declared root tag —
+///    the collision is real, not folklore, and the glyph survives into the term;
+/// 4. the status matches: a language whose syntax overlaps Quilt's is
+///    `partial`, one whose does not is `supported`, and neither can be claimed
+///    while the `[[glyphs]]` list says otherwise.
+///
+/// `cross::check_glyph_escapes` closes the loop end-to-end, driving the same
+/// fragments through a real `lang↖…↗` quote in the full engine.
+fn probe_glyphs(ctx: &mut Ctx, lang: &mut BoxLang) {
+    let axis = Axis::GlyphCollisions;
+    let claim = ctx.spec.claim(axis).expect("validated").status;
+    let mut detail = Vec::new();
+    // Whether every declared collision is livable: escapable, and still this
+    // language's syntax once written. That is the difference between `partial`
+    // (you can write it, with a `\`) and `unsupported` (you cannot write it).
+    let mut all_livable = true;
+
+    for g in &ctx.spec.glyphs {
+        let probe = g.glyph.as_str();
+        let ch = g.glyph.chars().next().expect("validated: one char");
+
+        // 1. The glyph is one Quilt reserves.
+        if !quilt::node::GLYPHS.contains(&ch) {
+            all_livable = false;
+            ctx.fail(
+                axis,
+                probe,
+                format!(
+                    "{ch:?} is not a Quilt glyph ({:?}) — it cannot collide with anything",
+                    quilt::node::GLYPHS
+                ),
+            );
+            continue;
+        }
+
+        // 2. Escapable: the fragment, written with `\` before every glyph,
+        //    parses to content holding the bare glyphs and coparses back.
+        let escaped = quilt::node::escape(&g.code);
+        match run(|| Node::parse(&escaped).map(Vec::from)) {
+            Ran::Ok(nodes) => {
+                if let Some(bad) = nodes
+                    .iter()
+                    .find(|n| !matches!(n, Node::Content(_) | Node::NewLine))
+                {
+                    all_livable = false;
+                    ctx.fail(
+                        axis,
+                        probe,
+                        format!(
+                            "escaped fragment {escaped:?} did not parse to plain content: \
+                             {bad:?} — the `\\` did not suppress the operator"
+                        ),
+                    );
+                }
+                let content: String = nodes
+                    .iter()
+                    .map(|n| match n {
+                        Node::Content(s) => s.to_string(),
+                        _ => "\n".to_string(),
+                    })
+                    .collect();
+                if content != g.code {
+                    all_livable = false;
+                    ctx.fail(
+                        axis,
+                        probe,
+                        format!(
+                            "escaping is lossy:\n  in:  {:?}\n  out: {content:?}",
+                            g.code
+                        ),
+                    );
+                }
+                let back = Node::coparse(&nodes);
+                if *back != *escaped {
+                    all_livable = false;
+                    ctx.fail(
+                        axis,
+                        probe,
+                        format!("escape round-trip differs:\n  in:  {escaped:?}\n  out: {back:?}"),
+                    );
+                }
+            }
+            Ran::Err(e) => {
+                all_livable = false;
+                ctx.fail(
+                    axis,
+                    probe,
+                    format!("escaped fragment failed to parse: {e}"),
+                );
+            }
+            Ran::Panicked(p) => {
+                all_livable = false;
+                ctx.fail(axis, probe, format!("escaped fragment PANICKED: {p}"));
+            }
+        }
+
+        // `unescape` is the raw-text inverse the LSP and the CLI use; it must
+        // agree with the structural parse above rather than approximate it.
+        if *quilt::node::unescape(&escaped) != *g.code {
+            all_livable = false;
+            ctx.fail(
+                axis,
+                probe,
+                format!(
+                    "unescape({escaped:?}) is {:?}, not the declared fragment {:?}",
+                    quilt::node::unescape(&escaped),
+                    g.code
+                ),
+            );
+        }
+
+        // 3. The collision is real: bare, the fragment is this language's own
+        //    syntax, with the declared root tag, and it survives the round trip.
+        let ikind = g.kind.and_then(Kind::to_inner);
+        match run(|| lang.parse_as(ikind, &flat_nodes(&g.code))) {
+            Ran::Ok(term) => {
+                let tag = term.tag();
+                let want = quilt::qterm::QTermTag::tuple(&g.tag);
+                if tag != want {
+                    ctx.fail(
+                        axis,
+                        probe,
+                        format!("root tag is {tag:?}, spec says {:?}", g.tag),
+                    );
+                }
+                let back = term.coparse();
+                if back != g.code {
+                    ctx.fail(
+                        axis,
+                        probe,
+                        format!(
+                            "fragment does not round-trip:\n  in:  {:?}\n  out: {back:?}",
+                            g.code
+                        ),
+                    );
+                }
+                detail.push(format!("{} — {} (`{}`)", g.glyph, g.means, g.code));
+            }
+            Ran::Err(e) => {
+                all_livable = false;
+                ctx.fail(
+                    axis,
+                    probe,
+                    format!(
+                        "declared as {} syntax, but {:?} does not parse: {e} — either the \
+                         collision is not real or the fragment is wrong",
+                        ctx.spec.name, g.code
+                    ),
+                );
+            }
+            Ran::Panicked(p) => {
+                all_livable = false;
+                ctx.fail(axis, probe, format!("bare fragment PANICKED: {p}"));
+            }
+        }
+    }
+
+    // 4. The status and the list have to agree. Without this the list could be
+    //    right and the cell — the part the website renders — still wrong.
+    let n = ctx.spec.glyphs.len();
+    match claim {
+        Status::Supported if n > 0 => ctx.fail(
+            axis,
+            "status",
+            format!(
+                "declares {n} colliding glyph(s) but claims `supported`; a language whose \
+                 syntax overlaps Quilt's is `partial` (the glyph escapes) or `unsupported` \
+                 (it does not)"
+            ),
+        ),
+        Status::Partial if n == 0 => ctx.fail(
+            axis,
+            "status",
+            "claims `partial` but lists no `[[glyphs]]` — name the glyphs the limit is \
+             about, or claim `supported`",
+        ),
+        Status::Unsupported if n == 0 => ctx.fail(
+            axis,
+            "status",
+            "claims `unsupported` but lists no `[[glyphs]]` — say which glyph cannot be \
+             written in this language",
+        ),
+        Status::Unsupported if all_livable => ctx.fail(
+            axis,
+            "status",
+            "claims `unsupported`, but every declared glyph escapes and round-trips — \
+             promote the claim to `partial`",
+        ),
+        Status::Planned => ctx.fail(
+            axis,
+            "status",
+            "`planned` is not a state a glyph collision can be in: a glyph either is this \
+             language's syntax today or is not",
+        ),
+        _ => {}
+    }
+
+    if n == 0 {
+        detail.push(format!(
+            "no Quilt glyph is {} syntax (declared, not probed)",
+            ctx.spec.name
+        ));
+    }
+
     ctx.verified(axis, detail);
 }
 

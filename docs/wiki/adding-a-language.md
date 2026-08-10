@@ -24,6 +24,8 @@ If the language needs tree-sitter parsing (recommended):
 
    **Check first whether you need a patch at all.** Nix and Lean both spell the hole `__QUILT_HOLE__`, which already matches their identifier regexes, so it parses in every position an identifier may appear — no grammar change, and the range-based hole detection in `treesitter.rs` recognises it by byte range regardless of node kind. This is much the cheapest option; see issue #133 for exactly how far it gets you in Lean (everywhere except top-level command position).
 
+   It gets you further than it used to. A hole no longer has to *be* a node: where the surrounding token swallows the marker — inside a string, inside a comment, or glued to neighbouring text — `build_nodes` splits that token around it (issue #221). So "the marker is a valid identifier" now covers string interiors too, for free, in every language. Do not add a grammar rule to buy that.
+
    If you do patch, where you *reference* the token is the real design decision. Reaching it from more positions is more expressive, but a hole viable in two different roles at once creates genuine parse ambiguity — the first Lean attempt made the hole both an identifier operand and a command, which conflicted with every command ending in a greedy identifier list, cost `prec.right` on eight rules, and blew the parse table past 2.5 GB during generation. Prefer the smallest set of positions that covers your use cases.
 
    Also check whether your language's *root* node accepts the fragments you want to quote. Lean's `module` holds commands, not terms, so a bare term (`lean↖n + 1↗`) does not parse as a whole file the way it does in Rust or Python. `LeanLanguage` handles this by retrying a failed parse inside a synthetic `#check …` command and stripping the wrapper off the resulting `QTerm` — worth copying if your language has the same shape.
@@ -233,6 +235,7 @@ What you declare, and what the battery does with it:
 | `variadic` / `not_variadic` | `Language::arity` agrees — including the negative cases, since over-declaring variadicity silently changes emit behaviour. Both are claims about your *grammar*, since the table is derived from it: `variadic` says the rule has a repeat over direct children, `not_variadic` says it does not |
 | `lift_marker` + `[[lift]]` | values lift to the declared tag and text, **and the lifted literal reparses in your grammar** — the check that catches escaping bugs |
 | `lift_from` / `lift_from_unsupported` | your `MetaLanguage::lift_str` spells exactly the targets you claim, and refuses the rest |
+| `[[glyphs]]` | each Quilt glyph you declare as your language's own syntax is one Quilt actually reserves, `\<glyph>` escapes it, and the fragment you supply parses in your language with the declared tag — checked again end-to-end through a real quote, from every host |
 | `[capabilities]` | each claim matches reality; `partial`/`unsupported` must carry a `note`, and `partial`/`planned` a tracking `issue` |
 
 Three rules worth knowing before you start:
@@ -247,7 +250,12 @@ Three rules worth knowing before you start:
   glyphs are also your language's own syntax. Lean spells monadic bind `←` —
   the same glyph as emit — and that cost a real bug
   ([#141](https://github.com/QuiltLang/quilt/issues/141)) precisely because
-  nothing asked the question when Lean landed.
+  nothing asked the question when Lean landed. Half the answer is a declaration
+  no probe can check: whether `↑` *means* anything in your language is a fact
+  about your language. The other half is `[[glyphs]]`, one entry per colliding
+  glyph with a real fragment using it, and the status has to agree with the
+  list — `supported` means the list is empty, `partial` means it is not
+  ([#195](https://github.com/QuiltLang/quilt/issues/195)).
 
 ### Your spec also generates property tests
 

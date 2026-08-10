@@ -108,6 +108,11 @@ name = "fn_body_is_block"
 code = "fn f() @"
 ikinds = ["block"]
 
+[[holes]]
+name = "inside_a_string"
+code = 'let s = "hi @ there";'
+ikinds = ["expr"]
+
 [[lift]]
 value = "u32:3"
 tag = "integer_literal"
