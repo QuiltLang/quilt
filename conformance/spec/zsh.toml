@@ -2,12 +2,16 @@ name = "zsh"
 display = "Zsh"
 aliases = []
 feature = "zsh"
-meta_kind = "none"
+meta_kind = "string"
 comment_prefix = "#"
 lang_src = "quilt/src/langs/zsh/lang.rs"
+meta_src = "quilt/src/langs/shell/meta.rs"
 blurb = """
-A target-only shell language, sharing bash's grammar lineage and escaping rules. \
-A lifted Rust string becomes a properly escaped double-quoted word."""
+A quotable target and a string-based host, sharing bash's grammar lineage and \
+escaping rules. A lifted Rust string becomes a properly escaped double-quoted \
+word; as a host, a `.zsh.quilt` metaprogram expands to a plain script that \
+prints the output, and shares bash's `ShellMetaLanguage` for the same reason \
+the tag tables are shared."""
 
 # The table these are checked against is derived from the grammar's `REPEAT`
 # rules (#202). Zsh's grammar is a fork of bash's, so this list overlaps
@@ -86,25 +90,30 @@ not_variadic = [
 ]
 
 lift_marker = "Zsh"
+# See bash.toml: a shell value is already text, so `↑` has no conversion to
+# name and the whole row is refused, the homogeneous `""` case included.
+lift_from = []
+# `lean4` deliberately absent — see the note in bash.toml (#222).
+lift_from_unsupported = ["", "zsh", "bash", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "html", "typescript", "ts", "text", "txt"]
 
 [capabilities]
 quotable = {status = "supported"}
-hole-positions = {status = "supported"}
+hole-positions = {status = "partial", note = "a hole must *be* a whole word: the fork's `quilt_hole` rule was never generated into `parser.c`, so `__QUILT_HOLE__` lexes as a plain `word` and is found by byte range. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `\"…\"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Predates the host (#151) and applies to zsh as a target too", issue = 221}
 variadic-containers = {status = "supported", note = "derived from the grammar's `REPEAT` rules by `bin/gen-arity`; agrees with bash's table on every shared node kind except `function_definition`, whose zsh rule takes `repeat1(name)`"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Zsh>` impl", issue = 149}
 highlights = {status = "supported"}
-host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
-lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
-reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
-emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
-pattern-match = {status = "unsupported", note = "target-only; zsh fragments can still be destructured by a Rust host"}
-runnable = {status = "partial", note = "`hashbang()` returns `#!/usr/bin/env zsh`, but zsh has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`", issue = 151}
-runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
+host = {status = "supported", note = "string-based, sharing bash's `ShellMetaLanguage`: a quote becomes a double-quoted word and a host unquote is spliced into it verbatim, since a shell expansion carries its own `$`"}
+lift-from = {status = "unsupported", note = "`↑` has no spelling: a shell value is already text, so there is no conversion to name, and an operator that expands to nothing is an invisible no-op rather than an operator. Splice with `↙…↘`, which interpolates as written"}
+reduce = {status = "unsupported", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against"}
+emit = {status = "unsupported", note = "the string model has no `b_` accumulator for `←` to append to, and unlike Nix's `builtins.concatStringsSep` the shell's join cannot stand in as a spelling: an operator is applied *prefix* to what follows, while `printf '%s\\n' \"${xs[@]}\"` takes its operand inside a substitution. Collect the fragments in an array and splice the join itself"}
+pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; zsh fragments can still be destructured by a Rust host"}
+runnable = {status = "supported", note = "`quilt run foo.zsh.quilt` expands to a script that prints the generated code and executes it under `#!/usr/bin/env zsh` — no per-runner setup, since a string host needs no runtime importable"}
+runtime-binding = {status = "unsupported", note = "string-based meta: generated code is shell words, so there is no `QTerm` builder API to publish for this host"}
 glyph-collisions = {status = "supported"}
 chain-member = {status = "supported"}
-header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced"}
-lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream zsh server is proxied", issue = 154}
+header-comment = {status = "supported", note = "generated shell files use `#`, not `//!`"}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream zsh server is proxied, and — now that zsh can be the ground language — no `MetaLanguageAdapter` either, so a `.zsh.quilt` file gets no host-side support", issue = 154}
 
 [[fragments]]
 name = "command"
@@ -144,3 +153,14 @@ text = '"a\"b\\c\${d}"'
 [kinds]
 program = "file"
 command = "file"
+
+# Identical to bash.toml's: the two dialects share one `ShellMetaLanguage`, and
+# the point of pinning both is that a future divergence has to be declared.
+[meta]
+emit_error = "printf"
+type_error = "untyped"
+reduce_unsupported = ["", "zsh", "bash", "nix", "rust", "rs", "python", "py", "wgsl", "html", "lean", "lean4", "typescript", "ts"]
+
+[cross]
+wrapper = "echo @"
+lift = "↑ v"

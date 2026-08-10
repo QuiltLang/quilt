@@ -1,4 +1,5 @@
-//! Tag tables shared by the two shell dialects (issue #150).
+//! What the two shell dialects share: the tag tables of issue #150, and — since
+//! issue #151 — their string-based *host* half.
 //!
 //! `tree-sitter-zsh` is a fork of `tree-sitter-bash`, and `concrete-languages.md`
 //! documents the two Quilt languages as near-equivalent — "a separate target with
@@ -22,6 +23,15 @@
 //! *expression* rather than a statement. That is a Quilt-level judgement about
 //! how to label a squashed fragment, so it has no derivation to fall back on and
 //! is shared for exactly the reason #150 gives.
+//!
+//! [`meta`] and [`ops`] are the host half (#151): the shells are no longer
+//! target-only. They are shared for the same reason once more — the two
+//! dialects double-quote identically, so one implementation carrying a
+//! [`meta::ShellDialect`] marker is a single place to fix rather than two copies
+//! to keep in step.
+
+pub mod meta;
+pub mod ops;
 
 /// Tags that are shell "expressions" rather than statements.
 ///
