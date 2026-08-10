@@ -60,6 +60,14 @@ tree-sitter-lean = {git = "https://github.com/QuiltLang/tree-sitter-lean.git", r
 tree-sitter-nix = {git = "https://github.com/QuiltLang/tree-sitter-nix.git", rev = "dd89f89955224e335625858f1de6113261c76045"}
 tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"}
 tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "167de1910dcba9c59d6fa59e37868aa8d14c772b"}
+# SQL needs no Quilt hole patch either: `__QUILT_HOLE__` matches this grammar's
+# `_identifier` regex, so it parses unpatched in predicate, select-expression,
+# relation-name and `IN`-list position (the same free ride nix and lean get).
+# The fork's one deviation from upstream is that it *commits* the generated
+# parser: upstream publishes it on a separate `gh-pages` branch, and nothing
+# ties a `gh-pages` commit to the `grammar.js` it was generated from, so that
+# branch cannot be pinned (QuiltLang/tree-sitter-sql#1, issue #219).
+tree-sitter-sql = {git = "https://github.com/QuiltLang/tree-sitter-sql.git", rev = "6e9e52267c5eca3d3c80a8979a6f54e25bdef419"}
 # The `quilt_hole` change (issue #44) is merged to the fork's master; this rev
 # is its tip, adding the `__HOLE__` interpolation token.
 tree-sitter-typescript = {git = "https://github.com/QuiltLang/tree-sitter-typescript.git", rev = "25f4db1700b970293b83c5964581ff8ef718106f"}

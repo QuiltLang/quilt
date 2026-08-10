@@ -46,7 +46,7 @@ macro_rules! language_tests {
     };
 }
 
-language_tests!(bash, html, lean, nix, python, rust, text, typescript, wgsl, zsh);
+language_tests!(bash, html, lean, nix, python, rust, sql, text, typescript, wgsl, zsh);
 
 /// Every registered language must have a spec, and every spec must name a
 /// registered language. This is the check that makes it impossible to add a

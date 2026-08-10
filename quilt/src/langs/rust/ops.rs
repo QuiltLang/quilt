@@ -257,6 +257,7 @@ pub fn lift_spelling(target: &str) -> Result<&'static str> {
         "bash" => Ok("qlift_to::<Bash>()"),
         "nix" => Ok("qlift_to::<Nix>()"),
         "lean" | "lean4" => Ok("qlift_to::<Lean>()"),
+        "sql" => Ok("qlift_to::<Sql>()"),
         _ => bail!("rust can't lift into {target:?}: no spelling/LiftTo impls registered"),
     }
 }

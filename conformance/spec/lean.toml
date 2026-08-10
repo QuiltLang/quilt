@@ -21,7 +21,7 @@ not_variadic = ["binary_op"]
 
 lift_marker = "Lean"
 lift_from = ["lean", "lean4"]
-lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "html", "typescript", "ts", "text", "txt"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "html", "typescript", "ts", "text", "txt", "sql"]
 
 [capabilities]
 quotable = {status = "supported"}

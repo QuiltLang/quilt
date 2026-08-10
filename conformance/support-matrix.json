@@ -938,7 +938,8 @@
             "bash → qlift_to::<Bash>()",
             "nix → qlift_to::<Nix>()",
             "lean → qlift_to::<Lean>()",
-            "lean4 → qlift_to::<Lean>()"
+            "lean4 → qlift_to::<Lean>()",
+            "sql → qlift_to::<Sql>()"
           ]
         },
         {
@@ -1015,6 +1016,172 @@
         {
           "axis": "lsp",
           "status": "supported"
+        }
+      ]
+    },
+    {
+      "name": "sql",
+      "display": "SQL",
+      "aliases": [],
+      "feature": "sql",
+      "blurb": "A permissive, multi-dialect SQL grammar — a target-only language. Build a query from a Rust or Python host and splice values in with `↑`, which turns each one into a *literal node* rather than text: a value cannot close the literal and continue the statement, so the query is sanitized by construction rather than by an escaping convention nobody checks.",
+      "meta_kind": "none",
+      "lang_src": "quilt/src/langs/sql/lang.rs",
+      "cells": [
+        {
+          "axis": "quotable",
+          "status": "supported",
+          "verified_by": "quotable/sql",
+          "detail": [
+            "select_where → Tuple statement ⟨·, \" \", ·⟩",
+            "insert → Tuple statement ⟨·⟩",
+            "predicate → Tuple binary_expression ⟨·, \" \", ·, \" \", ·⟩",
+            "string_literal → Tuple literal ⟨\"'a''b'\"⟩",
+            "terminated_statement → Tuple program ⟨·, ·⟩"
+          ]
+        },
+        {
+          "axis": "hole-positions",
+          "status": "partial",
+          "note": "every expression position works with the unpatched grammar (`__QUILT_HOLE__` matches SQL's identifier regex): predicate operand, select expression, relation name, `IN`-list element — and since #221 also inside a token and glued to adjacent text. A bare hole as a whole *statement* is a parse error, since no SQL statement begins with an identifier",
+          "issue": 234,
+          "verified_by": "hole-positions/sql",
+          "detail": [
+            "predicate_rhs: expr",
+            "select_expression: expr",
+            "relation_name: expr",
+            "in_list_element: expr"
+          ]
+        },
+        {
+          "axis": "variadic-containers",
+          "status": "supported",
+          "note": "derived from the grammar's `REPEAT` rules by `bin/gen-arity`. `literal` is in the set, which surprises: `_single_quote_string` ends in a repeat over adjacent string literals",
+          "verified_by": "variadic-containers/sql",
+          "detail": [
+            "program",
+            "select_expression",
+            "list",
+            "from",
+            "values"
+          ]
+        },
+        {
+          "axis": "kind-classification",
+          "status": "supported",
+          "verified_by": "kind-classification/sql",
+          "detail": [
+            "binary_expression = Expr",
+            "block = Stmt",
+            "identifier = Expr",
+            "literal = Expr",
+            "program = File",
+            "statement = Stmt",
+            "transaction = Stmt"
+          ]
+        },
+        {
+          "axis": "lift-into",
+          "status": "partial",
+          "note": "integers, decimals, booleans, strings and slices/`Vec`s all lift. The string escape is standard SQL — `'` doubled, backslash passed through — which is correct for the standard, PostgreSQL with `standard_conforming_strings = on`, SQLite and SQL Server, and *not* for a MySQL connection left in the default backslash-escapes mode",
+          "issue": 233,
+          "verified_by": "lift-into/sql",
+          "detail": [
+            "u32:3 → 3",
+            "i32:-7 → -7",
+            "f32:1.5 → 1.5",
+            "f32:-1.5 → -1.5",
+            "bool:true → TRUE",
+            "bool:false → FALSE",
+            "str:plain → 'hi'",
+            "str:tricky → 'a\"b\\c${d}'",
+            "str:quote → 'O''Hara''; DROP TABLE users; --'"
+          ]
+        },
+        {
+          "axis": "highlights",
+          "status": "supported",
+          "verified_by": "highlights/sql",
+          "detail": [
+            "quilt::grammars::sql::HIGHLIGHTS_QUERY"
+          ]
+        },
+        {
+          "axis": "host",
+          "status": "unsupported",
+          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion. SQL has no facility for building its own syntax trees, so there is nothing for a string-based meta to emit either",
+          "verified_by": "host/sql",
+          "detail": [
+            "meta_kind = none"
+          ]
+        },
+        {
+          "axis": "lift-from",
+          "status": "unsupported",
+          "note": "target-only: nothing to lift from",
+          "verified_by": "lift-from/sql"
+        },
+        {
+          "axis": "reduce",
+          "status": "unsupported",
+          "note": "target-only: no meta-language to reduce with",
+          "verified_by": "reduce/sql"
+        },
+        {
+          "axis": "emit",
+          "status": "unsupported",
+          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/sql"
+        },
+        {
+          "axis": "pattern-match",
+          "status": "unsupported",
+          "note": "target-only; SQL fragments can still be destructured by a Rust host",
+          "verified_by": "pattern-match/sql"
+        },
+        {
+          "axis": "runnable",
+          "status": "unsupported",
+          "note": "a query is executed by a database server, not by an interpreter reading a shebang",
+          "verified_by": "runnable/sql"
+        },
+        {
+          "axis": "runtime-binding",
+          "status": "unsupported",
+          "note": "target-only: no runtime library",
+          "verified_by": "runtime-binding/sql"
+        },
+        {
+          "axis": "glyph-collisions",
+          "status": "supported",
+          "verified_by": "glyph-collisions/sql",
+          "detail": [
+            "no Quilt glyph is sql syntax (declared, not probed)"
+          ]
+        },
+        {
+          "axis": "chain-member",
+          "status": "supported",
+          "note": "`queries.sql.rs.quilt` makes bare quotes default to SQL inside a Rust host",
+          "verified_by": "chain-member/sql",
+          "detail": [
+            "bare `↖…↗` in a chain resolves to sql"
+          ]
+        },
+        {
+          "axis": "header-comment",
+          "status": "unsupported",
+          "note": "target-only: never the ground language, so no generated-file header is produced. The prefix is registered (`--`) so the answer exists if that changes",
+          "verified_by": "header-comment/sql",
+          "detail": [
+            "-- (unused: target-only, never the ground language)"
+          ]
+        },
+        {
+          "axis": "lsp",
+          "status": "partial",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream SQL server is proxied",
+          "issue": 154
         }
       ]
     },

@@ -84,7 +84,7 @@ lift_marker = "Bash"
 # `""` would make the glyph an invisible no-op in the generated script. So the
 # whole row is refused, the homogeneous `""` case included.
 lift_from = []
-lift_from_unsupported = ["", "bash", "zsh", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "html", "typescript", "ts", "text", "txt"]
+lift_from_unsupported = ["", "bash", "zsh", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "html", "typescript", "ts", "text", "txt", "sql"]
 
 [capabilities]
 quotable = {status = "supported"}
