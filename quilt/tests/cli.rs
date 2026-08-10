@@ -155,18 +155,61 @@ fn check_accepts_a_valid_shebang_script() {
     assert!(o.status.success(), "stderr:\n{}", stderr(&o));
 }
 
-/// Documents a real inconsistency rather than asserting it is right: `run`
-/// happily executes an extension-less shebang script (that is what `bin/issues`
-/// is), but `check` refuses anything without a `.quilt` suffix — so those files
-/// can be run and never validated in CI.
+/// The other half of `run_resolves_a_symlinked_entry_point` (issue #188).
+/// `check` used to require a literal `.quilt` suffix on the path it was handed,
+/// so an extension-less entry point — `bin/issues` is a symlink to
+/// `examples/issue_triage.html.py.quilt` — could be *run* and never validated
+/// in CI. Both subcommands now derive the chain the same way, through
+/// `resolve_stem`.
+///
+/// Python content is what proves the chain came from the resolved *target*:
+/// under the link's own name there is no language at all, and under a Rust
+/// default `x = ↖1 + 2↗` is a parse error. The dotted parent directory is the
+/// second half of the rule — only the file *name* counts.
+#[cfg(unix)]
 #[test]
-fn check_rejects_a_file_without_the_quilt_suffix() {
-    let d = Dir::new("nosuffix");
+fn check_accepts_a_symlinked_extensionless_script() {
+    let d = Dir::new("check-symlink");
+    let target = d.write(
+        "some.dir.v2/tool.py.quilt",
+        "#!/usr/bin/env quilt\nx = ↖1 + 2↗\n",
+    );
+    let link = d.0.join("issues");
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    let o = run(&[Path::new("check"), &link]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert!(stdout(&o).contains(": ok"), "stdout: {}", stdout(&o));
+}
+
+/// The suffix is no longer the gate, but the *name* still has to resolve to a
+/// registered language. A genuinely extension-less regular file has no chain to
+/// derive, so it still fails — just later, and naming the language it could not
+/// find rather than the suffix it did not have.
+#[test]
+fn check_rejects_a_name_that_resolves_to_no_language() {
+    let d = Dir::new("nolang");
     let f = d.write("issues", "#!/usr/bin/env quilt\nlet x = ↖1 + 2↗;\n");
     let o = run(&[Path::new("check"), &f]);
     assert_eq!(o.status.code(), Some(1));
+    let e = stderr(&o);
     assert!(
-        stderr(&o).contains("expected a .quilt file"),
+        e.contains("\"issues\"") && e.contains("can't be used as"),
+        "the error should name the language it looked for, got:\n{e}"
+    );
+}
+
+/// Resolution is now how `check` finds the file at all, so a dangling symlink
+/// has to come out as a diagnostic like any other unreadable path.
+#[cfg(unix)]
+#[test]
+fn check_reports_a_dangling_symlink() {
+    let d = Dir::new("dangling");
+    let link = d.0.join("gone");
+    std::os::unix::fs::symlink(d.0.join("nowhere.rs.quilt"), &link).expect("symlink");
+    let o = run(&[Path::new("check"), &link]);
+    assert_eq!(o.status.code(), Some(1), "stderr:\n{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("1 of 1 file(s) failed"),
         "stderr:\n{}",
         stderr(&o)
     );
@@ -223,6 +266,21 @@ fn expand_derives_the_language_chain_from_the_stem() {
         body.contains("int_literal"),
         "the bare quote should have parsed as WGSL, got:\n{body}"
     );
+}
+
+/// `expand` writes the input name with `.quilt` sliced off, so — unlike
+/// `check`, which only ever discards its result — it is right to insist on the
+/// suffix: there is no output name without one. It used to `unwrap()` that
+/// slice, so `quilt expand bin/issues` was a panic rather than a diagnostic
+/// (issue #188). A Rust panic exits 101, so the exit code alone pins this.
+#[test]
+fn expand_rejects_a_file_without_the_quilt_suffix() {
+    let d = Dir::new("expand-nosuffix");
+    let f = d.write("issues", "#!/usr/bin/env quilt\nlet x = ↖1 + 2↗;\n");
+    let o = run(&[Path::new("expand"), &f]);
+    assert_eq!(o.status.code(), Some(1), "stderr:\n{}", stderr(&o));
+    let e = stderr(&o);
+    assert!(e.contains("expected a .quilt file"), "stderr:\n{e}");
 }
 
 #[test]

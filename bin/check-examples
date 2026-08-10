@@ -33,8 +33,23 @@ if [ "${#quilts[@]}" -eq 0 ]; then
   exit 1
 fi
 
-echo "==> quilt check (${#quilts[@]} files)"
-"$ROOT/bin/quilt" check "${quilts[@]}"
+# Extension-less entry points: a `#!/usr/bin/env quilt` script under bin/ is a
+# .quilt file whose *name* doesn't say so (bin/issues is a symlink to
+# examples/issue_triage.html.py.quilt). The glob above cannot see them, which is
+# how issue #188 went unnoticed — `quilt check` refused the very files the repo
+# ships to be run, so the only ones CI validated were the ones nobody executes.
+# `check` now resolves a name the way `run` does, so they can be included.
+# Check-only: they have no committed output to diff, and for a symlink the
+# target is already in the list above.
+entries=()
+while IFS= read -r f; do
+  entries+=("$f")
+done < <(grep -lx '#!/usr/bin/env quilt' bin/* 2>/dev/null | sort)
+
+echo "==> quilt check (${#quilts[@]} examples + ${#entries[@]} entry point(s))"
+# `${a[@]+"${a[@]}"}` because bash 3.2 under `set -u` treats an empty array
+# expansion as an unbound variable.
+"$ROOT/bin/quilt" check "${quilts[@]}" ${entries[@]+"${entries[@]}"}
 
 # Gate 2: re-expand and diff against any committed, generated output.
 tmp="$(mktemp -d)"
