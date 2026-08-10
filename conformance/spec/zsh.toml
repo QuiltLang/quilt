@@ -93,8 +93,7 @@ lift_marker = "Zsh"
 # See bash.toml: a shell value is already text, so `↑` has no conversion to
 # name and the whole row is refused, the homogeneous `""` case included.
 lift_from = []
-# `lean4` deliberately absent — see the note in bash.toml (#222).
-lift_from_unsupported = ["", "zsh", "bash", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "html", "typescript", "ts", "text", "txt"]
+lift_from_unsupported = ["", "zsh", "bash", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "html", "typescript", "ts", "text", "txt"]
 
 [capabilities]
 quotable = {status = "supported"}

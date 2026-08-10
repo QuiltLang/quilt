@@ -104,7 +104,7 @@
     },
     "left_quote": {
       "type": "PATTERN",
-      "value": "[a-z]*↖"
+      "value": "([a-z][a-z0-9]*)?↖"
     },
     "right_quote": {
       "type": "STRING",
@@ -112,7 +112,7 @@
     },
     "left_unquote": {
       "type": "PATTERN",
-      "value": "[a-z]*↙"
+      "value": "([a-z][a-z0-9]*)?↙"
     },
     "right_unquote": {
       "type": "STRING",
@@ -124,7 +124,7 @@
     },
     "reduce": {
       "type": "PATTERN",
-      "value": "[a-z]*↓"
+      "value": "([a-z][a-z0-9]*)?↓"
     },
     "emit": {
       "type": "STRING",
