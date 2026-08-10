@@ -97,7 +97,7 @@ lift_from_unsupported = ["", "zsh", "bash", "rust", "rs", "python", "py", "wgsl"
 
 [capabilities]
 quotable = {status = "supported"}
-hole-positions = {status = "partial", note = "a hole must *be* a whole word: the fork's `quilt_hole` rule was never generated into `parser.c`, so `__QUILT_HOLE__` lexes as a plain `word` and is found by byte range. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `\"…\"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Predates the host (#151) and applies to zsh as a target too", issue = 221}
+hole-positions = {status = "supported", note = "a hole need not be a whole word: since #221 `build_nodes` splits the token around it, so besides command-argument, assignment-RHS, `[ … ]` and statement positions it also reaches inside a `\"…\"` string, inside a comment, and glued to adjacent text (`↙u↘.service`). The grammar is untouched — the fork's `quilt_hole` rule is still parked, since `tree-sitter generate` panics on it"}
 variadic-containers = {status = "supported", note = "derived from the grammar's `REPEAT` rules by `bin/gen-arity`; agrees with bash's table on every shared node kind except `function_definition`, whose zsh rule takes `repeat1(name)`"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "strings and integers only — the shells are word-oriented, so there is no float or bool `LiftTo<Zsh>` impl", issue = 149}
@@ -132,6 +132,21 @@ tag = "program"
 [[holes]]
 name = "command_argument"
 code = "echo @"
+ikinds = ["file"]
+
+[[holes]]
+name = "inside_a_string"
+code = 'echo "hi @ there"'
+ikinds = ["file"]
+
+[[holes]]
+name = "glued_to_a_word"
+code = "systemctl start @.service"
+ikinds = ["file"]
+
+[[holes]]
+name = "inside_a_comment"
+code = "# built by @"
 ikinds = ["file"]
 
 [[lift]]
