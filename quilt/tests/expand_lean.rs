@@ -367,3 +367,39 @@ fn host_reduce_deferred_in_quote() -> Result<()> {
     insta::assert_snapshot!(host_expand("def gen : String := lean↖def f := ↓↗")?);
     Ok(())
 }
+
+/* ------------------- the `lean4` alias, as an annotation ------------------ */
+
+/// `lean4` is a registered alias of `lean` (`langs/omni.rs`), and until issue
+/// #222 it could not be *written*: the quilt grammar spelled an annotation
+/// `[a-z]*↖`, so `lean4↖…↗` was the content `lean4` followed by an
+/// un-annotated quote. The failure then surfaced far from its cause — a
+/// fragment silently parsed as the host language, or "Ran out of holes for
+/// quote" from the hole that no longer lined up with a node.
+///
+/// This is the alias behaving as one: the same term from either spelling.
+/// (`langs::lean::meta::lift_str` has always accepted `"lean4"`, for a case
+/// that could not arrive until now.)
+#[test]
+fn lean4_annotation_matches_lean() -> Result<()> {
+    assert_eq!(
+        expand("const X: T = lean↖n + 1↗;\n")?,
+        expand("const X: T = lean4↖n + 1↗;\n")?,
+    );
+    Ok(())
+}
+
+/// The `↓` opener carries an annotation too, spelled by a third grammar rule —
+/// so widening one rule without the others would leave `lean4↓` broken while
+/// `lean4↖…↗` worked. Lean's meta has no reduce backend, so the *error* is the
+/// evidence the annotation arrived at all: before #222 this failed in the
+/// parser instead, naming neither end.
+#[test]
+fn lean4_reduce_annotation_reaches_the_meta() {
+    let mut omni = Omni::default();
+    let msg = omni
+        .parse_chain(&["lean"], "def gen := lean4↓\n")
+        .unwrap_err()
+        .to_string();
+    assert!(msg.contains("lean can\'t reduce `lean4↓`"), "{msg}");
+}
