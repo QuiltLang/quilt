@@ -273,7 +273,14 @@ pub fn escape_html(s: &str) -> String {
 // so the tags and escaping are identical.
 
 /// Escape a string for inclusion in a POSIX shell double-quoted literal.
-fn sh_dquote_escape(s: &str) -> String {
+///
+/// Shared with the shell *hosts* (`langs::shell::ops`, #151), which reconstruct
+/// a quoted fragment as one of these literals: a lifted value and the literal
+/// text around it land in the same generated word, so escaping them two
+/// different ways is the drift issue #150 is about. It lives here rather than
+/// beside the host because `lift.rs` is compiled unconditionally, while
+/// `langs::shell` needs the `bash` or `zsh` feature.
+pub(crate) fn sh_dquote_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         if matches!(c, '"' | '\\' | '$' | '`') {

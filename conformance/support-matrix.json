@@ -6,9 +6,10 @@
       "display": "Bash",
       "aliases": [],
       "feature": "bash",
-      "blurb": "A target-only shell language. Generate scripts with correct quoting: a lifted Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks escaped, so the value stays inert data.",
-      "meta_kind": "none",
+      "blurb": "A quotable target and a string-based host. Generate scripts with correct quoting: a lifted Rust string becomes a double-quoted word with `\"`, `\\`, `$` and backticks escaped, so the value stays inert data. As a host, a `.bash.quilt` metaprogram expands to a plain script that prints the output, splicing values with the shell's own interpolation.",
+      "meta_kind": "string",
       "lang_src": "quilt/src/langs/bash/lang.rs",
+      "meta_src": "quilt/src/langs/shell/meta.rs",
       "cells": [
         {
           "axis": "quotable",
@@ -23,7 +24,9 @@
         },
         {
           "axis": "hole-positions",
-          "status": "supported",
+          "status": "partial",
+          "note": "a hole must *be* a whole word: the fork's `quilt_hole` rule was never generated into `parser.c`, so `__QUILT_HOLE__` lexes as a plain `word` and is found by byte range. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `\"…\"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Predates the host (#151) and applies to bash as a target too",
+          "issue": 221,
           "verified_by": "hole-positions/bash",
           "detail": [
             "command_argument: file"
@@ -97,42 +100,46 @@
         },
         {
           "axis": "host",
-          "status": "unsupported",
-          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "status": "supported",
+          "note": "string-based, like Nix and Lean: a quote becomes a double-quoted word and a host unquote is spliced into it verbatim, since a shell expansion carries its own `$`",
           "verified_by": "host/bash",
           "detail": [
-            "meta_kind = none"
+            "meta_kind = string"
           ]
         },
         {
           "axis": "lift-from",
           "status": "unsupported",
-          "note": "target-only: nothing to lift from",
+          "note": "`↑` has no spelling: a shell value is already text, so there is no conversion to name, and an operator that expands to nothing is an invisible no-op rather than an operator. Splice with `↙…↘`, which interpolates as written",
           "verified_by": "lift-from/bash"
         },
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with",
+          "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "verified_by": "reduce/bash"
         },
         {
           "axis": "emit",
           "status": "unsupported",
-          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
-          "verified_by": "emit/bash"
+          "note": "the string model has no `b_` accumulator for `←` to append to, and unlike Nix's `builtins.concatStringsSep` the shell's join cannot stand in as a spelling: an operator is applied *prefix* to what follows, while `printf '%s\\n' \"${xs[@]}\"` takes its operand inside a substitution. Collect the fragments in an array and splice the join itself",
+          "verified_by": "emit/bash",
+          "detail": [
+            "← unsupported (fails with guidance)",
+            "type_str unsupported",
+            "name_str unsupported"
+          ]
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; bash fragments can still be destructured by a Rust host",
+          "note": "no `pattern_tag`/`pattern_var` implementation; bash fragments can still be destructured by a Rust host",
           "verified_by": "pattern-match/bash"
         },
         {
           "axis": "runnable",
-          "status": "partial",
-          "note": "`hashbang()` returns `#!/usr/bin/env bash`, but bash has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`",
-          "issue": 151,
+          "status": "supported",
+          "note": "`quilt run foo.bash.quilt` expands to a script that prints the generated code and executes it under `#!/usr/bin/env bash` — no per-runner setup, since a string host needs no runtime importable",
           "verified_by": "runnable/bash",
           "detail": [
             "#!/usr/bin/env bash"
@@ -141,7 +148,7 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library",
+          "note": "string-based meta: generated code is shell words, so there is no `QTerm` builder API to publish for this host",
           "verified_by": "runtime-binding/bash"
         },
         {
@@ -158,17 +165,17 @@
         },
         {
           "axis": "header-comment",
-          "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "status": "supported",
+          "note": "generated shell files use `#`, not `//!`",
           "verified_by": "header-comment/bash",
           "detail": [
-            "# (unused: target-only, never the ground language)"
+            "#"
           ]
         },
         {
           "axis": "lsp",
           "status": "partial",
-          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream bash server is proxied, and — now that bash can be the ground language — no `MetaLanguageAdapter` either, so a `.bash.quilt` file gets no host-side support",
           "issue": 154
         }
       ]
@@ -1414,9 +1421,10 @@
       "display": "Zsh",
       "aliases": [],
       "feature": "zsh",
-      "blurb": "A target-only shell language, sharing bash's grammar lineage and escaping rules. A lifted Rust string becomes a properly escaped double-quoted word.",
-      "meta_kind": "none",
+      "blurb": "A quotable target and a string-based host, sharing bash's grammar lineage and escaping rules. A lifted Rust string becomes a properly escaped double-quoted word; as a host, a `.zsh.quilt` metaprogram expands to a plain script that prints the output, and shares bash's `ShellMetaLanguage` for the same reason the tag tables are shared.",
+      "meta_kind": "string",
       "lang_src": "quilt/src/langs/zsh/lang.rs",
+      "meta_src": "quilt/src/langs/shell/meta.rs",
       "cells": [
         {
           "axis": "quotable",
@@ -1430,7 +1438,9 @@
         },
         {
           "axis": "hole-positions",
-          "status": "supported",
+          "status": "partial",
+          "note": "a hole must *be* a whole word: the fork's `quilt_hole` rule was never generated into `parser.c`, so `__QUILT_HOLE__` lexes as a plain `word` and is found by byte range. Command-argument, assignment-RHS, `[ … ]` and statement positions all work; inside a `\"…\"` string, inside a comment, or glued to adjacent text (`↙u↘.service` lexes as one word) it does not. Predates the host (#151) and applies to zsh as a target too",
+          "issue": 221,
           "verified_by": "hole-positions/zsh",
           "detail": [
             "command_argument: file"
@@ -1516,42 +1526,46 @@
         },
         {
           "axis": "host",
-          "status": "unsupported",
-          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "status": "supported",
+          "note": "string-based, sharing bash's `ShellMetaLanguage`: a quote becomes a double-quoted word and a host unquote is spliced into it verbatim, since a shell expansion carries its own `$`",
           "verified_by": "host/zsh",
           "detail": [
-            "meta_kind = none"
+            "meta_kind = string"
           ]
         },
         {
           "axis": "lift-from",
           "status": "unsupported",
-          "note": "target-only: nothing to lift from",
+          "note": "`↑` has no spelling: a shell value is already text, so there is no conversion to name, and an operator that expands to nothing is an invisible no-op rather than an operator. Splice with `↙…↘`, which interpolates as written",
           "verified_by": "lift-from/zsh"
         },
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with",
+          "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "verified_by": "reduce/zsh"
         },
         {
           "axis": "emit",
           "status": "unsupported",
-          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
-          "verified_by": "emit/zsh"
+          "note": "the string model has no `b_` accumulator for `←` to append to, and unlike Nix's `builtins.concatStringsSep` the shell's join cannot stand in as a spelling: an operator is applied *prefix* to what follows, while `printf '%s\\n' \"${xs[@]}\"` takes its operand inside a substitution. Collect the fragments in an array and splice the join itself",
+          "verified_by": "emit/zsh",
+          "detail": [
+            "← unsupported (fails with guidance)",
+            "type_str unsupported",
+            "name_str unsupported"
+          ]
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; zsh fragments can still be destructured by a Rust host",
+          "note": "no `pattern_tag`/`pattern_var` implementation; zsh fragments can still be destructured by a Rust host",
           "verified_by": "pattern-match/zsh"
         },
         {
           "axis": "runnable",
-          "status": "partial",
-          "note": "`hashbang()` returns `#!/usr/bin/env zsh`, but zsh has no `MetaLanguage` so it can never be a ground language — the shebang is unreachable through `quilt run`",
-          "issue": 151,
+          "status": "supported",
+          "note": "`quilt run foo.zsh.quilt` expands to a script that prints the generated code and executes it under `#!/usr/bin/env zsh` — no per-runner setup, since a string host needs no runtime importable",
           "verified_by": "runnable/zsh",
           "detail": [
             "#!/usr/bin/env zsh"
@@ -1560,7 +1574,7 @@
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library",
+          "note": "string-based meta: generated code is shell words, so there is no `QTerm` builder API to publish for this host",
           "verified_by": "runtime-binding/zsh"
         },
         {
@@ -1577,17 +1591,17 @@
         },
         {
           "axis": "header-comment",
-          "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "status": "supported",
+          "note": "generated shell files use `#`, not `//!`",
           "verified_by": "header-comment/zsh",
           "detail": [
-            "# (unused: target-only, never the ground language)"
+            "#"
           ]
         },
         {
           "axis": "lsp",
           "status": "partial",
-          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream zsh server is proxied",
+          "note": "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream zsh server is proxied, and — now that zsh can be the ground language — no `MetaLanguageAdapter` either, so a `.zsh.quilt` file gets no host-side support",
           "issue": 154
         }
       ]

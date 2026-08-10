@@ -1,0 +1,46 @@
+#!/usr/bin/env quilt
+# Bash as a *host* (meta) language: this whole file is a shell metaprogram.
+#
+# Where the Rust and Python hosts emit builder calls into a QTerm runtime, a
+# shell host has no runtime library -- it represents generated code as ordinary
+# double-quoted words. Quilt expands each quote below into a "..." literal, and
+# a host unquote is spliced into it verbatim, because every shell expansion
+# already carries its own `$`. So `quilt expand` turns this file into a plain
+# bash script, and running that script (which is what `quilt run` does) prints
+# the generated code. That is what makes the `#!/usr/bin/env bash` shebang
+# BashLanguage declares reachable at all -- see issue #151.
+#
+# Everything outside a quote is ordinary bash that runs at generation time.
+
+units=(nginx postgres redis)
+
+# The `for` is generation-time, so this emits one generated line per unit.
+for u in "${units[@]}"; do
+  echo ↖systemctl enable --now ↙$u↘↗
+done
+
+# A `$` or a backtick in the *generated* code is inert data: it is escaped on
+# the way into the metaprogram's string and comes back out verbatim, so the
+# generated script -- not this one -- is what expands it.
+echo ↖echo "logs in $HOME/log on `hostname`"↗
+
+# Any expansion works as a splice, not just a bare variable: a command
+# substitution is spliced the same way, and also runs at generation time. That
+# is also the stand-in for emit here -- the string model has no accumulator for
+# the emit glyph to append to, so collect the pieces and splice the join.
+#
+# Write the body *unquoted*: it is spliced inside the metaprogram's own "..."
+# literal, so it is already protected from word splitting. Adding quotes of its
+# own would close that literal and reopen it, leaving the value unquoted --
+# concatenation, which is the one shell habit this model inverts.
+#
+# A hole has to *be* a whole node, too: it is found by byte range. Splice a
+# whole word, as below, rather than part of one -- an unquote glued to adjacent
+# text lexes as one long word ("__QUILT_HOLE__.service") and fails to parse, as
+# does a hole inside a "..." string or a comment. See issue #221.
+echo ↖readonly UNITS=↙$(IFS=,; echo "${units[*]}")↘↗
+
+# The string model is language-agnostic, so a shell host can generate any
+# target, not only shell.
+count=${#units[@]}
+echo rs↖const UNITS: usize = ↙$count↘;↗

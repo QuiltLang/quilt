@@ -28,6 +28,10 @@ use super::rust::{
     lang::{DynRustLanguage, RustLanguage},
     meta::RustMetaLanguage,
 };
+#[cfg(feature = "bash")]
+use super::shell::meta::BashMetaLanguage;
+#[cfg(feature = "zsh")]
+use super::shell::meta::ZshMetaLanguage;
 #[cfg(feature = "text")]
 use super::text::lang::{DynTextLanguage, TextLanguage};
 #[cfg(feature = "typescript")]
@@ -516,10 +520,11 @@ mod tests {
     }
 }
 
-// Languages absent from `metas` (text, wgsl, html, zsh, bash) are target
-// languages only — the host's MetaLanguage drives expansion. Nix and Lean are
+// Languages absent from `metas` (text, wgsl, html) are target languages only —
+// the host's MetaLanguage drives expansion. Nix, Lean and the two shells are
 // both: quotable targets *and* string-based hosts (their metas generate code as
-// strings, see `langs::nix::meta` / `langs::lean::meta`).
+// strings, see `langs::nix::meta` / `langs::lean::meta` /
+// `langs::shell::meta`).
 define_omni! {
     languages {
         bash if "bash"   => Bash(BashLanguage, DynBashLanguage):       ["bash"];
@@ -534,10 +539,12 @@ define_omni! {
         zsh  if "zsh"    => Zsh(ZshLanguage, DynZshLanguage):          ["zsh"];
     }
     metas {
+        bash if "bash"   => Bash(BashMetaLanguage):                    ["bash"];
         lean if "lean"   => Lean(LeanMetaLanguage):                    ["lean", "lean4"];
         nix  if "nix"    => Nix(NixMetaLanguage):                      ["nix"];
         py   if "python" => Python(PythonMetaLanguage):                ["python", "py"];
         rs   if "rust"   => Rust(RustMetaLanguage):                    ["rust", "rs"];
         ts   if "typescript" => TypeScript(TypeScriptMetaLanguage):    ["typescript", "ts"];
+        zsh  if "zsh"    => Zsh(ZshMetaLanguage):                      ["zsh"];
     }
 }

@@ -521,6 +521,59 @@ fn run_rust_script_executes_the_program() {
     assert_eq!(stdout(&o).trim(), "1 + 2");
 }
 
+/* ── run: the shell backends (issue #151) ──────────────────────────────── */
+
+/// The whole point of #151, end to end: bash declared `#!/usr/bin/env bash` and
+/// could never reach it, because a language with no `MetaLanguage` can never be
+/// the ground language. Now it can, so the shebang resolves to a real
+/// interpreter and the expanded script runs.
+///
+/// A string host needs no per-runner setup at all — no cargo manifest, no
+/// `PYTHONPATH`, no `node_modules` — because the generated code is shell words
+/// rather than calls into a `QTerm` runtime. So this test, like the Rust one,
+/// never skips: `bash` is on `PATH` everywhere this suite runs.
+#[test]
+fn run_bash_host_executes_the_generated_script() {
+    let d = Dir::new("run-bash");
+    let f = d.write(
+        "gen.bash.quilt",
+        "#!/usr/bin/env quilt\n\
+         units=(nginx redis)\n\
+         for u in \"${units[@]}\"; do\n\
+         \x20 echo ↖systemctl start ↙$u↘↗\n\
+         done\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o), "systemctl start nginx\nsystemctl start redis\n");
+}
+
+/// The zsh half of the same claim. Unlike bash, zsh is not guaranteed to be
+/// installed, so this skips rather than fails where it is absent.
+#[test]
+fn run_zsh_host_executes_the_generated_script() {
+    if Command::new("zsh")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_err()
+    {
+        eprintln!("skipping run_zsh_host_executes_the_generated_script: no `zsh` on PATH");
+        return;
+    }
+    let d = Dir::new("run-zsh");
+    let f = d.write(
+        "gen.zsh.quilt",
+        "#!/usr/bin/env quilt\n\
+         n=3\n\
+         echo rs↖const N: u32 = ↙$n↘;↗\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o), "const N: u32 = 3;\n");
+}
+
 /* ── run: the Python backend ───────────────────────────────────────────── */
 
 /// The `quilt_python` extension module a `.py.quilt` program imports. Absent
