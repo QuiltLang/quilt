@@ -32,6 +32,8 @@ use super::rust::{
 use super::shell::meta::BashMetaLanguage;
 #[cfg(feature = "zsh")]
 use super::shell::meta::ZshMetaLanguage;
+#[cfg(feature = "sql")]
+use super::sql::lang::{DynSqlLanguage, SqlLanguage};
 #[cfg(feature = "text")]
 use super::text::lang::{DynTextLanguage, TextLanguage};
 #[cfg(feature = "typescript")]
@@ -520,7 +522,7 @@ mod tests {
     }
 }
 
-// Languages absent from `metas` (text, wgsl, html) are target languages only —
+// Languages absent from `metas` (text, wgsl, html, sql) are target languages only —
 // the host's MetaLanguage drives expansion. Nix, Lean and the two shells are
 // both: quotable targets *and* string-based hosts (their metas generate code as
 // strings, see `langs::nix::meta` / `langs::lean::meta` /
@@ -533,6 +535,7 @@ define_omni! {
         nix  if "nix"    => Nix(NixLanguage, DynNixLanguage):          ["nix"];
         py   if "python" => Python(PythonLanguage, DynPythonLanguage): ["python", "py"];
         rs   if "rust"   => Rust(RustLanguage, DynRustLanguage):       ["rust", "rs"];
+        sql  if "sql"    => Sql(SqlLanguage, DynSqlLanguage):          ["sql"];
         txt  if "text"   => Text(TextLanguage, DynTextLanguage):       ["text", "txt"];
         ts   if "typescript" => TypeScript(TypeScriptLanguage, DynTypeScriptLanguage): ["typescript", "ts"];
         wgsl if "wgsl"   => Wgsl(WgslLanguage, DynWgslLanguage):       ["wgsl"];

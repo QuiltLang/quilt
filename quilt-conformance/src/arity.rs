@@ -81,7 +81,7 @@ pub fn grammar_json_path(name: &str) -> Option<PathBuf> {
     let grammars = crate::repo_root().join("quilt/grammars");
     Some(match name {
         "typescript" => grammars.join("typescript/typescript/src/grammar.json"),
-        "bash" | "html" | "lean" | "nix" | "python" | "rust" | "wgsl" | "zsh" => {
+        "bash" | "html" | "lean" | "nix" | "python" | "rust" | "sql" | "wgsl" | "zsh" => {
             grammars.join(name).join("grammar.json")
         }
         _ => return None,

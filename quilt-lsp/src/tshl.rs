@@ -203,6 +203,23 @@ pub fn highlighter(lang_id: &str) -> Option<&'static Highlighter> {
             })
             .as_ref()
         }
+        #[cfg(feature = "sql")]
+        "sql" => {
+            static SQL: std::sync::OnceLock<Option<Highlighter>> = std::sync::OnceLock::new();
+            SQL.get_or_init(|| {
+                // The fork ships upstream tree-sitter-sql's own query, written
+                // for nvim: every `(identifier)` capture is field-qualified, so
+                // the patterns are mutually exclusive and first-wins is both
+                // correct and the convention the other nvim-flavored queries
+                // here use.
+                Highlighter::new(
+                    quilt::grammars::sql::LANGUAGE.into(),
+                    quilt::grammars::sql::HIGHLIGHTS_QUERY,
+                    Order::FirstWins,
+                )
+            })
+            .as_ref()
+        }
         _ => None,
     }
 }
@@ -641,6 +658,24 @@ mod tests {
         // `builtins.toString x` is an apply: `toString` captures as `@function`.
         assert!(got.contains(&("toString", "function")), "{got:?}");
         assert!(got.contains(&("# done", "comment")), "{got:?}");
+    }
+
+    /// Guards the vendored SQL query against grammar drift, the same way the
+    /// Lean and Nix cases below do: `Highlighter::new` logs and returns `None`
+    /// on a query that fails to compile, which would silently disable SQL
+    /// highlighting rather than fail a request.
+    #[test]
+    #[cfg(feature = "sql")]
+    fn highlights_basic_sql() {
+        let src = "SELECT id FROM users WHERE name = 'ada' -- who\n";
+        let got = span_text(
+            src,
+            &highlighter("sql").expect("sql query compiles").spans(src),
+        );
+        assert!(got.contains(&("SELECT", "keyword")), "{got:?}");
+        assert!(got.contains(&("FROM", "keyword")), "{got:?}");
+        assert!(got.contains(&("'ada'", "string")), "{got:?}");
+        assert!(got.contains(&("-- who", "comment")), "{got:?}");
     }
 
     /// Guards the vendored Lean query against grammar drift: `Highlighter::new`
