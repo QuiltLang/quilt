@@ -24,8 +24,8 @@
 //!   inside its content, which no runtime reproduces (#174, finding A2).
 
 use super::{
-    lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape, Bash, Lean, LiftTo,
-    Nix, Python, Wgsl, Zsh,
+    lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape, sql_squote_escape,
+    Bash, Lean, LiftTo, Nix, Python, Sql, Wgsl, Zsh,
 };
 use crate::qterm::{leaf, sym, tb, QTerm};
 use std::sync::Arc;
@@ -706,6 +706,158 @@ pub fn lean_list_term(items: &[Arc<QTerm>]) -> Arc<QTerm> {
     }
     b.child(&sym("]"));
     b.b()
+}
+/// SQL `7` and `-7`. The sign is a child token of the
+/// `literal` rather than part of its text, because `_integer`
+/// is `seq(optional(choice("-", "+")), …)` — so a lift that
+/// spelled `-7` as one leaf built a tree the parser never
+/// produces, which `smatch` and `rewrite` can see (#174).
+pub fn sql_number_term(negative: bool, text: &str) -> Arc<QTerm> {
+    if negative {
+        tb("literal").c(&sym("-")).w(text).b()
+    } else {
+        leaf("literal", text)
+    }
+}
+impl LiftTo<Sql> for u8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<Sql> for u16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<Sql> for u32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<Sql> for u64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<Sql> for u128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<Sql> for usize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<Sql> for i8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<Sql> for i16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<Sql> for i32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<Sql> for i64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<Sql> for i128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<Sql> for isize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<Sql> for f32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        {
+            let s = format!("{self:?}");
+            match s.strip_prefix('-') {
+                Some(mag) => sql_number_term(true, mag),
+                None => sql_number_term(false, &s),
+            }
+        }
+    }
+}
+impl LiftTo<Sql> for f64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        {
+            let s = format!("{self:?}");
+            match s.strip_prefix('-') {
+                Some(mag) => sql_number_term(true, mag),
+                None => sql_number_term(false, &s),
+            }
+        }
+    }
+}
+/// SQL `TRUE` / `FALSE`. The keyword is its own node inside the
+/// `literal`, unlike the numeric and string forms.
+pub fn sql_bool_term(b: bool) -> Arc<QTerm> {
+    if b {
+        tb("literal").c(&leaf("keyword_true", "TRUE")).b()
+    } else {
+        tb("literal").c(&leaf("keyword_false", "FALSE")).b()
+    }
+}
+impl LiftTo<Sql> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_bool_term(*self)
+    }
+}
+/// SQL `'s'` — one `literal` token, quotes included. The empty
+/// string needs no separate branch and an escaped quote needs
+/// no exemption, because nothing inside the quotes is a node of
+/// its own: `'O''Hara'` is still a single token.
+pub fn sql_string_term(s: &str) -> Arc<QTerm> {
+    leaf("literal", &format!("'{}'", sql_squote_escape(s)))
+}
+impl LiftTo<Sql> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_string_term(self)
+    }
+}
+impl LiftTo<Sql> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_string_term(self)
+    }
+}
+/// The container shape, with the elements as a parameter. Derived from
+/// the empty, one- and two-element samples: what surrounds the first
+/// element is the opener, what sits between two of them is the
+/// separator, and what the empty container still writes is neither.
+pub fn sql_list_term(items: &[Arc<QTerm>]) -> Arc<QTerm> {
+    let mut b = tb("list");
+    b.child(&sym("("));
+    for (i, x) in items.iter().enumerate() {
+        if i > 0 {
+            b.child(&sym(","));
+            b.write(" ");
+        }
+        b.child(x);
+    }
+    b.child(&sym(")"));
+    b.b()
+}
+impl<T: LiftTo<Sql>> LiftTo<Sql> for [T] {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())
+    }
+}
+impl<T: LiftTo<Sql>> LiftTo<Sql> for Vec<T> {
+    fn lift_to(&self) -> Arc<QTerm> {
+        self.as_slice().lift_to()
+    }
 }
 impl<T: LiftTo<Lean>> LiftTo<Lean> for [T] {
     fn lift_to(&self) -> Arc<QTerm> {

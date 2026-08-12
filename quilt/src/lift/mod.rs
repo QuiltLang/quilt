@@ -19,7 +19,7 @@
 //! only the `rust` feature but splices WGSL terms). The markers index lifting;
 //! they don't need the parser.
 
-use crate::qterm::{leaf, sym, tb, QTerm};
+use crate::qterm::QTerm;
 use std::sync::Arc;
 
 mod gen;
@@ -227,15 +227,12 @@ fn lean_dquote_escape(s: &str) -> String {
 }
 
 /**************************************************************/
-// SQL lifts. This is the module's security-relevant corner (#219): a value
-// spliced into a quoted query with `↑` becomes a *literal node*, so it is data
-// the parser has already accepted as a single token rather than text pasted
-// into a statement. Every scalar therefore lifts to a `literal`, which is the
-// one tag this grammar gives every constant — integers, decimals, strings and
-// the `TRUE`/`FALSE`/`NULL` keywords alike.
-//
-// SQL's integer literals are unbounded in the standard and the grammar accepts
-// a leading sign inside the literal, so every Rust width lifts as one token.
+// SQL. This is the module's security-relevant corner (#219): a value spliced
+// into a quoted query with `↑` becomes a *literal node*, so it is data the
+// parser has already accepted as a single token rather than text pasted into a
+// statement. Every scalar lifts to a `literal`, the one tag this grammar gives
+// every constant. Which is why the escaping rule below is the part that has to
+// be right by hand — the shapes around it are derived (see `gen`).
 
 /// Escape a string for inclusion in a SQL single-quoted literal.
 ///
@@ -252,98 +249,6 @@ fn lean_dquote_escape(s: &str) -> String {
 /// closing quote; see issue #233.
 fn sql_squote_escape(s: &str) -> String {
     s.replace('\'', "''")
-}
-
-impl LiftTo<Sql> for str {
-    fn lift_to(&self) -> Arc<QTerm> {
-        // `'a''b'` parses as a single `(literal)` with no children — the
-        // quotes and the doubled quote are all inside one token.
-        leaf("literal", &format!("'{}'", sql_squote_escape(self)))
-    }
-}
-
-impl LiftTo<Sql> for String {
-    fn lift_to(&self) -> Arc<QTerm> {
-        LiftTo::<Sql>::lift_to(self.as_str())
-    }
-}
-
-/// Build the SQL `literal` term for an already-formatted number.
-///
-/// The sign is *outside* the number token in this grammar — `_integer` is
-/// `seq(optional(choice("-", "+")), /…/)` and `_decimal_number` the same — so
-/// `-7` parses as `(literal "-" …)`: a `-` child token followed by the
-/// magnitude as the literal's own text. `7` is a plain leaf. A lift has to
-/// reproduce that *shape*, not merely the text, or `smatch` / `rewrite` see a
-/// tree the parser never produces (#174).
-fn sql_number_term(s: &str) -> Arc<QTerm> {
-    match s.strip_prefix('-') {
-        Some(magnitude) => tb("literal").c(&sym("-")).w(magnitude).b(),
-        None => leaf("literal", s),
-    }
-}
-
-macro_rules! sql_lift_int {
-    ($($t:ty),* $(,)?) => {$(
-        impl LiftTo<Sql> for $t {
-            fn lift_to(&self) -> Arc<QTerm> {
-                sql_number_term(&self.to_string())
-            }
-        }
-    )*};
-}
-
-sql_lift_int!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
-
-macro_rules! sql_lift_float {
-    ($($t:ty),* $(,)?) => {$(
-        impl LiftTo<Sql> for $t {
-            fn lift_to(&self) -> Arc<QTerm> {
-                // `{:?}` keeps the decimal point (`1.0`, not `1`), which is
-                // what makes the literal parse as `_decimal_number` rather
-                // than as an integer.
-                sql_number_term(&format!("{self:?}"))
-            }
-        }
-    )*};
-}
-
-sql_lift_float!(f32, f64);
-
-impl LiftTo<Sql> for bool {
-    fn lift_to(&self) -> Arc<QTerm> {
-        // `TRUE` parses as `(literal (keyword_true))` — the keyword is its own
-        // node inside the literal, unlike the numeric and string forms.
-        tb("literal")
-            .c(&if *self {
-                leaf("keyword_true", "TRUE")
-            } else {
-                leaf("keyword_false", "FALSE")
-            })
-            .b()
-    }
-}
-
-impl<T: LiftTo<Sql>> LiftTo<Sql> for [T] {
-    fn lift_to(&self) -> Arc<QTerm> {
-        // A parenthesised comma list — the shape `IN (…)` takes. `(1, 2)`
-        // parses as `(list "(" (literal) "," (literal) ")")`: the parentheses
-        // and commas are child tokens, not literal text.
-        let mut b = tb("list").c(&sym("("));
-        for (i, x) in self.iter().enumerate() {
-            if i > 0 {
-                b = b.c(&sym(",")).w(" ");
-            }
-            b = b.c(&x.lift_to());
-        }
-        b.c(&sym(")")).b()
-    }
-}
-
-impl<T: LiftTo<Sql>> LiftTo<Sql> for Vec<T> {
-    fn lift_to(&self) -> Arc<QTerm> {
-        self.as_slice().lift_to()
-    }
 }
 
 /**************************************************************/

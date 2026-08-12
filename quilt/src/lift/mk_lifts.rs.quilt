@@ -124,8 +124,8 @@ fn index_of(ps: &[Piece], child: &Arc<QTerm>) -> usize {
         .expect("element not among the container's children")
 }
 
-/// Split three samples — `[]`, `[x]`, `[x, y]` — into the four pieces a
-/// container's serialization is made of:
+/// Split two samples — an empty container and a two-element one — into the four
+/// pieces a container's serialization is made of:
 ///
 /// ```text
 /// OPEN  (elem  (MID elem)*  END)?  CLOSE
@@ -134,27 +134,30 @@ fn index_of(ps: &[Piece], child: &Arc<QTerm>) -> usize {
 /// Both idioms fall out of this. Python separates (`MID = ", "`, `END` empty);
 /// Nix terminates (`OPEN = "[ "`, `MID = END = " "`), which is why its empty
 /// list is `[ ]` and its last element still gets a trailing space.
+///
+/// A *one*-element sample would be the obvious third input and is deliberately
+/// not one: SQL parses `(1)` as a `parenthesized_expression`, since a
+/// parenthesised single value is not a list in any grammar that has both. Two
+/// samples pin all four pieces anyway — `OPEN` is what precedes the first
+/// element, and the empty container is `OPEN ++ CLOSE`, which splits `CLOSE`
+/// off the tail.
 fn container_pieces(
     empty: &Arc<QTerm>,
-    one: &Arc<QTerm>,
     two: &Arc<QTerm>,
     e1: &Arc<QTerm>,
     e2: &Arc<QTerm>,
 ) -> (Vec<Piece>, Vec<Piece>, Vec<Piece>, Vec<Piece>) {
-    let (pe, po, pt) = (pieces(empty), pieces(one), pieces(two));
-
-    let i = index_of(&po, e1);
-    let open = po[..i].to_vec();
-    assert!(pe.starts_with(&open), "empty container is not OPEN ++ CLOSE");
-    let close = pe[open.len()..].to_vec();
-    let end = po[i + 1..po.len() - close.len()].to_vec();
+    let (pe, pt) = (pieces(empty), pieces(two));
 
     let (j1, j2) = (index_of(&pt, e1), index_of(&pt, e2));
-    assert_eq!(&pt[..j1], &open[..], "two-element OPEN differs");
+    let open = pt[..j1].to_vec();
+    assert!(pe.starts_with(&open), "empty container is not OPEN ++ CLOSE");
+    let close = pe[open.len()..].to_vec();
+
     let mid = pt[j1 + 1..j2].to_vec();
-    let mut tail = end.clone();
-    tail.extend(close.clone());
-    assert_eq!(&pt[j2 + 1..], &tail[..], "two-element tail differs");
+    let tail = &pt[j2 + 1..];
+    assert!(tail.ends_with(&close), "two-element tail does not end in CLOSE");
+    let end = tail[..tail.len() - close.len()].to_vec();
 
     (open, mid, end, close)
 }
@@ -171,9 +174,9 @@ fn piece_stmt(p: &Piece) -> Arc<QTerm> {
 }
 
 /// The container constructor for one target: `NAME(items) -> Arc<QTerm>`.
-fn container_fn(fname: &str, sample: &(Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<QTerm>)) -> Arc<QTerm> {
-    let (empty, one, two, e1, e2) = sample;
-    let (open, mid, end, close) = container_pieces(empty, one, two, e1, e2);
+fn container_fn(fname: &str, sample: &(Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<QTerm>)) -> Arc<QTerm> {
+    let (empty, two, e1, e2) = sample;
+    let (open, mid, end, close) = container_pieces(empty, two, e1, e2);
     let QTerm::Tuple { tag, .. } = &**empty else {
         panic!("not a tuple")
     };
@@ -376,35 +379,56 @@ fn main() -> Result<()> {
         &↖&lean_dquote_escape(s)↗,
     );
 
-    ⟨//⟩ Containers: empty, one element, two elements, and the two elements.
+    ⟨//⟩ SQL. The sign is *outside* the number token in this grammar
+    ⟨//⟩ (`_integer` is `seq(optional(choice("-", "+")), /…/)`), so `-7` is a `-`
+    ⟨//⟩ child followed by the magnitude as the literal's own text — a second
+    ⟨//⟩ sample, like Lean's. A string is the opposite: quotes, doubling and all
+    ⟨//⟩ sit inside one token, so there is nothing to special-case for the empty
+    ⟨//⟩ string and nothing an escape can split.
+    let sql_num_sample = descend(&sql↖7↗, "literal");
+    let sql_num = shape_with(&sql_num_sample, &text_of(&sql_num_sample), &text);
+    let sql_num_neg_sample = descend(&sql↖-7↗, "literal");
+    let sql_num_neg = shape_with(&sql_num_neg_sample, "7", &text);
+    let sql_true = descend(&sql↖TRUE↗, "literal").↑;
+    let sql_false = descend(&sql↖FALSE↗, "literal").↑;
+    let sql_str = shape_with(
+        &descend(&sql↖'s'↗, "literal"),
+        "'s'",
+        &↖&format!("'{}'", sql_squote_escape(s))↗,
+    );
+
+    ⟨//⟩ Containers: an empty one, a two-element one, and the two elements.
     let py_list = (
         descend(&py↖[]↗, "list"),
-        descend(&py↖[1]↗, "list"),
         descend(&py↖[1, 4]↗, "list"),
         descend(&py↖1↗, "integer"),
         descend(&py↖4↗, "integer"),
     );
     let nix_list = (
         descend(&nix↖[ ]↗, "list_expression"),
-        descend(&nix↖[ 1 ]↗, "list_expression"),
         descend(&nix↖[ 1 4 ]↗, "list_expression"),
         descend(&nix↖1↗, "integer_expression"),
         descend(&nix↖4↗, "integer_expression"),
     );
     let lean_list = (
         descend(&lean↖[]↗, "list_lit"),
-        descend(&lean↖[1]↗, "list_lit"),
         descend(&lean↖[1, 4]↗, "list_lit"),
         descend(&lean↖1↗, "num_lit"),
         descend(&lean↖4↗, "num_lit"),
+    );
+    let sql_list = (
+        descend(&sql↖()↗, "list"),
+        descend(&sql↖(1, 4)↗, "list"),
+        descend(&sql↖1↗, "literal"),
+        descend(&sql↖4↗, "literal"),
     );
 
     ⟨//⟩ ---- the file ----
 
     let out: ⟨T⟩ = ↖
         use super::{
-            lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape, Bash, Lean,
-            LiftTo, Nix, Python, Wgsl, Zsh,
+            lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape,
+            sql_squote_escape, Bash, Lean, LiftTo, Nix, Python, Sql, Wgsl, Zsh,
         };
         use crate::qterm::{leaf, sym, tb, QTerm};
         use std::sync::Arc;
@@ -727,6 +751,82 @@ fn main() -> Result<()> {
             NL.←;
             container_fn("lean_list_term", &lean_list).←;
             NL.←;
+            ⟨//⟩ ---------------- SQL ----------------
+            ↖
+                /// SQL `7` and `-7`. The sign is a child token of the
+                /// `literal` rather than part of its text, because `_integer`
+                /// is `seq(optional(choice("-", "+")), …)` — so a lift that
+                /// spelled `-7` as one leaf built a tree the parser never
+                /// produces, which `smatch` and `rewrite` can see (#174).
+                pub fn sql_number_term(negative: bool, text: &str) -> ⟨T⟩ {
+                    if negative {
+                        ↙sql_num_neg↘
+                    } else {
+                        ↙sql_num↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Sql",
+                &["u8", "u16", "u32", "u64", "u128", "usize"],
+                &↖sql_number_term(false, &self.to_string())↗,
+            ).←;
+            scalar_impls(
+                "Sql",
+                &["i8", "i16", "i32", "i64", "i128", "isize"],
+                &↖sql_number_term(*self < 0, &self.unsigned_abs().to_string())↗,
+            ).←;
+            ⟨//⟩ `{:?}` keeps the decimal point, which is what makes the literal
+            ⟨//⟩ parse as `_decimal_number` rather than as an integer.
+            scalar_impls(
+                "Sql",
+                &["f32", "f64"],
+                &↖
+                    {
+                        let s = format!("{self:?}");
+                        match s.strip_prefix('-') {
+                            Some(mag) => sql_number_term(true, mag),
+                            None => sql_number_term(false, &s),
+                        }
+                    }
+                ↗,
+            ).←;
+            NL.←;
+            ↖
+                /// SQL `TRUE` / `FALSE`. The keyword is its own node inside the
+                /// `literal`, unlike the numeric and string forms.
+                pub fn sql_bool_term(b: bool) -> ⟨T⟩ {
+                    if b {
+                        ↙sql_true↘
+                    } else {
+                        ↙sql_false↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("Sql", &["bool"], &↖sql_bool_term(*self)↗).←;
+            NL.←;
+            ↖
+                /// SQL `'s'` — one `literal` token, quotes included. The empty
+                /// string needs no separate branch and an escaped quote needs
+                /// no exemption, because nothing inside the quotes is a node of
+                /// its own: `'O''Hara'` is still a single token.
+                pub fn sql_string_term(s: &str) -> ⟨T⟩ {
+                    ↙sql_str↘
+                }
+            ↗.←;
+            NL.←;
+            string_impls("Sql", &↖sql_string_term(self)↗).←;
+            NL.←;
+            container_fn("sql_list_term", &sql_list).←;
+            NL.←;
+            list_impls(
+                "Sql",
+                &↖sql_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
+            ).←;
+            NL.←;
+
             ⟨//⟩ A loop, not `list_impls(…).←;`, because the expander terminates
             ⟨//⟩ the block's last statement itself: an emit in that position gets
             ⟨//⟩ two `;` and warns on every run. A `for` needs no terminator.

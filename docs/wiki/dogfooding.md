@@ -25,7 +25,7 @@ println!("{}", wgsl↖3u↗.↑.coparse());
 `wgsl↖3u↗` parses `3u` with the vendored WGSL grammar; `.↑` lifts the resulting
 term into the Rust source that rebuilds it. The expander is an oracle for "what
 shape does a parsed literal actually have" — which is precisely the question the
-hand-written tables in `lift.rs` answer from memory.
+hand-written tables in `lift.rs` used to answer from memory.
 
 ## Findings
 
@@ -225,6 +225,14 @@ Each target contributes a handful of *shape constructors* — `py_string_term`,
 impls are one call each. `py_string_term` keeps its name and its `pub`, because
 `quilt-python` calls it: that sharing is what #176 put there, and generating the
 shape is what keeps the shared copy honest.
+
+SQL arrived on `main` while this was in review ([#219](https://github.com/QuiltLang/quilt/issues/219)),
+hand-written, with its shapes surveyed by hand a third time — the exact cost this
+exists to remove. Folding it in was four sample literals and the list of Rust
+types SQL accepts, and the generator reproduced every shape the survey had found,
+byte for byte. It also turned up something the survey had not: `(1)` parses as a
+`parenthesized_expression`, not a one-element `list`, which is why the container
+derivation takes an empty and a two-element sample rather than the obvious three.
 
 Two shapes were wrong and are now right, both found by generating rather than by
 looking:

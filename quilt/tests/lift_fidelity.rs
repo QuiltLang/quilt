@@ -48,10 +48,10 @@
 use quilt::lang::{flat_nodes, Language};
 use quilt::langs::{
     bash::lang::BashLanguage, lean::lang::LeanLanguage, nix::lang::NixLanguage,
-    python::lang::PythonLanguage, rust::lang::RustLanguage, wgsl::lang::WgslLanguage,
-    zsh::lang::ZshLanguage,
+    python::lang::PythonLanguage, rust::lang::RustLanguage, sql::lang::SqlLanguage,
+    wgsl::lang::WgslLanguage, zsh::lang::ZshLanguage,
 };
-use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Wgsl, Zsh};
+use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Sql, Wgsl, Zsh};
 use quilt::prelude::*;
 
 /// The first subtree tagged `tag`, breadth-first (so an outer wrapper of the
@@ -161,6 +161,42 @@ fn lean_lifts_match_the_parser() {
             // same text as a negation. Reading the sign off the rendered text
             // instead is what makes this case pass (#203).
             (-0.0f64).qlift_to::<Lean>(),
+        ],
+    );
+}
+
+/// SQL, which nothing compared against the parser before either.
+///
+/// It is the target with the *fewest* exemptions, and for the reason that makes
+/// it the security-relevant one (#219): every constant is one `literal` token,
+/// so a quote inside a string is not a node of its own. `'O''Hara'` is
+/// therefore structurally exact, where the same string in Python is the escape
+/// exemption below. Negatives are exact too — the grammar puts the sign inside
+/// the literal as a child token, which is what the lift builds.
+///
+/// A one-element list is not here: `(1)` parses as a `parenthesized_expression`,
+/// since a parenthesised single value is not a list. That is a property of
+/// parsing the value standalone, like the shell wrappers above — in `IN (…)`
+/// position it is a list — but it is not something this test can assert.
+#[test]
+fn sql_lifts_match_the_parser() {
+    let empty: Vec<u8> = Vec::new();
+    check(
+        &mut SqlLanguage::default(),
+        &[
+            42u64.qlift_to::<Sql>(),
+            (-7i32).qlift_to::<Sql>(),
+            1.5f64.qlift_to::<Sql>(),
+            (-1.5f64).qlift_to::<Sql>(),
+            true.qlift_to::<Sql>(),
+            false.qlift_to::<Sql>(),
+            "".qlift_to::<Sql>(),
+            "hi".qlift_to::<Sql>(),
+            // The escaped case is exact here, unlike every other target.
+            "O'Hara".qlift_to::<Sql>(),
+            "x'; DROP TABLE t; --".qlift_to::<Sql>(),
+            vec![1u8, 4].qlift_to::<Sql>(),
+            empty.qlift_to::<Sql>(),
         ],
     );
 }
