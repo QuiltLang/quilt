@@ -81,7 +81,7 @@ fi
 # assembled from #[cfg(feature = …)] arms, so a missing gate only shows up when
 # some *other* language is switched off.
 step "each language feature builds alone"
-for feat in bash html lean nix python rust text typescript wgsl zsh bootstrap parse; do
+for feat in bash html lean nix python rust sql text typescript wgsl zsh bootstrap parse; do
   if cargo check "${MANIFEST[@]}" -p quiltlang --lib \
        --no-default-features --features "$feat" --quiet; then
     echo "    ok  --features $feat"

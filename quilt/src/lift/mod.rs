@@ -19,7 +19,7 @@
 //! only the `rust` feature but splices WGSL terms). The markers index lifting;
 //! they don't need the parser.
 
-use crate::qterm::QTerm;
+use crate::qterm::{leaf, sym, tb, QTerm};
 use std::sync::Arc;
 
 mod gen;
@@ -47,6 +47,9 @@ pub struct Nix;
 
 /// Marker: the Lean 4 object language.
 pub struct Lean;
+
+/// Marker: the SQL object language.
+pub struct Sql;
 
 /**************************************************************/
 
@@ -224,6 +227,126 @@ fn lean_dquote_escape(s: &str) -> String {
 }
 
 /**************************************************************/
+// SQL lifts. This is the module's security-relevant corner (#219): a value
+// spliced into a quoted query with `↑` becomes a *literal node*, so it is data
+// the parser has already accepted as a single token rather than text pasted
+// into a statement. Every scalar therefore lifts to a `literal`, which is the
+// one tag this grammar gives every constant — integers, decimals, strings and
+// the `TRUE`/`FALSE`/`NULL` keywords alike.
+//
+// SQL's integer literals are unbounded in the standard and the grammar accepts
+// a leading sign inside the literal, so every Rust width lifts as one token.
+
+/// Escape a string for inclusion in a SQL single-quoted literal.
+///
+/// Standard SQL has exactly **one** escape inside `'…'`: a single quote is
+/// written twice. Backslash is an ordinary character — this grammar's
+/// `_single_quote_string` rule (`/([uU]&|[nN])?'([^']|'')*'/`) says the same —
+/// so it is passed through unchanged. Escaping it would be a silent corruption
+/// of the value under the standard, not extra safety.
+///
+/// That makes the result safe against quote-breakout for standard SQL and for
+/// `PostgreSQL` with `standard_conforming_strings = on` (the default since 9.1).
+/// It is **not** safe for a `MySQL` connection left in the default
+/// backslash-escapes mode, where a trailing `\` in the value would escape the
+/// closing quote; see issue #233.
+fn sql_squote_escape(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+impl LiftTo<Sql> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        // `'a''b'` parses as a single `(literal)` with no children — the
+        // quotes and the doubled quote are all inside one token.
+        leaf("literal", &format!("'{}'", sql_squote_escape(self)))
+    }
+}
+
+impl LiftTo<Sql> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        LiftTo::<Sql>::lift_to(self.as_str())
+    }
+}
+
+/// Build the SQL `literal` term for an already-formatted number.
+///
+/// The sign is *outside* the number token in this grammar — `_integer` is
+/// `seq(optional(choice("-", "+")), /…/)` and `_decimal_number` the same — so
+/// `-7` parses as `(literal "-" …)`: a `-` child token followed by the
+/// magnitude as the literal's own text. `7` is a plain leaf. A lift has to
+/// reproduce that *shape*, not merely the text, or `smatch` / `rewrite` see a
+/// tree the parser never produces (#174).
+fn sql_number_term(s: &str) -> Arc<QTerm> {
+    match s.strip_prefix('-') {
+        Some(magnitude) => tb("literal").c(&sym("-")).w(magnitude).b(),
+        None => leaf("literal", s),
+    }
+}
+
+macro_rules! sql_lift_int {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Sql> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                sql_number_term(&self.to_string())
+            }
+        }
+    )*};
+}
+
+sql_lift_int!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
+
+macro_rules! sql_lift_float {
+    ($($t:ty),* $(,)?) => {$(
+        impl LiftTo<Sql> for $t {
+            fn lift_to(&self) -> Arc<QTerm> {
+                // `{:?}` keeps the decimal point (`1.0`, not `1`), which is
+                // what makes the literal parse as `_decimal_number` rather
+                // than as an integer.
+                sql_number_term(&format!("{self:?}"))
+            }
+        }
+    )*};
+}
+
+sql_lift_float!(f32, f64);
+
+impl LiftTo<Sql> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        // `TRUE` parses as `(literal (keyword_true))` — the keyword is its own
+        // node inside the literal, unlike the numeric and string forms.
+        tb("literal")
+            .c(&if *self {
+                leaf("keyword_true", "TRUE")
+            } else {
+                leaf("keyword_false", "FALSE")
+            })
+            .b()
+    }
+}
+
+impl<T: LiftTo<Sql>> LiftTo<Sql> for [T] {
+    fn lift_to(&self) -> Arc<QTerm> {
+        // A parenthesised comma list — the shape `IN (…)` takes. `(1, 2)`
+        // parses as `(list "(" (literal) "," (literal) ")")`: the parentheses
+        // and commas are child tokens, not literal text.
+        let mut b = tb("list").c(&sym("("));
+        for (i, x) in self.iter().enumerate() {
+            if i > 0 {
+                b = b.c(&sym(",")).w(" ");
+            }
+            b = b.c(&x.lift_to());
+        }
+        b.c(&sym(")")).b()
+    }
+}
+
+impl<T: LiftTo<Sql>> LiftTo<Sql> for Vec<T> {
+    fn lift_to(&self) -> Arc<QTerm> {
+        self.as_slice().lift_to()
+    }
+}
+
+/**************************************************************/
 
 #[cfg(test)]
 mod tests {
@@ -249,6 +372,62 @@ mod tests {
             panic!("expected tuple");
         };
         assert_eq!(&**tag, "int_literal");
+    }
+
+    #[test]
+    fn sql_scalars() {
+        assert_eq!(42u64.qlift_to::<Sql>().coparse(), "42");
+        assert_eq!((-7i32).qlift_to::<Sql>().coparse(), "-7");
+        assert_eq!(1.0f64.qlift_to::<Sql>().coparse(), "1.0");
+        assert_eq!(2.5f32.qlift_to::<Sql>().coparse(), "2.5");
+        assert_eq!((-1.5f32).qlift_to::<Sql>().coparse(), "-1.5");
+        assert_eq!(true.qlift_to::<Sql>().coparse(), "TRUE");
+        assert_eq!(false.qlift_to::<Sql>().coparse(), "FALSE");
+    }
+
+    /// The sign is a child token in this grammar, not part of the number, so a
+    /// negative lift is a tuple and a positive one is a leaf. Text alone would
+    /// not catch a lift that got that backwards; `smatch` / `rewrite` would.
+    #[test]
+    fn sql_negative_numbers_are_signed_tuples() {
+        let QTerm::Tuple { tag, terms, .. } = &*(-7i32).qlift_to::<Sql>() else {
+            panic!("expected tuple");
+        };
+        assert_eq!(&**tag, "literal");
+        assert_eq!(terms.len(), 1, "the `-` is the literal's only child");
+        assert_eq!(terms[0].coparse(), "-");
+
+        let QTerm::Tuple { terms, .. } = &*7i32.qlift_to::<Sql>() else {
+            panic!("expected tuple");
+        };
+        assert!(terms.is_empty(), "a positive literal is a leaf");
+    }
+
+    /// The whole point of the SQL target (#219): a value carrying the delimiter
+    /// comes back as one literal with the quote doubled, never as syntax.
+    #[test]
+    fn sql_strings_cannot_break_out() {
+        assert_eq!("hi".qlift_to::<Sql>().coparse(), "'hi'");
+        assert_eq!(String::new().qlift_to::<Sql>().coparse(), "''");
+        assert_eq!("O'Hara".qlift_to::<Sql>().coparse(), "'O''Hara'");
+        assert_eq!(
+            "x'; DROP TABLE t; --".qlift_to::<Sql>().coparse(),
+            "'x''; DROP TABLE t; --'"
+        );
+        // Backslash is an ordinary character in a standard SQL literal, so it
+        // passes through: doubling it would change the value. See issue #233
+        // for the MySQL mode where that is not enough.
+        assert_eq!(r"a".qlift_to::<Sql>().coparse(), r"'a'");
+    }
+
+    #[test]
+    fn sql_lists_are_paren_lists() {
+        // The shape an `IN (…)` right-hand side takes.
+        assert_eq!(vec![1u32, 2, 3].qlift_to::<Sql>().coparse(), "(1, 2, 3)");
+        // `Vec<String>`, not `Vec<&str>`: the element bound is `LiftTo<Sql>`,
+        // which `str` satisfies and `&str` does not.
+        let names = vec![String::from("a"), String::from("b'c")];
+        assert_eq!(names.qlift_to::<Sql>().coparse(), "('a', 'b''c')");
     }
 
     #[test]

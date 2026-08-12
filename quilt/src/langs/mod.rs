@@ -17,6 +17,8 @@ pub mod python;
 pub mod rust;
 #[cfg(any(feature = "bash", feature = "zsh"))]
 pub mod shell;
+#[cfg(feature = "sql")]
+pub mod sql;
 #[cfg(feature = "text")]
 pub mod text;
 #[cfg(feature = "typescript")]
@@ -45,7 +47,7 @@ pub fn comment_prefix(lang: &str) -> Option<&'static str> {
         // Rust keeps `//!`, an inner doc comment: it documents the generated
         // module rather than whatever item happens to follow.
         "rust" | "rs" => "//!",
-        "lean" | "lean4" => "--",
+        "lean" | "lean4" | "sql" => "--",
         // Grouped by spelling rather than by language because clippy's
         // `match_same_arms` (pedantic, `-D warnings` in CI) rejects the
         // one-language-per-line form.

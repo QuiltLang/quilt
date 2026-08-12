@@ -25,6 +25,7 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 | **Nix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Python** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| **SQL** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/234) | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/233) | ✅ |
 | **Plain text** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **TypeScript** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **WGSL** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | [⬜](https://github.com/QuiltLang/quilt/issues/22) |
@@ -49,6 +50,7 @@ Columns:
 | **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🟡](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
 | **Python** | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **SQL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **TypeScript** | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -74,6 +76,7 @@ Columns:
 | **Nix** | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
 | **Python** | ✅ | ✅ | ✅ | ✅* |
 | **Rust** | ✅ | ✅ | ✅ | ✅* |
+| **SQL** | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/154)* |
 | **Plain text** | ✅ | ✅ | ⬜ | ⬜* |
 | **TypeScript** | ✅ | ✅ | ✅ | ⬜* |
 | **WGSL** | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/22)* |

@@ -1,13 +1,13 @@
 # Adding a Language
 
-This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `zsh`, `bash`, `nix`, `lean`, `text`).
+This guide walks through adding a new language to Quilt. It uses the pattern established by the existing concrete languages (`rust`, `python`, `html`, `wgsl`, `sql`, `zsh`, `bash`, `nix`, `lean`, `text`).
 
 ## 1. Decide the role
 
 A language can be:
 
 - **Host language** — the ground language in a `.quilt` file. Requires both a `Language` *and* a `MetaLanguage` implementation. Example: Rust, Python.
-- **Target language** — only appears inside `lang↖…↗` quotes. Requires only a `Language`. Example: HTML, WGSL.
+- **Target language** — only appears inside `lang↖…↗` quotes. Requires only a `Language`. Example: HTML, WGSL, SQL.
 - **Both.** Nix, Lean, bash and zsh are quotable targets *and* hosts.
 
 If you want a host, decide which kind of `MetaLanguage` it is:

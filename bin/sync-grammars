@@ -54,7 +54,7 @@ copy_src() {
   cp "$src"/tree_sitter/*.h "$dst/tree_sitter/"
 }
 
-for lang in rust python wgsl bash html zsh nix lean; do
+for lang in rust python wgsl bash html zsh nix lean sql; do
   read -r url rev < <(pin "tree-sitter-$lang") || true
   [ -n "${url:-}" ] && [ -n "${rev:-}" ] || { echo "error: no pin for tree-sitter-$lang" >&2; exit 1; }
   echo ">> tree-sitter-$lang @ ${rev:0:9}"
@@ -64,7 +64,7 @@ for lang in rust python wgsl bash html zsh nix lean; do
   # the languages quilt-lsp highlights through quilt::grammars::<lang>::HIGHLIGHTS_QUERY.
   # wgsl is excluded on purpose: quilt-lsp ships its own nvim-flavored wgsl query.
   case "$lang" in
-    python|html|bash|zsh|nix|lean)
+    python|html|bash|zsh|nix|lean|sql)
       cp "$WORK/$lang/queries/highlights.scm" "$ROOT/quilt/grammars/$lang/highlights.scm" ;;
   esac
 done

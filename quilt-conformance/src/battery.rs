@@ -723,6 +723,14 @@ fn probe_lift_into(ctx: &mut Ctx, lang: &mut BoxLang) {
 /// is what proves it did.
 const TRICKY: &str = r#"a"b\c${d}"#;
 
+/// A string hostile to *SQL* specifically. `TRICKY` carries the metacharacters
+/// the other targets escape, but not the one SQL is delimited by, so it would
+/// exercise nothing here: a `'` is what a lifted SQL literal has to render
+/// inert, alongside the statement separator and comment introducer a breakout
+/// would need after it. The reparse in `probe_lift_into` is what proves the
+/// whole thing stayed one `literal` instead of becoming syntax.
+const SQL_TRICKY: &str = "O'Hara'; DROP TABLE users; --";
+
 /// Build one lifted value.
 ///
 /// The `LiftTo` grid is genuinely ragged — WGSL has no string impl, the shells
@@ -734,7 +742,7 @@ const TRICKY: &str = r#"a"b\c${d}"#;
 /// pins the spelling.
 fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
     use miette::miette;
-    use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Rust, Wgsl, Zsh};
+    use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Rust, Sql, Wgsl, Zsh};
 
     let unknown = || miette!("{marker}: no lift probe for value {value:?}");
 
@@ -804,6 +812,19 @@ fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
             "i32:-7" => (-7i32).qlift_to::<Zsh>(),
             "str:plain" => "hi".qlift_to::<Zsh>(),
             "str:tricky" => TRICKY.qlift_to::<Zsh>(),
+            _ => return Err(unknown()),
+        },
+        // Every SQL constant is a `literal`, strings included.
+        "Sql" => match value {
+            "u32:3" => 3u32.qlift_to::<Sql>(),
+            "i32:-7" => (-7i32).qlift_to::<Sql>(),
+            "f32:1.5" => 1.5f32.qlift_to::<Sql>(),
+            "f32:-1.5" => (-1.5f32).qlift_to::<Sql>(),
+            "bool:true" => true.qlift_to::<Sql>(),
+            "bool:false" => false.qlift_to::<Sql>(),
+            "str:plain" => "hi".qlift_to::<Sql>(),
+            "str:tricky" => TRICKY.qlift_to::<Sql>(),
+            "str:quote" => SQL_TRICKY.qlift_to::<Sql>(),
             _ => return Err(unknown()),
         },
         "Bash" => match value {
@@ -1518,6 +1539,7 @@ fn highlights_query(name: &str) -> Option<&'static str> {
         "html" => grammars::html::HIGHLIGHTS_QUERY,
         "lean" => grammars::lean::HIGHLIGHTS_QUERY,
         "nix" => grammars::nix::HIGHLIGHTS_QUERY,
+        "sql" => grammars::sql::HIGHLIGHTS_QUERY,
         "python" => grammars::python::HIGHLIGHTS_QUERY,
         "zsh" => grammars::zsh::HIGHLIGHTS_QUERY,
         _ => return None,

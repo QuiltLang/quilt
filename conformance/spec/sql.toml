@@ -1,0 +1,160 @@
+name = "sql"
+display = "SQL"
+aliases = []
+feature = "sql"
+meta_kind = "none"
+comment_prefix = "--"
+lang_src = "quilt/src/langs/sql/lang.rs"
+blurb = """
+A permissive, multi-dialect SQL grammar — a target-only language. Build a query \
+from a Rust or Python host and splice values in with `↑`, which turns each one \
+into a *literal node* rather than text: a value cannot close the literal and \
+continue the statement, so the query is sanitized by construction rather than \
+by an escaping convention nobody checks."""
+
+# Derived from the grammar's `REPEAT` rules (#202), not hand-curated.
+# `literal` is in the table for a reason worth knowing: `_single_quote_string`
+# ends in `repeat(/'([^']|'')*'/)`, the adjacent-string-literal concatenation
+# the standard spells with a newline between the parts. So a `literal` really
+# can hold a variable number of direct children.
+variadic = ["program", "select_expression", "list", "from", "values"]
+not_variadic = ["identifier", "term", "select", "binary_expression"]
+
+lift_marker = "Sql"
+
+[capabilities]
+quotable = {status = "supported"}
+hole-positions = {status = "partial", note = "every expression position works with the unpatched grammar (`__QUILT_HOLE__` matches SQL's identifier regex): predicate operand, select expression, relation name, `IN`-list element — and since #221 also inside a token and glued to adjacent text. A bare hole as a whole *statement* is a parse error, since no SQL statement begins with an identifier", issue = 234}
+variadic-containers = {status = "supported", note = "derived from the grammar's `REPEAT` rules by `bin/gen-arity`. `literal` is in the set, which surprises: `_single_quote_string` ends in a repeat over adjacent string literals"}
+kind-classification = {status = "supported"}
+lift-into = {status = "partial", note = "integers, decimals, booleans, strings and slices/`Vec`s all lift. The string escape is standard SQL — `'` doubled, backslash passed through — which is correct for the standard, PostgreSQL with `standard_conforming_strings = on`, SQLite and SQL Server, and *not* for a MySQL connection left in the default backslash-escapes mode", issue = 233}
+highlights = {status = "supported"}
+host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion. SQL has no facility for building its own syntax trees, so there is nothing for a string-based meta to emit either"}
+lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
+reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
+emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
+pattern-match = {status = "unsupported", note = "target-only; SQL fragments can still be destructured by a Rust host"}
+runnable = {status = "unsupported", note = "a query is executed by a database server, not by an interpreter reading a shebang"}
+runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
+glyph-collisions = {status = "supported"}
+chain-member = {status = "supported", note = "`queries.sql.rs.quilt` makes bare quotes default to SQL inside a Rust host"}
+header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced. The prefix is registered (`--`) so the answer exists if that changes"}
+lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream SQL server is proxied", issue = 154}
+
+# A whole statement parses on its own — `program` is a repeat of statements, so
+# a single one squashes past the wrapper.
+[[fragments]]
+name = "select_where"
+code = "SELECT * FROM t WHERE id = 1"
+tag = "statement"
+
+[[fragments]]
+name = "insert"
+code = "INSERT INTO users (name) VALUES ('ada')"
+tag = "statement"
+
+# A bare expression does *not* parse on its own; it reaches a `QTerm` through
+# the `SELECT …` wrapper retry in `parse_pre`. These two are the shapes a
+# composable predicate takes.
+[[fragments]]
+name = "predicate"
+code = "id = 1"
+tag = "binary_expression"
+
+[[fragments]]
+name = "string_literal"
+code = "'a''b'"
+tag = "literal"
+
+# A statement that keeps its terminating `;` stays wrapped: dropping the
+# `program` would lose the separator.
+[[fragments]]
+name = "terminated_statement"
+code = "SELECT 1;"
+tag = "program"
+
+[[holes]]
+name = "predicate_rhs"
+code = "SELECT * FROM t WHERE id = @"
+ikinds = ["expr"]
+
+[[holes]]
+name = "select_expression"
+code = "SELECT @ FROM t"
+ikinds = ["expr"]
+
+[[holes]]
+name = "relation_name"
+code = "SELECT * FROM @"
+ikinds = ["expr"]
+
+[[holes]]
+name = "in_list_element"
+code = "SELECT * FROM t WHERE id IN (@)"
+ikinds = ["expr"]
+
+# Every constant in this grammar is a `literal`, whatever its type — the tag is
+# shared by numbers, strings and the `TRUE`/`FALSE`/`NULL` keywords. The sign is
+# a child token rather than part of the number, so the negative rows are the
+# ones that would catch a lift that reproduced the text but not the shape.
+[[lift]]
+value = "u32:3"
+tag = "literal"
+text = "3"
+
+[[lift]]
+value = "i32:-7"
+tag = "literal"
+text = "-7"
+
+[[lift]]
+value = "f32:1.5"
+tag = "literal"
+text = "1.5"
+
+[[lift]]
+value = "f32:-1.5"
+tag = "literal"
+text = "-1.5"
+
+[[lift]]
+value = "bool:true"
+tag = "literal"
+text = "TRUE"
+
+[[lift]]
+value = "bool:false"
+tag = "literal"
+text = "FALSE"
+
+# The escaping case this language exists for: a value carrying a quote must come
+# out as one literal token with the quote doubled, not as a literal that ends
+# early followed by whatever the value said next.
+[[lift]]
+value = "str:plain"
+tag = "literal"
+text = "'hi'"
+
+# The shared hostile string. None of its metacharacters mean anything inside a
+# SQL literal, so it comes through untouched — which is the claim, not a gap.
+[[lift]]
+value = "str:tricky"
+tag = "literal"
+text = "'a\"b\\c${d}'"
+
+# The one that matters here: a value carrying the quote SQL literals are
+# delimited by, plus the separator and comment introducer a breakout would need
+# after it. It must come out as one literal token with every quote doubled.
+[[lift]]
+value = "str:quote"
+tag = "literal"
+text = "'O''Hara''; DROP TABLE users; --'"
+
+[kinds]
+program = "file"
+statement = "stmt"
+transaction = "stmt"
+block = "stmt"
+binary_expression = "expr"
+literal = "expr"
+identifier = "expr"
