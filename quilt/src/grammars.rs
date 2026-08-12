@@ -77,3 +77,4 @@ grammar!("bash", bash, LANGUAGE, tree_sitter_bash, highlights);
 grammar!("html", html, LANGUAGE, tree_sitter_html, highlights);
 grammar!("zsh", zsh, LANGUAGE, tree_sitter_zsh, highlights);
 grammar!("nix", nix, LANGUAGE, tree_sitter_nix, highlights);
+grammar!("sql", sql, LANGUAGE, tree_sitter_sql, highlights);

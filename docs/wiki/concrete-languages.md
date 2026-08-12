@@ -180,6 +180,60 @@ let shader = ↖
 
 ---
 
+## SQL (`sql`) — target only
+
+**Files:** `langs/sql/lang.rs`, `langs/sql/mod.rs`
+
+A permissive, multi-dialect SQL grammar (the `DerekStride/tree-sitter-sql` fork), target-only: no `MetaLanguage`. Used inside a Rust or Python host, or as the non-ground member of a chain in a `*.sql.rs.quilt` file.
+
+The reason to quote SQL rather than build a query with `format!` is what crossing the boundary means. A value spliced with `↑` becomes a **literal node**, not text — `LiftTo<Sql> for str` produces one `literal` token spelled as standard SQL with every `'` doubled — so a value cannot close the literal and continue the statement:
+
+```rust
+let name = "x'; DROP TABLE members; --";
+let q = sql↖SELECT id FROM members WHERE org = ↙name.↑↘↗;
+// SELECT id FROM members WHERE org = 'x''; DROP TABLE members; --'
+```
+
+`examples/sql_query.rs.quilt` is the worked version. The escaping is verified rather than asserted: the conformance battery reparses every lifted literal in this grammar, and the property suite (#161) re-runs that over generated strings drawn from an alphabet that includes both `'` and `\`.
+
+The dialect assumption is real and stated: `''` doubling with backslash passed through is the SQL standard, PostgreSQL with `standard_conforming_strings = on`, SQLite and SQL Server — *not* MySQL left in its default backslash-escapes mode. See issue #233.
+
+### Two fragment shapes
+
+SQL's `program` holds statements, so a whole statement parses on its own:
+
+```rust
+let q = sql↖SELECT * FROM t WHERE id = ↙id.↑↘↗;   // tag: `statement`
+```
+
+A bare *expression* — the shape a composable predicate takes — has no place in the grammar at all. `SqlLanguage::parse_pre` retries such a fragment inside `SELECT …` and strips the wrapper back off, the same technique Lean uses with `#check …`:
+
+```rust
+let pred = sql↖org = ↙name.↑↘↗;                   // tag: `binary_expression`
+let q = sql↖SELECT id FROM members WHERE ↙pred↘↗;
+```
+
+#### Gotcha: a statement quote in Rust tail position is emitted, not returned
+
+The expander reads a *statement*-kinded quote sitting in host statement position as "emit me into the enclosing builder" (the `is_stmt_like` heuristic in `multi.rs`). That is what you want inside an emit loop and not what you want from a function that returns a fragment, so bind it first:
+
+```rust
+fn q() -> Arc<QTerm> {
+    let query = sql↖SELECT 1↗;   // `sql↖SELECT 1↗` alone here would emit
+    query
+}
+```
+
+#### Gotcha: `LiftTo` is implemented for `str`, not for `&str`
+
+Matching through a reference binds `&&str`, which method resolution stops at. `match *self` (or `*name`) is the fix; the same applies to every target.
+
+### Holes
+
+`__QUILT_HOLE__` matches this grammar's identifier regex, so holes need **no grammar patch** — they work in predicate, select-expression, relation-name and `IN`-list position, and since #221 inside a token too. A bare hole as a whole *statement* is a parse error, since no SQL statement begins with an identifier; splice the enclosing statement instead. See issue #234.
+
+---
+
 ## Zsh (`zsh`) and Bash (`bash`) — target *and* host
 
 **Files:** `langs/shell/mod.rs`, `langs/shell/meta.rs`, `langs/shell/ops.rs`, `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
@@ -418,10 +472,11 @@ Each language is gated behind a Cargo feature with the same name (`quilt/Cargo.t
 
 ```toml
 [features]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "sql"]
 parse = ["dep:tree-sitter", "dep:tree-sitter-quilt", "dep:tree-sitter-rust", "dep:tree-sitter-python"]
 bash  = ["dep:tree-sitter-bash", "parse"]
 html  = ["dep:tree-sitter-html", "parse"]
+sql   = ["parse"]   # ~42MB of vendored parser.c — see quilt/Cargo.toml
 wgsl  = ["dep:tree-sitter-wgsl", "parse"]
 zsh   = ["dep:tree-sitter-zsh", "parse"]
 python = []

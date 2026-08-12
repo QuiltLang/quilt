@@ -27,6 +27,7 @@
 				{ "include": "#quote-wgsl" },
 				{ "include": "#quote-html" },
 				{ "include": "#quote-shell" },
+				{ "include": "#quote-sql" },
 				{ "include": "#quote-annotated" },
 				{ "include": "#quote-plain" }
 			]
@@ -109,6 +110,26 @@
 				{ "include": "#comments" },
 				{ "include": "#keywords" },
 				{ "include": "text.html.basic" }
+			]
+		},
+		"quote-sql": {
+			"name": "meta.quote.sql.quilt",
+			"begin": "\\b(sql)(↖)",
+			"end": "↗",
+			"beginCaptures": {
+				"1": { "name": "entity.name.tag.language.quilt" },
+				"2": { "name": "keyword.special.quilt punctuation.section.quote.begin.quilt" }
+			},
+			"endCaptures": {
+				"0": { "name": "keyword.special.quilt punctuation.section.quote.end.quilt" }
+			},
+			"contentName": "meta.embedded.block.sql",
+			"patterns": [
+				{ "include": "#quotes" },
+				{ "include": "#unquote" },
+				{ "include": "#comments" },
+				{ "include": "#keywords" },
+				{ "include": "source.sql" }
 			]
 		},
 		"quote-shell": {

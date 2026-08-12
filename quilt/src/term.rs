@@ -84,6 +84,28 @@ pub trait STerm: Term {
         String::from_utf8(buf).unwrap()
     }
 
+    /// Render as `.quilt` **source** rather than as target output: a Quilt
+    /// glyph sitting in content is written `\`-escaped, the way it has to be
+    /// spelled for the result to parse back to the same term.
+    ///
+    /// This is the inverse of parsing, and [`Self::coparse`] is not: a term is
+    /// written twice in this project, once as the file it came from and once as
+    /// the code it generates, and the two disagree exactly on glyphs. `↑` in
+    /// generated Lean is a coercion and must stay bare; the same `↑` in the
+    /// `.quilt` file it was written in is the lift operator unless it carries a
+    /// `\`. `coparse` kept the second reading for both, so any source with an
+    /// escaped glyph did not survive a round trip — and for `←` and `⟨` did not
+    /// even re-parse (#223).
+    ///
+    /// Use this for anything that renders a *parsed, unexpanded* term back to a
+    /// file; use [`Self::coparse`] for expander output.
+    fn coparse_quilt(&self) -> String {
+        let mut buf = Vec::new();
+        let mut writer = PrefixWriter::quilt(&mut buf);
+        self.write(&mut writer);
+        String::from_utf8(buf).unwrap()
+    }
+
     fn dump(&self, filename: &str) -> Result<()> {
         let mut file = std::fs::File::create(filename).into_diagnostic()?;
         let mut writer = PrefixWriter::new(&mut file);

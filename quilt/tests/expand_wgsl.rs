@@ -11,7 +11,7 @@ use quilt::term::STerm;
 fn roundtrip(code: &str) -> Result<()> {
     let mut omni = Omni::default();
     let q = omni.parse(code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     Ok(())
 }
 
@@ -83,7 +83,7 @@ fn chain_default_quote_lang() -> Result<()> {
     "#};
     let mut omni = Omni::default();
     let q = omni.parse_chain(&["rs", "wgsl"], code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     let out = omni.expand_lang("rs", &q)?.coparse();
     println!("{out}");
 
@@ -103,7 +103,7 @@ fn chain_single_lang_back_compat() -> Result<()> {
     "#};
     let mut omni = Omni::default();
     let q = omni.parse_chain(&["rs"], code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     let plain = omni.parse(code)?;
     assert_eq!(q.coparse(), plain.coparse());
     Ok(())

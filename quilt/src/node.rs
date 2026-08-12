@@ -6,14 +6,12 @@ use std::{fmt::Debug, iter::empty, sync::Arc};
 
 /**************************************************************/
 
-/// UTF-8 length of a Quilt glyph. Every glyph in [`GLYPHS`] is this wide (see
-/// `test glyph_lengths_are_uniform`), which is what lets callers doing byte
-/// arithmetic over the surface syntax — e.g. `quilt-lsp`'s `regions` — use a
-/// single constant. Derived from a glyph rather than written as `3` so it cannot
-/// drift from the glyph set it describes.
-pub const ARROW_LEN: usize = '↖'.len_utf8();
-/// UTF-8 length of the `\` that introduces an escape.
-pub const ESCAPE_LEN: usize = '\\'.len_utf8();
+// The glyph set and the `\` escape are facts about the surface syntax with no
+// parser in them, and the runtime-only build needs them to render a term back
+// as `.quilt` source (#223) — so they live in `crate::glyphs`, which is not
+// behind the `parse` feature, and are re-exported here, where every caller
+// already looks for them.
+pub use crate::glyphs::{escape, unescape, ARROW_LEN, ESCAPE_LEN, GLYPHS};
 
 /**************************************************************/
 
@@ -225,54 +223,6 @@ fn syntax_error(root: tree_sitter::Node) -> miette::Report {
         span.start,
         span.end,
     )
-}
-
-/// The characters Quilt gives special meaning to, and hence the ones `\` can
-/// escape: the four quote/unquote arrows, lift, reduce, emit, and the `⟨…⟩`
-/// delimiters. Must stay in sync with the `_char` / `_non_escape` / `escape`
-/// character classes in `tree-sitter-quilt/grammar.js`.
-pub const GLYPHS: [char; 9] = ['↖', '↗', '↙', '↘', '↑', '↓', '←', '⟨', '⟩'];
-
-/// Escape every Quilt glyph in `s` with a leading `\`.
-///
-/// This is the inverse of the grammar's `escape` rule and exists so that
-/// [`Node::coparse`] round-trips: a `Node::Content` can only hold a glyph if it
-/// came from a `\`-escape in the source (the grammar's `_char` class excludes
-/// all of them), so writing the glyph bare would make it re-parse as the
-/// operator instead of as content.
-pub fn escape(s: &str) -> Box<str> {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        if GLYPHS.contains(&c) {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out.into()
-}
-
-/// Strip the `\` from every escaped Quilt glyph in `s` — the inverse of
-/// [`escape`]. Parsing does this structurally (via the grammar's `escape` rule),
-/// so this is for callers holding raw source text.
-pub fn unescape(s: &str) -> Box<str> {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            // Only a glyph is consumed by the backslash; anything else (`\n` in
-            // a string literal, say) is `_non_escape` and stays verbatim.
-            match chars.clone().next() {
-                Some(g) if GLYPHS.contains(&g) => {
-                    out.push(g);
-                    chars.next();
-                }
-                _ => out.push(c),
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out.into()
 }
 
 /**************************************************************/

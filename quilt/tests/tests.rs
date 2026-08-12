@@ -19,13 +19,17 @@ fn roundtrip(code: &str) -> Result<()> {
     roundtrip_lang("rs", code)
 }
 
+/// Note `coparse_quilt`, not `coparse`: this asserts the term renders back as
+/// the `.quilt` *source* it was parsed from, which is the reading in which a
+/// glyph in content carries a `\` (#223). `coparse` is the other reading — the
+/// code the term generates — and the two differ only on escapes.
 fn roundtrip_lang(lang: &str, code: &str) -> Result<()> {
     let code = code.trim();
     let mut omni = Omni::default();
     let term = omni.parse_lang(lang, code)?;
     // dbg!(&term);
     // dbg!(&term[0][5]);
-    let code2 = term.coparse();
+    let code2 = term.coparse_quilt();
     // println!("'{code}'");
     // println!("'{code2}'");
     assert_eq!(code, code2);
@@ -296,6 +300,71 @@ fn indented_multiline_plain_block_comment_round_trips() -> Result<()> {
     "#})
 }
 
+/* --------------------- escaped glyphs round-trip (#223) ------------------- */
+
+/// Every glyph, escaped, at ground level: a `.quilt` file that spells a glyph
+/// `\↑` must come back spelling it `\↑`. `coparse` — the *output* reading —
+/// deliberately writes it bare, which is why the round trip needs its own
+/// renderer rather than a fix to the one the expander uses.
+#[test]
+fn every_escaped_glyph_round_trips_at_ground_level() -> Result<()> {
+    for g in quilt::glyphs::GLYPHS {
+        roundtrip(&format!("let s = \"\\{g}\";"))?;
+    }
+    Ok(())
+}
+
+/// …and inside a quote, where the fragment is a different language's code. The
+/// brackets (`↖ ↗ ↙ ↘ ⟨ ⟩`) are unambiguous anywhere: none of them is ever
+/// deferred to a later stage, so a bare one in a term can only have come from
+/// an escape.
+#[test]
+fn escaped_brackets_round_trip_inside_a_quote() -> Result<()> {
+    for g in ['↖', '↗', '↙', '↘', '⟨', '⟩'] {
+        roundtrip(&format!("let q = rs↖let s = \"\\{g}\";↗;"))?;
+    }
+    Ok(())
+}
+
+/// The other direction, and the reason the renderer cannot simply escape every
+/// glyph it sees: `↑ ↓ ←` inside an unresolved quote are *deferred operators*,
+/// left for the next stage, and must reach the output bare. Escaping one would
+/// silently turn a staged program into a literal.
+#[test]
+fn deferred_operators_are_not_escaped() -> Result<()> {
+    roundtrip("let q = rs↖let y = ↑;↗;")?;
+    roundtrip("let q = rs↖let y = ↓;↗;")?;
+    roundtrip("let q = rs↖let y = py↓;↗;")?;
+    roundtrip("let q = rs↖fn f() { ←; }↗;")?;
+    roundtrip("let q = lean↖def n := ↑↗;")?;
+    // Two stages deep, where the inner glyph is deferred twice over.
+    roundtrip("let q = rs↖let z = rs↖let y = ↑;↗;↗;")
+}
+
+/// The residual, pinned so it is a known shape rather than a surprise: an
+/// *operator* glyph escaped inside a quote, in a position where the target
+/// grammar makes it a leaf of its own — here a Rust string's contents. Such a
+/// leaf is indistinguishable from the deferred-operator placeholder the
+/// expander plugs in (both are a single-glyph leaf with a named tag), and the
+/// renderer resolves the ambiguity in favour of the operator, because escaping
+/// a real deferred operator would break staging outright while this loses an
+/// escape that was already lost before #223.
+///
+/// Telling the two apart needs the placeholder to be marked in the term, which
+/// is a representation change — see the discussion on #223.
+#[test]
+fn an_escaped_operator_inside_a_quoted_string_is_the_known_residual() -> Result<()> {
+    let mut omni = Omni::default();
+    let src = "let q = rs↖let s = \"\\↑\";↗;";
+    let back = omni.parse(src)?.coparse_quilt();
+    assert_eq!(
+        back, "let q = rs↖let s = \"↑\";↗;",
+        "if this now round-trips, the residual on #223 is closed — replace this \
+         test with `roundtrip({src:?})`"
+    );
+    Ok(())
+}
+
 /// A `//` line comment must not swallow the bracket that closes the quote it
 /// sits in (issue #226). The comment token runs to end of line, so before the
 /// fix the `↗` was comment text and the quote was never closed — a `malformed
@@ -326,14 +395,17 @@ fn a_line_comment_does_not_eat_the_closing_bracket() -> Result<()> {
 /// break, and it is not hypothetical: four files under `examples/` explain
 /// Quilt in a `//` comment and name the `↙…↘` brackets while doing it, so
 /// bounding the token everywhere turned them all into parse errors.
+///
+/// Asserted through `coparse` rather than `roundtrip`, because the source
+/// reading has a gap here — see the test below.
 #[test]
 fn a_ground_level_line_comment_still_reaches_end_of_line() -> Result<()> {
-    roundtrip(indoc! {r"
-        // prose about the ↙…↘ hole and the ↖…↗ brackets, with ↑ ↓ ← for good measure
-        let x = 1;
-    "})?;
-
     let mut omni = Omni::default();
+    let src = indoc! {r"
+        // prose about the ↙…↘ hole and the ↖…↗ brackets, with ↑ ↓ ← for good measure
+        let x = 1;"};
+    assert_eq!(omni.parse_lang("rs", src)?.coparse(), src);
+
     let out = omni
         .parse_lang("rs", "⟨//⟩ a quilt comment about ↙…↘\nlet x = 1;")?
         .coparse();
@@ -344,6 +416,32 @@ fn a_ground_level_line_comment_still_reaches_end_of_line() -> Result<()> {
     assert!(
         out.contains("let x = 1;"),
         "the code after the comment survived: {out:?}"
+    );
+    Ok(())
+}
+
+/// A second residual on the `.quilt`-source renderer from #223, of the same
+/// shape as the one above it and found by the test above this one: a glyph
+/// inside a **plain comment** is raw text at the Quilt layer — the comment
+/// token consumes the rest of the line, so a `\` there would be a literal
+/// backslash rather than an escape — but `coparse_quilt` escapes it anyway,
+/// because by the time the writer sees it the comment is ordinary content in
+/// the target language's tree.
+///
+/// It matters for real files: the four `examples/` comments that name `↙…↘` in
+/// prose are exactly this. Nothing renders them as `.quilt` source today, so
+/// nothing is corrupted — but the round-trip property is false for them.
+/// Telling comment text apart from code needs the same marker in the term that
+/// #223's other residual does; tracked in #237.
+#[test]
+fn a_glyph_in_a_plain_comment_is_the_other_known_residual() -> Result<()> {
+    let mut omni = Omni::default();
+    let src = "// prose about ↙…↘\nlet x = 1;";
+    assert_eq!(
+        omni.parse_lang("rs", src)?.coparse_quilt(),
+        "// prose about \\↙…\\↘\nlet x = 1;",
+        "if this now round-trips, #237 is fixed — replace this with \
+         `assert_eq!(…coparse_quilt(), src)`"
     );
     Ok(())
 }

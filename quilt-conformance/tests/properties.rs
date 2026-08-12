@@ -429,7 +429,7 @@ fn quarantined(language: &str, text: &str) -> Option<u32> {
 /// have no float or bool impl. A missing arm has to be a compile error, not a
 /// silently skipped property.
 fn lift_arbitrary(marker: &str, v: &Val) -> Option<Arc<QTerm>> {
-    use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Rust, Wgsl, Zsh};
+    use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Rust, Sql, Wgsl, Zsh};
     Some(match (marker, v) {
         ("Rust", Val::U32(x)) => x.qlift_to::<Rust>(),
         ("Rust", Val::I32(x)) => x.qlift_to::<Rust>(),
@@ -465,6 +465,13 @@ fn lift_arbitrary(marker: &str, v: &Val) -> Option<Arc<QTerm>> {
         ("Zsh", Val::U32(x)) => x.qlift_to::<Zsh>(),
         ("Zsh", Val::I32(x)) => x.qlift_to::<Zsh>(),
         ("Zsh", Val::Str(x)) => x.as_str().qlift_to::<Zsh>(),
+
+        // SQL's `literal` covers every constant, strings included.
+        ("Sql", Val::U32(x)) => x.qlift_to::<Sql>(),
+        ("Sql", Val::I32(x)) => x.qlift_to::<Sql>(),
+        ("Sql", Val::F32(x)) => x.qlift_to::<Sql>(),
+        ("Sql", Val::Bool(x)) => x.qlift_to::<Sql>(),
+        ("Sql", Val::Str(x)) => x.as_str().qlift_to::<Sql>(),
 
         ("Bash", Val::U32(x)) => x.qlift_to::<Bash>(),
         ("Bash", Val::I32(x)) => x.qlift_to::<Bash>(),
@@ -585,6 +592,7 @@ lift_properties! {
     lift_wgsl => "wgsl",
     lift_bash => "bash",
     lift_zsh => "zsh",
+    lift_sql => "sql",
 }
 
 /* ════════════════════════════ expansion ═════════════════════════════ */

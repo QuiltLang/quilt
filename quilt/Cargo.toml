@@ -59,7 +59,7 @@ workspace = true
 
 [features]
 bootstrap = ["parse"]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix", "lean"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix", "lean", "sql"]
 # `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
 # the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
 # the runtime-only consumers (e.g. nanobots-codegen on wasm). It also pulls in
@@ -80,6 +80,11 @@ lean = ["parse"]
 nix = ["parse"]
 python = []
 rust = []
+# SQL's vendored `parser.c` is ~42MB, second only to Lean's — the grammar is
+# permissive across several dialects and carries several hundred keyword rules.
+# The same caveat as `lean` applies: turn this off first if package size or C
+# compile time becomes a problem.
+sql = ["parse"]
 text = []
 # Like `python` and `rust`, and unlike the other targets: the TypeScript
 # *runtime* (`langs::typescript::{meta, ops}`) is pure QTerm manipulation and
