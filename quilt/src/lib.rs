@@ -1,3 +1,4 @@
+pub mod glyphs;
 #[cfg(feature = "parse")]
 pub mod grammars;
 pub mod lang;

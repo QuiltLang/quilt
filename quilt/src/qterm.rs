@@ -360,18 +360,64 @@ impl Term for QTerm {
     }
 }
 
+impl QTerm {
+    /// Whether this term is a Quilt operator that `Multi::build_nodes` deferred
+    /// to a later stage — `↑`, `←` or `<anno>↓` inside an unresolved quote,
+    /// plugged back in as `leaf(ident_tag, glyph)`.
+    ///
+    /// It matters only when rendering `.quilt` source (see
+    /// [`STerm::coparse_quilt`]): such a glyph is Quilt syntax and must stay
+    /// bare, while the same glyph arriving as escaped content must be written
+    /// `\`-escaped. The two are told apart by the tag. A language's own glyph
+    /// token comes back from its grammar as an anonymous node, which `sym`
+    /// builds with `tag == text` (Lean's bind is `sym("←")`); a deferred
+    /// operator is tagged with the language's *identifier* kind, which never
+    /// spells itself `←`. Anything with children is a fragment, not a leaf.
+    fn is_deferred_operator(&self) -> bool {
+        let QTerm::Tuple { tag, terms, cmds } = self else {
+            return false;
+        };
+        if !terms.is_empty() {
+            return false;
+        }
+        match cmds.as_ref() {
+            [CmdOrHole::Cmd(StrCmd::Write(text))] => {
+                **text != **tag && crate::glyphs::is_deferred_operator(text)
+            }
+            _ => false,
+        }
+    }
+}
+
 impl STerm for QTerm {
     fn write<W: std::io::Write>(&self, writer: &mut PrefixWriter<'_, W>) {
         match self {
             QTerm::Quote { term, cmds, .. } | QTerm::Unquote { term, cmds, .. } => {
+                // A quote's own `cmds` are the arrows and the language
+                // annotation — Quilt syntax, not content — so they are never
+                // escaped, however the body is written.
+                let outer = writer.set_escaping(false);
+                let outer_bracketed = writer.bracketed();
                 for cmd in cmds {
                     match cmd {
                         CmdOrHole::Cmd(cmd) => writer.interpret(cmd),
-                        CmdOrHole::Hole => term.write(writer),
+                        CmdOrHole::Hole => {
+                            writer.set_escaping(outer);
+                            writer.set_bracketed(true);
+                            term.write(writer);
+                            writer.set_bracketed(outer_bracketed);
+                            writer.set_escaping(false);
+                        }
                     }
                 }
+                writer.set_escaping(outer);
             }
             QTerm::Tuple { terms, cmds, .. } => {
+                let outer = if writer.bracketed() && self.is_deferred_operator() {
+                    writer.set_escaping(false)
+                } else {
+                    writer.escaping()
+                };
                 let mut children = terms.iter();
                 for cmd in cmds {
                     match cmd {
@@ -379,6 +425,7 @@ impl STerm for QTerm {
                         CmdOrHole::Hole => children.next().unwrap().write(writer),
                     }
                 }
+                writer.set_escaping(outer);
             }
         }
     }

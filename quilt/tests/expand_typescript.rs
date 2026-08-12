@@ -14,7 +14,7 @@ use quilt::term::STerm;
 fn roundtrip(chain: &[&str], code: &str) -> Result<()> {
     let mut omni = Omni::default();
     let q = omni.parse_chain(chain, code)?;
-    assert_eq!(code, q.coparse());
+    assert_eq!(code, q.coparse_quilt());
     Ok(())
 }
 
