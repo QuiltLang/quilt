@@ -258,6 +258,9 @@ pub fn lift_spelling(target: &str) -> Result<&'static str> {
         "nix" => Ok("qlift_to::<Nix>()"),
         "lean" | "lean4" => Ok("qlift_to::<Lean>()"),
         "sql" => Ok("qlift_to::<Sql>()"),
+        // Same grammar, different escaping: MySQL reads a backslash inside
+        // `'…'` as an escape and the standard does not (#233).
+        "mysql" | "mariadb" => Ok("qlift_to::<MySql>()"),
         _ => bail!("rust can't lift into {target:?}: no spelling/LiftTo impls registered"),
     }
 }

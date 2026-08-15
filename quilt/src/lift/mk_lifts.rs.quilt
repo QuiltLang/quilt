@@ -396,6 +396,13 @@ fn main() -> Result<()> {
         "'s'",
         &↖&format!("'{}'", sql_squote_escape(s))↗,
     );
+    ⟨//⟩ The MySQL dialect differs from the standard in exactly one place: the
+    ⟨//⟩ escaper. Same grammar, same token, so the same sample serves (#233).
+    let mysql_str = shape_with(
+        &descend(&sql↖'s'↗, "literal"),
+        "'s'",
+        &↖&format!("'{}'", mysql_squote_escape(s))↗,
+    );
 
     ⟨//⟩ Containers: an empty one, a two-element one, and the two elements.
     let py_list = (
@@ -427,8 +434,9 @@ fn main() -> Result<()> {
 
     let out: ⟨T⟩ = ↖
         use super::{
-            lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape,
-            sql_squote_escape, Bash, Lean, LiftTo, Nix, Python, Sql, Wgsl, Zsh,
+            lean_dquote_escape, mysql_squote_escape, nix_dquote_escape, py_dquote_escape,
+            sh_dquote_escape, sql_squote_escape, Bash, Lean, LiftTo, MySql, Nix, Python, Sql,
+            Wgsl, Zsh,
         };
         use crate::qterm::{leaf, sym, tb, QTerm};
         use std::sync::Arc;
@@ -823,6 +831,56 @@ fn main() -> Result<()> {
             NL.←;
             list_impls(
                 "Sql",
+                &↖sql_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
+            ).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- MySQL ----------------
+            ⟨//⟩ The same grammar under a different name, so every *shape* here
+            ⟨//⟩ is SQL's — the number, bool and list constructors are reused
+            ⟨//⟩ verbatim. Only the string escaper differs, which is the whole
+            ⟨//⟩ of issue #233: MySQL reads a backslash inside `'…'` as an
+            ⟨//⟩ escape and the standard does not, and no single spelling is
+            ⟨//⟩ right for both. Reusing the constructors is not just brevity —
+            ⟨//⟩ it is what stops the two dialects drifting into two shapes.
+            scalar_impls(
+                "MySql",
+                &["u8", "u16", "u32", "u64", "u128", "usize"],
+                &↖sql_number_term(false, &self.to_string())↗,
+            ).←;
+            scalar_impls(
+                "MySql",
+                &["i8", "i16", "i32", "i64", "i128", "isize"],
+                &↖sql_number_term(*self < 0, &self.unsigned_abs().to_string())↗,
+            ).←;
+            scalar_impls(
+                "MySql",
+                &["f32", "f64"],
+                &↖
+                    {
+                        let s = format!("{self:?}");
+                        match s.strip_prefix('-') {
+                            Some(mag) => sql_number_term(true, mag),
+                            None => sql_number_term(false, &s),
+                        }
+                    }
+                ↗,
+            ).←;
+            scalar_impls("MySql", &["bool"], &↖sql_bool_term(*self)↗).←;
+            NL.←;
+            ↖
+                /// `MySQL` `'s'`. Identical in shape to `sql_string_term` and
+                /// different only in the escaper it calls — see
+                /// `mysql_squote_escape` for why that difference exists.
+                pub fn mysql_string_term(s: &str) -> ⟨T⟩ {
+                    ↙mysql_str↘
+                }
+            ↗.←;
+            NL.←;
+            string_impls("MySql", &↖mysql_string_term(self)↗).←;
+            NL.←;
+            list_impls(
+                "MySql",
                 &↖sql_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
             ).←;
             NL.←;

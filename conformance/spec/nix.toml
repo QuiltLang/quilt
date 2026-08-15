@@ -20,7 +20,7 @@ not_variadic = ["integer_expression", "select_expression", "source_code"]
 
 lift_marker = "Nix"
 lift_from = ["nix"]
-lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "lean", "lean4", "html", "typescript", "ts", "text", "txt", "sql"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "lean", "lean4", "html", "typescript", "ts", "text", "txt", "sql", "mysql", "mariadb"]
 
 [capabilities]
 quotable = {status = "supported"}

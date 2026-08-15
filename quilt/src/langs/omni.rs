@@ -535,7 +535,7 @@ define_omni! {
         nix  if "nix"    => Nix(NixLanguage, DynNixLanguage):          ["nix"];
         py   if "python" => Python(PythonLanguage, DynPythonLanguage): ["python", "py"];
         rs   if "rust"   => Rust(RustLanguage, DynRustLanguage):       ["rust", "rs"];
-        sql  if "sql"    => Sql(SqlLanguage, DynSqlLanguage):          ["sql"];
+        sql  if "sql"    => Sql(SqlLanguage, DynSqlLanguage):          ["sql", "mysql", "mariadb"];
         txt  if "text"   => Text(TextLanguage, DynTextLanguage):       ["text", "txt"];
         ts   if "typescript" => TypeScript(TypeScriptLanguage, DynTypeScriptLanguage): ["typescript", "ts"];
         wgsl if "wgsl"   => Wgsl(WgslLanguage, DynWgslLanguage):       ["wgsl"];

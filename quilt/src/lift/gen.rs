@@ -24,8 +24,8 @@
 //!   inside its content, which no runtime reproduces (#174, finding A2).
 
 use super::{
-    lean_dquote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape, sql_squote_escape,
-    Bash, Lean, LiftTo, Nix, Python, Sql, Wgsl, Zsh,
+    lean_dquote_escape, mysql_squote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape,
+    sql_squote_escape, Bash, Lean, LiftTo, MySql, Nix, Python, Sql, Wgsl, Zsh,
 };
 use crate::qterm::{leaf, sym, tb, QTerm};
 use std::sync::Arc;
@@ -855,6 +855,119 @@ impl<T: LiftTo<Sql>> LiftTo<Sql> for [T] {
     }
 }
 impl<T: LiftTo<Sql>> LiftTo<Sql> for Vec<T> {
+    fn lift_to(&self) -> Arc<QTerm> {
+        self.as_slice().lift_to()
+    }
+}
+impl LiftTo<MySql> for u8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<MySql> for u16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<MySql> for u32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<MySql> for u64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<MySql> for u128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<MySql> for usize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<MySql> for i8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<MySql> for i16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<MySql> for i32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<MySql> for i64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<MySql> for i128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<MySql> for isize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<MySql> for f32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        {
+            let s = format!("{self:?}");
+            match s.strip_prefix('-') {
+                Some(mag) => sql_number_term(true, mag),
+                None => sql_number_term(false, &s),
+            }
+        }
+    }
+}
+impl LiftTo<MySql> for f64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        {
+            let s = format!("{self:?}");
+            match s.strip_prefix('-') {
+                Some(mag) => sql_number_term(true, mag),
+                None => sql_number_term(false, &s),
+            }
+        }
+    }
+}
+impl LiftTo<MySql> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_bool_term(*self)
+    }
+}
+/// `MySQL` `'s'`. Identical in shape to `sql_string_term` and
+/// different only in the escaper it calls — see
+/// `mysql_squote_escape` for why that difference exists.
+pub fn mysql_string_term(s: &str) -> Arc<QTerm> {
+    leaf("literal", &format!("'{}'", mysql_squote_escape(s)))
+}
+impl LiftTo<MySql> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        mysql_string_term(self)
+    }
+}
+impl LiftTo<MySql> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        mysql_string_term(self)
+    }
+}
+impl<T: LiftTo<MySql>> LiftTo<MySql> for [T] {
+    fn lift_to(&self) -> Arc<QTerm> {
+        sql_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())
+    }
+}
+impl<T: LiftTo<MySql>> LiftTo<MySql> for Vec<T> {
     fn lift_to(&self) -> Arc<QTerm> {
         self.as_slice().lift_to()
     }

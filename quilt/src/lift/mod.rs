@@ -48,8 +48,20 @@ pub struct Nix;
 /// Marker: the Lean 4 object language.
 pub struct Lean;
 
-/// Marker: the SQL object language.
+/// Marker: the SQL object language, standard dialect.
+///
+/// Escaping follows the SQL standard, which is also what `PostgreSQL` (with
+/// `standard_conforming_strings = on`, the default since 9.1), `SQLite` and SQL
+/// Server read. See [`MySql`] for the one widespread dialect that differs.
 pub struct Sql;
+
+/// Marker: the SQL object language, `MySQL`/`MariaDB` dialect.
+///
+/// Reached by annotating the quote `mysql↖ … ↗` (or `mariadb↖ … ↗`) instead of
+/// `sql↖ … ↗` — both are registered names for the same grammar, so the *parse*
+/// is identical and only the escaping differs. See [`mysql_squote_escape`] for
+/// why that is not a detail (#233).
+pub struct MySql;
 
 /**************************************************************/
 
@@ -243,12 +255,35 @@ fn lean_dquote_escape(s: &str) -> String {
 /// of the value under the standard, not extra safety.
 ///
 /// That makes the result safe against quote-breakout for standard SQL and for
-/// `PostgreSQL` with `standard_conforming_strings = on` (the default since 9.1).
-/// It is **not** safe for a `MySQL` connection left in the default
-/// backslash-escapes mode, where a trailing `\` in the value would escape the
-/// closing quote; see issue #233.
+/// `PostgreSQL` with `standard_conforming_strings = on` (the default since 9.1),
+/// as well as `SQLite` and SQL Server. It is **not** safe for `MySQL` in its
+/// default mode — write `mysql↖ … ↗` and get [`mysql_squote_escape`] instead.
 fn sql_squote_escape(s: &str) -> String {
     s.replace('\'', "''")
+}
+
+/// Escape a string for inclusion in a `MySQL`/`MariaDB` single-quoted literal.
+///
+/// `MySQL` in its **default** `sql_mode` (`NO_BACKSLASH_ESCAPES` *off*) reads a
+/// backslash inside `'…'` as an escape character, which the SQL standard does
+/// not. So a value ending in `\` escapes the closing quote and the statement
+/// keeps consuming — the exact breakout [`sql_squote_escape`] prevents for
+/// quotes but cannot prevent here (#233):
+///
+/// | value | standard escape | how `MySQL` reads it |
+/// | --- | --- | --- |
+/// | `a\` | `'a\'` | unterminated string |
+///
+/// Doubling the backslash as well fixes `MySQL` and *silently corrupts the
+/// value* under the standard, where `'a\\'` is two characters. There is no
+/// spelling correct in both, which is why the dialect is chosen by the
+/// annotation on the quote rather than guessed.
+///
+/// Those two are the whole rule: `MySQL`'s other escape sequences (`\n`, `\0`,
+/// `\Z`, `\%`, …) all begin with a backslash, so escaping every backslash
+/// leaves nothing else that can be read as anything but itself.
+fn mysql_squote_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "''")
 }
 
 /**************************************************************/
@@ -320,9 +355,67 @@ mod tests {
             "'x''; DROP TABLE t; --'"
         );
         // Backslash is an ordinary character in a standard SQL literal, so it
-        // passes through: doubling it would change the value. See issue #233
-        // for the MySQL mode where that is not enough.
-        assert_eq!(r"a".qlift_to::<Sql>().coparse(), r"'a'");
+        // passes through: doubling it would change the value. `mysql↖ … ↗` is
+        // the annotation for the dialect where that is not enough (#233).
+        //
+        // (These two assertions carried a literal backspace byte instead of a
+        // backslash until now — a shell-quoting slip in #236 that left the test
+        // agreeing with itself about nothing.)
+        assert_eq!(r"a\b".qlift_to::<Sql>().coparse(), r"'a\b'");
+        assert_eq!(r"a\".qlift_to::<Sql>().coparse(), r"'a\'");
+    }
+
+    /// The `MySQL` dialect differs from the standard in exactly one place, and
+    /// this is it: a backslash is doubled, because `MySQL` reads it as an escape
+    /// inside `'…'` and the standard does not (#233).
+    #[test]
+    fn mysql_doubles_the_backslash_and_the_standard_does_not() {
+        // Everything the standard does, MySQL does too.
+        assert_eq!("hi".qlift_to::<MySql>().coparse(), "'hi'");
+        assert_eq!(String::new().qlift_to::<MySql>().coparse(), "''");
+        assert_eq!("O'Hara".qlift_to::<MySql>().coparse(), "'O''Hara'");
+
+        // …and one thing more.
+        assert_eq!(r"a\b".qlift_to::<MySql>().coparse(), r"'a\\b'");
+        assert_eq!(r"a\".qlift_to::<MySql>().coparse(), r"'a\\'");
+
+        // The two dialects disagree only where a backslash appears; anything
+        // without one lifts identically, which is what makes `sql` a safe
+        // default for the values most programs actually carry.
+        for v in ["hi", "O'Hara", "x'; DROP TABLE t; --", "", "a, b"] {
+            assert_eq!(
+                v.qlift_to::<Sql>().coparse(),
+                v.qlift_to::<MySql>().coparse(),
+                "dialects should agree on a backslash-free value: {v:?}"
+            );
+        }
+    }
+
+    /// Numbers, booleans and lists are dialect-independent: `MySQL` reuses the
+    /// standard's shape constructors, so the two markers cannot drift apart on
+    /// anything but the string escape.
+    #[test]
+    fn mysql_shares_every_non_string_shape() {
+        assert_eq!(
+            42u64.qlift_to::<MySql>().coparse(),
+            42u64.qlift_to::<Sql>().coparse()
+        );
+        assert_eq!(
+            (-7i32).qlift_to::<MySql>().coparse(),
+            (-7i32).qlift_to::<Sql>().coparse()
+        );
+        assert_eq!(
+            (-1.5f32).qlift_to::<MySql>().coparse(),
+            (-1.5f32).qlift_to::<Sql>().coparse()
+        );
+        assert_eq!(
+            true.qlift_to::<MySql>().coparse(),
+            true.qlift_to::<Sql>().coparse()
+        );
+        assert_eq!(
+            vec![1u32, 2].qlift_to::<MySql>().coparse(),
+            vec![1u32, 2].qlift_to::<Sql>().coparse()
+        );
     }
 
     #[test]

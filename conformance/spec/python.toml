@@ -23,7 +23,7 @@ not_variadic = ["binary_operator", "assignment", "function_definition"]
 
 lift_marker = "Python"
 lift_from = ["python", "py", "html"]
-lift_from_unsupported = ["rust", "rs", "wgsl", "nix", "lean", "lean4", "typescript", "ts", "text", "txt", "sql"]
+lift_from_unsupported = ["rust", "rs", "wgsl", "nix", "lean", "lean4", "typescript", "ts", "text", "txt", "sql", "mysql", "mariadb"]
 
 [capabilities]
 quotable = {status = "supported"}

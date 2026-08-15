@@ -939,7 +939,9 @@
             "nix → qlift_to::<Nix>()",
             "lean → qlift_to::<Lean>()",
             "lean4 → qlift_to::<Lean>()",
-            "sql → qlift_to::<Sql>()"
+            "sql → qlift_to::<Sql>()",
+            "mysql → qlift_to::<MySql>()",
+            "mariadb → qlift_to::<MySql>()"
           ]
         },
         {
@@ -1022,7 +1024,10 @@
     {
       "name": "sql",
       "display": "SQL",
-      "aliases": [],
+      "aliases": [
+        "mysql",
+        "mariadb"
+      ],
       "feature": "sql",
       "blurb": "A permissive, multi-dialect SQL grammar — a target-only language. Build a query from a Rust or Python host and splice values in with `↑`, which turns each one into a *literal node* rather than text: a value cannot close the literal and continue the statement, so the query is sanitized by construction rather than by an escaping convention nobody checks.",
       "meta_kind": "none",
@@ -1083,9 +1088,8 @@
         },
         {
           "axis": "lift-into",
-          "status": "partial",
-          "note": "integers, decimals, booleans, strings and slices/`Vec`s all lift. The string escape is standard SQL — `'` doubled, backslash passed through — which is correct for the standard, PostgreSQL with `standard_conforming_strings = on`, SQLite and SQL Server, and *not* for a MySQL connection left in the default backslash-escapes mode",
-          "issue": 233,
+          "status": "supported",
+          "note": "integers, decimals, booleans, strings and slices/`Vec`s all lift, and the string escape is dialect-selected (#233). `sql↖ … ↗` escapes for the standard — `'` doubled, backslash passed through — which is what PostgreSQL (`standard_conforming_strings = on`), SQLite and SQL Server read. `mysql↖ … ↗` / `mariadb↖ … ↗` additionally double the backslash, which MySQL reads as an escape in its default mode. No single spelling is right for both: doubling the backslash corrupts the value under the standard, so the dialect is chosen by the annotation rather than guessed",
           "verified_by": "lift-into/sql",
           "detail": [
             "u32:3 → 3",

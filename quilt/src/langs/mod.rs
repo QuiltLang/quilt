@@ -47,7 +47,7 @@ pub fn comment_prefix(lang: &str) -> Option<&'static str> {
         // Rust keeps `//!`, an inner doc comment: it documents the generated
         // module rather than whatever item happens to follow.
         "rust" | "rs" => "//!",
-        "lean" | "lean4" | "sql" => "--",
+        "lean" | "lean4" | "sql" | "mysql" | "mariadb" => "--",
         // Grouped by spelling rather than by language because clippy's
         // `match_same_arms` (pedantic, `-D warnings` in CI) rejects the
         // one-language-per-line form.
