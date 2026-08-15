@@ -226,10 +226,14 @@ fn container_fn(fname: &str, sample: &(Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<Q
 /**************************************************************/
 /* The impls, which are all one call to a shape above          */
 
-⟨//⟩ A quote binds through a `let`, not a closure body: `|ty| ↖…↗` reads as an
-⟨//⟩ or-pattern once the quote is a hole, and a quote that is the tail of a
-⟨//⟩ block is a direct child of a variadic container, which the expander wraps
-⟨//⟩ in an emit into a `b_` that only exists inside a generated block.
+⟨//⟩ A quote binds through a `let` rather than sitting as the tail of a block:
+⟨//⟩ such a quote is a direct child of a variadic container, which the expander
+⟨//⟩ wraps in an emit into a `b_` that only exists inside a generated block.
+⟨//⟩
+⟨//⟩ It used to be a closure-body problem too — `|ty| ↖…↗` read as an or-pattern
+⟨//⟩ once the quote became a `{}` hole — but that was the fork's `quilt_hole`
+⟨//⟩ token outbidding `{`, and it is fixed (#241). Only the emit reason is left,
+⟨//⟩ and it is enough to keep this shape.
 fn scalar_impls(marker: &str, types: &[&str], body: &Arc<QTerm>) -> Vec<Arc<QTerm>> {
     let mut out = Vec::new();
     for ty in types {

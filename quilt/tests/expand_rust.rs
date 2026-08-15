@@ -278,3 +278,60 @@ fn splicing_nested() -> Result<()> {
     insta::assert_snapshot!(out);
     Ok(())
 }
+
+/* ─────────────── a quote as a whole closure body (#241) ─────────────── */
+
+/// A quote as the **entire body of a closure** must parse.
+///
+/// It did not until QuiltLang/tree-sitter-rust#1: substituting the hole turns
+/// `|x| ↖…↗` into `|x| {}`, and the fork's `quilt_hole` was a plain `"{}"`
+/// token. Tree-sitter's lexer prefers the longest match among the tokens valid
+/// in a state, so wherever a pattern could still continue — exactly where a
+/// closure's parameter list has just closed — `{}` outbid the `{` that starts a
+/// `block` and the whole file parsed as an or-pattern. The error named the file,
+/// not the closure, which is what made it hard to place.
+///
+/// The asymmetry is the tell, so all four shapes are pinned: the two that
+/// *failed* (one bare parameter, and none) and the two that always worked
+/// (several parameters, and a type annotation), which is what an ambiguity fix
+/// could plausibly break in the other direction.
+#[test]
+fn quote_as_a_whole_closure_body() -> Result<()> {
+    let out = expand_both("let f = xs.iter().map(|x| ↖1 + ↙x↘↗);")?;
+    assert!(
+        out.contains("binary_expression"),
+        "the closure body should expand to builder calls, got:\n{out}"
+    );
+    Ok(())
+}
+
+#[test]
+fn quote_as_a_closure_body_without_parameters() -> Result<()> {
+    expand_both("let f = || ↖1↗;")?;
+    Ok(())
+}
+
+#[test]
+fn quote_as_a_closure_body_with_a_reference_pattern() -> Result<()> {
+    expand_both("let f = xs.iter().map(|&(a, b)| ↖↙a↘ + ↙b↘↗);")?;
+    Ok(())
+}
+
+/// The shapes that always parsed, because an or-pattern was already impossible
+/// by the time the body was reached. Pinned so a future change to the hole
+/// token cannot fix one direction by breaking the other.
+#[test]
+fn closure_bodies_that_always_worked_still_do() -> Result<()> {
+    expand_both("let f = xs.iter().map(|a, b| ↖↙a↘ + ↙b↘↗);")?;
+    expand_both("let f = xs.iter().map(|x: u8| ↖↙x↘ + 1↗);")?;
+    Ok(())
+}
+
+/// A hole in *pattern* and *type* position is what `quilt_hole` exists for, and
+/// the token-precedence fix must not cost either.
+#[test]
+fn holes_in_pattern_and_type_position_still_parse() -> Result<()> {
+    expand_both("let ↖x↗ = 1;")?;
+    expand_both("let v: Vec<⟨T⟩> = Vec::new();")?;
+    Ok(())
+}

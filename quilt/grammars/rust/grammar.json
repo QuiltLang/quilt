@@ -37,8 +37,15 @@
       ]
     },
     "quilt_hole": {
-      "type": "STRING",
-      "value": "{}"
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -1,
+        "content": {
+          "type": "STRING",
+          "value": "{}"
+        }
+      }
     },
     "_statement": {
       "type": "CHOICE",

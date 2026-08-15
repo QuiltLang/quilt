@@ -59,7 +59,12 @@ tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git", r
 tree-sitter-lean = {git = "https://github.com/QuiltLang/tree-sitter-lean.git", rev = "86c2bcb379fe0b2ad13d8b3411400deff75b2785"}
 tree-sitter-nix = {git = "https://github.com/QuiltLang/tree-sitter-nix.git", rev = "dd89f89955224e335625858f1de6113261c76045"}
 tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "72de24676b4acb63d6cee78eaf3d5d18fd2ad6b9"}
-tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "167de1910dcba9c59d6fa59e37868aa8d14c772b"}
+# `quilt_hole` is `token(prec(-1, "{}"))`, not a plain "{}" token: the lexer
+# prefers the longest match among the tokens valid in a state, so at plain
+# precedence it outbid the `{` starting a `block` wherever a pattern could still
+# continue — which made `|x| {}`, a closure with an empty block body, parse as an
+# or-pattern (issue #241, QuiltLang/tree-sitter-rust#1).
+tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "44666f76b803d2f36eaf294d3404eaa93445894c"}
 # SQL needs no Quilt hole patch either: `__QUILT_HOLE__` matches this grammar's
 # `_identifier` regex, so it parses unpatched in predicate, select-expression,
 # relation-name and `IN`-list position (the same free ride nix and lean get).
