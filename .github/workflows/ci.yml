@@ -72,6 +72,16 @@ jobs:
           - os: ubuntu-latest
             name: Arity tables (derived from the grammars)
             run: bin/check-arity
+          # The lift shapes (issue #203): regenerate quilt/src/lift/gen.rs from
+          # sample literals parsed by the vendored grammars and fail if it
+          # drifted. A lift that is not the shape its parser builds coparses to
+          # the same text but matches nothing, so the divergence is invisible to
+          # every text-level test — it took two hand surveys of parser output to
+          # find them all (#176, then fed278b). Needs rust-script, like the
+          # bootstrap gate.
+          - os: ubuntu-latest
+            name: Lift shapes (derived from the grammars)
+            run: bin/check-lifts
           # The Quilt surface syntax — arrow brackets, escapes, comments — is
           # the one thing every language shares, and `tree-sitter test` ran
           # nowhere (issue #156). tree-sitter-quilt is a workspace member but

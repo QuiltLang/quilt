@@ -99,7 +99,7 @@ def f():
 
 Python's lift is written *prefix* (`↙↑(x)↘`), unlike Rust's postfix `x.↑`: the spelling is a free function because a `qlift` method can't hang off builtin ints and strings.
 
-Python also has a `LiftTo` marker type (`Python` in `lift.rs`), so a Rust host can lift values into quoted Python (`python↖ … ↙x.↑↘ … ↗`): integers, floats, bools, and strings lift to the corresponding literals, and slices/`Vec`s lift element-wise to `list` literals.
+Python also has a `LiftTo` marker type (`Python` in `lift/mod.rs`), so a Rust host can lift values into quoted Python (`python↖ … ↙x.↑↘ … ↗`): integers, floats, bools, and strings lift to the corresponding literals, and slices/`Vec`s lift element-wise to `list` literals.
 
 ---
 
@@ -238,7 +238,7 @@ Matching through a reference binds `&&str`, which method resolution stops at. `m
 
 **Files:** `langs/shell/mod.rs`, `langs/shell/meta.rs`, `langs/shell/ops.rs`, `langs/zsh/lang.rs`, `langs/zsh/mod.rs`, `langs/bash/lang.rs`, `langs/bash/mod.rs`
 
-Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. They can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) and, since issue #151, drive generation themselves. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift.rs`) so Rust values can be lifted into shell fragments.
+Shell languages, parsed via the forked `tree-sitter-zsh` / `tree-sitter-bash` grammars. They can appear inside quotes (`zsh↖…↗`, `bash↖…↗`) and, since issue #151, drive generation themselves. Both also have `LiftTo` marker types (`Zsh`, `Bash` in `lift/mod.rs`) so Rust values can be lifted into shell fragments.
 
 `tree-sitter-zsh` is a fork of `tree-sitter-bash`, so the two dialects share almost all of their node kinds — and used to answer `Language::arity` from two independently maintained `match` arms that had drifted: bash claimed `for_statement`, `while_statement`, `function_definition` and nine more kinds that zsh's table omitted despite zsh's grammar defining every one, so an emit into a zsh `for` body compiled differently from the identical bash one with no diagnostic (issue #150).
 
@@ -290,7 +290,7 @@ The hole token is `__QUILT_HOLE__`, a plain Nix identifier (so it parses as a `v
 
 ### As a target
 
-Quote and splice Nix fragments inside another host (`nix↖…↗`). Nix has a `LiftTo` marker type (`Nix` in `lift.rs`): strings lift to double-quoted `string_expression`s (with `${` escaped to keep them inert), integers/floats to `integer_expression`/`float_expression`, booleans to the `true`/`false` builtins, and slices/`Vec`s to space-separated `list_expression`s. See `examples/nix_module.rs.quilt`:
+Quote and splice Nix fragments inside another host (`nix↖…↗`). Nix has a `LiftTo` marker type (`Nix` in `lift/mod.rs`): strings lift to double-quoted `string_expression`s (with `${` escaped to keep them inert), integers/floats to `integer_expression`/`float_expression`, booleans to the `true`/`false` builtins, and slices/`Vec`s to space-separated `list_expression`s. See `examples/nix_module.rs.quilt`:
 
 ```rust
 let drv = nix↖
@@ -365,7 +365,7 @@ Lean's `module` holds *commands*, not terms, so a bare term fragment (`lean↖n 
 
 ### As a target
 
-Quote and splice Lean fragments inside another host (`lean↖…↗`). Lean has a `LiftTo` marker type (`Lean` in `lift.rs`): integers lift to `num_lit`s (negatives as a `unary_op`, since `num_lit` is unsigned), floats to `scientific_lit`s, booleans to Lean's `true`/`false` constants, strings to `str_lit`s, and slices/`Vec`s to comma-separated `list_lit`s.
+Quote and splice Lean fragments inside another host (`lean↖…↗`). Lean has a `LiftTo` marker type (`Lean` in `lift/mod.rs`): integers lift to `num_lit`s (negatives as a `unary_op`, since `num_lit` is unsigned), floats to `scientific_lit`s, booleans to Lean's `true`/`false` constants, strings to `str_lit`s, and slices/`Vec`s to comma-separated `list_lit`s.
 
 ```rust
 let thm = lean↖theorem add_zero (n : Nat) : n + ↙zero.↑↘ = n := by

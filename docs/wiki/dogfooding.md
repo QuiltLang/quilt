@@ -25,13 +25,13 @@ println!("{}", wgsl↖3u↗.↑.coparse());
 `wgsl↖3u↗` parses `3u` with the vendored WGSL grammar; `.↑` lifts the resulting
 term into the Rust source that rebuilds it. The expander is an oracle for "what
 shape does a parsed literal actually have" — which is precisely the question the
-hand-written tables in `lift.rs` answer from memory.
+hand-written tables in `lift.rs` used to answer from memory.
 
 ## Findings
 
 | # | Candidate | Today | Verdict |
 |---|---|---|---|
-| 1 | [Heterogeneous lift impls](#1-heterogeneous-lift-impls-liftrs) | `lift.rs`, 726 lines, 28 hand-written `LiftTo` impls | **Do it** — and it fixes [#174](https://github.com/QuiltLang/quilt/issues/174) as a side effect |
+| 1 | [Heterogeneous lift impls](#1-heterogeneous-lift-impls-liftrs) | `lift/gen.rs`, every `LiftTo` impl, generated | **Done** — `bin/gen-lifts` ([#203](https://github.com/QuiltLang/quilt/issues/203)); the [#174](https://github.com/QuiltLang/quilt/issues/174) tag call is still open and is now one line in the generator |
 | 2 | [Builder-call emitters](#2-builder-call-emitters-langsops) | `langs/{rust,python,typescript}/ops.rs`, ~925 lines, ~90% cloned | **Do it, partially** — generate the fragment shapes, keep the fold |
 | 3 | [Arity tables from the grammar](#3-arity-tables-from-the-grammar) | 9 hand-written `match tag` allowlists | **Done** — from `REPEAT`, not `children.multiple`; `bin/gen-arity` ([#202](https://github.com/QuiltLang/quilt/issues/202)) |
 | 4 | [String-based emitters](#4-string-based-emitters-nix-lean) | `langs/{nix,lean}/ops.rs`, 331 lines | **Don't** — the output is a string, not a term; Quilt adds nothing |
@@ -43,9 +43,13 @@ hand-written tables in `lift.rs` answer from memory.
 
 ## 1. Heterogeneous lift impls (`lift.rs`)
 
-### What is there today
+**Done** — `bin/gen-lifts`, issue
+[#203](https://github.com/QuiltLang/quilt/issues/203). What follows is the
+argument as it stood; [what shipped](#what-shipped) is at the end.
 
-`lift.rs` hand-writes the shape of a literal in each target language:
+### What was there before
+
+`lift.rs` hand-wrote the shape of a literal in each target language:
 
 ```rust
 impl LiftTo<Wgsl> for u32 {
@@ -171,39 +175,74 @@ a human.
 ### What this buys
 
 * **Faithfulness by construction.** The shape comes from the same parser
-  `lift_fidelity.rs` compares against, so its assertion becomes true by
-  construction rather than by vigilance — and nobody has to run the survey a
-  third time.
-* **Adding a target gets cheap.** Today it is ~60 lines of shape-guessing per
-  language. It becomes a table of sample literals.
-* **`lift.rs` shrinks.** Of its 726 lines, 493 precede the test module, and the
-  28 impls plus their `macro_rules!` scaffolding are the bulk of those. What
-  stays behind is the four `*_dquote_escape` helpers (~90 lines of genuine
-  runtime logic) and the marker types; what replaces the rest is a table of
-  sample literals plus the loop above.
+  `lift_fidelity.rs` compares against, so its assertion is true by construction
+  rather than by vigilance — and nobody has to run the survey a third time.
+* **Adding a target gets cheap.** It was ~60 lines of shape-guessing per
+  language; it is now a few sample literals and the list of Rust types that
+  target accepts.
+* **The hand-written surface shrinks to what is not a shape.** `lift/mod.rs`
+  keeps the markers, the trait and the four `*_dquote_escape` rules — about
+  ninety lines of genuine runtime logic. Everything else moved to `lift/gen.rs`.
+  The generated file is not much shorter than what it replaced; what changed is
+  that no line of it was typed from memory.
 
-### What it costs, and what has to be decided first
+### What it cost, and what is still open
 
-What is left is the call #174 flagged, which the audit does not resolve and
-`fed278b` deliberately skipped: the remaining shapes **move declared conformance
-claims**.
-`wgsl.toml` pins `tag = "int_literal"` but the parser wraps literals in
-`const_literal`; `python.toml` pins `tag = "integer"` for `i32:-7` but `-7`
-parses as `unary_operator`. Either the specs follow the parser, or the invariant
-is deliberately weakened and the reason written down.
+The remaining shapes **move declared conformance claims**, which is the call
+[#174](https://github.com/QuiltLang/quilt/issues/174) flagged and `fed278b`
+deliberately skipped. `wgsl.toml` pins `tag = "int_literal"` but the parser wraps
+literals in `const_literal`; `python.toml` pins `tag = "integer"` for `i32:-7`
+but `-7` parses as `unary_operator`. Generation does not resolve that — it
+localises it. Both are now one descent in `mk_lifts.rs.quilt` (`descend(&wgsl↖3u↗,
+"int_literal")`), so adopting the parser's shape is deleting the descent, and the
+generated file's header states the exemption where the impls are read.
 
-Two further limits worth knowing before starting:
+Two further limits, both unchanged:
 
 * **Containers need a loop, not a rewrite.** `Vec<T>` cannot be produced by
-  substituting into a fixed sample. But the sample still supplies the three
-  things that vary by language — opener, separator, closer. From `py↖[1, 4]↗` you
-  read off `sym("[")` / `sym(",") + w(" ")` / `sym("]")`; from `nix↖[ 1 4 ]↗` you
-  read off `sym("[")` / `w(" ")` / `sym("]")`. Generate the loop body from those,
-  keep the loop hand-written.
+  substituting into a fixed sample. But the sample still supplies what varies by
+  language: from `py↖[]↗`, `py↖[1]↗` and `py↖[1, 4]↗` the generator reads off
+  opener `sym("[")`, separator `sym(",") + w(" ")`, no terminator, closer
+  `sym("]")`; from the Nix trio it reads opener `sym("[") + w(" ")`, separator
+  `w(" ")`, terminator `w(" ")`, closer `sym("]")` — which is why `[ ]` keeps its
+  space and the last element keeps its trailing one. The loop that consumes those
+  four pieces is hand-written, once.
 * **Escapes remain a floor.** Python strings containing escapes parse with nested
   `escape_sequence` children inside `string_content`, which no sample-and-rewrite
   scheme reproduces. That needs escape-aware lifting or an explicit exemption —
   same conclusion #174 reached.
+
+### What shipped
+
+`quilt/src/lift/gen.rs` is generated by `bin/gen-lifts` from
+`quilt/src/lift/mk_lifts.rs.quilt`; `bin/check-lifts` regenerates it and fails on
+a diff, in `main check` and in CI beside `check-arity` and `check-bootstrap`.
+`lift/mod.rs` keeps what is not a shape: the markers, the trait, and the four
+`*_dquote_escape` rules the generated shapes call.
+
+Each target contributes a handful of *shape constructors* — `py_string_term`,
+`nix_list_term`, `lean_num_term` — whose bodies are the parser's output, and the
+impls are one call each. `py_string_term` keeps its name and its `pub`, because
+`quilt-python` calls it: that sharing is what #176 put there, and generating the
+shape is what keeps the shared copy honest.
+
+SQL arrived on `main` while this was in review ([#219](https://github.com/QuiltLang/quilt/issues/219)),
+hand-written, with its shapes surveyed by hand a third time — the exact cost this
+exists to remove. Folding it in was four sample literals and the list of Rust
+types SQL accepts, and the generator reproduced every shape the survey had found,
+byte for byte. It also turned up something the survey had not: `(1)` parses as a
+`parenthesized_expression`, not a one-element `list`, which is why the container
+derivation takes an empty and a two-element sample rather than the obvious three.
+
+Two shapes were wrong and are now right, both found by generating rather than by
+looking:
+
+* WGSL `bool_literal` holds its keyword as a child token; the lift spelled it as
+  the node's text. Both coparse to `true`, so no text-level assertion could see
+  it. WGSL is now in `lift_fidelity.rs`, which it could not be before.
+* Lean `-0.0` is not `< 0.0`, so a sign test against zero lifted it as a single
+  `scientific_lit` while the parser read a negation. The generated impl reads the
+  sign off the rendered text.
 
 ---
 

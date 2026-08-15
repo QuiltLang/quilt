@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Regenerate quilt/src/lift/gen.rs — every `LiftTo` impl and the shape
+# constructor behind it — from sample literals parsed by the vendored grammars:
+#
+#   quilt/src/lift/mk_lifts.rs.quilt   (the samples: `py↖"s"↗`, `nix↖[ 1 4 ]↗`, …)
+#        │
+#        │  each sample is parsed, then lifted with `↑`, which prints the
+#        │  builder calls that rebuild it; the sample's own text is replaced
+#        │  by the runtime expression
+#        ▼
+#   quilt/src/lift/gen.rs   → the impls `↑` into a foreign quote resolves to
+#
+# These shapes used to be hand-transcribed from parser output, which is how the
+# core and the quilt-python binding came to disagree about what a Python string
+# is (#176) and why the same survey had to be done twice (then `fed278b`).
+# See issue #203. `bin/check-lifts` is the CI gate that this was run.
+#
+# Needs `rust-script` and `rustfmt`: the generator is expanded and run the same
+# way `bin/bootstrap` runs mk_meta.rs.quilt, and `cargo fmt`s what it wrote.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/quilt"
+exec cargo run --manifest-path "$ROOT/Cargo.toml" -p quiltlang -- \
+  run -m omni src/lift/mk_lifts.rs.quilt "$@"
