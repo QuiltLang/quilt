@@ -387,6 +387,37 @@ impl QTerm {
             _ => false,
         }
     }
+
+    /// Whether this node is a comment **Quilt itself** lexes as raw text — a
+    /// `//` line comment or a `/* … */` block comment.
+    ///
+    /// Both halves of that matter, and only their conjunction is correct
+    /// (#237). The tag says the target language calls this a comment; the
+    /// spelling says Quilt does too. Quilt's grammar has `plain_line_comment`
+    /// and `plain_block_comment` and nothing else, so a `#` or `--` comment is
+    /// *not* raw to it: a `↑` written in a Python comment had to be spelled
+    /// `\↑` in the source, and rendering it back without the `\` would turn it
+    /// into a lift operator. Suppressing escapes on the tag alone would break
+    /// exactly those languages while fixing the C-style ones.
+    fn is_plain_comment(&self) -> bool {
+        matches!(self, QTerm::Tuple { tag, .. } if crate::lang::is_comment_tag(tag))
+            && self
+                .leading_text()
+                .is_some_and(|t| t.starts_with("//") || t.starts_with("/*"))
+    }
+
+    /// The first text this term writes, in document order — how a node's own
+    /// spelling is inspected without rendering the whole subtree.
+    fn leading_text(&self) -> Option<&str> {
+        for cmd in self.cmds() {
+            match cmd {
+                CmdOrHole::Cmd(StrCmd::Write(s)) if !s.is_empty() => return Some(s),
+                CmdOrHole::Cmd(_) => {}
+                CmdOrHole::Hole => return self.children().next().and_then(Self::leading_text),
+            }
+        }
+        None
+    }
 }
 
 impl STerm for QTerm {
@@ -413,7 +444,18 @@ impl STerm for QTerm {
                 writer.set_escaping(outer);
             }
             QTerm::Tuple { terms, cmds, .. } => {
-                let outer = if writer.bracketed() && self.is_deferred_operator() {
+                // Two kinds of node hold text that is *not* escapable content,
+                // and writing a `\` into either corrupts it:
+                //
+                // * a deferred Quilt operator, which is Quilt syntax the next
+                //   stage still has to read (#223);
+                // * a comment, whose body the Quilt grammar treats as raw text,
+                //   so a `\` there is a literal backslash and not an escape
+                //   (#237). Suppressing for the whole subtree is right: the
+                //   node's children are the comment's own tokens.
+                let raw =
+                    (writer.bracketed() && self.is_deferred_operator()) || self.is_plain_comment();
+                let outer = if raw {
                     writer.set_escaping(false)
                 } else {
                     writer.escaping()

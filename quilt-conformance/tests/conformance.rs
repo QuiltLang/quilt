@@ -250,6 +250,65 @@ fn chain_members() {
     );
 }
 
+/// `quilt::lang::is_comment_tag` decides which nodes the `.quilt`-source
+/// renderer must leave unescaped (#237), and it tests the *name* of the node
+/// kind rather than consulting a per-language table — on the grounds that every
+/// grammar quilt vendors spells its comment kinds `comment`, `line_comment` or
+/// `block_comment`. That is a claim about ten third-party grammars, so it is
+/// checked rather than trusted: build a comment in each language out of its own
+/// `comment_prefix` and ask the language what it produced.
+///
+/// A grammar that names comments something else fails here, which is where you
+/// want to hear about it. The alternative symptom is a `.quilt` file whose
+/// comments quietly grow backslashes.
+#[test]
+fn comment_tags_are_recognised() {
+    use quilt::lang::{flat_nodes, is_comment_tag, Language as _};
+
+    let mut checked = 0;
+    for name in registry::LANGUAGES {
+        // HTML's comments are delimited rather than prefixed and plain text has
+        // none at all; both are `None` here, and neither can host a fragment.
+        let Some(prefix) = quilt::langs::comment_prefix(name) else {
+            continue;
+        };
+        let mut lang = registry::language(name).expect("registered language builds");
+        let code = format!("{prefix} a comment\n");
+        let Ok(term) = lang.parse_as(None, &flat_nodes(&code)) else {
+            // A language that cannot parse a lone comment as a whole file has
+            // nothing to say here; the claim is about the tag, not the position.
+            continue;
+        };
+
+        let mut tags = Vec::new();
+        collect_tags(&term, &mut tags);
+        assert!(
+            tags.iter().any(|t| is_comment_tag(t)),
+            "{name}: parsing {code:?} produced no node kind `is_comment_tag` recognises.\n\
+             Kinds seen: {tags:?}\n\
+             Either this grammar names comments differently — in which case widen \
+             `quilt::lang::is_comment_tag`, and check what the source renderer does \
+             to a glyph in one — or this fragment is not a comment in this language.",
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 7,
+        "expected most languages to be covered, got {checked}"
+    );
+}
+
+/// Every tuple tag in `term`, in document order.
+fn collect_tags(term: &quilt::qterm::QTerm, out: &mut Vec<String>) {
+    use quilt::term::Term as _;
+    if let quilt::qterm::QTerm::Tuple { tag, .. } = term {
+        out.push(tag.to_string());
+    }
+    for child in term.children() {
+        collect_tags(child, out);
+    }
+}
+
 /// `bin/check-examples` recognises a generated file by its header comment. If
 /// `quilt::langs::comment_prefix` can emit a spelling that script's regex does
 /// not list, the file stops being recognised and silently drops out of the

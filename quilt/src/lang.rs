@@ -109,6 +109,29 @@ pub enum FlatNode<'a> {
     NewLine,
 }
 
+/// Whether `tag` is a node kind the target language uses for a comment.
+///
+/// Needed by the `.quilt`-source renderer (`STerm::coparse_quilt`, #223): a
+/// Quilt glyph inside a comment is *raw text*, because the grammar's comment
+/// token consumes the rest of the line and never applies the `escape` rule
+/// inside one. Writing `\↙` there would produce a literal backslash rather than
+/// an escape, so comment content is the one place source rendering must not
+/// escape (#237).
+///
+/// This is a naming convention rather than a per-language table, deliberately:
+/// every tree-sitter grammar quilt vendors spells its comment kinds `comment`,
+/// `line_comment` or `block_comment`, and a table keyed by language is the
+/// hardcoded-shape pattern issue #174 exists to prevent. It is not taken on
+/// trust either — `quilt-conformance`'s `comment_tags_are_recognised` builds a
+/// comment in every registered language from `langs::comment_prefix` and
+/// asserts the tag its grammar produces satisfies this, so a language whose
+/// grammar names comments differently fails there rather than silently losing
+/// its escapes.
+#[must_use]
+pub fn is_comment_tag(tag: &str) -> bool {
+    tag == "comment" || tag.ends_with("_comment")
+}
+
 // WARN: assumers no newlines
 pub fn one_liner(s: &str) -> [FlatNode<'_>; 1] {
     [FlatNode::Str(s)]
