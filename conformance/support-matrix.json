@@ -1042,15 +1042,16 @@
         },
         {
           "axis": "hole-positions",
-          "status": "partial",
-          "note": "every expression position works with the unpatched grammar (`__QUILT_HOLE__` matches SQL's identifier regex): predicate operand, select expression, relation name, `IN`-list element — and since #221 also inside a token and glued to adjacent text. A bare hole as a whole *statement* is a parse error, since no SQL statement begins with an identifier",
-          "issue": 234,
+          "status": "supported",
+          "note": "every expression position works with the unpatched grammar (`__QUILT_HOLE__` matches SQL's identifier regex): predicate operand, select expression, relation name, `IN`-list element — and since #221 also inside a token and glued to adjacent text. Statement position needs help, since no SQL statement begins with an identifier: `parse_pre` wraps such a hole in `SELECT …` and strips the wrapper back out (#234), which requires the hole to be alone on its line apart from a trailing `;`",
           "verified_by": "hole-positions/sql",
           "detail": [
             "predicate_rhs: expr",
             "select_expression: expr",
             "relation_name: expr",
-            "in_list_element: expr"
+            "in_list_element: expr",
+            "statement_terminated: stmt",
+            "statement_final: stmt"
           ]
         },
         {

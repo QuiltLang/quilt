@@ -63,6 +63,59 @@ fn report(filters: &[Filter]) -> Arc<QTerm> {
     query
 }
 
+/// A seed script: one INSERT per member, wrapped in a script that creates the
+/// table first and indexes it last.
+///
+/// The generated statements go into a hole at *statement* position -- a
+/// position a bare identifier cannot occupy, since no SQL statement starts with
+/// one, so `parse_pre` wraps the hole in `SELECT ...` and strips the wrapper
+/// back out (issue #234). The hole has to stand alone on its line apart from
+/// the `;`, which is what marks it as a statement slot rather than an operand.
+///
+/// The separators are placed by the loop, not by the splice: `;` goes *between*
+/// the emitted statements and the source's own `;` terminates the last one --
+/// the same shape `nix_module.rs.quilt` uses to space a Nix list.
+fn seed_script(members: &[(&'static str, u32)]) -> Arc<QTerm> {
+    // The closure body is a block with a `let`, not the quote itself: a quote
+    // alone as a closure body does not parse today, because Rust's hole is `{}`
+    // and `|&(name, age)| {}` reads as an or-pattern. See issue #241.
+    let inserts: Vec<Arc<QTerm>> = members
+        .iter()
+        .map(|&(name, age)| {
+            let ins = tb("statement").c(&tb("insert").c(&leaf("keyword_insert", "INSERT")).w(" ").c(&leaf("keyword_into", "INTO")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("list").c(&sym("(")).c(&tb("column").c(&leaf("identifier", "name")).b()).c(&sym(",")).w(" ").c(&tb("column").c(&leaf("identifier", "age")).b()).c(&sym(")")).b()).w(" ").c(&leaf("keyword_values", "VALUES")).w(" ").c(&{
+                let mut b_ = tb("list");
+                sym("(").emit(&mut b_);
+                name.qlift_to::<Sql>().emit(&mut b_);
+                sym(",").emit(&mut b_);
+                b_.write(" ");
+                age.qlift_to::<Sql>().emit(&mut b_);
+                sym(")").emit(&mut b_);
+                b_.b()
+            }).b()).b();
+            ins
+        })
+        .collect();
+    
+    let script = {
+        let mut b_ = tb("program");
+        tb("statement").c(&tb("create_table").c(&leaf("keyword_create", "CREATE")).w(" ").c(&leaf("keyword_table", "TABLE")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("column_definitions").c(&sym("(")).c(&tb("column_definition").c(&leaf("identifier", "id")).w(" ").c(&tb("int").c(&leaf("keyword_int", "INT")).b()).b()).c(&sym(",")).w(" ").c(&tb("column_definition").c(&leaf("identifier", "name")).w(" ").c(&leaf("keyword_text", "TEXT")).b()).c(&sym(",")).w(" ").c(&tb("column_definition").c(&leaf("identifier", "age")).w(" ").c(&tb("int").c(&leaf("keyword_int", "INT")).b()).b()).c(&sym(")")).b()).b()).b().emit(&mut b_);
+        sym(";").emit(&mut b_);
+        b_.nl();
+        {
+                for (i, ins) in inserts.into_iter().enumerate() {
+                    if i > 0 { sym(";").emit(&mut b_); NL.emit(&mut b_); }
+                    ins.emit(&mut b_);
+                }
+            };
+        sym(";").emit(&mut b_);
+        b_.nl();
+        tb("statement").c(&tb("create_index").c(&leaf("keyword_create", "CREATE")).w(" ").c(&leaf("keyword_index", "INDEX")).w(" ").c(&leaf("identifier", "members_name")).w(" ").c(&leaf("keyword_on", "ON")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("index_fields").c(&sym("(")).c(&tb("field").c(&leaf("identifier", "name")).b()).c(&sym(")")).b()).b()).b().emit(&mut b_);
+        sym(";").emit(&mut b_);
+        b_.b()
+    };
+    script
+}
+
 fn main() -> Result<()> {
     // An ordinary report. Three Rust values of three different types, each
     // crossing into the query as the SQL literal for its own type.
@@ -86,6 +139,15 @@ fn main() -> Result<()> {
     // one predicate.
     let q = report(&[Filter::Org("x'; DROP TABLE members; --")]);
     println!("{};", q.coparse());
+    
+    // A whole script, assembled from a Rust list at generation time. The
+    // apostrophe in the last name is escaped by the same lift as above, inside
+    // a statement that was spliced rather than written.
+    println!();
+    println!(
+        "{}",
+        seed_script(&[("ada", 36), ("grace", 45), ("o'brien", 29)]).coparse()
+    );
     
     Ok(())
 }
