@@ -27,6 +27,12 @@
             # changed expander snapshots (issue #157). Tests themselves need
             # only the `insta` crate; this is the review UI.
             pkgs.cargo-insta
+            # `bin/coverage` — line and region coverage for the workspace
+            # (phase 5 of #144). In the shell rather than `cargo install`ed by
+            # CI because it is a plain binary with no toolchain of its own, and
+            # a coverage number nobody can reproduce locally is not worth
+            # having: the point of the job is to be looked at.
+            pkgs.cargo-llvm-cov
             pkgs.cargo-nextest
             pkgs.lolcat
             # maturin builds the quilt_python PyO3 module (`bin/build-py`).
