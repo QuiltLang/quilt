@@ -7,3 +7,10 @@ local
 .claude/worktrees/
 .claire
 /target
+# Raw coverage profiles. `bin/coverage` keeps its own under the target dir, but
+# `cargo llvm-cov` exports `RUSTFLAGS=-C instrument-coverage`, and `quilt run`'s
+# tests hand that to `rust-script` — so the *generated* programs are built
+# instrumented too and drop `default_*.profraw` in whatever directory they ran
+# in. Not anchored: they land next to whichever crate the test ran from.
+*.profraw
+*.profdata
