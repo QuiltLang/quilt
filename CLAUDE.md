@@ -176,6 +176,15 @@ fuzz 300          # every target, 300s each
 fuzz parse_quilt  # one target
 fuzz list         # the targets
 
+# Coverage (issue #144, phase 5). cargo-llvm-cov over the same tests `ctest`
+# runs; nightly and never a gate — the epic asks for the number first and a
+# ratchet on quilt/src/langs/** later, which is what `--langs` reports.
+coverage              # summary table, one row per file
+coverage --langs      # per-module table for quilt/src/langs/**
+coverage --lcov F     # write lcov to F
+coverage --html       # HTML report under target/llvm-cov/html
+coverage --ci DIR     # one instrumented run, all four artifacts into DIR
+
 # Downstream smoke build (issue #189): clone QuiltLang/nanobots, repoint its
 # quilt dependency at this checkout, expand its .rs.quilt sources with this
 # expander and compile the two crates that consume quilt. Nightly and
