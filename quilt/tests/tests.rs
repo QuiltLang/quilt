@@ -364,3 +364,84 @@ fn an_escaped_operator_inside_a_quoted_string_is_the_known_residual() -> Result<
     );
     Ok(())
 }
+
+/// A `//` line comment must not swallow the bracket that closes the quote it
+/// sits in (issue #226). The comment token runs to end of line, so before the
+/// fix the `↗` was comment text and the quote was never closed — a `malformed
+/// Quilt syntax` error on source that reads as obviously valid, with the
+/// workaround (a newline before the closer) discoverable only by accident.
+///
+/// The same applies to `↘`, and to Quilt's own `⟨//⟩` comment.
+#[test]
+fn a_line_comment_does_not_eat_the_closing_bracket() -> Result<()> {
+    roundtrip("let b = rs↖let x = 1; // hi↗;")?;
+    roundtrip("let u = rs↖let y = ↙f()↘; // hi↗;")?;
+    // The closer of an *unquote* is bounded too.
+    roundtrip("let n = rs↖let y = ↙f() // why↘;↗;")?;
+
+    // Quilt's own comment is meta-level, so it is stripped rather than passed
+    // through — `roundtrip` is the wrong assertion for it. What it shares with
+    // `//` is that it must not eat the closer.
+    let mut omni = Omni::default();
+    let out = omni
+        .parse_lang("rs", "let q = rs↖let x = 1; ⟨//⟩ note↗;")?
+        .coparse();
+    assert_eq!(out, "let q = rs↖let x = 1; ↗;");
+    Ok(())
+}
+
+/// …while a comment at *ground* level still runs to end of line and carries
+/// every glyph, closing arrows included. That is the half the #226 fix must not
+/// break, and it is not hypothetical: four files under `examples/` explain
+/// Quilt in a `//` comment and name the `↙…↘` brackets while doing it, so
+/// bounding the token everywhere turned them all into parse errors.
+///
+/// Asserted through `coparse` rather than `roundtrip`, because the source
+/// reading has a gap here — see the test below.
+#[test]
+fn a_ground_level_line_comment_still_reaches_end_of_line() -> Result<()> {
+    let mut omni = Omni::default();
+    let src = indoc! {r"
+        // prose about the ↙…↘ hole and the ↖…↗ brackets, with ↑ ↓ ← for good measure
+        let x = 1;"};
+    assert_eq!(omni.parse_lang("rs", src)?.coparse(), src);
+
+    let out = omni
+        .parse_lang("rs", "⟨//⟩ a quilt comment about ↙…↘\nlet x = 1;")?
+        .coparse();
+    assert!(
+        !out.contains("quilt comment"),
+        "a `⟨//⟩` comment is stripped, not passed through: {out:?}"
+    );
+    assert!(
+        out.contains("let x = 1;"),
+        "the code after the comment survived: {out:?}"
+    );
+    Ok(())
+}
+
+/// A second residual on the `.quilt`-source renderer from #223, of the same
+/// shape as the one above it and found by the test above this one: a glyph
+/// inside a **plain comment** is raw text at the Quilt layer — the comment
+/// token consumes the rest of the line, so a `\` there would be a literal
+/// backslash rather than an escape — but `coparse_quilt` escapes it anyway,
+/// because by the time the writer sees it the comment is ordinary content in
+/// the target language's tree.
+///
+/// It matters for real files: the four `examples/` comments that name `↙…↘` in
+/// prose are exactly this. Nothing renders them as `.quilt` source today, so
+/// nothing is corrupted — but the round-trip property is false for them.
+/// Telling comment text apart from code needs the same marker in the term that
+/// #223's other residual does; tracked in #237.
+#[test]
+fn a_glyph_in_a_plain_comment_is_the_other_known_residual() -> Result<()> {
+    let mut omni = Omni::default();
+    let src = "// prose about ↙…↘\nlet x = 1;";
+    assert_eq!(
+        omni.parse_lang("rs", src)?.coparse_quilt(),
+        "// prose about \\↙…\\↘\nlet x = 1;",
+        "if this now round-trips, #237 is fixed — replace this with \
+         `assert_eq!(…coparse_quilt(), src)`"
+    );
+    Ok(())
+}

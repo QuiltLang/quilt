@@ -66,6 +66,68 @@
         }
       ]
     },
+    "_bracketed_node": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "content"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "escape"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "newline"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "quote"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "unquote"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "lift"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "reduce"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "emit"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_bounded_comment"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "bounded_plain_line_comment"
+          },
+          "named": true,
+          "value": "plain_line_comment"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "plain_block_comment"
+        }
+      ]
+    },
     "content": {
       "type": "PREC_RIGHT",
       "value": 0,
@@ -149,7 +211,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "_node"
+            "name": "_bracketed_node"
           }
         },
         {
@@ -169,7 +231,7 @@
           "type": "REPEAT",
           "content": {
             "type": "SYMBOL",
-            "name": "_node"
+            "name": "_bracketed_node"
           }
         },
         {
@@ -193,6 +255,26 @@
             {
               "type": "PATTERN",
               "value": ".*"
+            }
+          ]
+        }
+      }
+    },
+    "bounded_plain_line_comment": {
+      "type": "TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": 1,
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "//"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^↗↘\\n]*"
             }
           ]
         }
@@ -249,6 +331,88 @@
               {
                 "type": "PATTERN",
                 "value": ".*"
+              }
+            ]
+          },
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "PATTERN",
+                    "value": "\\n\\s*"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "STRING",
+                "value": "⟨/*⟩"
+              },
+              {
+                "type": "REPEAT",
+                "content": {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "PATTERN",
+                      "value": "[^⟨]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "⟨[^*]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "⟨\\*[^/]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "⟨\\*\\/[^⟩]"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "STRING",
+                "value": "⟨*/⟩"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "_bounded_comment": {
+      "type": "TOKEN",
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "PATTERN",
+                    "value": "\\n\\s*"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "STRING",
+                "value": "⟨//⟩"
+              },
+              {
+                "type": "PATTERN",
+                "value": "[^↗↘\\n]*"
               }
             ]
           },
