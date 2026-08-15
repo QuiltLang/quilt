@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Build the downstream consumer against *this* checkout (issue #189).
+#
+#   check-downstream            # clone into a temp dir, build, clean up
+#   check-downstream DIR        # use DIR (cloned if empty, reused if not)
+#
+# `bin/check-features` (#162) proves `quiltlang` builds with
+# `default-features = false` and no tree-sitter. What it cannot prove is that a
+# real consumer of that build still compiles — a moved item, a changed
+# signature, a trait that stopped being object-safe. `QuiltLang/nanobots`
+# depends on quilt exactly that way (`default-features = false`, plus
+# `features = ["rust"]` in the two crates that use it), so building it is the
+# outside check.
+#
+# Nightly and informational, never a gate: it depends on a second repository
+# whose own state we do not control, and a red build there is not always a
+# regression here.
+#
+# Two things this script exists to get right, both learned by running it:
+#
+#   * The dependency is a *git* dependency pinned to tag v0.1.0-alpha, and
+#     `main` is a different version. A `[patch]` table therefore does NOT
+#     apply — cargo says "patch `quiltlang vX` was not used in the crate
+#     graph", quietly builds the pinned tag, and the job goes green having
+#     tested nothing. So the dependency line is rewritten to a path, and the
+#     resolved graph is then checked to make sure that is what got used.
+#   * The generated `.rs` siblings are gitignored, so the consumer does not
+#     compile at all until its `.rs.quilt` sources are expanded — with the
+#     expander from this checkout, which is half of what is being tested.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+REPO="https://github.com/QuiltLang/nanobots.git"
+# The crates that actually depend on quilt. Checking the whole workspace is
+# not a stricter test, it is a different one: `nanobots` (the binary) does an
+# `include_bytes!` of a wasm bundle that only exists after its own `bin/build`,
+# so a workspace check fails for reasons that have nothing to do with quilt.
+CRATES=(-p nanobots-codegen -p nanobots-web)
+
+usage() {
+  awk 'NR < 3 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+}
+
+case "${1:-}" in
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
+esac
+
+dir="${1:-}"
+if [ -z "$dir" ]; then
+  dir="$(mktemp -d)"
+  trap 'rm -rf "$dir"' EXIT
+fi
+mkdir -p "$dir"
+
+if [ ! -e "$dir/Cargo.toml" ]; then
+  echo "==> cloning $REPO into $dir"
+  git clone --depth 1 "$REPO" "$dir"
+fi
+
+echo "==> repointing the quilt dependency at $ROOT/quilt"
+python3 - "$dir/Cargo.toml" "$ROOT/quilt" <<'PY'
+import re, sys
+
+path, quilt = sys.argv[1], sys.argv[2]
+src = open(path).read()
+# Either the git dependency as upstream commits it, or a path one this script
+# already wrote (so a reused directory is rewritten again rather than rejected).
+# Anything else is refused rather than guessed at: if upstream repoints quilt
+# at a registry version, rewriting blind would silently test the wrong thing.
+pattern = re.compile(r'^quilt = \{(?:git|path) = "[^"]*".*\}$', re.M)
+if not pattern.search(src):
+    sys.exit(
+        "check-downstream: no `quilt = {git = ...}` or `{path = ...}` line in "
+        "the downstream workspace manifest. It may have been repointed "
+        f"upstream; look at {path} and update this script rather than guessing."
+    )
+replacement = (
+    'quilt = {path = "%s", package = "quiltlang", default-features = false}' % quilt
+)
+open(path, "w").write(pattern.sub(replacement, src, count=1))
+PY
+
+# The check that stops this job from passing vacuously: ask cargo which
+# `quiltlang` it actually resolved, and require it to be the local one.
+echo "==> confirming the local quilt is what resolved"
+(
+  cd "$dir"
+  cargo metadata --format-version 1 --quiet |
+    python3 -c '
+import json, sys
+
+want = sys.argv[1]
+pkgs = [p for p in json.load(sys.stdin)["packages"] if p["name"] == "quiltlang"]
+if not pkgs:
+    sys.exit("check-downstream: the downstream graph has no quiltlang in it")
+srcs = {p["manifest_path"] for p in pkgs}
+if not any(s.startswith(want) for s in srcs):
+    sys.exit(
+        "check-downstream: resolved quiltlang from %s, not from %s.\n"
+        "The dependency rewrite did not take, so this run would prove nothing."
+        % (sorted(srcs), want)
+    )
+print("    " + sorted(srcs)[0])
+' "$ROOT/quilt"
+)
+
+echo "==> expanding the downstream .quilt sources with this expander"
+cargo build --quiet -p quiltlang
+QUILT="${CARGO_TARGET_DIR:-$ROOT/target}/debug/quilt" "$dir/bin/expand"
+
+echo "==> cargo check ${CRATES[*]}"
+(cd "$dir" && cargo check "${CRATES[@]}")
+
+echo "downstream consumer builds against this checkout ✓"

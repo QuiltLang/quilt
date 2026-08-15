@@ -163,3 +163,40 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts/**
           if-no-files-found: ignore
+
+  # Downstream smoke build (issue #189). `bin/check-features` proves quiltlang
+  # *builds* with `default-features = false`; this proves a real consumer of
+  # that build still compiles, which is the half that actually breaks — a moved
+  # item, a changed signature, a trait that stopped being object-safe.
+  #
+  # `continue-on-error` on purpose: the job depends on a second repository whose
+  # state we do not control, so a red build there is a thing to look at, not a
+  # reason to call the night's run failed. `bin/check-downstream` refuses to
+  # pass vacuously — it asserts the local quilt is what cargo resolved — so a
+  # green here means something.
+  downstream:
+    name: Downstream smoke (nanobots against this main)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        shell: nix develop ./nix --command bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            target
+          key: downstream-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            downstream-${{ runner.os }}-cargo-
+      # Cloned by the script rather than by `actions/checkout`, so that running
+      # it by hand locally and running it here are the same code path.
+      - run: bin/check-downstream
