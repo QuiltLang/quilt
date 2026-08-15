@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Line/region coverage for the workspace (phase 5 of #144).
+#
+#   coverage                # summary table, one row per file
+#   coverage --langs        # per-module table for quilt/src/langs/**
+#   coverage --lcov FILE    # write lcov to FILE (for an upload or a viewer)
+#   coverage --html         # write an HTML report under target/llvm-cov/html
+#   coverage --json         # the full report as JSON, on stdout
+#   coverage --ci DIR       # one instrumented run; writes all of the above
+#                           #   into DIR (what the nightly job uses)
+#
+# NOT part of `main check`, and deliberately not a gate. #144 asks for coverage
+# as *reporting* first — a number nobody has looked at is a bad thing to fail a
+# PR on, and the first honest use of one is to see where the suite is thin.
+# What it is for is the ratchet the epic describes on `quilt/src/langs/**`,
+# which is why `--langs` exists: that subtree is where a new language lands,
+# and where an uncovered path is most likely to be a whole capability nobody
+# exercised rather than an unreachable branch.
+#
+# Runs the same tests `bin/ctest` does, instrumented, so the number describes
+# the suite that actually gates a PR. `quilt_python` and `quilt-wasm` are
+# excluded on purpose: neither is in `default-members`, both are exercised
+# through their own runners (`bin/test-py`, `bin/test-ts`,
+# `bin/test-runtimes`), and instrumenting a PyO3 cdylib or a wasm artifact
+# measures nothing this report can compare against.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+usage() {
+  awk 'NR < 3 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+}
+
+if ! command -v cargo-llvm-cov >/dev/null; then
+  echo "error: cargo-llvm-cov is not on PATH." >&2
+  echo "       It ships in the devShell (nix/flake.nix), so run this from" >&2
+  echo "       inside it — or 'cargo install cargo-llvm-cov --locked'." >&2
+  exit 127
+fi
+
+# The whole workspace minus the crates `cargo test` does not run.
+COMMON=(--workspace --exclude quilt_python --exclude quilt-wasm)
+
+# Per-module table for quilt/src/langs/**, totalled from the JSON report.
+#
+# Not done by filtering llvm-cov's own table: `--ignore-filename-regex` says
+# what to *drop*, and "everything that is not under quilt/src/langs/" needs a
+# negative lookahead, which the `regex` crate does not support — it accepts the
+# pattern, matches nothing, and silently reports the whole workspace instead.
+langs_table() {
+  python3 - "$1" <<'PY'
+import json, sys
+
+files = json.load(open(sys.argv[1]))["data"][0]["files"]
+under = "/quilt/src/langs/"
+rows = sorted(
+    (f["filename"].split(under, 1)[1], f["summary"])
+    for f in files
+    if under in f["filename"]
+)
+if not rows:
+    sys.exit("no files under quilt/src/langs/ in the report")
+
+width = max(len(name) for name, _ in rows)
+print("{:<{w}}  {:>8}  {:>8}".format("quilt/src/langs/", "lines", "regions", w=width))
+for name, s in rows:
+    print(
+        "{:<{w}}  {:7.2f}%  {:7.2f}%".format(
+            name, s["lines"]["percent"], s["regions"]["percent"], w=width
+        )
+    )
+for kind in ("lines", "regions"):
+    count = sum(s[kind]["count"] for _, s in rows)
+    covered = sum(s[kind]["covered"] for _, s in rows)
+    pct = 100.0 * covered / count if count else 100.0
+    print("TOTAL {:<8} {}/{}  {:.2f}%".format(kind, covered, count, pct))
+PY
+}
+
+case "${1:-}" in
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
+  --json)
+    cargo llvm-cov "${COMMON[@]}" --json
+    ;;
+  --html)
+    cargo llvm-cov "${COMMON[@]}" --html
+    echo "wrote $ROOT/target/llvm-cov/html/index.html"
+    ;;
+  --lcov)
+    out="${2:?--lcov needs an output path}"
+    cargo llvm-cov "${COMMON[@]}" --lcov --output-path "$out"
+    echo "wrote $out"
+    ;;
+  --langs)
+    json="$(mktemp)"
+    trap 'rm -f "$json"' EXIT
+    cargo llvm-cov "${COMMON[@]}" --json --output-path "$json"
+    langs_table "$json"
+    ;;
+  --ci)
+    dir="${2:?--ci needs an output directory}"
+    mkdir -p "$dir"
+    # `--no-report` runs the tests and keeps the raw profiles; every `report`
+    # below then re-reads those. One instrumented test run for four artifacts,
+    # rather than one run each.
+    cargo llvm-cov "${COMMON[@]}" --no-report
+    cargo llvm-cov report --summary-only | tee "$dir/summary.txt"
+    cargo llvm-cov report --json --output-path "$dir/coverage.json"
+    cargo llvm-cov report --lcov --output-path "$dir/coverage.lcov"
+    langs_table "$dir/coverage.json" | tee "$dir/langs.txt"
+    echo "wrote $dir/{summary.txt,langs.txt,coverage.json,coverage.lcov}"
+    ;;
+  "")
+    cargo llvm-cov "${COMMON[@]}"
+    ;;
+  *)
+    echo "error: unknown argument ${1:?}" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

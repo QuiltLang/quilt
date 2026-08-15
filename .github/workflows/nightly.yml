@@ -163,3 +163,64 @@ jobs:
           name: fuzz-artifacts
           path: fuzz/artifacts/**
           if-no-files-found: ignore
+
+  # Coverage (phase 5 of #144). Reporting, not a gate: the epic asks for the
+  # number first and a ratchet on `quilt/src/langs/**` later, and failing a PR
+  # on a figure nobody has read yet would invert that order. The tables go into
+  # the job summary so reading them costs no download; lcov stays an artifact
+  # for anything that wants to render it.
+  #
+  # Nightly rather than per-PR because instrumenting is a full rebuild of the
+  # workspace. The tests themselves add about a minute.
+  coverage:
+    name: Coverage (workspace + langs ratchet)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: nix develop ./nix --command bash -euo pipefail {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/magic-nix-cache-action@v14
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+            ~/.rustup/settings.toml
+            target
+          key: coverage-${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            coverage-${{ runner.os }}-cargo-
+      - run: bin/coverage --ci coverage-report
+      # The whole-workspace table is long; the langs one is the part with a
+      # decision attached to it, so it goes first and open.
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '## Coverage'
+            echo
+            echo '### `quilt/src/langs/**` — the ratchet subtree'
+            echo
+            echo '```'
+            cat coverage-report/langs.txt
+            echo '```'
+            echo
+            echo '<details><summary>Whole workspace, per file</summary>'
+            echo
+            echo '```'
+            cat coverage-report/summary.txt
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage-report/**
+          if-no-files-found: ignore
