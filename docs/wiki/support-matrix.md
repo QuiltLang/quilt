@@ -25,7 +25,7 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 | **Nix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Python** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ |
-| **SQL** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/234) | ✅ | ✅ | ✅ | ✅ |
+| **SQL** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Plain text** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **TypeScript** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
 | **WGSL** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | [⬜](https://github.com/QuiltLang/quilt/issues/22) |
