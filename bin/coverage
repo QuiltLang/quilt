@@ -23,6 +23,13 @@
 # through their own runners (`bin/test-py`, `bin/test-ts`,
 # `bin/test-runtimes`), and instrumenting a PyO3 cdylib or a wasm artifact
 # measures nothing this report can compare against.
+#
+# Expect stray `default_*.profraw` files afterwards. cargo-llvm-cov exports
+# `RUSTFLAGS=-C instrument-coverage`, and the `quilt run` tests hand that to
+# `rust-script`, so the *generated* programs are built instrumented too and
+# write their own profiles into whatever directory they ran from. They are no
+# part of this report, and `.gitignore` covers them — which it did not when
+# this script landed, so `git add -A` swept six of them onto main in #242.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

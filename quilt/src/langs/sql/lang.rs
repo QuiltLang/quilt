@@ -21,6 +21,10 @@
 //!   expression is a parse error. [`SqlLanguage`] retries such a fragment
 //!   inside [`SELECT_PREFIX`] and strips the wrapper back off, the same
 //!   technique `langs::lean::lang` uses with `#check …`.
+//!
+//! The same wrapper serves a hole standing where a whole *statement* goes
+//! (`↙stmt↘;` on its own line), which a bare identifier cannot occupy either —
+//! see [`statement_hole_ordinals`] (#234).
 
 use crate::{
     lang::{Arity, FlatNode, InnerKind, Language, LanguagePost},
@@ -61,10 +65,11 @@ impl TSProvider for SqlProvider {
         // its byte range. `test/corpus/quilt.txt` in the fork pins those four
         // positions.
         //
-        // The position this does *not* reach is a bare hole as a whole
-        // statement (`SELECT 1; ↙stmt↘; SELECT 2;`): no SQL statement starts
-        // with a bare identifier, so that is a parse error. Splice the
-        // enclosing statement instead. See issue #219.
+        // The one position this does *not* reach unaided is a bare hole as a
+        // whole statement (`SELECT 1; ↙stmt↘; SELECT 2;`): no SQL statement
+        // starts with a bare identifier, so that is a parse error. That case is
+        // handled a level up, by the `SELECT …` wrapper retry in
+        // `SqlLanguage::parse_pre` — see `statement_hole_ordinals` (#234).
         "__QUILT_HOLE__"
     }
 
@@ -227,8 +232,171 @@ fn strip_select(qterm: &QTerm) -> Result<Arc<QTerm>> {
     Ok(inner)
 }
 
+/// Ordinals (into the fragment's hole sequence) of holes that stand where a
+/// whole **statement** goes:
+///
+/// ```text
+/// SELECT 1;
+/// ↙stmt↘;
+/// SELECT 2;
+/// ```
+///
+/// `program` is `repeat(seq(choice(statement, transaction, block), ';'))` and no
+/// SQL statement begins with a bare identifier, so such a hole is a parse error
+/// on its own. Wrapping just these holes in [`SELECT_PREFIX`] makes them
+/// statements; [`strip_wrapped_selects`] removes the wrapper again.
+///
+/// A hole qualifies when nothing but whitespace precedes it on its line and
+/// nothing but whitespace and **at most one `;`** follows it. The `;` is the
+/// difference from the Lean version this is modelled on
+/// (`langs::lean::lang::line_hole_ordinals`): SQL statements are terminated, so
+/// the natural spelling puts the separator right after the hole. Allowing the
+/// bare form too covers the trailing statement `program` lets go unterminated.
+///
+/// Deliberately line-based rather than `;`-scanning: a `;` inside a string
+/// literal is ordinary text in the flat node stream, and a scanner that split on
+/// it would wrap holes that are not in statement position at all. Anything this
+/// declines simply falls back to the original parse error.
+fn statement_hole_ordinals(code: &[FlatNode]) -> Vec<usize> {
+    /// The text on one side of a hole, up to the nearest line break — or `None`
+    /// if another hole intervenes, which means this one is not alone.
+    fn text_run<'a>(nodes: impl Iterator<Item = &'a FlatNode<'a>>) -> Option<String> {
+        let mut out = String::new();
+        for node in nodes {
+            match node {
+                FlatNode::NewLine => break,
+                FlatNode::Str(s) => out.push_str(s),
+                FlatNode::Hole => return None,
+            }
+        }
+        Some(out)
+    }
+
+    let mut out = Vec::new();
+    for (i, node) in code.iter().enumerate() {
+        if !matches!(node, FlatNode::Hole) {
+            continue;
+        }
+        let ordinal = code[..i]
+            .iter()
+            .filter(|n| matches!(n, FlatNode::Hole))
+            .count();
+        let before = text_run(code[..i].iter().rev());
+        let after = text_run(code[i + 1..].iter());
+        let alone = matches!(before, Some(ref b) if b.trim().is_empty())
+            && matches!(after, Some(ref a) if matches!(a.trim(), "" | ";"));
+        if alone {
+            out.push(ordinal);
+        }
+    }
+    out
+}
+
+/// Rebuild `code` with [`SELECT_PREFIX`] inserted before each hole whose ordinal
+/// is in `targets`.
+fn wrap_statement_holes<'a>(code: &[FlatNode<'a>], targets: &[usize]) -> Vec<FlatNode<'a>> {
+    let mut out = Vec::with_capacity(code.len() + targets.len());
+    let mut ordinal = 0usize;
+    for node in code {
+        if matches!(node, FlatNode::Hole) {
+            if targets.contains(&ordinal) {
+                out.push(FlatNode::Str(SELECT_PREFIX));
+            }
+            ordinal += 1;
+        }
+        out.push(node.clone());
+    }
+    out
+}
+
+/// Undo [`wrap_statement_holes`] in the parsed tree: replace each `statement`
+/// that wraps one of the holes we wrapped with that hole itself.
+///
+/// Only the wrappers *we* introduced are removed — holes are counted in tree
+/// order and matched against `targets` — so a genuine `SELECT ↙col↘` written by
+/// the author survives untouched.
+///
+/// The shape searched for is `statement(select(keyword_select, <hole>))`: the
+/// hole spans the same bytes as the `select_expression`, `term` and `field` that
+/// would otherwise sit between, and `build_nodes` replaces the outermost node
+/// whose range matches, so those layers are not in the tree. That is the same
+/// collapse [`strip_select`] peels through.
+///
+/// Returns the rewritten term and **how many wrappers were removed**. The caller
+/// requires that to equal `targets.len()` and discards the retry otherwise: a
+/// target that did not come back in the expected shape means the prefix landed
+/// somewhere other than statement position — inside a string literal, say — and
+/// keeping such a tree would silently splice a stray `SELECT` into the output.
+/// Failing there costs only the original parse error, which is what the user
+/// would have seen anyway.
+fn strip_wrapped_selects(
+    term: &Arc<QTerm>,
+    hole_str: &str,
+    targets: &[usize],
+) -> (Arc<QTerm>, usize) {
+    /// Is this the `statement(select(keyword_select, <hole>))` we introduced?
+    fn wrapped_hole<'a>(terms: &'a [Arc<QTerm>], hole_str: &str) -> Option<&'a Arc<QTerm>> {
+        let [only] = terms else { return None };
+        let QTerm::Tuple {
+            tag: sel,
+            terms: sel_terms,
+            ..
+        } = &**only
+        else {
+            return None;
+        };
+        if &**sel != "select" {
+            return None;
+        }
+        let [_keyword, hole] = &sel_terms[..] else {
+            return None;
+        };
+        matches!(&**hole, QTerm::Tuple { tag, .. } if &**tag == hole_str).then_some(hole)
+    }
+
+    fn walk(
+        term: &Arc<QTerm>,
+        hole_str: &str,
+        targets: &[usize],
+        ordinal: &mut usize,
+        stripped: &mut usize,
+    ) -> Arc<QTerm> {
+        let QTerm::Tuple { tag, terms, cmds } = &**term else {
+            // Quotes/unquotes cannot appear inside a freshly parsed fragment.
+            return term.clone();
+        };
+
+        if &**tag == "statement" {
+            if let Some(hole) = wrapped_hole(terms, hole_str) {
+                if targets.contains(ordinal) {
+                    *ordinal += 1;
+                    *stripped += 1;
+                    return hole.clone();
+                }
+            }
+        }
+
+        if &**tag == hole_str {
+            *ordinal += 1;
+            return term.clone();
+        }
+
+        let children: Vec<Arc<QTerm>> = terms
+            .iter()
+            .map(|t| walk(t, hole_str, targets, ordinal, stripped))
+            .collect();
+        tuple(tag, &children, cmds)
+    }
+
+    let mut ordinal = 0usize;
+    let mut stripped = 0usize;
+    let out = walk(term, hole_str, targets, &mut ordinal, &mut stripped);
+    (out, stripped)
+}
+
 /// The SQL `Language`: [`TSLanguage<SqlProvider>`] plus the bare-expression
-/// retry described on [`SELECT_PREFIX`].
+/// retry described on [`SELECT_PREFIX`], and the statement-position hole
+/// wrapper described on [`statement_hole_ordinals`].
 #[derive(Default)]
 pub struct SqlLanguage(TSLanguage<SqlProvider>);
 
@@ -264,6 +432,43 @@ impl Language for SqlLanguage {
             })
         {
             return Ok(post);
+        }
+
+        // Last resort: holes at *statement* position, which a bare identifier
+        // cannot occupy. Wrap only those holes and strip the wrappers back out
+        // of the tree, leaving every other hole alone.
+        let targets = statement_hole_ordinals(code);
+        if !targets.is_empty() {
+            let wrapped = wrap_statement_holes(code, &targets);
+            if let Some(post) = self.0.parse_pre(ikind, &wrapped).ok().and_then(|post| {
+                let hole_str = post.hole_str;
+                let (qterm, stripped) =
+                    strip_wrapped_selects(&arc(post.qterm.clone()), hole_str, &targets);
+                // Every wrapper we added must have come back out; see
+                // `strip_wrapped_selects`.
+                if stripped != targets.len() {
+                    return None;
+                }
+                // The wrapped holes were measured against the *wrapper*'s
+                // position, so they came back `Expr` (a select expression).
+                // What can actually fill them is a statement — the same answer
+                // `langs::lean::lang::hole_kind` gives a hole in a `by`/`do`
+                // body, and what `multi.rs` threads into the host parse of the
+                // unquote body.
+                let mut holes = post.holes.into_vec();
+                for &t in &targets {
+                    if let Some(hole) = holes.get_mut(t) {
+                        hole.ikind = Some(InnerKind::Stmt);
+                    }
+                }
+                Some(TSLanguagePost {
+                    qterm: (*qterm).clone(),
+                    holes: holes.into_boxed_slice(),
+                    hole_str,
+                })
+            }) {
+                return Ok(post);
+            }
         }
 
         Err(err)

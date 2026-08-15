@@ -185,6 +185,13 @@ coverage --lcov F     # write lcov to F
 coverage --html       # HTML report under target/llvm-cov/html
 coverage --ci DIR     # one instrumented run, all four artifacts into DIR
 
+# Downstream smoke build (issue #189): clone QuiltLang/nanobots, repoint its
+# quilt dependency at this checkout, expand its .rs.quilt sources with this
+# expander and compile the two crates that consume quilt. Nightly and
+# informational — it depends on a repo whose state we do not control.
+check-downstream            # clone to a temp dir, build, clean up
+check-downstream DIR        # use DIR (cloned if empty, reused if not)
+
 # Build/install the editor tooling: cargo-installs quilt-lsp, npm-installs the
 # VS Code extension, symlinks tools/quilt into ~/.vscode/extensions
 install_tools

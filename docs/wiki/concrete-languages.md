@@ -249,7 +249,34 @@ Matching through a reference binds `&&str`, which method resolution stops at. `m
 
 ### Holes
 
-`__QUILT_HOLE__` matches this grammar's identifier regex, so holes need **no grammar patch** — they work in predicate, select-expression, relation-name and `IN`-list position, and since #221 inside a token too. A bare hole as a whole *statement* is a parse error, since no SQL statement begins with an identifier; splice the enclosing statement instead. See issue #234.
+`__QUILT_HOLE__` matches this grammar's identifier regex, so holes need **no grammar patch** — they work in predicate, select-expression, relation-name and `IN`-list position, and since #221 inside a token too.
+
+*Statement* position needs the wrapper, because no SQL statement begins with an identifier (#234). `parse_pre` wraps a hole that stands alone on its line in `SELECT …`, parses, and strips the wrapper back out, so the hole ends up a direct child of `program`:
+
+```rust
+let script = sql↖
+    CREATE TABLE members (id INT);
+    ↙seed↘;
+    ANALYZE members;
+↗;
+```
+
+The hole must be **alone on its line**, apart from a trailing `;`. That is deliberately narrower than scanning for separators: a `;` inside a string literal is ordinary text in the flat node stream, and a scanner that split on it would wrap holes that are not in statement position at all. Anything the rule declines falls back to the ordinary parse error.
+
+Two consequences worth knowing:
+
+- Mid-script, the **source** must carry the `;` — `↙a↘ SELECT 1;` is ill-formed SQL whatever fills the hole, so it stays an error rather than being papered over. `program` lets only the *last* statement go unterminated, and a hole there may too.
+- Emitting a **sequence** into statement position works, but the separators are yours to place, exactly as in `nix_module.rs.quilt`'s list: put `;` *between* the emitted statements and let the source's own `;` terminate the last one.
+
+```rust
+sql↖
+    SELECT 0;
+    ↙{ for (i, s) in stmts.into_iter().enumerate() {
+        if i > 0 { sym(";").←; NL.←; }
+        s.←;
+    } }↘;
+↗
+```
 
 ---
 

@@ -61,6 +61,43 @@ fn report(filters: &[Filter]) -> Arc<QTerm> {
     query
 }
 
+/// A seed script: one INSERT per member, wrapped in a script that creates the
+/// table first and indexes it last.
+///
+/// The generated statements go into a hole at *statement* position -- a
+/// position a bare identifier cannot occupy, since no SQL statement starts with
+/// one, so `parse_pre` wraps the hole in `SELECT ...` and strips the wrapper
+/// back out (issue #234). The hole has to stand alone on its line apart from
+/// the `;`, which is what marks it as a statement slot rather than an operand.
+///
+/// The separators are placed by the loop, not by the splice: `;` goes *between*
+/// the emitted statements and the source's own `;` terminates the last one --
+/// the same shape `nix_module.rs.quilt` uses to space a Nix list.
+fn seed_script(members: &[(&'static str, u32)]) -> Arc<QTerm> {
+    // The closure body is a block with a `let`, not the quote itself: a quote
+    // alone as a closure body does not parse today, because Rust's hole is `{}`
+    // and `|&(name, age)| {}` reads as an or-pattern. See issue #241.
+    let inserts: Vec<Arc<QTerm>> = members
+        .iter()
+        .map(|&(name, age)| {
+            let ins = sql↖INSERT INTO members (name, age) VALUES (↙name.↑↘, ↙age.↑↘)↗;
+            ins
+        })
+        .collect();
+
+    let script = sql↖
+        CREATE TABLE members (id INT, name TEXT, age INT);
+        ↙{
+            for (i, ins) in inserts.into_iter().enumerate() {
+                if i > 0 { sym(";").←; NL.←; }
+                ins.←;
+            }
+        }↘;
+        CREATE INDEX members_name ON members (name);
+    ↗;
+    script
+}
+
 fn main() -> Result<()> {
     // An ordinary report. Three Rust values of three different types, each
     // crossing into the query as the SQL literal for its own type.
@@ -84,6 +121,15 @@ fn main() -> Result<()> {
     // one predicate.
     let q = report(&[Filter::Org("x'; DROP TABLE members; --")]);
     println!("{};", q.coparse());
+
+    // A whole script, assembled from a Rust list at generation time. The
+    // apostrophe in the last name is escaped by the same lift as above, inside
+    // a statement that was spliced rather than written.
+    println!();
+    println!(
+        "{}",
+        seed_script(&[("ada", 36), ("grace", 45), ("o'brien", 29)]).coparse()
+    );
 
     Ok(())
 }
