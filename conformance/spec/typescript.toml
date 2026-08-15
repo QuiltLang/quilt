@@ -29,7 +29,7 @@ variadic = [
 not_variadic = ["binary_expression", "identifier"]
 
 lift_from = ["typescript", "ts", "html"]
-lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "text", "txt", "sql"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "text", "txt", "sql", "mysql", "mariadb"]
 
 [capabilities]
 quotable = {status = "supported"}

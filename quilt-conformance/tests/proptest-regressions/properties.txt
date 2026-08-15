@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+
+# The lone backslash. Not a past bug: this seed came from mutation-testing
+# `sql_lifts_survive_their_own_dialects_reader` (#233) — dropping the
+# backslash escape from `mysql_squote_escape` shrinks to exactly this. Kept
+# because it is the one input the whole SQL-dialect axis is about, so it is
+# worth trying before any generated case.
+cc a59fcf479ced4240cbb3ea0f6fbbaab67815c263007c4cf49cda1d866c1988b4 # shrinks to cs = ['\\']

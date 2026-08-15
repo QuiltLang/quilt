@@ -180,7 +180,7 @@ let shader = ↖
 
 ---
 
-## SQL (`sql`) — target only
+## SQL (`sql`, `mysql`, `mariadb`) — target only
 
 **Files:** `langs/sql/lang.rs`, `langs/sql/mod.rs`
 
@@ -196,7 +196,26 @@ let q = sql↖SELECT id FROM members WHERE org = ↙name.↑↘↗;
 
 `examples/sql_query.rs.quilt` is the worked version. The escaping is verified rather than asserted: the conformance battery reparses every lifted literal in this grammar, and the property suite (#161) re-runs that over generated strings drawn from an alphabet that includes both `'` and `\`.
 
-The dialect assumption is real and stated: `''` doubling with backslash passed through is the SQL standard, PostgreSQL with `standard_conforming_strings = on`, SQLite and SQL Server — *not* MySQL left in its default backslash-escapes mode. See issue #233.
+### Dialects: `sql` vs `mysql`
+
+The three names are **one grammar under three annotations**. The parse is identical; what differs is the string escape, because MySQL and MariaDB in their default `sql_mode` read a backslash inside `'…'` as an escape character and the SQL standard does not (#233):
+
+| annotation | marker | escapes | correct for |
+| --- | --- | --- | --- |
+| `sql` | `Sql` | `'` → `''` | the SQL standard, PostgreSQL with `standard_conforming_strings = on` (default since 9.1), SQLite, SQL Server |
+| `mysql`, `mariadb` | `MySql` | `'` → `''`, `\` → `\\` | MySQL/MariaDB in the default mode |
+
+```rust
+let v = r"C:\path\";
+sql↖    … p = ↙v.↑↘↗   // p = 'C:\path\'    ← MySQL sees an unterminated string
+mysql↖  … p = ↙v.↑↘↗   // p = 'C:\\path\\'  ← MySQL sees C:\path\
+```
+
+**There is no spelling correct in both**, which is why the dialect is annotated rather than guessed: doubling the backslash fixes MySQL and silently corrupts the value under the standard, where `'a\\'` is two characters. `sql` is the default because standard/PostgreSQL is the larger target; if you generate for MySQL, say so on the quote.
+
+The two escapers agree on every value that contains no backslash, so this only bites where it matters.
+
+What holds that claim up is a *round-trip* property, not just a reparse: `quilt-conformance/tests/properties.rs` models each dialect's own reading of a single-quoted literal (from the dialects' rules, not from the escapers) and asserts it inverse to the escaper over generated strings — plus two negative tests pinning that neither dialect's escaping is safe for the other, so the pair cannot quietly collapse into one.
 
 ### Two fragment shapes
 

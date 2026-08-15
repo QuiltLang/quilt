@@ -36,7 +36,7 @@ variadic = [
 not_variadic = ["binary_expression", "let_declaration", "function_item"]
 
 lift_marker = "Rust"
-lift_from = ["rust", "rs", "python", "py", "wgsl", "zsh", "bash", "nix", "lean", "lean4", "sql"]
+lift_from = ["rust", "rs", "python", "py", "wgsl", "zsh", "bash", "nix", "lean", "lean4", "sql", "mysql", "mariadb"]
 lift_from_unsupported = ["html", "typescript", "ts", "text", "txt"]
 
 [capabilities]

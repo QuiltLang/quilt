@@ -595,6 +595,166 @@ lift_properties! {
     lift_sql => "sql",
 }
 
+/* ══════════════════════════ SQL dialects ═══════════════════════════ */
+
+/// What a *database* makes of a lifted literal — the claim `lift_sql` cannot
+/// make on its own.
+///
+/// `lift_sql` reparses each lifted literal in the vendored grammar, which
+/// proves it is one well-formed token. That is necessary and not sufficient:
+/// the question issue #233 is about is whether the value *comes back*, and a
+/// token can be well-formed and still be read as a different string. So this
+/// models each dialect's own reading of a single-quoted literal and asserts it
+/// inverse to the escaper.
+///
+/// The readers below are written from the dialects' rules, deliberately *not*
+/// from what the escapers emit — a reader derived from the writer would agree
+/// with any bug they shared.
+mod sql_dialects {
+    /// Read a standard-SQL literal: strip the quotes, and `''` is one `'`.
+    /// Nothing else is special — notably not the backslash, which is the whole
+    /// difference from `MySQL`.
+    pub fn read_standard(lit: &str) -> Option<String> {
+        let body = lit.strip_prefix('\'')?.strip_suffix('\'')?;
+        let mut out = String::with_capacity(body.len());
+        let mut cs = body.chars().peekable();
+        while let Some(c) = cs.next() {
+            if c == '\'' {
+                // A lone `'` inside the body would have ended the literal, so
+                // the only legal occurrence is a doubled one.
+                if cs.next() != Some('\'') {
+                    return None;
+                }
+                out.push('\'');
+            } else {
+                out.push(c);
+            }
+        }
+        Some(out)
+    }
+
+    /// Read a `MySQL`/`MariaDB` literal in the **default** `sql_mode`
+    /// (`NO_BACKSLASH_ESCAPES` off): `''` is one `'`, and a backslash starts an
+    /// escape sequence.
+    ///
+    /// The sequence table is `MySQL`'s, not ours: `\0 \' \" \b \n \r \t \Z \\`
+    /// map to their characters, `\%` and `\_` keep the backslash (they are LIKE
+    /// metacharacters), and a backslash before anything else is dropped. That
+    /// last rule is why escaping only `'` is unsafe here — it is also what
+    /// makes a trailing backslash swallow the closing quote, which shows up
+    /// below as `None`.
+    pub fn read_mysql(lit: &str) -> Option<String> {
+        let body = lit.strip_prefix('\'')?;
+        let mut out = String::new();
+        let mut cs = body.chars().peekable();
+        loop {
+            let Some(c) = cs.next() else {
+                // Ran out of input before the closing quote: the literal was
+                // never terminated, which is the breakout this exists to catch.
+                return None;
+            };
+            match c {
+                '\'' => {
+                    if cs.peek() == Some(&'\'') {
+                        cs.next();
+                        out.push('\'');
+                    } else {
+                        // Closing quote; nothing may follow.
+                        return cs.next().is_none().then_some(out);
+                    }
+                }
+                '\\' => match cs.next()? {
+                    '0' => out.push('\0'),
+                    '\'' => out.push('\''),
+                    '"' => out.push('"'),
+                    'b' => out.push('\u{8}'),
+                    'n' => out.push('\n'),
+                    'r' => out.push('\r'),
+                    't' => out.push('\t'),
+                    'Z' => out.push('\u{1a}'),
+                    '\\' => out.push('\\'),
+                    e @ ('%' | '_') => {
+                        out.push('\\');
+                        out.push(e);
+                    }
+                    e => out.push(e),
+                },
+                c => out.push(c),
+            }
+        }
+    }
+}
+
+proptest! {
+    #![proptest_config(config(512))]
+
+    /// A value lifted for a dialect is read back as itself *by that dialect*.
+    #[test]
+    fn sql_lifts_survive_their_own_dialects_reader(
+        cs in prop::collection::vec(prop::sample::select(LIFT_STR_CHARS), 0..16)
+    ) {
+        use quilt::lift::{MySql, QLiftTo as _, Sql};
+        let v: String = cs.into_iter().collect();
+
+        let standard = v.as_str().qlift_to::<Sql>().coparse();
+        let read_standard = sql_dialects::read_standard(&standard);
+        prop_assert_eq!(
+            read_standard.as_deref(),
+            Some(v.as_str()),
+            "standard SQL reader did not recover {:?} from {:?}", v, standard
+        );
+
+        let mysql = v.as_str().qlift_to::<MySql>().coparse();
+        let read_mysql = sql_dialects::read_mysql(&mysql);
+        prop_assert_eq!(
+            read_mysql.as_deref(),
+            Some(v.as_str()),
+            "MySQL reader did not recover {:?} from {:?}", v, mysql
+        );
+    }
+}
+
+/// The negative half, and the reason the `mysql` annotation exists: a value
+/// containing a backslash, escaped for the *standard*, is not what `MySQL` reads.
+///
+/// Without this the property above would be satisfied by two escapers that were
+/// secretly the same. `a\` is the sharpest case — the standard spelling leaves
+/// `MySQL` with an unterminated literal.
+#[test]
+fn standard_escaping_is_not_mysql_safe() {
+    use quilt::lift::{QLiftTo as _, Sql};
+
+    let unterminated = r"a\".qlift_to::<Sql>().coparse();
+    assert_eq!(&*unterminated, r"'a\'");
+    assert_eq!(
+        sql_dialects::read_mysql(&unterminated),
+        None,
+        "MySQL should find {unterminated:?} unterminated — if it does not, the \
+         reader has stopped modelling MySQL and this whole axis is vacuous"
+    );
+    // The standard reads it as the value it was.
+    assert_eq!(
+        sql_dialects::read_standard(&unterminated).as_deref(),
+        Some(r"a\")
+    );
+}
+
+/// …and the mirror: `MySQL` escaping is not standard-safe, so neither dialect can
+/// simply adopt the other's escaper.
+#[test]
+fn mysql_escaping_is_not_standard_safe() {
+    use quilt::lift::{MySql, QLiftTo as _};
+
+    let doubled = r"a\".qlift_to::<MySql>().coparse();
+    assert_eq!(&*doubled, r"'a\\'");
+    // Well-formed under the standard, but two characters instead of one.
+    assert_eq!(
+        sql_dialects::read_standard(&doubled).as_deref(),
+        Some(r"a\\"),
+        "the standard has no backslash escape, so doubling corrupts the value"
+    );
+}
+
 /* ════════════════════════════ expansion ═════════════════════════════ */
 
 /// Every span in a parsed tree, with the path that reached it.
