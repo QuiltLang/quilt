@@ -76,24 +76,21 @@ fn report(filters: &[Filter]) -> Arc<QTerm> {
 /// the emitted statements and the source's own `;` terminates the last one --
 /// the same shape `nix_module.rs.quilt` uses to space a Nix list.
 fn seed_script(members: &[(&'static str, u32)]) -> Arc<QTerm> {
-    // The closure body is a block with a `let`, not the quote itself: a quote
-    // alone as a closure body does not parse today, because Rust's hole is `{}`
-    // and `|&(name, age)| {}` reads as an or-pattern. See issue #241.
+    // The quote *is* the closure body. That did not parse until issue #241:
+    // substituting the hole made it `|&(name, age)| {}`, which the Rust grammar
+    // read as an or-pattern.
     let inserts: Vec<Arc<QTerm>> = members
         .iter()
-        .map(|&(name, age)| {
-            let ins = tb("statement").c(&tb("insert").c(&leaf("keyword_insert", "INSERT")).w(" ").c(&leaf("keyword_into", "INTO")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("list").c(&sym("(")).c(&tb("column").c(&leaf("identifier", "name")).b()).c(&sym(",")).w(" ").c(&tb("column").c(&leaf("identifier", "age")).b()).c(&sym(")")).b()).w(" ").c(&leaf("keyword_values", "VALUES")).w(" ").c(&{
-                let mut b_ = tb("list");
-                sym("(").emit(&mut b_);
-                name.qlift_to::<Sql>().emit(&mut b_);
-                sym(",").emit(&mut b_);
-                b_.write(" ");
-                age.qlift_to::<Sql>().emit(&mut b_);
-                sym(")").emit(&mut b_);
-                b_.b()
-            }).b()).b();
-            ins
-        })
+        .map(|&(name, age)| tb("statement").c(&tb("insert").c(&leaf("keyword_insert", "INSERT")).w(" ").c(&leaf("keyword_into", "INTO")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("list").c(&sym("(")).c(&tb("column").c(&leaf("identifier", "name")).b()).c(&sym(",")).w(" ").c(&tb("column").c(&leaf("identifier", "age")).b()).c(&sym(")")).b()).w(" ").c(&leaf("keyword_values", "VALUES")).w(" ").c(&{
+        let mut b_ = tb("list");
+        sym("(").emit(&mut b_);
+        name.qlift_to::<Sql>().emit(&mut b_);
+        sym(",").emit(&mut b_);
+        b_.write(" ");
+        age.qlift_to::<Sql>().emit(&mut b_);
+        sym(")").emit(&mut b_);
+        b_.b()
+    }).b()).b())
         .collect();
     
     let script = {
