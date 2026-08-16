@@ -123,13 +123,51 @@ pub enum FlatNode<'a> {
 /// `line_comment` or `block_comment`, and a table keyed by language is the
 /// hardcoded-shape pattern issue #174 exists to prevent. It is not taken on
 /// trust either — `quilt-conformance`'s `comment_tags_are_recognised` builds a
-/// comment in every registered language from `langs::comment_prefix` and
-/// asserts the tag its grammar produces satisfies this, so a language whose
-/// grammar names comments differently fails there rather than silently losing
-/// its escapes.
+/// comment in every registered language from [`Comments::LINE`] and asserts the
+/// tag its grammar produces satisfies this, so a language whose grammar names
+/// comments differently fails there rather than silently losing its escapes.
 #[must_use]
 pub fn is_comment_tag(tag: &str) -> bool {
     tag == "comment" || tag.ends_with("_comment")
+}
+
+/// How a language spells comments: the static half of its surface syntax,
+/// declared once beside its [`Language`] impl.
+///
+/// Read by name through [`langs::line_comment`](crate::langs::line_comment) and
+/// [`langs::header_comment`](crate::langs::header_comment), which `define_omni!`
+/// generates from the same table that maps names and aliases onto languages.
+/// That is the whole point. The `DO NOT EDIT` header's marker started as a
+/// `match` on the output file's *extension* inside the CLI (issue #136, where
+/// every language got Rust's `//!`), then became a hand-written table beside the
+/// language modules — either way a second place to register a language, free to
+/// disagree with the first. Here there is no second place: a new language
+/// implements this trait or it does not compile, and its aliases inherit the
+/// answer by construction (issue #194).
+///
+/// Associated consts rather than [`Language`] methods, for two reasons. An
+/// associated const makes a trait non-dyn-compatible, and `Language` is used as
+/// `dyn Language` by `DynOmniLanguages`. And a const-valued lookup is a `match`
+/// yielding a `&'static str`, where a `&self` method would mean *constructing* a
+/// language — a tree-sitter `Parser` per call — to read one: quilt-lsp asks for
+/// a line comment once per comment gap while projecting a document, so that cost
+/// is not academic.
+pub trait Comments {
+    /// The line-comment introducer, e.g. `//`.
+    ///
+    /// `None` when no *prefix* can express one: HTML's comments are delimited
+    /// (`<!-- … -->`, and a prefix alone would open one that never closes), and
+    /// plain text has no comment syntax at all. Callers decide the fallback.
+    const LINE: Option<&'static str> = Some("//");
+
+    /// The introducer for the `DO NOT EDIT` header the CLI writes onto a
+    /// generated file, which has to be a comment *in the language just
+    /// generated* — issue #136.
+    ///
+    /// Defaults to [`LINE`](Comments::LINE); Rust overrides it with `//!`, an
+    /// inner doc comment, which documents the generated module rather than
+    /// whatever item happens to follow the header.
+    const HEADER: Option<&'static str> = Self::LINE;
 }
 
 // WARN: assumers no newlines

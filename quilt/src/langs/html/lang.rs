@@ -10,7 +10,7 @@
 //! places interpolation is needed when templating a page.
 
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -97,3 +97,11 @@ fn is_expr_tag(tag: &str) -> bool {
 
 pub type HtmlLanguage = TSLanguage<HtmlProvider>;
 pub type DynHtmlLanguage = DynTSLanguage<HtmlProvider>;
+
+impl Comments for HtmlLanguage {
+    /// HTML's comments are *delimited* (`<!-- … -->`): a prefix alone would open
+    /// one that never closes, so there is no honest answer here. Callers that
+    /// need something anyway supply their own — see quilt-lsp's `HtmlAdapter`,
+    /// which deliberately projects `<!--` and accepts the over-colored tail.
+    const LINE: Option<&'static str> = None;
+}

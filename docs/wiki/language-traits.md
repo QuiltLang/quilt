@@ -23,6 +23,13 @@ pub trait LanguagePost: Debug {
     fn holes(&self) -> &[Hole];
     fn parse_post(&self, plugs: &[Arc<QTerm>]) -> Result<Arc<QTerm>>;
 }
+
+// Comment syntax rides alongside, as consts rather than `Language` methods —
+// see `Comments` below.
+pub trait Comments {
+    const LINE: Option<&'static str> = Some("//");
+    const HEADER: Option<&'static str> = Self::LINE;
+}
 ```
 
 ### `FlatNode`
@@ -83,6 +90,35 @@ Returns the shebang line used to run the expanded file as a script, e.g.:
 - Python: `"#!/usr/bin/env python3"`
 
 `quilt` uses this to determine which runner to invoke.
+
+### `Comments`
+
+How the language spells comments, implemented beside its `Language` impl:
+
+```rust
+impl Comments for RustLanguage {
+    const LINE: Option<&'static str> = Some("//");
+    const HEADER: Option<&'static str> = Some("//!");   // inner doc comment
+}
+```
+
+`LINE` is the plain line-comment introducer; `HEADER` is the one the CLI puts on
+a generated file's `DO NOT EDIT` banner, and defaults to `LINE` — Rust is the
+only language where the two differ. `None` means no *prefix* can express one
+(HTML's comments are delimited; plain text has none), and the caller decides
+what to do about it.
+
+Look them up by language name with `langs::line_comment` / `langs::header_comment`,
+which `define_omni!` generates from the registry table, so aliases agree by
+construction. quilt-lsp reads the same functions for its adapters' comment
+syntax rather than declaring the spellings a second time
+([#194](https://github.com/QuiltLang/quilt/issues/194)).
+
+These are associated consts rather than `Language` methods for two reasons: an
+associated const would make `Language` non-dyn-compatible, and `DynOmniLanguages`
+dispatches through `dyn Language`; and a const lookup is a `match` returning a
+`&'static str`, where a `&self` method would mean constructing a language — a
+tree-sitter `Parser` — to read one.
 
 ---
 

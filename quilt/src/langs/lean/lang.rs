@@ -14,7 +14,7 @@
 //! [`hole_kind`]: TSProvider::hole_kind
 
 use crate::{
-    lang::{Arity, FlatNode, InnerKind, Language, LanguagePost},
+    lang::{Arity, Comments, FlatNode, InnerKind, Language, LanguagePost},
     prelude::*,
     qterm::QTerm,
     term::CmdOrHole,
@@ -412,6 +412,10 @@ impl Language for LeanLanguage {
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
     }
+}
+
+impl Comments for LeanLanguage {
+    const LINE: Option<&'static str> = Some("--");
 }
 
 /// Boxed-`Post` form of [`LeanLanguage`], for the dynamic registry.

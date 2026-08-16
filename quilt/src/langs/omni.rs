@@ -395,6 +395,45 @@ macro_rules! define_omni {
             )*
             ret
         }
+
+        /// The line-comment introducer for `lang`, by canonical name or alias —
+        /// [`Comments::LINE`] of the language that name registers.
+        ///
+        /// Generated from the registry table, so a language's aliases cannot
+        /// disagree about it and adding a language cannot forget it: every
+        /// entry here has to implement [`Comments`] for the table to compile.
+        ///
+        /// `None` for a name no enabled feature registers, and for a language
+        /// whose comments a *prefix* cannot express (HTML, plain text) — the
+        /// caller decides the fallback.
+        #[must_use]
+        pub fn line_comment(lang: &str) -> Option<&'static str> {
+            match lang {
+                $(
+                    #[cfg(feature = $feat)]
+                    $canon $(| $alias)* => <$lang as crate::lang::Comments>::LINE,
+                )*
+                _ => None,
+            }
+        }
+
+        /// The comment introducer for the `DO NOT EDIT` header the CLI writes
+        /// onto a generated file of `lang` — [`Comments::HEADER`], which is
+        /// [`line_comment`] for every language but Rust.
+        ///
+        /// The header has to be a comment *in the language just generated*
+        /// (issue #136, where every language got Rust's `//!`); resolving it
+        /// through the registry rather than a table of its own is issue #194.
+        #[must_use]
+        pub fn header_comment(lang: &str) -> Option<&'static str> {
+            match lang {
+                $(
+                    #[cfg(feature = $feat)]
+                    $canon $(| $alias)* => <$lang as crate::lang::Comments>::HEADER,
+                )*
+                _ => None,
+            }
+        }
     };
 }
 
@@ -519,6 +558,59 @@ mod tests {
             assert!(dict.get_meta("lean4").is_ok());
         }
         assert!(dict.get_lang("nope").is_err());
+    }
+
+    /// Every registered language's comment spellings, pinned so that changing
+    /// one is a deliberate edit here rather than a surprise in generated code.
+    ///
+    /// The header half is pinned again by the conformance battery, against the
+    /// claim in `conformance/spec/<lang>.toml`. The line half has no spec claim
+    /// — it is not a support-matrix axis, it feeds quilt-lsp's `CommentSyntax`
+    /// — so this is where it is held, together with `quilt-lsp`'s
+    /// `comment_syntax_comes_from_quilt`, which holds the server to it.
+    #[test]
+    fn comment_spellings() {
+        // (name, line, header). Only Rust's two differ.
+        let cases: &[(&str, Option<&str>, Option<&str>)] = &[
+            #[cfg(feature = "bash")]
+            ("bash", Some("#"), Some("#")),
+            #[cfg(feature = "html")]
+            ("html", None, None),
+            #[cfg(feature = "lean")]
+            ("lean", Some("--"), Some("--")),
+            #[cfg(feature = "lean")]
+            ("lean4", Some("--"), Some("--")),
+            #[cfg(feature = "nix")]
+            ("nix", Some("#"), Some("#")),
+            #[cfg(feature = "python")]
+            ("python", Some("#"), Some("#")),
+            #[cfg(feature = "python")]
+            ("py", Some("#"), Some("#")),
+            #[cfg(feature = "rust")]
+            ("rust", Some("//"), Some("//!")),
+            #[cfg(feature = "rust")]
+            ("rs", Some("//"), Some("//!")),
+            #[cfg(feature = "sql")]
+            ("sql", Some("--"), Some("--")),
+            #[cfg(feature = "sql")]
+            ("mysql", Some("--"), Some("--")),
+            #[cfg(feature = "text")]
+            ("text", None, None),
+            #[cfg(feature = "typescript")]
+            ("typescript", Some("//"), Some("//")),
+            #[cfg(feature = "wgsl")]
+            ("wgsl", Some("//"), Some("//")),
+            #[cfg(feature = "zsh")]
+            ("zsh", Some("#"), Some("#")),
+        ];
+        for (name, line, header) in cases {
+            assert_eq!(line_comment(name), *line, "line_comment({name:?})");
+            assert_eq!(header_comment(name), *header, "header_comment({name:?})");
+        }
+        // A name no language registers gets no answer, so callers can tell
+        // "this language has no line comment" from "no such language".
+        assert_eq!(line_comment("nope"), None);
+        assert_eq!(header_comment("nope"), None);
     }
 }
 

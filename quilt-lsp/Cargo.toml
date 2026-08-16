@@ -27,16 +27,27 @@ streaming-iterator = {workspace = true}
 
 [dev-dependencies]
 tempfile.workspace = true
+# `comment_syntax_comes_from_quilt` reads the language registry directly, so the
+# tests need `quilt` even in a build whose features pull in no adapter at all.
+quilt = {workspace = true, features = ["parse"]}
 
 [features]
 # Mirror quilt's own feature flags: each enables wiring for one downstream
 # language. v1 ships only `rust`. Others are reserved extension points.
 default = ["rust", "python", "wgsl", "html", "bash", "zsh", "nix", "lean", "sql"]
-rust = []
-# Each downstream language pulls its parser (and, where highlighted, its query)
-# from quilt::grammars, gated by the matching quilt feature. python's grammar
-# lives under quilt's `parse` umbrella; the others each imply `parse`.
-python = ["quilt/parse"]
+# Each language enables the matching *quilt* language, because an adapter needs
+# two things from quilt: its grammar and highlight query (`quilt::grammars`,
+# under the `parse` umbrella) and its entry in the language registry, which is
+# where the adapter's line comment now comes from (issue #194). The registry
+# entry is gated on quilt's own per-language feature, so `quilt/parse` alone is
+# not enough — with only that, `quilt::langs::line_comment("rust")` is `None`.
+#
+# rust and python are the two that have to name both: quilt's `rust` and
+# `python` features are runtime-only and deliberately do not imply `parse`
+# (quilt-wasm and nanobots-codegen build them for wasm32 without tree-sitter —
+# issue #162). The rest each imply it already.
+rust = ["quilt/rust", "quilt/parse"]
+python = ["quilt/python", "quilt/parse"]
 wgsl = ["quilt/wgsl"]
 html = ["quilt/html"]
 bash = ["quilt/bash"]

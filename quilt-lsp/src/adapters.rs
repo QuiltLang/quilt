@@ -31,6 +31,20 @@ pub struct SpliceBlock {
 
 /// How a language spells comments, so the projection can translate quilt's
 /// `⟨//⟩` / `⟨/*⟩…⟨*/⟩` comment glyphs into delimiters the host parser accepts.
+///
+/// [`line`](CommentSyntax::line) is *taken from quilt* — `quilt::langs::line_comment`,
+/// which resolves the language's own `Comments::LINE` through the registry —
+/// rather than declared here a second time. It is the same fact quilt needs to
+/// write the `DO NOT EDIT` header onto a generated file, and two copies of a
+/// per-language fact is how the two come to disagree (issue #194). The one
+/// adapter that still declares its own is [`HtmlAdapter`], because quilt
+/// correctly has no line comment for a language whose comments are delimited.
+///
+/// The block delimiters stay here. They are not purely a language fact: for
+/// Python and the shells there *is* no block comment, and what these fields
+/// hold is the projection's choice of a syntactically-inert delimiter that will
+/// do instead. Encoding those in quilt would put an LSP workaround in the
+/// language registry.
 #[derive(Debug, Clone, Copy)]
 pub struct CommentSyntax {
     /// Line-comment introducer, e.g. `//`.
@@ -38,6 +52,27 @@ pub struct CommentSyntax {
     /// Block-comment open/close, e.g. `/*` and `*/`.
     pub block_open: &'static str,
     pub block_close: &'static str,
+}
+
+/// The line-comment introducer quilt's language registry declares for `lang`,
+/// for [`CommentSyntax::line`].
+///
+/// Panics if quilt has no line comment for `lang`. That is a static fact about
+/// a name written in this file, and `comment_syntax_comes_from_quilt` calls
+/// every adapter here, so a wrong name fails the test suite rather than a
+/// running server. The languages quilt answers `None` for — HTML, plain text —
+/// do not call this.
+#[cfg(any(
+    feature = "rust",
+    feature = "python",
+    feature = "wgsl",
+    feature = "bash",
+    feature = "zsh",
+    feature = "lean",
+))]
+fn line_comment(lang: &str) -> &'static str {
+    quilt::langs::line_comment(lang)
+        .unwrap_or_else(|| panic!("quilt's language registry has no line comment for {lang:?}"))
 }
 
 /// A language that can be analyzed as an embedded fragment / downstream target.
@@ -275,7 +310,7 @@ impl LanguageAdapter for RustAdapter {
     }
     fn comment_syntax(&self) -> CommentSyntax {
         CommentSyntax {
-            line: "//",
+            line: line_comment("rust"),
             block_open: "/*",
             block_close: "*/",
         }
@@ -425,7 +460,7 @@ impl LanguageAdapter for PythonAdapter {
         // Python has no block comments; the closest syntactically-inert delimiter
         // is a triple-quoted string. Block-comment glyphs are rare in `.py.quilt`.
         CommentSyntax {
-            line: "#",
+            line: line_comment("python"),
             block_open: "\"\"\"",
             block_close: "\"\"\"",
         }
@@ -524,7 +559,7 @@ impl LanguageAdapter for WgslAdapter {
     }
     fn comment_syntax(&self) -> CommentSyntax {
         CommentSyntax {
-            line: "//",
+            line: line_comment("wgsl"),
             block_open: "/*",
             block_close: "*/",
         }
@@ -619,7 +654,7 @@ impl LanguageAdapter for ShellAdapter {
         // pragmatic trade as Python's triple-quoted string: block-comment
         // glyphs are rare in shell quotes, and fragments are highlight-only.
         CommentSyntax {
-            line: "#",
+            line: line_comment(self.id),
             block_open: "'",
             block_close: "'",
         }
@@ -679,7 +714,7 @@ impl LanguageAdapter for LeanAdapter {
     }
     fn comment_syntax(&self) -> CommentSyntax {
         CommentSyntax {
-            line: "--",
+            line: line_comment("lean"),
             block_open: "/-",
             block_close: "-/",
         }
@@ -785,6 +820,47 @@ mod tests {
 
     fn url(s: &str) -> Url {
         Url::parse(s).unwrap()
+    }
+
+    /// Every adapter's line comment is quilt's, not a second declaration of it
+    /// (issue #194) — and the one exception is the one quilt has no answer for.
+    ///
+    /// This is also what makes the `panic!` in [`line_comment`] unreachable:
+    /// each adapter is called here, so a name quilt does not register fails the
+    /// suite instead of the server.
+    #[test]
+    fn comment_syntax_comes_from_quilt() {
+        // (adapter key, quilt's name for it). They differ only where an adapter
+        // is keyed by an alias.
+        for (key, lang) in [
+            ("rust", "rust"),
+            ("python", "python"),
+            ("wgsl", "wgsl"),
+            ("bash", "bash"),
+            ("zsh", "zsh"),
+            ("lean", "lean"),
+        ] {
+            let Some(adapter) = language_adapter(key) else {
+                continue; // this language is not compiled in
+            };
+            assert_eq!(
+                Some(adapter.comment_syntax().line),
+                quilt::langs::line_comment(lang),
+                "{key}: the adapter's line comment is not the one quilt declares"
+            );
+        }
+
+        // HTML is the deliberate exception: its comments are delimited, quilt
+        // declines to answer, and the adapter projects `<!--` anyway. If quilt
+        // ever gains an answer, this fails and the adapter should take it.
+        #[cfg(feature = "html")]
+        {
+            assert_eq!(quilt::langs::line_comment("html"), None);
+            assert_eq!(
+                language_adapter("html").unwrap().comment_syntax().line,
+                "<!--"
+            );
+        }
     }
 
     #[test]

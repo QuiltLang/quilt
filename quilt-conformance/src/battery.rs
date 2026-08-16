@@ -1431,13 +1431,14 @@ fn probe_chain_member(ctx: &mut Ctx) {
 /// The `DO NOT EDIT` header must be a comment *in the language just generated*
 /// — issue #136, where every language got Rust's `//!`.
 ///
-/// The table lives in `quilt::langs::comment_prefix`, beside the language
-/// modules; this pins each language's entry so a new host cannot be added
-/// without deciding its comment syntax, and so a change to one is visible in
-/// the matrix rather than only in generated files nobody re-reads.
+/// Each language answers for itself, through `Comments::HEADER` beside its
+/// `Language` impl and `quilt::langs::header_comment` over the registry (#194);
+/// this pins each language's answer so a new host cannot be added without
+/// deciding its comment syntax, and so a change to one is visible in the matrix
+/// rather than only in generated files nobody re-reads.
 fn probe_header_comment(ctx: &mut Ctx) {
     let axis = Axis::HeaderComment;
-    let actual = quilt::langs::comment_prefix(&ctx.spec.name);
+    let actual = quilt::langs::header_comment(&ctx.spec.name);
 
     match (actual, ctx.spec.comment_prefix.as_deref()) {
         (Some(got), Some(want)) if got == want => {}
@@ -1445,7 +1446,7 @@ fn probe_header_comment(ctx: &mut Ctx) {
             axis,
             "prefix",
             format!(
-                "comment_prefix({:?}) is {got:?}, spec says {want:?}",
+                "header_comment({:?}) is {got:?}, spec says {want:?}",
                 ctx.spec.name
             ),
         ),
@@ -1463,15 +1464,18 @@ fn probe_header_comment(ctx: &mut Ctx) {
     }
 
     // Every alias must resolve to the same prefix: `.lean` and `.lean4` name
-    // one language and must not produce different headers.
+    // one language and must not produce different headers. Since #194 the
+    // lookup is generated from the registry, so an alias resolves to the same
+    // `Comments` impl by construction — this now guards the generator rather
+    // than a hand-written table.
     for alias in &ctx.spec.aliases {
-        if quilt::langs::comment_prefix(alias) != actual {
+        if quilt::langs::header_comment(alias) != actual {
             ctx.fail(
                 axis,
                 alias,
                 format!(
                     "alias {alias:?} maps to {:?} but {:?} maps to {actual:?}",
-                    quilt::langs::comment_prefix(alias),
+                    quilt::langs::header_comment(alias),
                     ctx.spec.name
                 ),
             );

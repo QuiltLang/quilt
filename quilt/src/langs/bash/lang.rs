@@ -6,7 +6,7 @@
 //! `Language` impl, built on the shared tree-sitter helper.
 
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     langs::shell,
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
@@ -95,3 +95,7 @@ impl TSProvider for BashProvider {
 
 pub type BashLanguage = TSLanguage<BashProvider>;
 pub type DynBashLanguage = DynTSLanguage<BashProvider>;
+
+impl Comments for BashLanguage {
+    const LINE: Option<&'static str> = Some("#");
+}

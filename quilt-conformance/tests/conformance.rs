@@ -256,7 +256,7 @@ fn chain_members() {
 /// grammar quilt vendors spells its comment kinds `comment`, `line_comment` or
 /// `block_comment`. That is a claim about ten third-party grammars, so it is
 /// checked rather than trusted: build a comment in each language out of its own
-/// `comment_prefix` and ask the language what it produced.
+/// `Comments::LINE` and ask the language what it produced.
 ///
 /// A grammar that names comments something else fails here, which is where you
 /// want to hear about it. The alternative symptom is a `.quilt` file whose
@@ -269,7 +269,7 @@ fn comment_tags_are_recognised() {
     for name in registry::LANGUAGES {
         // HTML's comments are delimited rather than prefixed and plain text has
         // none at all; both are `None` here, and neither can host a fragment.
-        let Some(prefix) = quilt::langs::comment_prefix(name) else {
+        let Some(prefix) = quilt::langs::line_comment(name) else {
             continue;
         };
         let mut lang = registry::language(name).expect("registered language builds");
@@ -310,7 +310,7 @@ fn collect_tags(term: &quilt::qterm::QTerm, out: &mut Vec<String>) {
 }
 
 /// `bin/check-examples` recognises a generated file by its header comment. If
-/// `quilt::langs::comment_prefix` can emit a spelling that script's regex does
+/// `quilt::langs::header_comment` can emit a spelling that script's regex does
 /// not list, the file stops being recognised and silently drops out of the
 /// expand-diff — losing coverage with no failure anywhere.
 ///
@@ -327,7 +327,7 @@ fn check_examples_recognises_every_header_prefix() {
         .expect("bin/check-examples defines header_re");
 
     for lang in quilt_conformance::registry::LANGUAGES {
-        let Some(prefix) = quilt::langs::comment_prefix(lang) else {
+        let Some(prefix) = quilt::langs::header_comment(lang) else {
             continue;
         };
         // The regex spells alternatives as `(//!|//|#|--)`; a prefix is covered

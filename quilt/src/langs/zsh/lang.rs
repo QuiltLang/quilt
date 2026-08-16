@@ -6,7 +6,7 @@
 //! `Language` impl, built on the shared tree-sitter helper.
 
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     langs::shell,
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
@@ -97,3 +97,7 @@ impl TSProvider for ZshProvider {
 
 pub type ZshLanguage = TSLanguage<ZshProvider>;
 pub type DynZshLanguage = DynTSLanguage<ZshProvider>;
+
+impl Comments for ZshLanguage {
+    const LINE: Option<&'static str> = Some("#");
+}
