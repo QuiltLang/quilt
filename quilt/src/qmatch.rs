@@ -24,9 +24,13 @@
 //! position — and the cmds (layout) of a node are not compared.  See
 //! [`smatch`] for the full semantics.
 //!
-//! Like `lift.rs`, this module is part of the parser-free runtime that
-//! expanded code links against, plus the codegen helpers ([`pattern_var_code`],
-//! [`pattern_let_code`]) the meta-languages use to spell calls into it.
+//! Like `lift.rs`, this module is part of the parser-free runtime that expanded
+//! code links against. It emits no code of its own: the helpers that spell
+//! calls *into* it — `pattern_var_code`, `pattern_let_code` — emit Rust, so
+//! they live with the rest of the Rust spellings in `langs::rust::ops`. That
+//! they used to sit here, in the language-agnostic core, is why pattern
+//! matching reads as though it were language-agnostic when it is Rust-only
+//! (issue #204); a second host would add its own pair beside Rust's.
 
 use crate::prelude::*;
 use crate::qterm::{qquote_at, qunquote_at, QTerm};
@@ -263,30 +267,6 @@ pub fn pattern_binding_at(
     let pattern = anchor.checked_sub(1)?;
     let value = value_at + 1;
     (value < terms.len()).then_some((pattern, value))
-}
-
-/// Code for a pattern metavariable splice: `mvar("name")`.
-pub fn pattern_var_code(name: &str) -> Arc<QTerm> {
-    leaf("_", &format!("mvar(\"{name}\")"))
-}
-
-/// The two terms a pattern-let rewrites to: the destructuring binder
-/// `[a, b]` that replaces the pattern quote, and the matching call
-/// `qmatch_n(&<pattern>, &<value>)` that replaces the initializer.
-pub fn pattern_let_code(
-    names: &[Box<str>],
-    pattern: &Arc<QTerm>,
-    value: &Arc<QTerm>,
-) -> (Arc<QTerm>, Arc<QTerm>) {
-    let binder = leaf("_", &format!("[{}]", names.join(", ")));
-    let call = tb("_")
-        .w("qmatch_n(&")
-        .c(pattern)
-        .w(", &")
-        .c(value)
-        .w(")")
-        .b();
-    (binder, call)
 }
 
 /**************************************************************/

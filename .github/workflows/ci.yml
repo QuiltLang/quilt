@@ -82,6 +82,16 @@ jobs:
           - os: ubuntu-latest
             name: Lift shapes (derived from the grammars)
             run: bin/check-lifts
+          # The builder-call fragments (issue #204): regenerate
+          # quilt/src/langs/chain/gen.rs from samples quoted in each target
+          # language and fail if it drifted. These fragments are what every
+          # expansion is made of — a change to one changes all generated code at
+          # once — so it should be read in a PR rather than found when a
+          # generated program stops compiling. Needs rust-script, like the
+          # bootstrap and lift gates.
+          - os: ubuntu-latest
+            name: Builder-call fragments (derived from the grammars)
+            run: bin/check-chain
           # The Quilt surface syntax — arrow brackets, escapes, comments — is
           # the one thing every language shares, and `tree-sitter test` ran
           # nowhere (issue #156). tree-sitter-quilt is a workspace member but

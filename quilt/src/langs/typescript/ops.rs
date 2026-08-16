@@ -7,18 +7,24 @@
 //! `QTermBuilder` fluent API (`tb`/`.c`/`.w`/`.n`/`.p`/`.x`/`.e`/`.b`,
 //! `quote`/`unquote`, `leaf`/`sym`, `cmd`/`write`/`push`/`NL`/`POP`/`HOLE`).
 //!
-//! It is a near-clone of `langs::python::ops` — TypeScript and Python share the
-//! method-chain shape and `[..]` array literals — differing only in:
-//! * `NL`/`POP`/`HOLE` are emitted as **calls** (`NL()`, `POP()`, `HOLE()`)
-//!   where Python emits bare constants. wasm-bindgen cannot export a
-//!   module-scope constant at all, and a shared singleton would be consumed by
-//!   its first use anyway — a documented, deliberate divergence (issue #167);
-//!   see `quilt-wasm/src/lib.rs` and the README's "Divergences from the Python
-//!   runtime".
-//! * string literals escape `\` as well as `"`.
+//! This used to be a near-clone of `langs::python::ops`, and the fold both were
+//! copies of now lives once in [`crate::langs::chain`]. What is left here is
+//! what is genuinely TypeScript's:
+//!
+//! * string literals escape `\` as well as `"` — escaping is runtime logic, not
+//!   a shape a sample can carry, so it stays hand-written;
 //! * a variadic node is a fluent `.e()` emit chain (as in Python), so
 //!   statement-context splicing into a named `b_` is unsupported.
+//!
+//! The third divergence — `NL`/`POP`/`HOLE` emitted as **calls** (`NL()`) where
+//! Python emits bare constants — is in the generated table, not here.
+//! wasm-bindgen cannot export a module-scope constant at all, and a shared
+//! singleton would be consumed by its first use anyway; it is a deliberate one
+//! (issue #167), and the one row of that table no parser can check, since both
+//! spellings are valid TypeScript. See `quilt-wasm/src/lib.rs` and the README's
+//! "Divergences from the Python runtime".
 
+use crate::langs::chain::{Chain, Lit, TYPESCRIPT};
 use crate::prelude::*;
 use crate::term::CmdOrHole;
 
@@ -47,28 +53,8 @@ fn str_lit(s: &str) -> String {
     out
 }
 
-/// Render a `StrCmd` as constructor source. `NL`/`POP` are runtime functions.
-fn strcmd_lit(c: &StrCmd) -> String {
-    match c {
-        StrCmd::Write(s) => format!("write({})", str_lit(s)),
-        StrCmd::NewLine => "NL()".to_string(),
-        StrCmd::Push(s) => format!("push({})", str_lit(s)),
-        StrCmd::Pop => "POP()".to_string(),
-    }
-}
-
-/// Render a `&[CmdOrHole]` as a TypeScript `[..]` array literal. A hole is the
-/// runtime's `HOLE()` function.
-fn cmds_lit(cmds: &[CmdOrHole]) -> String {
-    let items: Vec<String> = cmds
-        .iter()
-        .map(|c| match c {
-            CmdOrHole::Hole => "HOLE()".to_string(),
-            CmdOrHole::Cmd(cmd) => format!("cmd({})", strcmd_lit(cmd)),
-        })
-        .collect();
-    format!("[{}]", items.join(", "))
-}
+/// The shared builder-call fold, spelled for TypeScript.
+const CHAIN: Chain = Chain::new(&TYPESCRIPT, Lit::Flat(str_lit));
 
 /**************************************************************/
 
@@ -76,43 +62,7 @@ fn cmds_lit(cmds: &[CmdOrHole]) -> String {
 /// the `sym`/`leaf` shorthands when possible. `children` are the already-built
 /// child expressions spliced at hole positions.
 pub fn build_tuple_code(tag: &str, cmds: &[CmdOrHole], children: &[Arc<QTerm>]) -> Arc<QTerm> {
-    // shorthands: a childless node with a single write
-    if children.is_empty() && cmds.len() == 1 {
-        if let CmdOrHole::Cmd(StrCmd::Write(code)) = &cmds[0] {
-            return if tag == &**code {
-                leaf("_", &format!("sym({})", str_lit(tag)))
-            } else {
-                leaf("_", &format!("leaf({}, {})", str_lit(tag), str_lit(code)))
-            };
-        }
-    }
-    // full builder chain
-    let mut b = tb("_");
-    b.write(&format!("tb({})", str_lit(tag)));
-    let mut it = children.iter();
-    for c in cmds {
-        match c {
-            CmdOrHole::Cmd(StrCmd::Write(s)) => {
-                b.write(&format!(".w({})", str_lit(s)));
-            }
-            CmdOrHole::Cmd(StrCmd::NewLine) => {
-                b.write(".n()");
-            }
-            CmdOrHole::Cmd(StrCmd::Push(s)) => {
-                b.write(&format!(".p({})", str_lit(s)));
-            }
-            CmdOrHole::Cmd(StrCmd::Pop) => {
-                b.write(".x()");
-            }
-            CmdOrHole::Hole => {
-                b.write(".c(");
-                b.child(it.next().expect("build_tuple_code: not enough children"));
-                b.write(")");
-            }
-        }
-    }
-    b.write(".b()");
-    b.b()
+    CHAIN.tuple_code(tag, cmds, children)
 }
 
 /// Build `quote(tag, index, lang, <term>, [..cmds..])`, splicing `term`.
@@ -123,16 +73,7 @@ pub fn build_quote_code(
     term: &Arc<QTerm>,
     cmds: &[CmdOrHole],
 ) -> Arc<QTerm> {
-    let mut b = tb("_");
-    b.write(&format!(
-        "quote({}, {}, {}, ",
-        str_lit(tag),
-        index,
-        str_lit(lang)
-    ));
-    b.child(term);
-    b.write(&format!(", {})", cmds_lit(cmds)));
-    b.b()
+    CHAIN.quote_code(tag, index, lang, term, cmds)
 }
 
 /// Build `unquote(tag, index, lang, <term>, [..cmds..])`, splicing `term`.
@@ -143,16 +84,7 @@ pub fn build_unquote_code(
     term: &Arc<QTerm>,
     cmds: &[CmdOrHole],
 ) -> Arc<QTerm> {
-    let mut b = tb("_");
-    b.write(&format!(
-        "unquote({}, {}, {}, ",
-        str_lit(tag),
-        index,
-        str_lit(lang)
-    ));
-    b.child(term);
-    b.write(&format!(", {})", cmds_lit(cmds)));
-    b.b()
+    CHAIN.unquote_code(tag, index, lang, term, cmds)
 }
 
 /// Build a variadic node as a fluent emit chain:
@@ -160,35 +92,7 @@ pub fn build_unquote_code(
 /// terms; each is emitted with `.e(..)`. As in Python's runtime there is no
 /// named `b_`, so statement-context splicing is unsupported (see module docs).
 pub fn build_variadic_block(tag: &str, cmds: &[CmdOrHole], children: &[Arc<QTerm>]) -> Arc<QTerm> {
-    let mut b = tb("_");
-    b.write(&format!("tb({})", str_lit(tag)));
-    let mut it = children.iter();
-    for c in cmds {
-        match c {
-            CmdOrHole::Cmd(StrCmd::Write(s)) => {
-                b.write(&format!(".w({})", str_lit(s)));
-            }
-            CmdOrHole::Cmd(StrCmd::NewLine) => {
-                b.write(".n()");
-            }
-            CmdOrHole::Cmd(StrCmd::Push(s)) => {
-                b.write(&format!(".p({})", str_lit(s)));
-            }
-            CmdOrHole::Cmd(StrCmd::Pop) => {
-                b.write(".x()");
-            }
-            CmdOrHole::Hole => {
-                b.write(".e(");
-                b.child(
-                    it.next()
-                        .expect("build_variadic_block: not enough children"),
-                );
-                b.write(")");
-            }
-        }
-    }
-    b.write(".b()");
-    b.b()
+    CHAIN.variadic_code(tag, cmds, children)
 }
 
 /**************************************************************/

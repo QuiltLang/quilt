@@ -71,6 +71,7 @@ check() {
   run_gate "quilt grammar" "$BIN/check-grammar-quilt"
   run_gate "arity tables"  "$BIN/check-arity"
   run_gate "lift shapes"   "$BIN/check-lifts"
+  run_gate "builder calls" "$BIN/check-chain"
   run_gate "support matrix" "$BIN/check-matrix"
   run_gate "examples"      "$BIN/check-examples"
 

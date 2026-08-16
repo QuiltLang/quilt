@@ -3,6 +3,13 @@ pub mod arity;
 pub mod bash;
 #[cfg(feature = "bootstrap")]
 pub mod bootstrap;
+#[cfg(any(
+    feature = "rust",
+    feature = "bootstrap",
+    feature = "python",
+    feature = "typescript"
+))]
+pub mod chain;
 #[cfg(feature = "html")]
 pub mod html;
 #[cfg(feature = "lean")]

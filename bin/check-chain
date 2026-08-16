@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Verify the committed builder-call fragments are current: regenerate them and
+# fail if anything changed. Same shape as bin/check-lifts and bin/check-arity.
+#
+# A diff here means the source the Rust, Python or TypeScript meta emits has
+# changed — which is the code every expansion is made of, so it should be read
+# in a PR rather than discovered when a generated program stops compiling.
+#
+# For CI and pre-commit.
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
+TARGET=quilt/src/langs/chain/gen.rs
+
+"$DIR/gen-chain"
+
+if ! git -C "$ROOT" diff --quiet -- "$TARGET"; then
+  echo "error: the committed builder-call fragments are stale." >&2
+  echo "       Run 'bin/gen-chain' and commit $TARGET." >&2
+  git -C "$ROOT" --no-pager diff -- "$TARGET" >&2
+  exit 1
+fi
+
+echo "builder-call fragments match what the grammars parse ✓"
