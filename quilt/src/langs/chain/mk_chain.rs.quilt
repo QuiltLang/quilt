@@ -1,0 +1,337 @@
+#!/usr/bin/env quilt
+⟨//⟩ Generate `quilt/src/langs/chain/gen.rs` — the builder-call fragments the
+⟨//⟩ Rust, Python and TypeScript metas splice together (issue #204).
+⟨//⟩
+⟨//⟩ Run with `bin/gen-chain`; `bin/check-chain` is the CI gate that it was.
+⟨//⟩
+⟨//⟩ Each meta answers "what source rebuilds this term?" with the same fold over
+⟨//⟩ `cmds`. The fold now lives once, in `super`; what differs between languages
+⟨//⟩ is the handful of fragments it writes, and those are what this generates.
+⟨//⟩
+⟨//⟩ A fragment is read off a *sample of the call itself*, quoted in the target
+⟨//⟩ language and parsed with that language's own grammar:
+⟨//⟩
+⟨//⟩     py↖ACC.w(LIT)↗   coparses to   "ACC.w(LIT)"
+⟨//⟩                      split on ACC and LIT  ==>  [".w(", ")"]
+⟨//⟩
+⟨//⟩ The markers are ordinary identifiers, so the sample is a whole expression
+⟨//⟩ and has to parse as one. That is the point: `py↖ACC.c(&LIT)↗` is not
+⟨//⟩ Python and `py↖&[EL1, EL2]↗` is not Python either, so the two places the
+⟨//⟩ hand-written copies could disagree about a borrow now fail generation
+⟨//⟩ instead of shipping. What a sample cannot settle is a fact about the
+⟨//⟩ *runtime* rather than the syntax — `NL` and `NL()` both parse as
+⟨//⟩ TypeScript — so that one stays a declared divergence, but a declared one
+⟨//⟩ written down once (#167).
+use quilt::prelude::*;
+use std::process::Command;
+
+/**************************************************************/
+/* Reading a fragment off a parsed sample                     */
+
+/// Split a sample's own text on `markers`, in order, into the `n + 1` pieces
+/// that surround them.
+///
+/// Each marker must occur exactly once: a fragment that contained one would
+/// split in a place the author did not mean, so ambiguity is a failure rather
+/// than a guess.
+fn pieces(sample: &Arc<QTerm>, markers: &[&str]) -> Vec<String> {
+    let text = sample.coparse();
+    let mut out = Vec::new();
+    let mut rest = text.as_str();
+    for m in markers {
+        let i = rest
+            .find(m)
+            .unwrap_or_else(|| panic!("marker {m:?} is not in sample {text:?}"));
+        out.push(rest[..i].to_string());
+        rest = &rest[i + m.len()..];
+        assert!(
+            !rest.contains(m),
+            "marker {m:?} occurs more than once in sample {text:?}"
+        );
+    }
+    out.push(rest.to_string());
+    out
+}
+
+/// `pieces`, for a sample that opens with the accumulator: `ACC.w(LIT)` is a
+/// fragment of a *chain*, so the text before `ACC` is not part of it and must
+/// be empty.
+fn tail(sample: &Arc<QTerm>, markers: &[&str]) -> Vec<String> {
+    let all = pieces(sample, markers);
+    assert_eq!(
+        all[0],
+        "",
+        "chain sample {:?} does not begin with the accumulator",
+        sample.coparse()
+    );
+    all[1..].to_vec()
+}
+
+/// A sample with no arguments at all — `NL`, `POP`, `HOLE`, `.n()`. Its whole
+/// text is the fragment.
+fn whole(sample: &Arc<QTerm>) -> Vec<String> {
+    vec![sample.coparse()]
+}
+
+/// One language's fragments, in the order [`Shapes`] declares them.
+struct Sh {
+    tb: Vec<String>,
+    w: Vec<String>,
+    n: Vec<String>,
+    p: Vec<String>,
+    x: Vec<String>,
+    c: Vec<String>,
+    e: Vec<String>,
+    b: Vec<String>,
+    sym: Vec<String>,
+    leaf: Vec<String>,
+    quote: Vec<String>,
+    unquote: Vec<String>,
+    list: Vec<String>,
+    cmd: Vec<String>,
+    write: Vec<String>,
+    push: Vec<String>,
+    nl: Vec<String>,
+    pop: Vec<String>,
+    hole: Vec<String>,
+}
+
+/**************************************************************/
+/* Emitting the table                                          */
+
+/// `["a", "b"]` — a Rust array literal of the pieces.
+///
+/// Built with the builder rather than lifted, because `Vec<String>` has no
+/// homogeneous `QLift`; the elements do, and `↑` on each is the parser's own
+/// `string_literal` shape.
+fn arr(ps: &[String]) -> ⟨T⟩ {
+    let mut b = tb("array_expression");
+    b.child(&sym("["));
+    for (i, p) in ps.iter().enumerate() {
+        if i > 0 {
+            b.write(", ");
+        }
+        b.child(&p.↑);
+    }
+    b.child(&sym("]"));
+    b.b()
+}
+
+/// A field value: an array for a shape with arguments, a bare literal for a
+/// shape with none.
+fn val(ps: &[String]) -> ⟨T⟩ {
+    if ps.len() == 1 {
+        ps[0].↑
+    } else {
+        arr(ps)
+    }
+}
+
+/// One `pub const NAME: Shapes = Shapes { .. };`.
+///
+/// A hole does not parse in const-name position (`pub const {}: Shapes` is not
+/// Rust), so the name goes in as a placeholder and is rewritten after — the
+/// same dodge `mk_lifts.rs.quilt` uses for function names.
+fn shapes_const(ident: &str, s: &Sh) -> ⟨T⟩ {
+    let generic: ⟨T⟩ = ↖
+        /// Read off samples parsed with this language's own grammar. See
+        /// `mk_chain.rs.quilt` for the sample behind each field.
+        pub const SHAPES_PLACEHOLDER: Shapes = Shapes {
+            tb: ↙val(&s.tb)↘,
+            w: ↙val(&s.w)↘,
+            n: ↙val(&s.n)↘,
+            p: ↙val(&s.p)↘,
+            x: ↙val(&s.x)↘,
+            c: ↙val(&s.c)↘,
+            e: ↙val(&s.e)↘,
+            b: ↙val(&s.b)↘,
+            sym: ↙val(&s.sym)↘,
+            leaf: ↙val(&s.leaf)↘,
+            quote: ↙val(&s.quote)↘,
+            unquote: ↙val(&s.unquote)↘,
+            list: ↙val(&s.list)↘,
+            cmd: ↙val(&s.cmd)↘,
+            write: ↙val(&s.write)↘,
+            push: ↙val(&s.push)↘,
+            nl: ↙val(&s.nl)↘,
+            pop: ↙val(&s.pop)↘,
+            hole: ↙val(&s.hole)↘,
+        };
+    ↗;
+    generic.rewrite_naive(&⟨N⟩("SHAPES_PLACEHOLDER"), &⟨N⟩(ident))
+}
+
+/**************************************************************/
+
+fn main() -> Result<()> {
+    ⟨//⟩ ---- the samples, parsed by the vendored grammars ----
+    ⟨//⟩
+    ⟨//⟩ Every one of these is a complete expression in its language, which is
+    ⟨//⟩ what makes the technique work at all: each prefix of a builder chain is
+    ⟨//⟩ itself a builder chain, so `ACC.w(LIT)` parses even though `ACC` stands
+    ⟨//⟩ for arbitrarily much chain to its left.
+
+    let rust = Sh {
+        tb: pieces(&rs↖tb(TAG)↗, &["TAG"]),
+        w: tail(&rs↖ACC.w(LIT)↗, &["ACC", "LIT"]),
+        n: tail(&rs↖ACC.n()↗, &["ACC"]),
+        p: tail(&rs↖ACC.p(LIT)↗, &["ACC", "LIT"]),
+        x: tail(&rs↖ACC.x()↗, &["ACC"]),
+        ⟨//⟩ The borrow that Python and TypeScript must not have.
+        c: tail(&rs↖ACC.c(&CHILD)↗, &["ACC", "CHILD"]),
+        ⟨//⟩ Rust's variadic node is an imperative `b_` block rather than a
+        ⟨//⟩ chain, so nothing in `langs::rust::ops` reaches for this one. It is
+        ⟨//⟩ a real `QTermBuilder` method and the table stays uniform.
+        e: tail(&rs↖ACC.e(&CHILD)↗, &["ACC", "CHILD"]),
+        b: tail(&rs↖ACC.b()↗, &["ACC"]),
+        sym: pieces(&rs↖sym(LIT)↗, &["LIT"]),
+        leaf: pieces(&rs↖leaf(TAG, CODE)↗, &["TAG", "CODE"]),
+        quote: pieces(
+            &rs↖quote(TAG, IDX, LANG, TERM, CMDS)↗,
+            &["TAG", "IDX", "LANG", "TERM", "CMDS"],
+        ),
+        unquote: pieces(
+            &rs↖unquote(TAG, IDX, LANG, TERM, CMDS)↗,
+            &["TAG", "IDX", "LANG", "TERM", "CMDS"],
+        ),
+        ⟨//⟩ The borrow rides along with the opening bracket, so the one place
+        ⟨//⟩ that writes a cmds list does not also have to remember it.
+        list: pieces(&rs↖&[EL1, EL2]↗, &["EL1", "EL2"]),
+        cmd: pieces(&rs↖cmd(X)↗, &["X"]),
+        write: pieces(&rs↖write(LIT)↗, &["LIT"]),
+        push: pieces(&rs↖push(LIT)↗, &["LIT"]),
+        nl: whole(&rs↖NL↗),
+        pop: whole(&rs↖POP↗),
+        hole: whole(&rs↖HOLE↗),
+    };
+
+    let python = Sh {
+        tb: pieces(&py↖tb(TAG)↗, &["TAG"]),
+        w: tail(&py↖ACC.w(LIT)↗, &["ACC", "LIT"]),
+        n: tail(&py↖ACC.n()↗, &["ACC"]),
+        p: tail(&py↖ACC.p(LIT)↗, &["ACC", "LIT"]),
+        x: tail(&py↖ACC.x()↗, &["ACC"]),
+        c: tail(&py↖ACC.c(CHILD)↗, &["ACC", "CHILD"]),
+        e: tail(&py↖ACC.e(CHILD)↗, &["ACC", "CHILD"]),
+        b: tail(&py↖ACC.b()↗, &["ACC"]),
+        sym: pieces(&py↖sym(LIT)↗, &["LIT"]),
+        leaf: pieces(&py↖leaf(TAG, CODE)↗, &["TAG", "CODE"]),
+        quote: pieces(
+            &py↖quote(TAG, IDX, LANG, TERM, CMDS)↗,
+            &["TAG", "IDX", "LANG", "TERM", "CMDS"],
+        ),
+        unquote: pieces(
+            &py↖unquote(TAG, IDX, LANG, TERM, CMDS)↗,
+            &["TAG", "IDX", "LANG", "TERM", "CMDS"],
+        ),
+        list: pieces(&py↖[EL1, EL2]↗, &["EL1", "EL2"]),
+        cmd: pieces(&py↖cmd(X)↗, &["X"]),
+        write: pieces(&py↖write(LIT)↗, &["LIT"]),
+        push: pieces(&py↖push(LIT)↗, &["LIT"]),
+        nl: whole(&py↖NL↗),
+        pop: whole(&py↖POP↗),
+        hole: whole(&py↖HOLE↗),
+    };
+
+    ⟨//⟩ TypeScript is Python's shape everywhere the syntax is concerned. The
+    ⟨//⟩ three call forms below are the divergence, and they are a fact about
+    ⟨//⟩ `quilt-wasm` rather than about TypeScript: wasm-bindgen cannot export a
+    ⟨//⟩ module-scope constant, and a shared singleton would be consumed by its
+    ⟨//⟩ first use. Both spellings parse, so nothing here can catch a mistake —
+    ⟨//⟩ this is the one row that is still a claim (#167).
+    let typescript = Sh {
+        tb: pieces(&ts↖tb(TAG)↗, &["TAG"]),
+        w: tail(&ts↖ACC.w(LIT)↗, &["ACC", "LIT"]),
+        n: tail(&ts↖ACC.n()↗, &["ACC"]),
+        p: tail(&ts↖ACC.p(LIT)↗, &["ACC", "LIT"]),
+        x: tail(&ts↖ACC.x()↗, &["ACC"]),
+        c: tail(&ts↖ACC.c(CHILD)↗, &["ACC", "CHILD"]),
+        e: tail(&ts↖ACC.e(CHILD)↗, &["ACC", "CHILD"]),
+        b: tail(&ts↖ACC.b()↗, &["ACC"]),
+        sym: pieces(&ts↖sym(LIT)↗, &["LIT"]),
+        leaf: pieces(&ts↖leaf(TAG, CODE)↗, &["TAG", "CODE"]),
+        quote: pieces(
+            &ts↖quote(TAG, IDX, LANG, TERM, CMDS)↗,
+            &["TAG", "IDX", "LANG", "TERM", "CMDS"],
+        ),
+        unquote: pieces(
+            &ts↖unquote(TAG, IDX, LANG, TERM, CMDS)↗,
+            &["TAG", "IDX", "LANG", "TERM", "CMDS"],
+        ),
+        list: pieces(&ts↖[EL1, EL2]↗, &["EL1", "EL2"]),
+        cmd: pieces(&ts↖cmd(X)↗, &["X"]),
+        write: pieces(&ts↖write(LIT)↗, &["LIT"]),
+        push: pieces(&ts↖push(LIT)↗, &["LIT"]),
+        nl: whole(&ts↖NL()↗),
+        pop: whole(&ts↖POP()↗),
+        hole: whole(&ts↖HOLE()↗),
+    };
+
+    ⟨//⟩ ---- the file ----
+
+    let out: ⟨T⟩ = ↖
+        use super::Shapes;
+
+        ↙
+            shapes_const("RUST", &rust).←;
+            NL.←;
+            shapes_const("PYTHON", &python).←;
+            NL.←;
+            ⟨//⟩ A loop, not a bare emit: the expander terminates the block's
+            ⟨//⟩ last statement itself, so an emit in that position gets two
+            ⟨//⟩ `;` and warns on every run. A `for` needs no terminator.
+            for it in [shapes_const("TYPESCRIPT", &typescript)] {
+                it.←;
+            }
+        ↘
+    ↗;
+
+    out.dump_with_cmds("src/langs/chain/gen.rs", &header(), &[])?;
+    Command::new("cargo")
+        .args(["fmt", "--", "src/langs/chain/gen.rs"])
+        .status()
+        .ok();
+    Ok(())
+}
+
+/// The `//!` block at the top of the generated file. Written as raw commands
+/// rather than parsed, so it never has to survive a round trip.
+fn header() -> Vec<StrCmd> {
+    let mut cmds = Vec::new();
+    for line in [
+        "//! Builder-call fragments, per target language.",
+        "//!",
+        "//! @generated by `bin/gen-chain` from",
+        "//! `quilt/src/langs/chain/mk_chain.rs.quilt` — do not edit by hand.",
+        "//! `bin/check-chain` regenerates it and fails if it differs.",
+        "//!",
+        "//! Each field is the source text around the arguments of one builder",
+        "//! call, read off a sample quoted in that language and parsed with its",
+        "//! own grammar: `py\u{2196}ACC.w(LIT)\u{2197}` coparses to `ACC.w(LIT)`,",
+        "//! which splits into `\".w(\"` and `\")\"`. See issue #204.",
+        "//!",
+        "//! What the samples settle, and what they do not:",
+        "//!",
+        "//! * **The borrows are settled.** `.c(&x)` and `&[..]` are Rust and are",
+        "//!   not Python or TypeScript — those samples do not parse, so the",
+        "//!   generator fails rather than emitting them. This was two of the",
+        "//!   three differences a maintainer had to hold in mind across three",
+        "//!   near-identical files.",
+        "//! * **`NL` against `NL()` is not.** Both parse as TypeScript, because",
+        "//!   it is a fact about the `quilt-wasm` runtime — wasm-bindgen cannot",
+        "//!   export a module-scope constant, and a shared singleton would be",
+        "//!   consumed by its first use — rather than about the syntax. It is",
+        "//!   still a claim; it is now a claim made in one place (#167).",
+        "//! * **Escaping is not.** Which characters a literal must escape is",
+        "//!   runtime logic, so each meta still supplies its own escaper.",
+        "//!",
+        "//! `RUST.e` has no caller: Rust splices into a variadic container with",
+        "//! an imperative `b_` block, not a fluent `.e()` chain. It is a real",
+        "//! builder method and the table is uniform, so it is generated anyway.",
+    ] {
+        cmds.push(write(line));
+        cmds.push(NL);
+    }
+    cmds.push(NL);
+    cmds
+}

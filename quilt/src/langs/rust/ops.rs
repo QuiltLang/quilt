@@ -5,7 +5,19 @@
 //! splicing child terms at holes. This is the term-valued analogue of
 //! `langs::bootstrap::strlift` — same emitted source, but with no string
 //! round-trip (no re-parse).
+//!
+//! The fold that assembles those chains is shared with the Python and
+//! TypeScript metas — see [`crate::langs::chain`], which also carries the
+//! generated table of Rust's fragments (`.c(&x)`, `&[..]`). Two things here are
+//! Rust's alone and stay hand-written: the [`build_variadic_block`] below,
+//! which is an imperative `b_` block rather than a chain, and the escaping.
+//!
+//! [`QLift`] runs the same fold in [`Lit::Term`] mode, which is the difference
+//! between code that only has to serialize and code that has to be
+//! *matchable*: `qlift` emits structured `string_literal` subterms so
+//! `rewrite_naive` can find them.
 
+use crate::langs::chain::{Chain, Lit, RUST};
 use crate::prelude::*;
 use crate::term::CmdOrHole;
 use miette::{bail, IntoDiagnostic};
@@ -26,27 +38,13 @@ fn str_lit(s: &str) -> String {
     format!("\"{}\"", str_body(s))
 }
 
-/// Render a `StrCmd` as constructor source.
-fn strcmd_lit(c: &StrCmd) -> String {
-    match c {
-        StrCmd::Write(s) => format!("write({})", str_lit(s)),
-        StrCmd::NewLine => "NL".to_string(),
-        StrCmd::Push(s) => format!("push({})", str_lit(s)),
-        StrCmd::Pop => "POP".to_string(),
-    }
-}
+/// The shared builder-call fold, spelled for Rust, emitting literals as source
+/// text. The dump-only path the three `build_*_code` helpers take.
+const FLAT: Chain = Chain::new(&RUST, Lit::Flat(str_lit));
 
-/// Render a `&[CmdOrHole]` as a `[..]` data literal.
-fn cmds_lit(cmds: &[CmdOrHole]) -> String {
-    let items: Vec<String> = cmds
-        .iter()
-        .map(|c| match c {
-            CmdOrHole::Hole => "HOLE".to_string(),
-            CmdOrHole::Cmd(cmd) => format!("cmd({})", strcmd_lit(cmd)),
-        })
-        .collect();
-    format!("[{}]", items.join(", "))
-}
+/// The same fold, emitting literals as structured `string_literal` subterms so
+/// the result can be manipulated as Rust AST. The path [`QLift`] takes.
+const TERM: Chain = Chain::new(&RUST, Lit::Term(strlit_term));
 
 /**************************************************************/
 
@@ -54,43 +52,7 @@ fn cmds_lit(cmds: &[CmdOrHole]) -> String {
 /// the `sym`/`leaf` shorthands when possible. `children` are the already-built
 /// child expressions spliced at hole positions.
 pub fn build_tuple_code(tag: &str, cmds: &[CmdOrHole], children: &[Arc<QTerm>]) -> Arc<QTerm> {
-    // shorthands: a childless node with a single write
-    if children.is_empty() && cmds.len() == 1 {
-        if let CmdOrHole::Cmd(StrCmd::Write(code)) = &cmds[0] {
-            return if tag == &**code {
-                leaf("_", &format!("sym({})", str_lit(tag)))
-            } else {
-                leaf("_", &format!("leaf({}, {})", str_lit(tag), str_lit(code)))
-            };
-        }
-    }
-    // full builder chain
-    let mut b = tb("_");
-    b.write(&format!("tb({})", str_lit(tag)));
-    let mut it = children.iter();
-    for c in cmds {
-        match c {
-            CmdOrHole::Cmd(StrCmd::Write(s)) => {
-                b.write(&format!(".w({})", str_lit(s)));
-            }
-            CmdOrHole::Cmd(StrCmd::NewLine) => {
-                b.write(".n()");
-            }
-            CmdOrHole::Cmd(StrCmd::Push(s)) => {
-                b.write(&format!(".p({})", str_lit(s)));
-            }
-            CmdOrHole::Cmd(StrCmd::Pop) => {
-                b.write(".x()");
-            }
-            CmdOrHole::Hole => {
-                b.write(".c(&");
-                b.child(it.next().expect("build_tuple_code: not enough children"));
-                b.write(")");
-            }
-        }
-    }
-    b.write(".b()");
-    b.b()
+    FLAT.tuple_code(tag, cmds, children)
 }
 
 /// Build `quote(tag, index, lang, <term>, &[..cmds..])`, splicing `term`.
@@ -101,16 +63,7 @@ pub fn build_quote_code(
     term: &Arc<QTerm>,
     cmds: &[CmdOrHole],
 ) -> Arc<QTerm> {
-    let mut b = tb("_");
-    b.write(&format!(
-        "quote({}, {}, {}, ",
-        str_lit(tag),
-        index,
-        str_lit(lang)
-    ));
-    b.child(term);
-    b.write(&format!(", &{})", cmds_lit(cmds)));
-    b.b()
+    FLAT.quote_code(tag, index, lang, term, cmds)
 }
 
 /// Build `unquote(tag, index, lang, <term>, &[..cmds..])`, splicing `term`.
@@ -121,16 +74,7 @@ pub fn build_unquote_code(
     term: &Arc<QTerm>,
     cmds: &[CmdOrHole],
 ) -> Arc<QTerm> {
-    let mut b = tb("_");
-    b.write(&format!(
-        "unquote({}, {}, {}, ",
-        str_lit(tag),
-        index,
-        str_lit(lang)
-    ));
-    b.child(term);
-    b.write(&format!(", &{})", cmds_lit(cmds)));
-    b.b()
+    FLAT.unquote_code(tag, index, lang, term, cmds)
 }
 
 /// Build a variadic node as an imperative block:
@@ -212,36 +156,6 @@ fn strlit_term(s: &str) -> Arc<QTerm> {
         b = b.c(&leaf("string_content", &str_body(s)));
     }
     b.c(&sym("\"")).b()
-}
-
-/// A `[..]` cmds data literal whose string args are structured `string_literal`s.
-fn cmds_lit_term(cmds: &[CmdOrHole]) -> Arc<QTerm> {
-    let mut b = tb("_");
-    b.write("[");
-    for (i, c) in cmds.iter().enumerate() {
-        if i > 0 {
-            b.write(", ");
-        }
-        match c {
-            CmdOrHole::Hole => {
-                b.write("HOLE");
-            }
-            CmdOrHole::Cmd(StrCmd::Write(s)) => {
-                b.write("cmd(write(").child(&strlit_term(s)).write("))");
-            }
-            CmdOrHole::Cmd(StrCmd::NewLine) => {
-                b.write("cmd(NL)");
-            }
-            CmdOrHole::Cmd(StrCmd::Push(s)) => {
-                b.write("cmd(push(").child(&strlit_term(s)).write("))");
-            }
-            CmdOrHole::Cmd(StrCmd::Pop) => {
-                b.write("cmd(POP)");
-            }
-        }
-    }
-    b.write("]");
-    b.b()
 }
 
 /// The Rust spelling of `↑` lifting into the object language `target` (used
@@ -358,17 +272,7 @@ impl QLift for Arc<QTerm> {
                 term,
                 cmds,
                 ..
-            } => tb("_")
-                .w("quote(")
-                .c(&strlit_term(tag))
-                .w(&format!(", {index}, "))
-                .c(&strlit_term(lang))
-                .w(", ")
-                .c(&term.qlift())
-                .w(", &")
-                .c(&cmds_lit_term(cmds))
-                .w(")")
-                .b(),
+            } => TERM.quote_code(tag, *index, lang, &term.qlift(), cmds),
             QTerm::Unquote {
                 tag,
                 index,
@@ -376,61 +280,10 @@ impl QLift for Arc<QTerm> {
                 term,
                 cmds,
                 ..
-            } => tb("_")
-                .w("unquote(")
-                .c(&strlit_term(tag))
-                .w(&format!(", {index}, "))
-                .c(&strlit_term(lang))
-                .w(", ")
-                .c(&term.qlift())
-                .w(", &")
-                .c(&cmds_lit_term(cmds))
-                .w(")")
-                .b(),
+            } => TERM.unquote_code(tag, *index, lang, &term.qlift(), cmds),
             QTerm::Tuple { tag, terms, cmds } => {
-                // shorthands: a childless node with a single write
-                if terms.is_empty() && cmds.len() == 1 {
-                    if let CmdOrHole::Cmd(StrCmd::Write(code)) = &cmds[0] {
-                        return if **tag == **code {
-                            tb("_").w("sym(").c(&strlit_term(tag)).w(")").b()
-                        } else {
-                            tb("_")
-                                .w("leaf(")
-                                .c(&strlit_term(tag))
-                                .w(", ")
-                                .c(&strlit_term(code))
-                                .w(")")
-                                .b()
-                        };
-                    }
-                }
-                // full builder chain
-                let mut b = tb("_");
-                b.write("tb(").child(&strlit_term(tag)).write(")");
-                let mut it = terms.iter();
-                for c in cmds {
-                    match c {
-                        CmdOrHole::Cmd(StrCmd::Write(s)) => {
-                            b.write(".w(").child(&strlit_term(s)).write(")");
-                        }
-                        CmdOrHole::Cmd(StrCmd::NewLine) => {
-                            b.write(".n()");
-                        }
-                        CmdOrHole::Cmd(StrCmd::Push(s)) => {
-                            b.write(".p(").child(&strlit_term(s)).write(")");
-                        }
-                        CmdOrHole::Cmd(StrCmd::Pop) => {
-                            b.write(".x()");
-                        }
-                        CmdOrHole::Hole => {
-                            b.write(".c(&")
-                                .child(&it.next().expect("qlift: not enough children").qlift())
-                                .write(")");
-                        }
-                    }
-                }
-                b.write(".b()");
-                b.b()
+                let children: Vec<Arc<QTerm>> = terms.iter().map(QLift::qlift).collect();
+                TERM.tuple_code(tag, cmds, &children)
             }
         }
     }

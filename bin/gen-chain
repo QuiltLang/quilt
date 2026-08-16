@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Regenerate quilt/src/langs/chain/gen.rs — the builder-call fragments the
+# Rust, Python and TypeScript metas splice together — from samples parsed by
+# the vendored grammars:
+#
+#   quilt/src/langs/chain/mk_chain.rs.quilt   (the samples: `py↖ACC.w(LIT)↗`, …)
+#        │
+#        │  each sample is a complete expression in its target language; it is
+#        │  parsed, coparsed back to text, and split on the markers standing in
+#        │  for the arguments
+#        ▼
+#   quilt/src/langs/chain/gen.rs   → the fragments `chain::Chain` writes
+#
+# These fragments used to be string literals in three near-identical copies of
+# the same fold, differing in a borrow here and a call there — `.c(&x)` against
+# `.c(x)`, `&[…]` against `[…]`. A sample that gets one wrong does not parse,
+# so it fails here rather than shipping. See issue #204. `bin/check-chain` is
+# the CI gate that this was run.
+#
+# Needs `rust-script` and `rustfmt`: the generator is expanded and run the same
+# way `bin/bootstrap` runs mk_meta.rs.quilt, and `cargo fmt`s what it wrote.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT/quilt"
+exec cargo run --manifest-path "$ROOT/Cargo.toml" -p quiltlang -- \
+  run -m omni src/langs/chain/mk_chain.rs.quilt "$@"
