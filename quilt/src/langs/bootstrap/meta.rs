@@ -211,7 +211,7 @@ impl MetaLanguage for BootstrapMetaLanguage {
     }
 
     fn pattern_var(&self, name: &str) -> Result<Arc<QTerm>> {
-        Ok(crate::qmatch::pattern_var_code(name))
+        Ok(crate::langs::rust::ops::pattern_var_code(name))
     }
 
     fn pattern_let(
@@ -220,7 +220,9 @@ impl MetaLanguage for BootstrapMetaLanguage {
         pattern: &Arc<QTerm>,
         value: &Arc<QTerm>,
     ) -> Result<(Arc<QTerm>, Arc<QTerm>)> {
-        Ok(crate::qmatch::pattern_let_code(names, pattern, value))
+        Ok(crate::langs::rust::ops::pattern_let_code(
+            names, pattern, value,
+        ))
     }
 
     // No heterogeneous lifting from the bootstrap meta: `target` is ignored.

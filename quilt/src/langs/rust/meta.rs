@@ -2,12 +2,12 @@
 
 use super::ops::{
     build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block, lift_spelling,
-    reduce_spelling, wrap_emit, wrap_splice,
+    pattern_let_code, pattern_var_code, reduce_spelling, wrap_emit, wrap_splice,
 };
 use crate::lang::Arity;
 use crate::meta::OuterKind;
 use crate::prelude::{Index, *};
-use crate::qmatch::{pattern_binding_at, pattern_let_code, pattern_var_code};
+use crate::qmatch::pattern_binding_at;
 use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
 
 /**************************************************************/

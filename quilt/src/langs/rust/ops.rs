@@ -134,6 +134,36 @@ pub fn name(s: &str) -> Arc<QTerm> {
     leaf("identifier", s)
 }
 
+/// Code for a pattern metavariable splice: `mvar("name")`.
+///
+/// This and [`pattern_let_code`] used to live in `crate::qmatch`, beside the
+/// runtime they call into. But `mvar(..)` and `qmatch_n(&p, &v)` are *Rust*
+/// source, so emitting them from the language-agnostic core is what made
+/// pattern matching Rust-only while reading as though it were not. A second
+/// host would add its own pair next to its own `build_*_code`.
+pub fn pattern_var_code(name: &str) -> Arc<QTerm> {
+    leaf("_", &format!("mvar(\"{name}\")"))
+}
+
+/// The two terms a pattern-let rewrites to: the destructuring binder
+/// `[a, b]` that replaces the pattern quote, and the matching call
+/// `qmatch_n(&<pattern>, &<value>)` that replaces the initializer.
+pub fn pattern_let_code(
+    names: &[Box<str>],
+    pattern: &Arc<QTerm>,
+    value: &Arc<QTerm>,
+) -> (Arc<QTerm>, Arc<QTerm>) {
+    let binder = leaf("_", &format!("[{}]", names.join(", ")));
+    let call = tb("_")
+        .w("qmatch_n(&")
+        .c(pattern)
+        .w(", &")
+        .c(value)
+        .w(")")
+        .b();
+    (binder, call)
+}
+
 /// A Rust string-literal term, structured exactly as the parser (and `↖"s"↗`)
 /// produces it, so lifted code can be matched/rewritten as Rust AST (e.g. by
 /// `rewrite_naive`).
