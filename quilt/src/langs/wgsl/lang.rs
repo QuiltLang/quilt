@@ -6,7 +6,7 @@
 //! this `Language` impl, built on the shared tree-sitter helper.
 
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -134,3 +134,7 @@ fn is_expr_tag(tag: &str) -> bool {
 
 pub type WgslLanguage = TSLanguage<WgslProvider>;
 pub type DynWgslLanguage = DynTSLanguage<WgslProvider>;
+
+/// The `//` default is right for WGSL. Only the header is unreachable: WGSL is
+/// target-only, so it is never the language a generated file is written in.
+impl Comments for WgslLanguage {}

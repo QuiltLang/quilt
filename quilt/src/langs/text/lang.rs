@@ -10,7 +10,7 @@
 //! (#144) treats a panic as a hard failure for every language including the
 //! unsupported cases, which is what surfaced it.
 
-use crate::lang::{Arity, FlatNode, Hole, InnerKind, Language, LanguagePost};
+use crate::lang::{Arity, Comments, FlatNode, Hole, InnerKind, Language, LanguagePost};
 use crate::prelude::*;
 use crate::qterm::QTerm;
 use crate::term::CmdOrHole;
@@ -102,6 +102,12 @@ impl LanguagePost for TextLanguagePost {
         }
         Ok(crate::qterm::tuple(TEXT_TAG, plugs, &self.cmds))
     }
+}
+
+impl Comments for TextLanguage {
+    /// Plain text has no comment syntax, so every spelling would corrupt the
+    /// output rather than annotate it.
+    const LINE: Option<&'static str> = None;
 }
 
 /**************************************************************/

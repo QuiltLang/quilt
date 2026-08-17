@@ -1,5 +1,5 @@
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     qterm::{QTerm, QTermTag},
     term::Term,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
@@ -96,3 +96,7 @@ impl TSProvider for TypeScriptProvider {
 
 pub type TypeScriptLanguage = TSLanguage<TypeScriptProvider>;
 pub type DynTypeScriptLanguage = DynTSLanguage<TypeScriptProvider>;
+
+/// The `//` default is right for TypeScript, header included: it once emitted
+/// Rust's `//!` — valid, but a Rust idiom leaking into another language.
+impl Comments for TypeScriptLanguage {}

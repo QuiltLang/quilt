@@ -228,8 +228,10 @@ pub struct Spec {
     pub cross: CrossSpec,
 
     /// The comment introducer the CLI puts on a generated file of this
-    /// language. Absent when the language has none that a *prefix* can express
-    /// (HTML's comments are delimited; plain text has none at all).
+    /// language — the claim `quilt::langs::header_comment` (and so the
+    /// language's own `Comments::HEADER`) is held to. Absent when the language
+    /// has none that a *prefix* can express (HTML's comments are delimited;
+    /// plain text has none at all).
     #[serde(default)]
     pub comment_prefix: Option<String>,
 }

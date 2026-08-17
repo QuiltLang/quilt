@@ -1,5 +1,5 @@
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     qterm::{QTerm, QTermTag},
     term::Term,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
@@ -88,3 +88,7 @@ impl TSProvider for PythonProvider {
 
 pub type PythonLanguage = TSLanguage<PythonProvider>;
 pub type DynPythonLanguage = DynTSLanguage<PythonProvider>;
+
+impl Comments for PythonLanguage {
+    const LINE: Option<&'static str> = Some("#");
+}

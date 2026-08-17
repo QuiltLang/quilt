@@ -12,7 +12,7 @@
 //! squash to one expression — empty, or an expression preceded by comments).
 
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -105,3 +105,7 @@ fn is_expr_tag(tag: &str) -> bool {
 
 pub type NixLanguage = TSLanguage<NixProvider>;
 pub type DynNixLanguage = DynTSLanguage<NixProvider>;
+
+impl Comments for NixLanguage {
+    const LINE: Option<&'static str> = Some("#");
+}

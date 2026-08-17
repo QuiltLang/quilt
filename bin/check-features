@@ -100,6 +100,24 @@ else
   fail=1
 fi
 
+# --- 5. quilt-lsp sees the language registry it reads -----------------------
+#
+# Each quilt-lsp adapter takes its line comment from `quilt::langs`, whose
+# entries are gated on quilt's *per-language* features — `quilt/parse` alone
+# leaves the entry absent and the lookup returns `None` (issue #194).
+#
+# The ordinary `cargo test` cannot catch a feature mapping that misses one:
+# it builds the whole workspace, and the other members pull `quiltlang` with
+# default features, so every language is on regardless of what quilt-lsp asked
+# for. Building quilt-lsp *alone* is what exposes it.
+step "quilt-lsp alone resolves every adapter's language"
+if cargo test "${MANIFEST[@]}" -p quilt-lsp --quiet comment_syntax; then
+  echo "    ok  -p quilt-lsp (no workspace feature unification)"
+else
+  echo "error: quilt-lsp's features do not enable the quilt languages it reads" >&2
+  fail=1
+fi
+
 echo
 if [ "$fail" -ne 0 ]; then
   echo "feature matrix FAILED" >&2

@@ -517,20 +517,24 @@ fn expand_to<LS: Languages, MS: MetaLanguages>(
     Ok(hashbang)
 }
 
-/// The line-comment introducer for the `DO NOT EDIT` header, chosen from the
-/// generated file's extension so the header is valid in the language we just
-/// generated.
+/// The comment introducer for the `DO NOT EDIT` header, asked of the language
+/// the generated file's extension names, so the header is valid in the language
+/// we just generated.
 ///
-/// The table itself lives in `quilt::langs::comment_prefix`, beside the
-/// language modules rather than here: as a hardcoded match in the CLI it was
-/// disconnected from the language registry, so a new host silently inherited
-/// Rust's `//!` — issue #136. Anything unrecognised still falls back to `//!`,
+/// The extension is the language name here — `.py`, `.rs`, `.lean` are exactly
+/// the registry's aliases, and `generate` runs on the expand-cache-hit path,
+/// before any `Multi` exists to ask a better question of. The answer itself
+/// comes from the language (`Comments::HEADER`, via the registry): as a
+/// hardcoded match in the CLI it was disconnected from the language impls, so a
+/// new host silently inherited Rust's `//!` — issues #136, #194.
+///
+/// Anything the registry does not recognise still falls back to `//!`,
 /// preserving the previous behaviour for extensions that name no language.
 fn header_comment(filename: &str) -> &'static str {
     std::path::Path::new(filename)
         .extension()
         .and_then(|e| e.to_str())
-        .and_then(quilt::langs::comment_prefix)
+        .and_then(quilt::langs::header_comment)
         .unwrap_or("//!")
 }
 

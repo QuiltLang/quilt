@@ -27,7 +27,7 @@
 //! see [`statement_hole_ordinals`] (#234).
 
 use crate::{
-    lang::{Arity, FlatNode, InnerKind, Language, LanguagePost},
+    lang::{Arity, Comments, FlatNode, InnerKind, Language, LanguagePost},
     prelude::*,
     qterm::QTerm,
     term::CmdOrHole,
@@ -399,6 +399,13 @@ fn strip_wrapped_selects(
 /// wrapper described on [`statement_hole_ordinals`].
 #[derive(Default)]
 pub struct SqlLanguage(TSLanguage<SqlProvider>);
+
+impl Comments for SqlLanguage {
+    /// `--` is the one line comment every dialect agrees on; `#` is a `MySQL`
+    /// extension, and this one spelling has to serve `sql`, `mysql` and
+    /// `mariadb` alike.
+    const LINE: Option<&'static str> = Some("--");
+}
 
 impl Language for SqlLanguage {
     type Post = TSLanguagePost;

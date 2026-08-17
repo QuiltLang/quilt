@@ -95,7 +95,22 @@ impl TSProvider for YourProvider {
 
 pub type YourLanguage = TSLanguage<YourProvider>;
 pub type DynYourLanguage = DynTSLanguage<YourProvider>;
+
+// How your language spells comments. Required: the registry lookups
+// `langs::line_comment` / `langs::header_comment` are generated from the `Omni`
+// table below and will not compile without it (issue #194). Both default to
+// `//`; override `LINE` for anything else, and `HEADER` only where a generated
+// file's banner wants a different form — Rust's is `//!`, an inner doc comment.
+impl Comments for YourLanguage {
+    const LINE: Option<&'static str> = Some("#");
+}
 ```
+
+If your comments are *delimited* rather than prefixed, say so with `const LINE:
+Option<&'static str> = None`: a prefix alone would open a comment that never
+closes, and every caller has a fallback for the languages that decline. HTML is
+the worked example. The same answer feeds quilt-lsp, which takes each adapter's
+`CommentSyntax::line` from here rather than declaring its own.
 
 ### `meta.rs` (host languages only)
 
@@ -199,7 +214,13 @@ If you want the language accessible via `dict_omni_language()` (needed for tests
 If the language will be a host ground language in the LSP:
 
 1. Add a `LanguageAdapter` impl in `quilt-lsp/src/adapters.rs` defining:
-   - `comment_syntax()` — how to write placeholder comments.
+   - `comment_syntax()` — how to write placeholder comments. Take `line` from
+     `quilt::langs::line_comment(<your language>)` rather than spelling it
+     again; only the block delimiters are the adapter's own, because for a
+     language with no block comment they are a projection workaround rather
+     than a fact about the language. Your quilt-lsp feature must enable the
+     matching quilt language (`your_lang = ["quilt/your_lang"]`), or that
+     lookup returns `None` at runtime.
    - `splice_block()` — the placeholder for a quote in the projected document.
    - `wrap_fragment(body)` — how to wrap a quoted fragment so the downstream server tokenizes it.
 2. Add a `MetaLanguageAdapter` impl for the projection logic.
@@ -236,6 +257,7 @@ What you declare, and what the battery does with it:
 | `lift_marker` + `[[lift]]` | values lift to the declared tag and text, **and the lifted literal reparses in your grammar** — the check that catches escaping bugs |
 | `lift_from` / `lift_from_unsupported` | your `MetaLanguage::lift_str` spells exactly the targets you claim, and refuses the rest |
 | `[[glyphs]]` | each Quilt glyph you declare as your language's own syntax is one Quilt actually reserves, `\<glyph>` escapes it, and the fragment you supply parses in your language with the declared tag — checked again end-to-end through a real quote, from every host |
+| `comment_prefix` | the `DO NOT EDIT` header for a generated file of your language — your `Comments::HEADER`, read back through `quilt::langs::header_comment` — is what you declared, and every alias of your language agrees |
 | `[capabilities]` | each claim matches reality; `partial`/`unsupported` must carry a `note`, and `partial`/`planned` a tracking `issue` |
 
 Three rules worth knowing before you start:

@@ -1,5 +1,5 @@
 use crate::{
-    lang::{Arity, InnerKind},
+    lang::{Arity, Comments, InnerKind},
     qterm::QTerm,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
@@ -120,6 +120,14 @@ fn unsupported_shape(qterm: &QTerm) -> miette::Report {
 
 pub type RustLanguage = TSLanguage<RustProvider>;
 pub type DynRustLanguage = DynTSLanguage<RustProvider>;
+
+impl Comments for RustLanguage {
+    const LINE: Option<&'static str> = Some("//");
+    /// Rust is the one language whose header is not its plain line comment.
+    /// `//!` is an inner doc comment, so the `DO NOT EDIT` banner documents the
+    /// generated module rather than whatever item happens to follow it.
+    const HEADER: Option<&'static str> = Some("//!");
+}
 
 #[cfg(test)]
 mod tests {
