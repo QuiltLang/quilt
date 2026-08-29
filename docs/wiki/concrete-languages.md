@@ -519,7 +519,7 @@ Each language is gated behind a Cargo feature with the same name (`quilt/Cargo.t
 ```toml
 [features]
 default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "sql"]
-parse = ["dep:tree-sitter", "dep:tree-sitter-quilt", "dep:tree-sitter-rust", "dep:tree-sitter-python"]
+parse = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-python"]
 bash  = ["dep:tree-sitter-bash", "parse"]
 html  = ["dep:tree-sitter-html", "parse"]
 sql   = ["parse"]   # ~42MB of vendored parser.c — see quilt/Cargo.toml

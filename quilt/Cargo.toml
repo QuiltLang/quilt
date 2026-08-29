@@ -33,7 +33,6 @@ tracing-subscriber = {workspace = true, features = ["env-filter"]}
 # can depend on quilt with `default-features = false, features = ["rust"]` and
 # build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
 tree-sitter = {workspace = true, optional = true}
-tree-sitter-quilt = {workspace = true, optional = true}
 # The downstream grammars (rust, python, typescript, wgsl, bash, html, zsh, nix)
 # are vendored under `grammars/<lang>/` and compiled by `build.rs`, not pulled as
 # crates — that keeps `quiltlang` free of the git dependencies crates.io rejects
@@ -60,15 +59,15 @@ workspace = true
 [features]
 bootstrap = ["parse"]
 default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix", "lean", "sql"]
-# `parse` enables tree-sitter: the Quilt-source parser (`node`/`treesitter`),
-# the `Language` providers, `omni`, and `Multi`'s parse path. Off by default for
+# `parse` enables tree-sitter: the `Language` providers, `omni`, and `Multi`'s
+# parse path. Not the *Quilt* parser — `node` is hand-written and needs no
+# grammar (issue #254), so it is in the runtime-only build too. Off by default for
 # the runtime-only consumers (e.g. nanobots-codegen on wasm). It also pulls in
 # the vendored rust + python parsers (the host languages); `build.rs` compiles
 # their C when this feature is set. The target-language features below each add
 # their own vendored parser and imply `parse`.
 parse = [
   "dep:tree-sitter",
-  "dep:tree-sitter-quilt",
   "dep:tree-sitter-language",
 ]
 bash = ["parse"]
@@ -96,15 +95,12 @@ typescript = []
 wgsl = ["parse"]
 zsh = ["parse"]
 
-# `Node::parse` before and after issue #254 — the hand-written scanner against
-# the tree-sitter path it replaced, which `node::ts` keeps compiling as the
-# differential oracle. `harness = false` because it is a `fn main`, not
-# `#[bench]` (which is nightly-only) and not criterion (a dev-dependency tree
-# out of all proportion to one comparison).
+# Throughput of the Quilt surface parser (issue #254). `harness = false`
+# because it is a `fn main`, not `#[bench]` (nightly-only) and not criterion (a
+# dev-dependency tree out of all proportion to one number).
 [[bench]]
 harness = false
 name = "parse"
-required-features = ["parse"]
 
 [[bin]]
 name = "quilt"

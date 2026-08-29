@@ -27,7 +27,6 @@ members = [
   "quilt-python",
   "quilt-wasm",
   "quilt-expand-wasm",
-  "tree-sitter-quilt",
 ]
 
 [workspace.package]
@@ -43,7 +42,6 @@ repository = "https://github.com/QuiltLang/quilt"
 quilt = {version = "0.5.0", path = "quilt", package = "quiltlang", default-features = false}
 # `version` is required alongside `path` so dependents (quiltlang, quilt-lsp)
 # can be `cargo publish`ed: the registry copy drops `path` and keeps `version`.
-tree-sitter-quilt = {version = "0.5.0", path = "tree-sitter-quilt"}
 # Grammar crates pulled from their QuiltLang forks (previously git submodules).
 # Each is pinned to an explicit `rev` so the build is reproducible even for
 # library consumers and `cargo install --git … quiltlang` runs that ignore our

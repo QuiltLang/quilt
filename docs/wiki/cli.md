@@ -173,14 +173,6 @@ build-py && test-py
 build-ts && test-ts
 ```
 
-### `ts-gen`
-
-Regenerate the tree-sitter parser after editing `tree-sitter-quilt/grammar.js`.
-
-```sh
-ts-gen
-```
-
 ### `install_tools`
 
 Build and install the editor tooling: `cargo install --path quilt-lsp`, `npm install` for the VS Code extension, and symlink `tools/quilt` into `~/.vscode/extensions/quiltlang`. Idempotent; warns if `rust-analyzer` or `rust-script` is missing. See [Editor Setup](editor-setup.md).

@@ -44,11 +44,22 @@ pub enum Node {
 
 ### Why the parser is hand-written
 
-It was tree-sitter until issue #254. Quilt's outer syntax is a *lexical* language — glyph-delimited brackets over otherwise-opaque text — so a generalised parser was building a CST only for `Node::from_ts` to walk it and throw it away. Scanning straight to `Node` is about **25× faster** (`cargo bench -p quiltlang --bench parse`) and drops tree-sitter from this stage entirely: `Node::parse` is available in the runtime-only build.
+It was a tree-sitter grammar (`tree-sitter-quilt`) until issue #254. Quilt's outer syntax is a *lexical* language — glyph-delimited brackets over otherwise-opaque text — so a generalised parser was building a CST only for a conversion pass to walk it and throw it away. Scanning straight to `Node` measured **24.5× faster** on the repo's own corpus, and drops tree-sitter from this stage entirely: `Node::parse` is available in the runtime-only build.
 
-`tree-sitter-quilt/grammar.js` is still the *specification*, and is still what [`quilt-lsp`](lsp.md) and the VS Code extension read. So it has to keep agreeing with the scanner, and `quilt/tests/parser_differential.rs` is what holds it to that: it runs both over every `.quilt` file in the repo, the grammar's own corpus, and ~120k generated inputs, and requires identical `Node` trees down to the spans. `quilt::node::ts` keeps the tree-sitter path compiling for exactly that purpose; nothing else calls it.
+The grammar has since been deleted, and with it the second description of Quilt's surface syntax. While both existed a differential test held them to producing identical `Node` trees over every `.quilt` file in the repo, the grammar's own corpus, and ~2M generated inputs; `quilt/tests/parser_corpus.rs` keeps that corpus and snapshots the answers, so what the two agreed on is still pinned.
 
 Nesting is tracked on an explicit stack rather than by recursion, so a pathological input is a diagnostic rather than a stack overflow.
+
+### `scan`: the same parser, recovering
+
+`Node::parse` is strict — the first diagnostic wins and nothing comes back. [`quilt-lsp`](lsp.md) cannot use that: an editor buffer is malformed most of the time someone is typing in it, and blanking every region in the file between typing a `↖` and its `↗` would make the server useless.
+
+So `quilt::node::scan` is the recovering half of the same parser. It returns every token with its byte range plus every diagnostic, and never fails. Two properties make it what the server builds on:
+
+- the tokens **tile the source** — concatenating them reproduces it exactly — so a consumer copying spans sees every byte;
+- Quilt's own comments (`⟨//⟩`, `⟨/*⟩…⟨*/⟩`) get tokens, where the `Node` tree drops them. That is what lets the server translate a `⟨//⟩` into the host language's `//` without re-scanning for it.
+
+Both halves drive the same scanner, so the server and the compiler cannot disagree about where a bracket is.
 
 ## Stage 2: `Multi::parse_chain` — building the QTerm tree
 

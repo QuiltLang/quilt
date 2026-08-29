@@ -100,14 +100,6 @@ bootstrap0    # BootstrapMetaLanguage only
 bootstrap1    # RustMetaLanguage only (self-hosted)
 check-bootstrap   # run bootstrap and fail if meta.rs changed (CI / pre-commit)
 
-# Regenerate the tree-sitter-quilt parser after editing grammar.js
-ts-gen
-# Run the quilt grammar corpus + verify src/parser.c matches grammar.js (CI).
-# The corpus lives in tree-sitter-quilt/test/corpus/; `tree-sitter test --update`
-# fills in expected trees, but review them — an --update accepts whatever the
-# parser currently does, right or wrong.
-check-grammar-quilt
-
 # Language support matrix (issue #144). Capability claims live in
 # conformance/spec/<lang>.toml; the battery in quilt-conformance/ verifies each
 # one and regenerates conformance/support-matrix.json (rendered by the website's
@@ -201,7 +193,7 @@ The file stem determines the **language chain**: reading the extensions right-to
 
 ## Workspace layout
 
-Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`), `tree-sitter-quilt` (grammar for the quilt bracket language). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`, `-sql`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean/sql, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`, and each grammar's `grammar.json`, which `bin/gen-arity` derives the variadic tables from — issue #202); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. Non-crate directories: `bin/` (helper scripts, fronted by `bin/main`), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment, which also puts `bin/` on `PATH`).
+Workspace members (root `Cargo.toml`): `quilt` (core library + CLI; Cargo package `quiltlang` with `[lib] name = "quilt"` — `quilt` is taken on crates.io), `quilt-lsp` (LSP server), `quilt-conformance` (dev-only capability-matrix harness, `publish = false`; in `default-members` so plain `cargo test` runs it), `quilt-python` (PyO3 bindings; Cargo crate `quilt_python`). The other grammars (`tree-sitter-rust`, `-python`, `-typescript`, `-html`, `-wgsl`, `-bash`, `-zsh`, `-nix`, `-lean`, `-sql`) live in forks under `github.com/QuiltLang` (pinned by rev in the root `Cargo.toml` `[workspace.dependencies]`). `quilt` does **not** depend on them as crates: it vendors their generated parsers under `quilt/grammars/<lang>/` and compiles them in `build.rs` (so `quiltlang` has no git deps and can publish to crates.io — issue #32). The vendored copies are regenerated from the pinned forks with `bin/sync-grammars` (the forks stay the canonical source; it also vendors each grammar's `highlights.scm` for python/html/bash/zsh/nix/lean/sql, exposed as `quilt::grammars::<lang>::HIGHLIGHTS_QUERY`, and each grammar's `grammar.json`, which `bin/gen-arity` derives the variadic tables from — issue #202); `bin/check-grammars` (CI) fails if they drift. `quilt-lsp` no longer depends on the forks either: it takes its grammar `LANGUAGE`s and highlight queries from the published `quiltlang` (`quilt::grammars`), so it is now crates.io-publishable too. The Quilt bracket syntax itself has no grammar crate: `quilt/src/node/parse.rs` is a hand-written scanner (issue #254), and `quilt-lsp` reads it through `quilt::node::scan` rather than parsing Quilt a second way. Non-crate directories: `bin/` (helper scripts, fronted by `bin/main`), `tools/quilt/` (VS Code extension), `docs/wiki/` (documentation wiki), `examples/`, `nix/` + `.envrc` (direnv environment, which also puts `bin/` on `PATH`).
 
 The `nanobots` project (gas-metered state-machine toolchain) lives in a **sibling repo** (`../nanobots`); it consumes quilt as a library (see Feature flags below).
 
@@ -224,7 +216,7 @@ Supporting modules: `term.rs` (the generic `Term` trait, `ArcTerm`, `STerm`), `v
 
 ### Surface syntax: `Node` (`quilt/src/node.rs`)
 
-The Quilt-level AST parsed by tree-sitter-quilt. Contains `Content`, `NewLine`, `Quote { anno, nodes, span }`, `Unquote { anno, nodes, span }`, `Lift` (↑), `Reduce` (↓), `Emit` (←), `Type` (⟨T⟩), `Name` (⟨N⟩). The quilt grammar lives in `tree-sitter-quilt/grammar.js`.
+The Quilt-level AST. Contains `Content`, `NewLine`, `Quote { anno, nodes, span }`, `Unquote { anno, nodes, span }`, `Lift` (↑), `Reduce` (↓), `Emit` (←), `Type` (⟨T⟩), `Name` (⟨N⟩). `Node::parse` is a hand-written scanner in `quilt/src/node/parse.rs`; `quilt::node::scan` is its recovering half, returning spanned tokens (Quilt comments included) plus diagnostics, which is what `quilt-lsp` builds its regions and projections on.
 
 ### Language traits (`quilt/src/lang.rs`, `quilt/src/meta.rs`)
 
@@ -292,7 +284,6 @@ Serialization is driven by a stack-based `StrCmd` sequence embedded in each `QTe
 - `quilt-lsp` — a multiplexing Language Server for `.quilt` files (tower-lsp). It parses the quilt structure, projects each language into a virtual document, proxies LSP traffic to per-language downstream servers (currently `rust-analyzer` for the ground language), and remaps positions in both directions. See `quilt-lsp/README.md` and `docs/wiki/lsp.md`.
 - `quilt-python/` (crate `quilt_python`) — PyO3 bindings exposing quilt's core IR (`QTerm`, the fluent `tb/.c/.w/.n/.p/.x/.e/.b` builder, `leaf/sym/quote/unquote/cmd/write/push/name/qlift`, `NL/POP/HOLE`, and `.coparse()`) to Python. This is the runtime that expanded `.py.quilt` files target (`PythonMetaLanguage` emits calls into it). The Python import name is **`quilt`** (`from quilt import *`): a `quilt/` package whose `__init__.py` re-exports the native `quilt._quilt` module. Built abi3 (one `.so` for CPython ≥3.8) via `bin/build-py` (maturin); `quilt` puts it on `PYTHONPATH` for `python3` runs. See `examples/hello.py.quilt`.
 - `quilt-wasm/` — wasm-bindgen bindings exposing the same core IR to JavaScript: the runtime expanded `.ts.quilt` files target, in the browser demos and on the CLI. Built with `bin/build-ts` (`--target nodejs`, into `pkg/`); `examples/web/build.mjs` builds `--target web` into `pkg-web/` for the browser. `quilt-wasm/node/` wraps it as the package `quilt run` binds the bare `quilt` import to, adding `↓` (reduce) — which re-expands a generated stage by shelling out to `$QUILT`, since the expander is not in the runtime crate. `examples/web/quilt-rt.js` is the same wrapper for the browser, calling an in-page WASI expander instead. See `examples/staged_pow.ts.quilt`.
-- `tree-sitter-quilt` — the Quilt bracket language (arrow brackets and special symbols). Source in `grammar.js`; regenerate the parser with `ts-gen`.
 
 ### Clippy configuration
 

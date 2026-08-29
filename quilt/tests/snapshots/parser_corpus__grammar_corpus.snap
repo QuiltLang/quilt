@@ -1,0 +1,82 @@
+---
+source: quilt/tests/parser_corpus.rs
+expression: rendered
+---
+--- "a\\↖b\\↗c\\↙d\\↘e\\↑f\\↓g\\←h\\⟨i\\⟩j\n"
+    [Content("a"), Content("↖"), Content("b"), Content("↗"), Content("c"), Content("↙"), Content("d"), Content("↘"), Content("e"), Content("↑"), Content("f"), Content("↓"), Content("g"), Content("←"), Content("h"), Content("⟨"), Content("i"), Content("⟩"), Content("j"), NewLine]
+--- "def m : IO Unit := do\n  let x \\← IO.getStdout\n  pure ()\n"
+    [Content("def m : IO Unit := do"), NewLine, Content("  let x "), Content("←"), Content(" IO.getStdout"), NewLine, Content("  pure ()"), NewLine]
+--- "let x <- IO.getStdout\n"
+    [Content("let x <- IO.getStdout"), NewLine]
+--- "a\\nb\\tc\\dd\\\"e\n"
+    [Content("a\\nb\\tc\\dd\\\"e"), NewLine]
+--- "a\\\\↖b↗\n"
+    [Content("a\\\\"), Quote { anno: "", nodes: [Content("b")], span: 3..10 }, NewLine]
+--- "↙x.↑↘\n"
+    [Unquote { anno: "", nodes: [Content("x."), Lift], span: 0..11 }, NewLine]
+--- "↖a↗.←\n"
+    [Quote { anno: "", nodes: [Content("a")], span: 0..7 }, Content("."), Emit, NewLine]
+--- "↓↖1 + 2↗\n"
+    [Reduce { anno: "" }, Quote { anno: "", nodes: [Content("1 + 2")], span: 3..14 }, NewLine]
+--- "py↓↖1 + 2↗\n"
+    [Reduce { anno: "py" }, Quote { anno: "", nodes: [Content("1 + 2")], span: 5..16 }, NewLine]
+--- "↖a↗\n"
+    [Quote { anno: "", nodes: [Content("a")], span: 0..7 }, NewLine]
+--- "fn mk() -> Result<⟨T⟩> { ⟨N⟩ }\n"
+    [Content("fn mk() -> Result<"), Type, Content("> { "), Name, Content(" }"), NewLine]
+--- "lean4↓↖1 + 2↗\n"
+    [Reduce { anno: "lean4" }, Quote { anno: "", nodes: [Content("1 + 2")], span: 8..19 }, NewLine]
+--- "↖a ↙b↘ c↗\n"
+    [Quote { anno: "", nodes: [Content("a "), Unquote { anno: "", nodes: [Content("b")], span: 5..12 }, Content(" c")], span: 0..17 }, NewLine]
+--- "↖a py↙b↘ c↗\n"
+    [Quote { anno: "", nodes: [Content("a "), Unquote { anno: "py", nodes: [Content("b")], span: 5..14 }, Content(" c")], span: 0..19 }, NewLine]
+--- "↙x↘\n"
+    [Unquote { anno: "", nodes: [Content("x")], span: 0..7 }, NewLine]
+--- "↖a ↖b↗ c↗\n"
+    [Quote { anno: "", nodes: [Content("a "), Quote { anno: "", nodes: [Content("b")], span: 5..12 }, Content(" c")], span: 0..17 }, NewLine]
+--- "↖a ↖b ↖c↗ d↗ e↗\n"
+    [Quote { anno: "", nodes: [Content("a "), Quote { anno: "", nodes: [Content("b "), Quote { anno: "", nodes: [Content("c")], span: 10..17 }, Content(" d")], span: 5..22 }, Content(" e")], span: 0..27 }, NewLine]
+--- "↖a ↙b ↖c ↙d↘↗↘ e↗\n"
+    [Quote { anno: "", nodes: [Content("a "), Unquote { anno: "", nodes: [Content("b "), Quote { anno: "", nodes: [Content("c "), Unquote { anno: "", nodes: [Content("d")], span: 15..22 }], span: 10..25 }], span: 5..28 }, Content(" e")], span: 0..33 }, NewLine]
+--- "↖↗\n"
+    [Quote { anno: "", nodes: [], span: 0..6 }, NewLine]
+--- "↖↙↘↗\n"
+    [Quote { anno: "", nodes: [Unquote { anno: "", nodes: [], span: 3..9 }], span: 0..12 }, NewLine]
+--- "↖a↗↖b↗\n"
+    [Quote { anno: "", nodes: [Content("a")], span: 0..7 }, Quote { anno: "", nodes: [Content("b")], span: 7..14 }, NewLine]
+--- "↖\ndef foo():\n    pass\n↗\n"
+    [Quote { anno: "", nodes: [NewLine, Content("def foo():"), NewLine, Content("    pass"), NewLine], span: 0..27 }, NewLine]
+--- "py↖a wgsl↖b↗ rs↙c↘ d↗\n"
+    [Quote { anno: "py", nodes: [Content("a "), Quote { anno: "wgsl", nodes: [Content("b")], span: 7..18 }, Content(" "), Unquote { anno: "rs", nodes: [Content("c")], span: 19..28 }, Content(" d")], span: 0..33 }, NewLine]
+--- "abc\\↖def\\↗ghi\n"
+    [Content("abc"), Content("↖"), Content("def"), Content("↗"), Content("ghi"), NewLine]
+--- "abc\\\\↖def\\\\↗ghi\n"
+    [Content("abc\\\\"), Quote { anno: "", nodes: [Content("def\\\\")], span: 5..16 }, Content("ghi"), NewLine]
+--- "1py↖1↗\n"
+    [Content("1"), Quote { anno: "py", nodes: [Content("1")], span: 1..10 }, NewLine]
+--- "⟨T⟩⟨N⟩\\⟨N\\⟩\n"
+    [Type, Name, Content("⟨"), Content("N"), Content("⟩"), NewLine]
+--- "⟨//⟩ comment ↖\n1 + 2\n⟨//⟩ comment\n"
+    [NewLine, Content("1 + 2"), NewLine]
+--- "⟨/*⟩ comment ↖ ⟨ */⟩ ⟨* /⟩ ⟨*/ ⟩ ⟨*/⟩\n1 + ⟨/*⟩ foo ⟨*/⟩ 2\n⟨/*⟩\nmulti\nline\ncomment\n⟨*/⟩\n"
+    [NewLine, Content("1 + "), Content(" 2"), NewLine]
+--- "// comment with ↑ quilt chars ↓\n1 + 2\n// another comment\n"
+    [PlainLineComment("// comment with ↑ quilt chars ↓"), NewLine, Content("1 + 2"), NewLine, PlainLineComment("// another comment"), NewLine]
+--- "/* block comment with ↑ quilt chars */\ncode\n/* multi\nline\nblock */\n"
+    [PlainBlockComment("/* block comment with ↑ quilt chars */"), NewLine, Content("code"), NewLine, PlainBlockComment("/* multi\nline\nblock */"), NewLine]
+--- "let url = \"https://example.com\";\n"
+    [Content("let url = \"https:"), PlainLineComment("//example.com\";"), NewLine]
+--- "lean4↖n + 1↗\n"
+    [Quote { anno: "lean4", nodes: [Content("n + 1")], span: 0..16 }, NewLine]
+--- "lean4↖↙lean4↙x↘↘↗\n"
+    [Quote { anno: "lean4", nodes: [Unquote { anno: "", nodes: [Unquote { anno: "lean4", nodes: [Content("x")], span: 11..23 }], span: 8..26 }], span: 0..29 }, NewLine]
+--- "x = 42↖1↗\n"
+    [Content("x = 42"), Quote { anno: "", nodes: [Content("1")], span: 6..13 }, NewLine]
+--- "let b = rs↖let x = 1; // hi↗;\n"
+    [Content("let b = "), Quote { anno: "rs", nodes: [Content("let x = 1; "), PlainLineComment("// hi")], span: 8..32 }, Content(";"), NewLine]
+--- "rs↖let y = ↙f() // hi↘;↗\n"
+    [Quote { anno: "rs", nodes: [Content("let y = "), Unquote { anno: "", nodes: [Content("f() "), PlainLineComment("// hi")], span: 13..28 }, Content(";")], span: 0..32 }, NewLine]
+--- "rs↖let x = 1; ⟨//⟩ note↗\n"
+    [Quote { anno: "rs", nodes: [Content("let x = 1; ")], span: 0..32 }, NewLine]
+--- "// prose about the ↙…↘ hole and the ↖…↗ brackets\n1 + 2\n⟨//⟩ and a quilt comment about ↙…↘ too\n"
+    [PlainLineComment("// prose about the ↙…↘ hole and the ↖…↗ brackets"), NewLine, Content("1 + 2"), NewLine]

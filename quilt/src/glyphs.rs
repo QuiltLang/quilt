@@ -20,9 +20,14 @@ pub const ESCAPE_LEN: usize = '\\'.len_utf8();
 
 /// The characters Quilt gives special meaning to, and hence the ones `\` can
 /// escape: the four quote/unquote arrows, lift, reduce, emit, and the `⟨…⟩`
-/// delimiters. Must stay in sync with the `_char` / `_non_escape` / `escape`
-/// character classes in `tree-sitter-quilt/grammar.js` — `tests/grammar_sync.rs`
-/// checks that they do.
+/// delimiters.
+///
+/// This is the single source of truth. `node::parse` reads it directly when
+/// deciding what may appear bare in content and what a `\` escapes, so the
+/// parser cannot drift from it — which it could when the same set was also
+/// spelled out in three character classes in a tree-sitter grammar, and did
+/// (`←` was Quilt's emit glyph but missing from the grammar's escape class, so
+/// `\←` parsed as a literal backslash-arrow — issue #141).
 pub const GLYPHS: [char; 9] = ['↖', '↗', '↙', '↘', '↑', '↓', '←', '⟨', '⟩'];
 
 /// The glyphs that are *operators* rather than brackets: `↑` lift, `↓` reduce,

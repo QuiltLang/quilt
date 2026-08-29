@@ -1,8 +1,5 @@
 mod parse;
-/// The tree-sitter parser this module's own parser replaced, kept as its
-/// differential oracle. See the module docs.
-#[cfg(feature = "parse")]
-pub mod ts;
+pub use parse::{scan, ParseError, Token, TokenKind};
 
 use crate::strcmd::PrefixWriter;
 use crate::term::Term;
@@ -58,8 +55,8 @@ impl Node {
     /// Parse a source string into a list of [`Node`]s.
     ///
     /// Hand-written recursive descent over Quilt's surface syntax, straight to
-    /// the term structure — see [`parse`] for what that has to be faithful to
-    /// and how it is held to it (issue #254).
+    /// the term structure (issue #254). [`scan`] is the recovering half of the
+    /// same parser, for callers that want every diagnostic and a tree anyway.
     ///
     /// Malformed bracket structure is a diagnostic, not a panic: an unbalanced
     /// `↖`/`↙` or a stray `↗`/`↘` returns an `Err` carrying a labelled span, so
@@ -248,8 +245,8 @@ mod tests {
     }
 
     /// Malformed bracket structure is an `Err`, never a panic. Each of these
-    /// used to abort the process via `unreachable!("… \"ERROR\"")` in
-    /// [`Node::from_ts`] — including under `quilt check`, which exists to report
+    /// used to abort the process via an `unreachable!` in the tree-sitter
+    /// parser — including under `quilt check`, which exists to report
     /// diagnostics and which lost the whole run (exit 101) to a single stray
     /// glyph.
     ///
@@ -300,29 +297,6 @@ mod tests {
             len < src.len(),
             "label should be narrower than the whole source, got {len} of {}",
             src.len()
-        );
-    }
-
-    /// An unrecognised node kind is a diagnostic, not a panic — so adding a rule
-    /// to `grammar.js` without teaching `from_ts` about it degrades gracefully.
-    /// `source_file` stands in for such a kind: it is a real node the grammar
-    /// produces, and one `from_ts` is never handed.
-    ///
-    /// About [`Node::parse_ts`], which is the oracle now rather than the
-    /// parser — but the oracle is only worth something if it still works.
-    #[cfg(feature = "parse")]
-    #[test]
-    fn unhandled_node_kind_is_an_error() {
-        let mut parser = tree_sitter::Parser::default();
-        parser
-            .set_language(&tree_sitter_quilt::LANGUAGE.into())
-            .unwrap();
-        let tree = parser.parse("abc", None).unwrap();
-        let err = Node::from_ts(&tree.root_node(), "abc")
-            .expect_err("`source_file` is not a kind `from_ts` handles");
-        assert!(
-            err.to_string().contains("unhandled node kind"),
-            "diagnostic should name the kind, got: {err}"
         );
     }
 

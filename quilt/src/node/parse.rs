@@ -7,17 +7,21 @@
 //! wanted, with the byte ranges recovered from the tree on the way past. This
 //! module skips both the tree and the walk.
 //!
-//! ## What it is faithful to
+//! ## Two ways in
 //!
-//! `tree-sitter-quilt/grammar.js` remains the *specification* — it is what the
-//! VS Code extension and `quilt-lsp`'s `regions` read, so it is not going
-//! anywhere, and a second parser that quietly disagreed with it would be worse
-//! than none. [`crate::node::ts`] keeps the tree-sitter path alive as an
-//! oracle and `tests/parser_differential.rs` runs both over a corpus, so
-//! "these agree" is checked rather than asserted.
+//! [`Node::parse`] is the strict one: the first diagnostic wins and nothing
+//! comes back. [`scan`] is the recovering one — every token with its byte
+//! range, every diagnostic, and no failure mode. `quilt-lsp` needs the second,
+//! because an editor buffer is malformed most of the time someone is typing in
+//! it, and blanking every region in the file between the `↖` and its `↗` would
+//! make the server useless. Both drive the same `step`, so there is one
+//! description of Quilt's syntax here and not two.
 //!
-//! The behaviours that are easy to get wrong, all pinned by that test and by
-//! the unit tests below:
+//! ## The behaviours that are easy to get wrong
+//!
+//! All pinned by the unit tests below and by `tests/parser_corpus.rs`, whose
+//! snapshots were taken while `tree-sitter-quilt` was still in the tree and
+//! agreeing with this parser token for token:
 //!
 //! * **Longest-token-at-each-position.** `1a↓` is content `1` then a reduce
 //!   annotated `a`, because the annotation regex `([a-z][a-z0-9]*)?↓` cannot
@@ -32,6 +36,8 @@
 //!   never merge the content on either side into one node.
 //! * **An escape is its own node.** `a\↖b` is three `Content`s, not one.
 //! * **An unterminated `/* … */` is not a comment at all**, it is content.
+//! * **A `⟨/*⟩` comment ends at the first *aligned* `⟨*/⟩`**, not the first one
+//!   that occurs — see [`Parser::q_block_close`].
 //!
 //! ## Depth
 //!
@@ -63,14 +69,150 @@ const NAME: &str = "⟨N⟩";
 
 /// Parse Quilt source into a flat list of [`Node`]s. See [`Node::parse`].
 pub(super) fn parse(src: &str) -> Result<Box<[Node]>> {
-    Parser {
-        src,
-        pos: 0,
-        probe_failed_until: 0,
-        no_block_close_from: usize::MAX,
-        no_q_block_close_from: usize::MAX,
+    Parser::new(src).run()
+}
+
+/// One token of Quilt surface syntax, with its byte range in the source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Token {
+    /// Byte range in the scanned source.
+    pub span: Span,
+    pub kind: TokenKind,
+}
+
+/// What a [`Token`] is.
+///
+/// Deliberately coarser than [`Node`] in one place and finer in another. An
+/// escape (`\↖`) is [`TokenKind::Content`], because to every consumer it is
+/// bytes to copy. A Quilt comment is [`TokenKind::Comment`] and *has* a token,
+/// where the `Node` tree drops it entirely — which is the whole reason
+/// `quilt-lsp` needs [`scan`] rather than [`Node::parse`]: it has to know where
+/// the comments were in order to translate their delimiters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TokenKind {
+    /// Ordinary text, including `\`-escapes.
+    Content,
+    NewLine,
+    /// `anno↖`, annotation included.
+    OpenQuote,
+    /// `↗`. Also the token that closes a `↙` a `↗` was written for — a
+    /// mismatched closer still closes, and the diagnostic says so.
+    CloseQuote,
+    /// `anno↙`, annotation included.
+    OpenUnquote,
+    /// `↘`.
+    CloseUnquote,
+    Lift,
+    /// `anno↓`, annotation included.
+    Reduce,
+    Emit,
+    Type,
+    Name,
+    /// `// …`, which passes through to the output.
+    PlainLineComment,
+    /// `/* … */`, which passes through to the output.
+    PlainBlockComment,
+    /// `⟨//⟩ …` or `⟨/*⟩ … ⟨*/⟩` — Quilt's own, stripped from the output. The
+    /// line form's span includes the newline and indentation in front of it,
+    /// which is how deleting one leaves no blank line behind.
+    Comment,
+    /// Bytes the scanner could not make sense of. There is a matching entry in
+    /// [`scan`]'s error list; this is here so the tokens still tile the source.
+    Error,
+}
+
+/// A diagnostic from [`scan`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseError {
+    pub span: Span,
+    pub message: Box<str>,
+}
+
+/// Scan Quilt source into spanned tokens and diagnostics. Never fails.
+///
+/// The tokens **tile the source**: concatenating `&src[t.span]` in order
+/// reproduces it exactly, with no gaps and no overlaps (`tokens_tile_the_source`
+/// pins that). A consumer walking them therefore sees every byte, which is what
+/// lets `quilt-lsp` build its projections by copying spans.
+///
+/// Recovery is: a bracket still open at end of input is reported and closed, a
+/// closer that does not match the open bracket closes it anyway, and anything
+/// else unparseable becomes a [`TokenKind::Error`] token and the scan carries
+/// on. Errors come back in source order.
+#[must_use]
+pub fn scan(src: &str) -> (Vec<Token>, Vec<ParseError>) {
+    let mut parser = Parser::new(src);
+    let mut tokens: Vec<Token> = Vec::new();
+    let mut errors: Vec<ParseError> = Vec::new();
+    // (index of the opening token, is it a quote)
+    let mut stack: Vec<(usize, bool)> = Vec::new();
+    loop {
+        let start = parser.pos;
+        let step = parser.step(stack.last().map(|&(_, quote)| quote));
+        let span = start..parser.pos;
+        let kind = match step {
+            Step::Done => break,
+            Step::Skip => TokenKind::Comment,
+            Step::Node(node) => token_kind(&node),
+            Step::Open { quote, .. } => {
+                stack.push((tokens.len(), quote));
+                if quote {
+                    TokenKind::OpenQuote
+                } else {
+                    TokenKind::OpenUnquote
+                }
+            }
+            Step::Close { error, .. } => {
+                let (_, quote) = stack.pop().expect("`step` only closes an open frame");
+                if let Some(what) = error {
+                    errors.push(ParseError {
+                        span: span.clone(),
+                        message: what.into(),
+                    });
+                }
+                if quote {
+                    TokenKind::CloseQuote
+                } else {
+                    TokenKind::CloseUnquote
+                }
+            }
+            Step::Error(what) => {
+                errors.push(ParseError {
+                    span: span.clone(),
+                    message: what.into(),
+                });
+                TokenKind::Error
+            }
+        };
+        tokens.push(Token { span, kind });
     }
-    .run()
+    for (open, _) in stack {
+        errors.push(ParseError {
+            span: tokens[open].span.clone(),
+            message: NEVER_CLOSED.into(),
+        });
+    }
+    errors.sort_by_key(|e| (e.span.start, e.span.end));
+    (tokens, errors)
+}
+
+/// The [`TokenKind`] for a node the scanner just produced.
+fn token_kind(node: &Node) -> TokenKind {
+    match node {
+        Node::Content(_) => TokenKind::Content,
+        Node::NewLine => TokenKind::NewLine,
+        Node::Lift => TokenKind::Lift,
+        Node::Reduce { .. } => TokenKind::Reduce,
+        Node::Emit => TokenKind::Emit,
+        Node::Type => TokenKind::Type,
+        Node::Name => TokenKind::Name,
+        Node::PlainLineComment(_) => TokenKind::PlainLineComment,
+        Node::PlainBlockComment(_) => TokenKind::PlainBlockComment,
+        // `step` never returns a bracket as a `Step::Node`; they arrive as
+        // `Step::Open`/`Step::Close` and are handled there.
+        Node::Quote { .. } => TokenKind::OpenQuote,
+        Node::Unquote { .. } => TokenKind::OpenUnquote,
+    }
 }
 
 /// One open `anno↖` / `anno↙` and the nodes collected inside it so far.
@@ -93,6 +235,10 @@ impl Frame {
 }
 
 /// What one turn of the scanner produced.
+///
+/// Every variant leaves [`Parser::pos`] past the token it consumed, including
+/// [`Step::Error`] — which is what lets a caller that wants every diagnostic
+/// (rather than just the first) carry on scanning. See [`scan`].
 enum Step {
     /// End of input.
     Done,
@@ -104,11 +250,16 @@ enum Step {
         quote: bool,
         open: usize,
     },
-    /// A closer matching the frame on top of the stack; carries its end offset
-    /// so the bracket's span can be sealed.
+    /// A closer for the frame on top of the stack; carries its end offset so
+    /// the bracket's span can be sealed. `error` is set when the closer was the
+    /// *wrong* one — the frame still closes, because leaving it open would
+    /// report every bracket after it as broken too.
     Close {
         end: usize,
+        error: Option<&'static str>,
     },
+    /// Malformed syntax. The offending token is consumed; nothing is produced.
+    Error(&'static str),
 }
 
 struct Parser<'a> {
@@ -126,20 +277,39 @@ struct Parser<'a> {
     no_q_block_close_from: usize,
 }
 
-impl Parser<'_> {
+impl<'a> Parser<'a> {
+    fn new(src: &'a str) -> Self {
+        Self {
+            src,
+            pos: 0,
+            probe_failed_until: 0,
+            no_block_close_from: usize::MAX,
+            no_q_block_close_from: usize::MAX,
+        }
+    }
+
+    /// The strict parse behind [`Node::parse`]: the first diagnostic wins and
+    /// nothing is returned. [`scan`] is the recovering half.
     fn run(mut self) -> Result<Box<[Node]>> {
         let mut stack: Vec<Frame> = Vec::new();
         let mut out: Vec<Node> = Vec::new();
         loop {
-            match self.step(stack.last().map(|f| f.quote))? {
+            let start = self.pos;
+            match self.step(stack.last().map(|f| f.quote)) {
                 Step::Done => {
                     // Anything still open at end of input is the error, and the
                     // *innermost* one is the most specific thing to point at.
                     return match stack.last() {
-                        Some(frame) => Err(never_closed(frame)),
+                        Some(frame) => Err(error(frame.opener(), NEVER_CLOSED)),
                         None => Ok(out.into()),
                     };
                 }
+                // The recovering half keeps going here (see [`scan`]); the
+                // strict one stops at the first thing it cannot justify.
+                Step::Error(what)
+                | Step::Close {
+                    error: Some(what), ..
+                } => return Err(error(start..self.pos, what)),
                 Step::Skip => {}
                 Step::Node(node) => sink(&mut stack, &mut out).push(node),
                 Step::Open { anno, quote, open } => stack.push(Frame {
@@ -148,7 +318,7 @@ impl Parser<'_> {
                     quote,
                     nodes: Vec::new(),
                 }),
-                Step::Close { end } => {
+                Step::Close { end, error: None } => {
                     let frame = stack.pop().expect("`step` only closes an open frame");
                     let span = frame.open..end;
                     let nodes = frame.nodes.into_iter().map(arc).collect();
@@ -167,10 +337,10 @@ impl Parser<'_> {
     /// Consume one token. `open` is the top frame's kind, or `None` at ground
     /// level — it decides both whether a closer is expected and how far a line
     /// comment may run (issue #226).
-    fn step(&mut self, open: Option<bool>) -> Result<Step> {
+    fn step(&mut self, open: Option<bool>) -> Step {
         let start = self.pos;
         let Some(c) = self.peek() else {
-            return Ok(Step::Done);
+            return Step::Done;
         };
         match c {
             // A Quilt comment may begin with the newline before it, taking the
@@ -178,96 +348,88 @@ impl Parser<'_> {
             // though — otherwise this is an ordinary line break.
             '\n' => {
                 if self.comment_after_newline(open.is_some()) {
-                    return Ok(Step::Skip);
+                    return Step::Skip;
                 }
                 self.pos += 1;
-                Ok(Step::Node(Node::NewLine))
+                Step::Node(Node::NewLine)
             }
             '⟨' => self.angle(open.is_some()),
+            // A closer that does not match the open frame still closes it.
+            // Leaving the frame open would report every bracket after it as
+            // broken too, and one typo should be one diagnostic.
             '↗' | '↘' => {
                 let quote = c == '↗';
+                self.pos += c.len_utf8();
                 match open {
-                    Some(o) if o == quote => {
-                        self.pos += c.len_utf8();
-                        Ok(Step::Close { end: self.pos })
-                    }
-                    Some(_) if quote => Err(error(
-                        glyph_span(start, c),
-                        "expected `↘` here: the open bracket is a `↙` unquote",
-                    )),
-                    Some(_) => Err(error(
-                        glyph_span(start, c),
-                        "expected `↗` here: the open bracket is a `↖` quote",
-                    )),
-                    None => Err(error(
-                        glyph_span(start, c),
-                        if quote {
-                            "no `↖` is open here"
-                        } else {
-                            "no `↙` is open here"
-                        },
-                    )),
+                    Some(o) if o == quote => Step::Close {
+                        end: self.pos,
+                        error: None,
+                    },
+                    Some(_) if quote => Step::Close {
+                        end: self.pos,
+                        error: Some("expected `↘` here: the open bracket is a `↙` unquote"),
+                    },
+                    Some(_) => Step::Close {
+                        end: self.pos,
+                        error: Some("expected `↗` here: the open bracket is a `↖` quote"),
+                    },
+                    None if quote => Step::Error("no `↖` is open here"),
+                    None => Step::Error("no `↙` is open here"),
                 }
             }
             '↖' | '↙' => {
                 self.pos += c.len_utf8();
-                Ok(Step::Open {
+                Step::Open {
                     anno: "".into(),
                     quote: c == '↖',
                     open: start,
-                })
+                }
             }
             '↑' => {
                 self.pos += c.len_utf8();
-                Ok(Step::Node(Node::Lift))
+                Step::Node(Node::Lift)
             }
             '↓' => {
                 self.pos += c.len_utf8();
-                Ok(Step::Node(Node::Reduce { anno: "".into() }))
+                Step::Node(Node::Reduce { anno: "".into() })
             }
             '←' => {
                 self.pos += c.len_utf8();
-                Ok(Step::Node(Node::Emit))
+                Step::Node(Node::Emit)
             }
-            '⟩' => Err(error(
-                glyph_span(start, c),
-                "a bare `⟩` has no meaning; `\\⟩` writes one literally",
-            )),
+            '⟩' => {
+                self.pos += c.len_utf8();
+                Step::Error("a bare `⟩` has no meaning; `\\⟩` writes one literally")
+            }
             // `\` + glyph is an escape and becomes content holding the bare
             // glyph. `\` + anything else is ordinary content (the grammar's
             // `_non_escape`), and a `\` with nothing after it is an error.
             '\\' => match self.char_at(start + ESCAPE_LEN) {
                 Some(g) if GLYPHS.contains(&g) => {
                     self.pos = start + ESCAPE_LEN + g.len_utf8();
-                    Ok(Step::Node(Node::Content(
-                        self.src[start + ESCAPE_LEN..self.pos].into(),
-                    )))
+                    Step::Node(Node::Content(self.src[start + ESCAPE_LEN..self.pos].into()))
                 }
-                Some(_) => self.content(),
-                None => Err(error(
-                    start..start + ESCAPE_LEN,
-                    "a `\\` escape needs a character after it",
-                )),
+                Some(_) => Step::Node(self.content()),
+                None => {
+                    self.pos += ESCAPE_LEN;
+                    Step::Error("a `\\` escape needs a character after it")
+                }
             },
             '/' if self.at(start, "//") => {
                 self.pos = start + 2;
                 let end = self.line_end(open.is_some());
                 self.pos = end;
-                Ok(Step::Node(Node::PlainLineComment(
-                    self.src[start..end].into(),
-                )))
+                Step::Node(Node::PlainLineComment(self.src[start..end].into()))
             }
             '/' if self.at(start, "/*") => match self.block_close(start + 2) {
                 Some(end) => {
                     self.pos = end;
-                    Ok(Step::Node(Node::PlainBlockComment(
-                        self.src[start..end].into(),
-                    )))
+                    Step::Node(Node::PlainBlockComment(self.src[start..end].into()))
                 }
                 // An unterminated `/*` is not a comment token at all, so it is
                 // plain content — matching the grammar, where the token simply
                 // fails to match and the character class picks the `/` up.
-                None => self.content(),
+                None => Step::Node(self.content()),
             },
             // An annotated opener or reduce: `[a-z][a-z0-9]*` immediately
             // followed by `↖`, `↙` or `↓`.
@@ -277,19 +439,19 @@ impl Parser<'_> {
                     Some(g) => {
                         let anno: Box<str> = self.src[start..run].into();
                         self.pos = run + g.len_utf8();
-                        Ok(match g {
+                        match g {
                             '↓' => Step::Node(Node::Reduce { anno }),
                             _ => Step::Open {
                                 anno,
                                 quote: g == '↖',
                                 open: start,
                             },
-                        })
+                        }
                     }
-                    None => self.content(),
+                    None => Step::Node(self.content()),
                 }
             }
-            _ => self.content(),
+            _ => Step::Node(self.content()),
         }
     }
 
@@ -298,7 +460,7 @@ impl Parser<'_> {
     /// Always consumes at least one character: every caller has already
     /// established that the character at [`Self::pos`] is not the start of some
     /// other token.
-    fn content(&mut self) -> Result<Step> {
+    fn content(&mut self) -> Node {
         let start = self.pos;
         while let Some(c) = self.peek() {
             match c {
@@ -307,12 +469,9 @@ impl Parser<'_> {
                     // An `escape` token starts here.
                     Some(g) if GLYPHS.contains(&g) => break,
                     Some(other) => self.pos += ESCAPE_LEN + other.len_utf8(),
-                    None => {
-                        return Err(error(
-                            self.pos..self.pos + ESCAPE_LEN,
-                            "a `\\` escape needs a character after it",
-                        ))
-                    }
+                    // A `\` with nothing after it. Everything before it is
+                    // content; `step` reports the `\` itself next time round.
+                    None => break,
                 },
                 _ if GLYPHS.contains(&c) => break,
                 '/' if self.at(self.pos, "//") => break,
@@ -340,42 +499,36 @@ impl Parser<'_> {
             }
         }
         debug_assert!(self.pos > start, "content must make progress");
-        Ok(Step::Node(Node::Content(self.src[start..self.pos].into())))
+        Node::Content(self.src[start..self.pos].into())
     }
 
     /// A token opening with `⟨`: the two placeholders, or one of Quilt's own
     /// comments. Anything else is a stray glyph.
-    fn angle(&mut self, bracketed: bool) -> Result<Step> {
+    fn angle(&mut self, bracketed: bool) -> Step {
         let start = self.pos;
         if self.at(start, TYPE) {
             self.pos = start + TYPE.len();
-            return Ok(Step::Node(Node::Type));
+            return Step::Node(Node::Type);
         }
         if self.at(start, NAME) {
             self.pos = start + NAME.len();
-            return Ok(Step::Node(Node::Name));
+            return Step::Node(Node::Name);
         }
         if self.at(start, Q_LINE) {
             self.pos = start + Q_LINE.len();
             self.pos = self.line_end(bracketed);
-            return Ok(Step::Skip);
+            return Step::Skip;
         }
         if self.at(start, Q_BLOCK_OPEN) {
-            return match self.q_block_close(start + Q_BLOCK_OPEN.len()) {
-                Some(end) => {
-                    self.pos = end;
-                    Ok(Step::Skip)
-                }
-                None => Err(error(
-                    start..start + Q_BLOCK_OPEN.len(),
-                    "this `⟨/*⟩` comment is never closed",
-                )),
+            let Some(end) = self.q_block_close(start + Q_BLOCK_OPEN.len()) else {
+                self.pos = start + Q_BLOCK_OPEN.len();
+                return Step::Error("this `⟨/*⟩` comment is never closed");
             };
+            self.pos = end;
+            return Step::Skip;
         }
-        Err(error(
-            glyph_span(start, '⟨'),
-            "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨//⟩` or `⟨/*⟩`",
-        ))
+        self.pos = start + '⟨'.len_utf8();
+        Step::Error("`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨//⟩` or `⟨/*⟩`")
     }
 
     /// A Quilt comment reached from the newline in front of it, which it takes
@@ -523,11 +676,6 @@ impl Parser<'_> {
     }
 }
 
-/// The byte range of a single glyph at `at`.
-fn glyph_span(at: usize, glyph: char) -> Span {
-    at..at + glyph.len_utf8()
-}
-
 /// Where the next node goes: into the innermost open bracket, or into the
 /// top-level list.
 fn sink<'a>(stack: &'a mut [Frame], out: &'a mut Vec<Node>) -> &'a mut Vec<Node> {
@@ -537,14 +685,11 @@ fn sink<'a>(stack: &'a mut [Frame], out: &'a mut Vec<Node>) -> &'a mut Vec<Node>
     }
 }
 
-/// The diagnostic for a bracket still open at end of input.
-///
-/// It points at the *opener* rather than at the end of the file: that is where
-/// the fix goes, and a zero-width span past the last byte renders with no caret
-/// at all. `tests/ui/unbalanced_bracket.rs.quilt` pins the rendering.
-fn never_closed(frame: &Frame) -> miette::Report {
-    error(frame.opener(), "this bracket is never closed")
-}
+/// The diagnostic for a bracket still open at end of input. It is reported
+/// against the *opener* rather than the end of the file: that is where the fix
+/// goes, and a zero-width span past the last byte renders with no caret at all.
+/// `tests/ui/unbalanced_bracket.rs.quilt` pins the rendering.
+const NEVER_CLOSED: &str = "this bracket is never closed";
 
 /// A diagnostic for malformed Quilt surface syntax, pointing at the offending
 /// span. Callers holding the source text (the CLI, the LSP) can attach it with
@@ -659,7 +804,7 @@ mod tests {
     /// A `⟨/*⟩` comment ends at the first *aligned* `⟨*/⟩`, not the first one
     /// that occurs — the grammar's body alternatives consume the character
     /// after a `⟨`, which can be the `⟨` that would have closed the comment.
-    /// Found by the sweep in `tests/parser_differential.rs`, not by hand.
+    /// Found by the sweep in `tests/parser_corpus.rs`, not by hand.
     #[test]
     fn a_block_comment_terminator_can_be_eaten() {
         // `⟨⟨` is one body item, so by the time the scan resumes the `⟨*/⟩`

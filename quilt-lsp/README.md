@@ -13,7 +13,7 @@ per-language downstream servers, and remaps positions in both directions.
 Implemented:
 
 - **Quilt syntax diagnostics** — bracket/structure errors from the
-  tree-sitter-quilt parse, on every `.quilt` file.
+  a `quilt::node::scan`, on every `.quilt` file.
 - **Full Rust support for the ground language** via a downstream `rust-analyzer`:
   hover, go-to-definition, completion, and diagnostics, with positions mapped
   between the `.quilt` file and the projected `.rs` virtual document.
@@ -106,7 +106,7 @@ mirror Lean's `s!"{a}{b}"` interpolation rather than a list).
 | Module | Responsibility |
 |---|---|
 | `lineindex` | byte ↔ UTF-16/UTF-8 ↔ `Position` (the one place encoding math lives) |
-| `regions` | tree-sitter-quilt parse → region tree + syntax errors |
+| `regions` | `quilt::node::scan` → region tree + syntax errors |
 | `srcmap` | bidirectional byte map between quilt and a virtual document |
 | `projection` | build the ground virtual document + its source map |
 | `child` | spawn/frame/route a downstream LSP (rust-analyzer) |

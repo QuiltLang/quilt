@@ -68,7 +68,6 @@ check() {
   run_gate "clippy"        "$BIN/lint" -- -D warnings
   run_gate "test"          "$BIN/ctest"
   run_gate "bootstrap"     "$BIN/check-bootstrap"
-  run_gate "quilt grammar" "$BIN/check-grammar-quilt"
   run_gate "arity tables"  "$BIN/check-arity"
   run_gate "lift shapes"   "$BIN/check-lifts"
   run_gate "builder calls" "$BIN/check-chain"

@@ -1,19 +1,22 @@
-//! `Node::parse` before and after issue #254: tree-sitter versus the
-//! hand-written scanner, on the same input, producing the same terms.
-//!
-//! Deliberately not criterion. The question this answers is "which order of
-//! magnitude", the two implementations are both in-tree
-//! ([`Node::parse_ts`] is kept as the differential oracle), and a dev-dependency
-//! that pulls forty crates to tell us that is a bad trade. Run it with:
+//! How fast the Quilt surface parser is, over the repo's own corpus.
 //!
 //! ```sh
 //! cargo bench -p quiltlang --bench parse
 //! ```
 //!
-//! Both halves are checked to produce identical terms before either is timed,
-//! so a number here is never bought by parsing less.
+//! For scale: this replaced a tree-sitter parse plus a CST walk (issue #254),
+//! which measured **172.46 µs/KiB** on this same corpus against the scanner's
+//! 7.02 — a 24.55× difference. The grammar is gone, so that comparison can no
+//! longer be re-run here; the number is recorded rather than reproduced.
+//!
+//! [`scan`] is timed alongside [`Node::parse`] because `quilt-lsp` runs it on
+//! every keystroke: it does the same scan and allocates a token per construct
+//! instead of a tree.
+//!
+//! Deliberately not criterion — the question is "which order of magnitude", and
+//! a dev-dependency that pulls forty crates to answer it is a bad trade.
 
-use quilt::node::Node;
+use quilt::node::{scan, Node};
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -23,33 +26,28 @@ fn main() {
     let total: usize = corpus.iter().map(|(_, s)| s.len()).sum();
     println!("corpus: {} inputs, {total} bytes\n", corpus.len());
 
-    // A number bought by parsing less is not a number. Check first.
+    // A benchmark over input that does not parse is measuring the error path.
     for (name, src) in &corpus {
-        assert_eq!(
-            Node::parse(src).map_err(|e| e.to_string()),
-            Node::parse_ts(src).map_err(|e| e.to_string()),
-            "{name}: the two parsers disagree — benchmark is meaningless"
+        assert!(
+            Node::parse(src).is_ok() || name.contains("/ui/"),
+            "{name}: does not parse, so timing it measures the wrong thing"
         );
     }
 
-    let hand = time(&corpus, Node::parse);
-    let ts = time(&corpus, Node::parse_ts);
+    let parse = time(&corpus, Node::parse);
+    let scanned = time(&corpus, scan);
 
-    println!("{:<14}{:>12}{:>14}{:>12}", "", "total", "per KiB", "vs");
-    row("tree-sitter", ts, total, ts);
-    row("hand-written", hand, total, ts);
+    println!("{:<16}{:>12}{:>14}", "", "total", "per KiB");
+    row("Node::parse", parse, total);
+    row("scan", scanned, total);
 }
 
 // A corpus is never big enough for `usize -> f64` to lose anything that
 // matters to a µs-per-KiB figure.
 #[allow(clippy::cast_precision_loss)]
-fn row(name: &str, d: Duration, bytes: usize, base: Duration) {
+fn row(name: &str, d: Duration, bytes: usize) {
     let per_kib = d.as_secs_f64() / (bytes as f64 / 1024.0) * 1e6;
-    println!(
-        "{name:<14}{:>10.2?}{per_kib:>12.2} µs{:>11.2}×",
-        d,
-        base.as_secs_f64() / d.as_secs_f64()
-    );
+    println!("{name:<16}{:>10.2?}{per_kib:>12.2} µs", d);
 }
 
 /// Time `parse` over the whole corpus, best-of-N so a stray scheduling hiccup

@@ -37,7 +37,7 @@ operator: `\↖ \↗ \↙ \↘ \↑ \↓ \← \⟨ \⟩`. This matters when the 
 uses one of these characters itself — Lean spells monadic bind `←` and coercion
 `↑`, so a `do` block inside a `lean↖…↗` quote needs `\←` (or Lean's ASCII alias
 `<-`, which Quilt does not touch). The set lives in `node::GLYPHS` and must stay
-in sync with the character classes in `tree-sitter-quilt/grammar.js`.
+the single source of truth for the parser, which reads it directly.
 
 A backslash before anything else is *not* an escape and passes through verbatim,
 so a target-language `"\n"` needs no special handling.

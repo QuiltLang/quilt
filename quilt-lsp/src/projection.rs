@@ -13,8 +13,9 @@
 
 use crate::adapters::{language_adapter, CommentSyntax, LanguageAdapter, MetaLanguageAdapter};
 use crate::lineindex::{Encoding, LineIndex};
-use crate::regions::{self, LangZipper};
+use crate::regions::{open_anno, tokens as scan_tokens, LangZipper};
 use crate::srcmap::{Builder, SourceMap};
+use quilt::node::{Token, TokenKind};
 use std::ops::Range;
 use tower_lsp::lsp_types::{Position, Range as LspRange};
 
@@ -59,12 +60,12 @@ pub fn project(
     lang: &dyn LanguageAdapter,
     chain: &[&str],
 ) -> Projection {
-    let mut parser = regions::parser();
-    let tree = regions::parse(&mut parser, text, None);
-    let root = tree.root_node();
+    let tokens = scan_tokens(text);
 
     let mut b = Builder::new();
-    let mut quotes: Vec<(tree_sitter::Node, LangZipper)> = Vec::new();
+    // Quotes queued for the fragment pass, each as the index of its opening
+    // token plus the language zipper resolved at that point.
+    let mut quotes: Vec<(usize, LangZipper)> = Vec::new();
 
     // Scaffolding the placeholders need in order to typecheck, emitted as one
     // synthetic span so every real byte still maps exactly (shifted by its
@@ -75,16 +76,7 @@ pub fn project(
 
     let env = Ground { meta, lang };
     let zipper = LangZipper::from_chain(chain);
-    emit_ground(
-        &mut b,
-        text,
-        root,
-        0..text.len(),
-        0,
-        &env,
-        &zipper,
-        &mut quotes,
-    );
+    emit_ground(&mut b, text, &tokens, &mut 0, 0, &env, &zipper, &mut quotes);
 
     // Fragment pass (transitive: a fragment surfaces nested quotes).
     let mut fragment_ranges = Vec::new();
@@ -100,14 +92,11 @@ pub fn project(
         if !is_lang {
             continue;
         }
-        let Some(window) = inner_window(q) else {
-            continue;
-        };
         let (pre, post) = lang.wrap_fragment(n);
         n += 1;
         let start = b.len();
         b.synth(&pre);
-        emit_fragment(&mut b, text, q, window, lang, &qz, &mut quotes);
+        emit_fragment(&mut b, text, &tokens, &mut (q + 1), lang, &qz, &mut quotes);
         b.synth(&post);
         fragment_ranges.push(start..b.len());
     }
@@ -162,12 +151,11 @@ pub fn project_fragments(
     lang: &dyn LanguageAdapter,
     chain: &[&str],
 ) -> Vec<FragmentDoc> {
-    let mut parser = regions::parser();
-    let tree = regions::parse(&mut parser, text, None);
+    let tokens = scan_tokens(text);
 
     let zipper = LangZipper::from_chain(chain);
-    let mut quotes: Vec<(tree_sitter::Node, LangZipper)> = Vec::new();
-    collect_quotes(text, tree.root_node(), &zipper, &mut quotes);
+    let mut quotes: Vec<(usize, LangZipper)> = Vec::new();
+    collect_quotes(text, &tokens, &mut 0, &zipper, &mut quotes);
 
     let mut out = Vec::new();
     let mut sink = Vec::new(); // emit_fragment queues nested quotes here; ignored.
@@ -178,11 +166,9 @@ pub fn project_fragments(
         if !is_lang {
             continue;
         }
-        let Some(window) = inner_window(q) else {
-            continue;
-        };
+        let window = inner_window(text, &tokens, q);
         let mut b = Builder::new();
-        emit_fragment(&mut b, text, q, window.clone(), lang, &qz, &mut sink);
+        emit_fragment(&mut b, text, &tokens, &mut (q + 1), lang, &qz, &mut sink);
         let (vtext, map) = b.finish();
         let line_index = LineIndex::new(&vtext);
         out.push(FragmentDoc {
@@ -201,35 +187,76 @@ pub fn project_fragments(
     out
 }
 
-/// Walk the whole quilt CST collecting every `↖…↗` quote with its resolved
+/// Walk the token stream collecting every `↖…↗` quote with its resolved
 /// language zipper, threading quote/unquote nesting (see [`LangZipper`]).
-fn collect_quotes<'a>(
+/// Consumes tokens from `*i` up to the closer of the enclosing bracket.
+fn collect_quotes(
     text: &str,
-    node: tree_sitter::Node<'a>,
+    tokens: &[Token],
+    i: &mut usize,
     zipper: &LangZipper,
-    out: &mut Vec<(tree_sitter::Node<'a>, LangZipper)>,
+    out: &mut Vec<(usize, LangZipper)>,
 ) {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "quote" => {
-                let qz = zipper.quote(regions::node_anno(text, child));
-                out.push((child, qz.clone()));
-                collect_quotes(text, child, &qz, out);
+    while let Some(token) = tokens.get(*i) {
+        match token.kind {
+            TokenKind::CloseQuote | TokenKind::CloseUnquote => {
+                *i += 1;
+                return;
             }
-            "unquote" => collect_quotes(text, child, &zipper.unquote(), out),
-            _ => collect_quotes(text, child, zipper, out),
+            TokenKind::OpenQuote => {
+                let qz = zipper.quote(open_anno(text, &token.span));
+                out.push((*i, qz.clone()));
+                *i += 1;
+                collect_quotes(text, tokens, i, &qz, out);
+            }
+            TokenKind::OpenUnquote => {
+                *i += 1;
+                collect_quotes(text, tokens, i, &zipper.unquote(), out);
+            }
+            _ => *i += 1,
         }
     }
 }
 
-/// Byte window between a quote/unquote's brackets, `None` if malformed (mid-edit).
-fn inner_window(node: tree_sitter::Node) -> Option<Range<usize>> {
-    let count = node.child_count();
-    if count < 2 {
-        return None;
+/// Byte window between the brackets of the quote/unquote opening at token
+/// index `open`. A bracket left unclosed (mid-edit, which is most of the time
+/// in an editor) runs to the end of the source.
+fn inner_window(text: &str, tokens: &[Token], open: usize) -> Range<usize> {
+    let start = tokens[open].span.end;
+    let mut depth = 0usize;
+    for token in &tokens[open..] {
+        match token.kind {
+            TokenKind::OpenQuote | TokenKind::OpenUnquote => depth += 1,
+            TokenKind::CloseQuote | TokenKind::CloseUnquote => {
+                depth -= 1;
+                if depth == 0 {
+                    return start..token.span.start;
+                }
+            }
+            _ => {}
+        }
     }
-    Some(node.child(0)?.end_byte()..node.child(u32::try_from(count - 1).unwrap())?.start_byte())
+    start..text.len()
+}
+
+/// The whole `anno↖…↗` span of the bracket opening at `open`, and the index of
+/// the token after its closer.
+fn bracket_span(text: &str, tokens: &[Token], open: usize) -> (Range<usize>, usize) {
+    let start = tokens[open].span.start;
+    let mut depth = 0usize;
+    for (offset, token) in tokens[open..].iter().enumerate() {
+        match token.kind {
+            TokenKind::OpenQuote | TokenKind::OpenUnquote => depth += 1,
+            TokenKind::CloseQuote | TokenKind::CloseUnquote => {
+                depth -= 1;
+                if depth == 0 {
+                    return (start..token.span.end, open + offset + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    (start..text.len(), tokens.len())
 }
 
 /// The language pair driving a ground projection: the host `meta` (how stage-0
@@ -240,87 +267,93 @@ struct Ground<'e> {
     lang: &'e dyn LanguageAdapter,
 }
 
-/// Emit the ground (stage-0) projection over `window`. `stage` is the current
-/// quasi-quote depth: at stage 0 we copy ground source; deeper we copy nothing
-/// except stage-0 code reachable through `↙…↘` (which lowers the stage).
-/// `zipper` resolves the language of each quote encountered (see
-/// [`LangZipper`]); quotes are queued together with their resolved zipper.
+/// Emit the ground (stage-0) projection, consuming tokens from `*i` up to the
+/// closer of the enclosing bracket (which it consumes) or the end of the
+/// stream. `stage` is the current quasi-quote depth: at stage 0 we copy ground
+/// source; deeper we copy nothing except stage-0 code reachable through `↙…↘`
+/// (which lowers the stage). `zipper` resolves the language of each quote
+/// encountered (see [`LangZipper`]); quotes are queued with their resolved
+/// zipper.
 #[allow(clippy::too_many_arguments)]
-fn emit_ground<'a>(
+fn emit_ground(
     b: &mut Builder,
     text: &str,
-    node: tree_sitter::Node<'a>,
-    window: Range<usize>,
+    tokens: &[Token],
+    i: &mut usize,
     stage: i32,
     env: &Ground,
     zipper: &LangZipper,
-    quotes: &mut Vec<(tree_sitter::Node<'a>, LangZipper)>,
+    quotes: &mut Vec<(usize, LangZipper)>,
 ) {
-    let mut pos = window.start;
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.end_byte() <= window.start || child.start_byte() >= window.end {
-            continue; // bracket token or outside the window
-        }
-        let start = child.start_byte().max(window.start);
-        let end = child.end_byte().min(window.end);
-        if stage == 0 && start > pos {
-            // Ground gap. Comments are hidden in the quilt CST, so they surface
-            // here between visible nodes; translate their glyphs (everything
-            // else in a stage-0 gap is whitespace the comment regex absorbed).
-            emit_comment_gap(b, pos, &text[pos..start], env.lang.comment_syntax());
-        }
-        match child.kind() {
-            "quote" => {
-                let qz = zipper.quote(regions::node_anno(text, child));
+    while let Some(token) = tokens.get(*i) {
+        let span = token.span.clone();
+        match token.kind {
+            TokenKind::CloseQuote | TokenKind::CloseUnquote => {
+                *i += 1;
+                return;
+            }
+            TokenKind::OpenQuote => {
+                let qz = zipper.quote(open_anno(text, &span));
                 if stage == 0 {
-                    quotes.push((child, qz.clone())); // fragment candidate
+                    quotes.push((*i, qz.clone())); // fragment candidate
                 }
-                let body = inner_window(child).unwrap_or(start..end);
+                *i += 1;
                 if stage == 0 {
                     // A quote in ground position becomes a splice block holding
                     // its stage-0 `↙…↘` bodies (in the quote's local scope).
                     let block = env.meta.splice_block();
                     b.synth(block.open);
-                    emit_ground(b, text, child, body, 1, env, &qz, quotes);
+                    emit_ground(b, text, tokens, i, 1, env, &qz, quotes);
                     b.synth(block.close);
                 } else {
-                    emit_ground(b, text, child, body, stage + 1, env, &qz, quotes);
+                    emit_ground(b, text, tokens, i, stage + 1, env, &qz, quotes);
                 }
             }
-            "unquote" => {
-                let body = inner_window(child).unwrap_or(start..end);
+            TokenKind::OpenUnquote => {
+                *i += 1;
                 let inner = stage - 1;
-                emit_ground(b, text, child, body, inner, env, &zipper.unquote(), quotes);
+                emit_ground(b, text, tokens, i, inner, env, &zipper.unquote(), quotes);
                 if inner == 0 {
                     b.synth(env.meta.splice_block().terminator);
                 }
             }
-            "lift" | "reduce" | "emit" | "type" | "name" => {
+            TokenKind::Lift
+            | TokenKind::Reduce
+            | TokenKind::Emit
+            | TokenKind::Type
+            | TokenKind::Name => {
                 if stage == 0 {
                     b.synth(env.meta.glyph_placeholder());
                 }
+                *i += 1;
+            }
+            // Quilt's own comments are absent from the `Node` tree but present
+            // here, with the newline and indentation they swallowed — so their
+            // delimiters can be translated into the host language's.
+            TokenKind::Comment => {
+                if stage == 0 {
+                    emit_comment_gap(b, span.start, &text[span], env.lang.comment_syntax());
+                }
+                *i += 1;
             }
             // Preserve line count: a newline inside a quote is emitted (synth,
             // not copied — the fragment owns those bytes) so ground code after a
             // multi-line quote keeps its line numbers.
-            "newline" => {
+            TokenKind::NewLine => {
                 if stage == 0 {
-                    b.copy(start, &text[start..end]);
+                    b.copy(span.start, &text[span]);
                 } else {
                     b.synth("\n");
                 }
+                *i += 1;
             }
             _ => {
                 if stage == 0 {
-                    b.copy(start, &text[start..end]);
+                    b.copy(span.start, &text[span]);
                 }
+                *i += 1;
             }
         }
-        pos = end;
-    }
-    if stage == 0 && pos < window.end {
-        emit_comment_gap(b, pos, &text[pos..window.end], env.lang.comment_syntax());
     }
 }
 
@@ -328,48 +361,61 @@ fn emit_ground<'a>(
 /// copied; nested quotes/unquotes/glyphs are masked to `lang`'s placeholder
 /// (nested quotes are also queued for their own fragment). `zipper` is the
 /// fragment's own resolved zipper, used to resolve nested quote languages.
-fn emit_fragment<'a>(
+/// Consumes tokens from `*i` up to the fragment's closer.
+fn emit_fragment(
     b: &mut Builder,
     text: &str,
-    node: tree_sitter::Node<'a>,
-    window: Range<usize>,
+    tokens: &[Token],
+    i: &mut usize,
     lang: &dyn LanguageAdapter,
     zipper: &LangZipper,
-    quotes: &mut Vec<(tree_sitter::Node<'a>, LangZipper)>,
+    quotes: &mut Vec<(usize, LangZipper)>,
 ) {
-    let mut pos = window.start;
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.end_byte() <= window.start || child.start_byte() >= window.end {
-            continue;
-        }
-        let start = child.start_byte().max(window.start);
-        let end = child.end_byte().min(window.end);
-        if start > pos {
-            // Gap between embedded-language nodes: holds any hidden comments.
-            emit_comment_gap(b, pos, &text[pos..start], lang.comment_syntax());
-        }
-        match child.kind() {
-            "quote" => {
-                mask_multiline(b, &text[start..end], lang.splice_placeholder());
-                quotes.push((child, zipper.quote(regions::node_anno(text, child))));
+    while let Some(token) = tokens.get(*i) {
+        let span = token.span.clone();
+        match token.kind {
+            TokenKind::CloseQuote | TokenKind::CloseUnquote => {
+                *i += 1;
+                return;
             }
-            "unquote" => mask_multiline(b, &text[start..end], lang.splice_placeholder()),
-            "lift" | "reduce" | "emit" | "type" | "name" => b.synth(lang.splice_placeholder()),
-            _ => b.copy(start, &text[start..end]),
+            TokenKind::OpenQuote => {
+                let (whole, next) = bracket_span(text, tokens, *i);
+                mask_multiline(b, &text[whole], lang.splice_placeholder());
+                quotes.push((*i, zipper.quote(open_anno(text, &span))));
+                *i = next;
+            }
+            TokenKind::OpenUnquote => {
+                let (whole, next) = bracket_span(text, tokens, *i);
+                mask_multiline(b, &text[whole], lang.splice_placeholder());
+                *i = next;
+            }
+            TokenKind::Lift
+            | TokenKind::Reduce
+            | TokenKind::Emit
+            | TokenKind::Type
+            | TokenKind::Name => {
+                b.synth(lang.splice_placeholder());
+                *i += 1;
+            }
+            TokenKind::Comment => {
+                emit_comment_gap(b, span.start, &text[span], lang.comment_syntax());
+                *i += 1;
+            }
+            _ => {
+                b.copy(span.start, &text[span]);
+                *i += 1;
+            }
         }
-        pos = end;
-    }
-    if pos < window.end {
-        emit_comment_gap(b, pos, &text[pos..window.end], lang.comment_syntax());
     }
 }
 
-/// Translate quilt comment glyphs in a gap to the host language's comment
-/// syntax. Comments are *hidden* in the quilt CST, so they reach us as the text
-/// between visible nodes; the only other thing a gap can hold is the whitespace
-/// the comment regex absorbs (and, for a construct-free file, the whole body —
-/// which has no glyphs, so it copies through unchanged, preserving identity).
+/// Translate quilt comment glyphs to the host language's comment syntax.
+///
+/// This is called on a [`TokenKind::Comment`] span, which covers the whole
+/// comment plus the newline and indentation the line form swallowed. Before
+/// issue #254 comments were *absent* from the quilt CST and this had to be
+/// called on the gaps between visible nodes and re-find them; the scanner
+/// reports them as tokens, so the span is exact.
 ///
 /// We copy everything verbatim — preserving newlines, indentation, and the
 /// comment *body* (so downstream comment tokens map back onto the source) — and

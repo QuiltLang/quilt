@@ -16,5 +16,4 @@ CI runs these in the Nix devShell; they can all be reproduced locally
 - [ ] `bin/fmt-check` and `bin/lint -- -D warnings` — formatting + clippy clean
 - [ ] `bin/check-bootstrap` — if you touched expansion or `mk_meta.rs.quilt` (never edit `meta.rs` by hand)
 - [ ] `bin/check-examples` — committed example expansions still match
-- [ ] `bin/ts-gen` output committed — if you changed `tree-sitter-quilt/grammar.js`
 - [ ] Docs updated (`docs/wiki/`, README) if behavior or syntax changed

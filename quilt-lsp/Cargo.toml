@@ -17,7 +17,6 @@ serde_json.workspace = true
 tracing = {workspace = true}
 tracing-subscriber = {workspace = true, features = ["env-filter"]}
 tree-sitter = {workspace = true}
-tree-sitter-quilt = {workspace = true}
 # The downstream-language parsers + highlight queries come from the published
 # `quiltlang` crate's vendored `quilt::grammars` module (issue #32) — depending
 # on the tree-sitter-* forks directly would pull git deps crates.io rejects and

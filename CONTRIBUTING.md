@@ -47,7 +47,6 @@ bin/build-py && bin/test-py   # Python bindings + .py.quilt runtime
 A few project-specific things to know:
 
 - `quilt/src/langs/rust/meta.rs` is **generated** by the bootstrap from `mk_meta.rs.quilt` — don't edit it by hand; edit `mk_meta.rs.quilt` and run `bin/bootstrap`.
-- After editing `tree-sitter-quilt/grammar.js`, regenerate the parser with `bin/ts-gen` and commit the result.
 - Each example under `examples/` has a committed expansion that CI diffs against — re-expand and commit if your change affects output.
 
 ## Pull requests
