@@ -28,12 +28,3 @@ updates:
     groups:
       npm-minor-patch:
         update-types: ["minor", "patch"]
-
-  # tree-sitter grammar package (dev tooling).
-  - package-ecosystem: npm
-    directory: "/tree-sitter-quilt"
-    schedule:
-      interval: weekly
-    groups:
-      npm-minor-patch:
-        update-types: ["minor", "patch"]

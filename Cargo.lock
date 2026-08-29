@@ -1163,7 +1163,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tree-sitter",
- "tree-sitter-quilt",
 ]
 
 [[package]]
@@ -1202,7 +1201,6 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter",
  "tree-sitter-language",
- "tree-sitter-quilt",
 ]
 
 [[package]]
@@ -1865,15 +1863,6 @@ name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
-
-[[package]]
-name = "tree-sitter-quilt"
-version = "0.5.0"
-dependencies = [
- "cc",
- "tree-sitter",
- "tree-sitter-language",
-]
 
 [[package]]
 name = "unarray"

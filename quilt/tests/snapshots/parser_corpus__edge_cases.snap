@@ -1,0 +1,102 @@
+---
+source: quilt/tests/parser_corpus.rs
+expression: rendered
+---
+--- "https://example.com"
+    [Content("https:"), PlainLineComment("//example.com")]
+--- "a // b"
+    [Content("a "), PlainLineComment("// b")]
+--- "a//b\n//c"
+    [Content("a"), PlainLineComment("//b"), NewLine, PlainLineComment("//c")]
+--- "rs↖// hi↗;"
+    [Quote { anno: "rs", nodes: [PlainLineComment("// hi")], span: 0..13 }, Content(";")]
+--- "↖a//b↗c"
+    [Quote { anno: "", nodes: [Content("a"), PlainLineComment("//b")], span: 0..10 }, Content("c")]
+--- "↖ // x\n y ↗"
+    [Quote { anno: "", nodes: [Content(" "), PlainLineComment("// x"), NewLine, Content(" y ")], span: 0..15 }]
+--- "// comment ↗ arrow"
+    [PlainLineComment("// comment ↗ arrow")]
+--- "⟨//⟩ hi"
+    []
+--- "x\n  ⟨//⟩ hi\ny"
+    [Content("x"), NewLine, Content("y")]
+--- "x\n   \n  ⟨//⟩ hi\ny"
+    [Content("x"), NewLine, Content("y")]
+--- "x\n\t⟨//⟩ hi"
+    [Content("x")]
+--- "x\n \u{a0}⟨//⟩ hi"
+    [Content("x"), NewLine, Content(" \u{a0}")]
+--- "x\r\n⟨//⟩ hi"
+    [Content("x\r")]
+--- "a\n  ⟨/*⟩x⟨*/⟩\nb"
+    [Content("a"), NewLine, Content("b")]
+--- "⟨/*⟩a⟨*/⟩⟨/*⟩b⟨*/⟩"
+    []
+--- "x⟨/*⟩y⟨*/⟩z"
+    [Content("x"), Content("z")]
+--- "↖⟨/*⟩ ↗ ⟨*/⟩↗"
+    [Quote { anno: "", nodes: [], span: 0..27 }]
+--- "⟨/*⟩⟨⟨*/⟩"
+    ERR malformed Quilt syntax (source bytes 0..8) [0..8 "this `⟨/*⟩` comment is never closed"]
+--- "⟨/*⟩⟨⟨*/⟩⟨*/⟩"
+    []
+--- "⟨/*⟩⟨*/⟨*/⟩"
+    ERR malformed Quilt syntax (source bytes 0..8) [0..8 "this `⟨/*⟩` comment is never closed"]
+--- "⟨/*⟩⟨*/⟨⟨*/⟩"
+    []
+--- "/* unterminated"
+    [Content("/* unterminated")]
+--- "/*/"
+    [Content("/*/")]
+--- "/**/"
+    [PlainBlockComment("/**/")]
+--- "/***/"
+    [PlainBlockComment("/***/")]
+--- "/* a ** / b */"
+    [PlainBlockComment("/* a ** / b */")]
+--- "x = 42↖1↗"
+    [Content("x = 42"), Quote { anno: "", nodes: [Content("1")], span: 6..13 }]
+--- "1a↓"
+    [Content("1"), Reduce { anno: "a" }]
+--- "ab1c↖x↗"
+    [Quote { anno: "ab1c", nodes: [Content("x")], span: 0..11 }]
+--- "ab1c x↖y↗"
+    [Content("ab1c "), Quote { anno: "x", nodes: [Content("y")], span: 5..13 }]
+--- "aBc↖x↗"
+    [Content("aB"), Quote { anno: "c", nodes: [Content("x")], span: 2..10 }]
+--- "a_c↖x↗"
+    [Content("a_"), Quote { anno: "c", nodes: [Content("x")], span: 2..10 }]
+--- "lean4↖x↗ lean4↙y↘ lean4↓"
+    [Quote { anno: "lean4", nodes: [Content("x")], span: 0..12 }, Content(" "), Unquote { anno: "lean4", nodes: [Content("y")], span: 13..25 }, Content(" "), Reduce { anno: "lean4" }]
+--- "a \\↖ b"
+    [Content("a "), Content("↖"), Content(" b")]
+--- "a\\↖b"
+    [Content("a"), Content("↖"), Content("b")]
+--- "\\↖\\↗"
+    [Content("↖"), Content("↗")]
+--- "\\⟨T⟩"
+    ERR malformed Quilt syntax (source bytes 5..8) [5..8 "a bare `⟩` has no meaning; `\\⟩` writes one literally"]
+--- "a\\nb"
+    [Content("a\\nb")]
+--- "↖\\↗↗"
+    [Quote { anno: "", nodes: [Content("↗")], span: 0..10 }]
+--- "fn main() { let x = ↖1 + 2; }"
+    ERR malformed Quilt syntax (source bytes 20..23) [20..23 "this bracket is never closed"]
+--- "fn main() { let x = 1 ↗ 2; }"
+    ERR malformed Quilt syntax (source bytes 22..25) [22..25 "no `↖` is open here"]
+--- "fn main() { ↘ }"
+    ERR malformed Quilt syntax (source bytes 12..15) [12..15 "no `↙` is open here"]
+--- "↖↙↗"
+    ERR malformed Quilt syntax (source bytes 6..9) [6..9 "expected `↘` here: the open bracket is a `↙` unquote"]
+--- "py↖"
+    ERR malformed Quilt syntax (source bytes 0..5) [0..5 "this bracket is never closed"]
+--- "↖x↘"
+    ERR malformed Quilt syntax (source bytes 4..7) [4..7 "expected `↗` here: the open bracket is a `↖` quote"]
+--- "↙x↗"
+    ERR malformed Quilt syntax (source bytes 4..7) [4..7 "expected `↘` here: the open bracket is a `↙` unquote"]
+--- "↖//x↘↗"
+    ERR malformed Quilt syntax (source bytes 6..9) [6..9 "expected `↗` here: the open bracket is a `↖` quote"]
+--- "⟨X⟩"
+    ERR malformed Quilt syntax (source bytes 0..3) [0..3 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨//⟩` or `⟨/*⟩`"]
+--- "a\\"
+    ERR malformed Quilt syntax (source bytes 1..2) [1..2 "a `\\` escape needs a character after it"]

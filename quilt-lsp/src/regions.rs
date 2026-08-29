@@ -1,35 +1,33 @@
 //! Parsing `.quilt` source into a position-aware structure.
 //!
-//! `quilt`'s own `Node`/`QTerm` IR discards source ranges, so the server can't
-//! use them for position mapping. Instead we re-walk the `tree_sitter_quilt`
-//! CST directly — it carries byte ranges on every node — and build:
+//! `quilt`'s `Node` tree carries source ranges on its brackets but not on the
+//! text between them, and it drops Quilt's own comments entirely — so it is not
+//! enough on its own to map positions or to translate a `⟨//⟩` into the host
+//! language's `//`. [`quilt::node::scan`] is: it hands back every token with its
+//! byte range, comments included, and the tokens tile the source exactly.
+//!
+//! Before issue #254 this module re-walked a `tree_sitter_quilt` CST for the
+//! same information. The scanner replaced it, and it is the *same* scanner
+//! `Node::parse` runs — so the server and the compiler can no longer disagree
+//! about where a bracket is, which two parsers eventually would have.
+//!
+//! From those tokens this builds:
 //!
 //! * a [`Region`] tree (ground vs `↖↗` quote vs `↙↘` unquote), used by later
 //!   phases to project each language into its own virtual document, and
 //! * a list of syntax errors for diagnostics.
 
+use quilt::node::{scan, Token, TokenKind};
 use std::ops::Range;
-use tree_sitter::{Node, Parser, Tree};
 
 /// Byte length of an arrow glyph (`↖↗↙↘↑↓`). They are all 3 bytes in UTF-8.
 pub(crate) const ARROW_LEN: usize = "↖".len();
 
-/// Build a tree-sitter parser configured for the Quilt grammar.
-pub fn parser() -> Parser {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_quilt::LANGUAGE.into())
-        .expect("loading the Quilt grammar should never fail");
-    parser
-}
-
-/// Parse `.quilt` source into a CST. Pass `old_tree` for incremental re-parse
-/// (tree-sitter reuses unchanged subtrees). Parsing the raw document text (no
-/// wrapping) keeps byte offsets aligned with what the editor sees.
-pub fn parse(parser: &mut Parser, text: &str, old_tree: Option<&Tree>) -> Tree {
-    parser
-        .parse(text, old_tree)
-        .expect("parse only returns None when cancelled, which we never do")
+/// Scan `.quilt` source into tokens. Never fails: malformed input still yields
+/// tokens for everything it could read, which is what keeps the server useful
+/// on a half-typed buffer (see [`errors`]).
+pub fn tokens(text: &str) -> Vec<Token> {
+    scan(text).0
 }
 
 /// A syntax error discovered in the quilt structure.
@@ -39,65 +37,20 @@ pub struct SyntaxError {
     pub message: String,
 }
 
-/// Collect tree-sitter `ERROR`/`MISSING` nodes as syntax errors.
-pub fn collect_errors(tree: &Tree) -> Vec<SyntaxError> {
-    let mut out = Vec::new();
-    visit_errors(tree.root_node(), &mut out);
-    out
-}
-
-fn visit_errors(node: Node, out: &mut Vec<SyntaxError>) {
-    if node.is_missing() {
-        // Map raw tree-sitter node kinds to the actual glyphs the user wrote.
-        let glyph = match node.kind() {
-            "right_quote" => "↗",
-            "right_unquote" => "↘",
-            other => other,
-        };
-        out.push(SyntaxError {
-            range: node.byte_range(),
-            message: format!("missing `{glyph}`"),
-        });
-        return;
-    }
-    if node.is_error() {
-        // Prefer to report at each unclosed opening bracket in the ERROR
-        // subtree rather than the full ERROR span, which can cover the whole
-        // rest of the file and produce an overwhelming red underline.
-        let prev_len = out.len();
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            match child.kind() {
-                "left_quote" => out.push(SyntaxError {
-                    range: child.byte_range(),
-                    message: "unclosed `↖` — add `↗` to close".into(),
-                }),
-                "left_unquote" => out.push(SyntaxError {
-                    range: child.byte_range(),
-                    message: "unclosed `↙` — add `↘` to close".into(),
-                }),
-                _ if child.has_error() => visit_errors(child, out),
-                _ => {}
-            }
-        }
-        if out.len() == prev_len {
-            // No bracket or nested error found; point at the first character.
-            let start = node.start_byte();
-            let end = (start + 1).min(node.end_byte());
-            out.push(SyntaxError {
-                range: start..end,
-                message: "unexpected syntax".into(),
-            });
-        }
-        return;
-    }
-    if !node.has_error() {
-        return;
-    }
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        visit_errors(child, out);
-    }
+/// Every quilt-level syntax error in `text`, in source order.
+///
+/// The messages come from the parser itself rather than being reconstructed
+/// here from node kinds — which is how `missing right_quote` used to leak into
+/// a user-facing diagnostic.
+pub fn errors(text: &str) -> Vec<SyntaxError> {
+    scan(text)
+        .1
+        .into_iter()
+        .map(|e| SyntaxError {
+            range: e.span,
+            message: e.message.into_string(),
+        })
+        .collect()
 }
 
 /// What language family a region's body is.
@@ -168,17 +121,11 @@ impl LangZipper {
     }
 }
 
-/// The annotation on a quote/unquote node, e.g. `wgsl` in `wgsl↖…↗`: the
-/// opening token's text is `<anno>↖` (or `<anno>↙`); strip the arrow. Empty
-/// for plain brackets (or a malformed mid-edit node).
-pub(crate) fn node_anno<'t>(text: &'t str, node: Node) -> &'t str {
-    let Some(open) = node.child(0) else {
-        return "";
-    };
-    let open_text = &text[open.byte_range()];
-    open_text
-        .get(..open_text.len().saturating_sub(ARROW_LEN))
-        .unwrap_or("")
+/// The annotation on an opening token, e.g. `wgsl` in `wgsl↖…↗`: the token's
+/// text is `<anno>↖` (or `<anno>↙`), so strip the arrow. Empty for a plain
+/// bracket.
+pub(crate) fn open_anno<'t>(text: &'t str, open: &Range<usize>) -> &'t str {
+    text.get(open.start..open.end - ARROW_LEN).unwrap_or("")
 }
 
 /// A contiguous span of one language at one quasi-quote stage.
@@ -202,94 +149,100 @@ pub struct Region {
 /// Build the region tree for a document. `chain` is the language-extension
 /// chain from the filename, ground language first (see
 /// [`crate::adapters::lang_chain`]).
-pub fn regions(text: &str, tree: &Tree, chain: &[&str]) -> Region {
+///
+/// A bracket left unclosed — which, in an editor, is most of them most of the
+/// time — still gets a region, running to the end of the file. That is what
+/// keeps a fragment highlighted while its `↗` is still being typed.
+pub fn regions(text: &str, tokens: &[Token], chain: &[&str]) -> Region {
     let zipper = LangZipper::from_chain(chain);
-    let root = tree.root_node();
-    let mut children = Vec::new();
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        collect(text, child, &zipper, 0, &mut children);
-    }
-    Region {
+    // Regions under construction, outermost first; `open[0]` is the whole file.
+    let mut open = vec![Region {
         kind: RegionKind::Ground,
         lang: zipper.current().map(str::to_string),
         anno: String::new(),
         body: 0..text.len(),
         stage: 0,
-        children,
-    }
-}
+        children: Vec::new(),
+    }];
+    let mut zippers = vec![zipper];
 
-fn collect(text: &str, node: Node, zipper: &LangZipper, parent_stage: i32, out: &mut Vec<Region>) {
-    let kind = match node.kind() {
-        "quote" => RegionKind::Quote,
-        "unquote" => RegionKind::Unquote,
-        // content / newline / glyphs / comments belong to the parent region.
-        _ => return,
-    };
-
-    let count = node.child_count();
-    if count < 2 {
-        return; // malformed (mid-edit); errors are reported separately.
-    }
-    let open = node.child(0).expect("bracket node has an opening token");
-    let close = node
-        .child(u32::try_from(count - 1).unwrap())
-        .expect("bracket node has a closing token");
-
-    let anno = node_anno(text, node).to_string();
-
-    // Resolve the body's language by mirroring the lang zipper in `multi.rs`:
-    // a quote takes its annotation, the next chain default, or the enclosing
-    // language; an unquote drops back to the language one level up (its
-    // annotation, like in quilt proper, does not select a language).
-    let zipper = match kind {
-        RegionKind::Quote => zipper.quote(&anno),
-        RegionKind::Unquote | RegionKind::Ground => zipper.unquote(),
-    };
-    let lang = zipper.current().map(str::to_string);
-
-    let stage = parent_stage + if kind == RegionKind::Quote { 1 } else { -1 };
-    let body = open.end_byte()..close.start_byte();
-
-    let mut children = Vec::new();
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        // Skip the bracket tokens; recurse into nested quote/unquote bodies.
-        if child.id() == open.id() || child.id() == close.id() {
-            continue;
+    for token in tokens {
+        match token.kind {
+            TokenKind::OpenQuote | TokenKind::OpenUnquote => {
+                let quote = token.kind == TokenKind::OpenQuote;
+                let anno = open_anno(text, &token.span);
+                // Mirror the lang zipper in `multi.rs`: a quote takes its
+                // annotation, the next chain default, or the enclosing
+                // language; an unquote drops back one level (its annotation,
+                // like in quilt proper, does not select a language).
+                let inner = zippers.last().expect("the ground zipper is never popped");
+                let inner = if quote {
+                    inner.quote(anno)
+                } else {
+                    inner.unquote()
+                };
+                let stage = open
+                    .last()
+                    .expect("the ground region is never popped")
+                    .stage
+                    + if quote { 1 } else { -1 };
+                open.push(Region {
+                    kind: if quote {
+                        RegionKind::Quote
+                    } else {
+                        RegionKind::Unquote
+                    },
+                    lang: inner.current().map(str::to_string),
+                    anno: anno.to_string(),
+                    // Sealed by the matching closer, or at end of file.
+                    body: token.span.end..text.len(),
+                    stage,
+                    children: Vec::new(),
+                });
+                zippers.push(inner);
+            }
+            // `scan` only emits a closer for a bracket it has open, so there
+            // is always something to pop but the ground region.
+            TokenKind::CloseQuote | TokenKind::CloseUnquote if open.len() > 1 => {
+                let mut done = open.pop().expect("checked by the guard");
+                zippers.pop();
+                done.body.end = token.span.start;
+                open.last_mut()
+                    .expect("the ground region")
+                    .children
+                    .push(done);
+            }
+            _ => {}
         }
-        collect(text, child, &zipper, stage, &mut children);
     }
-
-    out.push(Region {
-        kind,
-        lang,
-        anno,
-        body,
-        stage,
-        children,
-    });
+    while open.len() > 1 {
+        let done = open.pop().expect("checked");
+        open.last_mut()
+            .expect("the ground region")
+            .children
+            .push(done);
+    }
+    open.pop().expect("the ground region")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn tree_of(text: &str) -> Tree {
-        parse(&mut parser(), text, None)
+    fn regions_of(text: &str, chain: &[&str]) -> Region {
+        regions(text, &tokens(text), chain)
     }
 
     #[test]
     fn clean_file_has_no_errors() {
         let text = "fn main() {\n    let x = ↖1 + 2↗;\n}\n";
-        assert!(collect_errors(&tree_of(text)).is_empty());
+        assert!(errors(text).is_empty());
     }
 
     #[test]
     fn unclosed_quote_is_an_error() {
         let text = "let x = ↖1 + 2;\n";
-        let errs = collect_errors(&tree_of(text));
+        let errs = errors(text);
         assert!(
             !errs.is_empty(),
             "expected a syntax error for the unclosed ↖"
@@ -301,7 +254,7 @@ mod tests {
         // The error must be a small squiggle on the `↖` glyph (3 bytes), not a
         // huge span covering the rest of the file.
         let text = "fn main() {\n    let x = ↖1 + 2;\n}\n";
-        let errs = collect_errors(&tree_of(text));
+        let errs = errors(text);
         assert_eq!(errs.len(), 1, "exactly one error: {errs:?}");
         let span = errs[0].range.end - errs[0].range.start;
         assert!(
@@ -314,7 +267,7 @@ mod tests {
     #[test]
     fn unclosed_unquote_error_is_localized_to_bracket() {
         let text = "↖ x ↙y + z\n↗\n";
-        let errs = collect_errors(&tree_of(text));
+        let errs = errors(text);
         assert!(!errs.is_empty(), "expected an error for the unclosed ↙");
         // Every error should be small.
         for e in &errs {
@@ -330,7 +283,7 @@ mod tests {
     fn missing_glyph_message_uses_arrow_symbol() {
         // MISSING node messages must show the actual glyph, not the ts node kind.
         let text = "let x = ↖1 + 2;\n";
-        let errs = collect_errors(&tree_of(text));
+        let errs = errors(text);
         for e in &errs {
             assert!(
                 !e.message.contains("right_quote"),
@@ -342,8 +295,7 @@ mod tests {
     #[test]
     fn extracts_quote_region() {
         let text = "let x = ↖1 + 2↗;\n";
-        let tree = tree_of(text);
-        let root = regions(text, &tree, &["rs"]);
+        let root = regions_of(text, &["rs"]);
         assert_eq!(root.kind, RegionKind::Ground);
         assert_eq!(root.children.len(), 1);
         let q = &root.children[0];
@@ -356,8 +308,7 @@ mod tests {
     #[test]
     fn annotation_overrides_language() {
         let text = "x = wgsl↖1.0↗;\n";
-        let tree = tree_of(text);
-        let root = regions(text, &tree, &["rs"]);
+        let root = regions_of(text, &["rs"]);
         let q = &root.children[0];
         assert_eq!(q.anno, "wgsl");
         assert_eq!(q.lang.as_deref(), Some("wgsl"));
@@ -367,8 +318,7 @@ mod tests {
     fn nested_quote_and_unquote_stages() {
         // ground -> quote(+1) -> unquote(0)
         let text = "↖ ↙x↘ ↗\n";
-        let tree = tree_of(text);
-        let root = regions(text, &tree, &["rs"]);
+        let root = regions_of(text, &["rs"]);
         let q = &root.children[0];
         assert_eq!(q.kind, RegionKind::Quote);
         assert_eq!(q.stage, 1);
@@ -384,8 +334,7 @@ mod tests {
         // WGSL, a splice inside it drops back to Rust, and a quote inside the
         // splice is WGSL again (the zipper re-feeds the default).
         let text = "let x = ↖a ↙f(↖b↗)↘ c↗;\n";
-        let tree = tree_of(text);
-        let root = regions(text, &tree, &["rs", "wgsl"]);
+        let root = regions_of(text, &["rs", "wgsl"]);
         assert_eq!(root.lang.as_deref(), Some("rs"));
         let q = &root.children[0];
         assert_eq!(q.lang.as_deref(), Some("wgsl"));
@@ -397,14 +346,67 @@ mod tests {
         assert_eq!(q2.lang.as_deref(), Some("wgsl"));
     }
 
+    /// The point of scanning with recovery rather than parsing strictly: a
+    /// buffer mid-keystroke still has regions.
+    ///
+    /// `quilt`'s `Node::parse` returns `Err` and nothing else for this input.
+    /// If the server used it, typing `↖` would blank every region, projection
+    /// and highlight in the file until the matching `↗` was typed — so the
+    /// quote region has to exist, and to run to the end of the file, while the
+    /// bracket is still open.
+    #[test]
+    fn an_unclosed_quote_still_has_a_region() {
+        let text = "let x = wgsl↖1.0\nlet y = 2;\n";
+        assert!(
+            quilt::node::Node::parse(text).is_err(),
+            "the strict parser rejects this"
+        );
+
+        let root = regions_of(text, &["rs"]);
+        assert_eq!(root.children.len(), 1, "{root:?}");
+        let q = &root.children[0];
+        assert_eq!(q.kind, RegionKind::Quote);
+        assert_eq!(q.lang.as_deref(), Some("wgsl"));
+        assert_eq!(q.stage, 1);
+        assert_eq!(&text[q.body.clone()], "1.0\nlet y = 2;\n");
+        assert_eq!(
+            errors(text).len(),
+            1,
+            "one diagnostic, not none and not many"
+        );
+    }
+
+    /// A stray closer is one diagnostic, and does not take the rest of the file
+    /// down with it: the well-formed quote after it still gets a region.
+    #[test]
+    fn recovery_is_local_to_the_bad_bracket() {
+        let text = "a ↗ b py↖1↗ c\n";
+        let errs = errors(text);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].range, 2..5, "points at the stray `↗`");
+
+        let root = regions_of(text, &["rs"]);
+        assert_eq!(root.children.len(), 1, "{root:?}");
+        assert_eq!(root.children[0].anno, "py");
+    }
+
+    /// A closer of the wrong kind closes the bracket anyway, so one typo is one
+    /// diagnostic rather than one per bracket for the rest of the file.
+    #[test]
+    fn a_mismatched_closer_still_closes() {
+        let text = "↖x↘ ↖y↗\n";
+        assert_eq!(errors(text).len(), 1, "{:?}", errors(text));
+        let root = regions_of(text, &["rs"]);
+        assert_eq!(root.children.len(), 2, "{root:?}");
+    }
+
     #[test]
     fn annotation_resets_chain_defaults() {
         // An annotated quote pins its language; an un-annotated quote nested
         // inside it inherits the annotation, not the chain default (mirrors
         // `Zipper::cons` clearing `anti`).
         let text = "let x = py↖a ↖b↗ c↗;\n";
-        let tree = tree_of(text);
-        let root = regions(text, &tree, &["rs", "wgsl"]);
+        let root = regions_of(text, &["rs", "wgsl"]);
         let q = &root.children[0];
         assert_eq!(q.lang.as_deref(), Some("py"));
         let q2 = &q.children[0];

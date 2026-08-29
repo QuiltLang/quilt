@@ -1,13 +1,17 @@
 //! Per-document analysis state.
 //!
-//! Holds plain owned data plus the tree-sitter [`Tree`] (which is `Send +
-//! Sync`) so that [`crate::server`] can hand the old tree back on the next
-//! keystroke and let tree-sitter do an incremental re-parse.
+//! Plain owned data: the text, its token stream, the region tree over it, and
+//! the diagnostics found on the way.
+//!
+//! There is no incremental re-parse and no old tree to hand back. Scanning is
+//! ~5 µs/KiB (`cargo bench -p quiltlang --bench parse`), so a keystroke in a
+//! 100 KiB file costs half a millisecond to re-scan from scratch — cheaper than
+//! the bookkeeping incremental parsing would need, and it cannot go stale.
 
 use crate::lineindex::LineIndex;
 use crate::regions::{self, Region, SyntaxError};
+use quilt::node::Token;
 use tower_lsp::lsp_types::Url;
-use tree_sitter::Tree;
 
 #[derive(Debug)]
 pub struct Document {
@@ -25,19 +29,18 @@ pub struct Document {
     pub region: Region,
     /// Quilt-level syntax errors.
     pub errors: Vec<SyntaxError>,
-    /// The raw CST, kept so the next `did_change` can pass it to tree-sitter
-    /// as the old tree for incremental re-parse.
-    pub ts_tree: Tree,
+    /// Every quilt token with its byte range, tiling the source — what the
+    /// projections copy from.
+    pub tokens: Vec<Token>,
 }
 
 impl Document {
-    pub fn new(uri: &Url, text: String, version: i32, old_tree: Option<&Tree>) -> Self {
+    pub fn new(uri: &Url, text: String, version: i32) -> Self {
         let chain = crate::adapters::lang_chain(uri);
         let ground = chain.first().cloned();
-        let mut parser = regions::parser();
-        let tree = regions::parse(&mut parser, &text, old_tree);
-        let errors = regions::collect_errors(&tree);
-        let region = regions::regions(&text, &tree, &self::chain_refs(&chain));
+        let tokens = regions::tokens(&text);
+        let errors = regions::errors(&text);
+        let region = regions::regions(&text, &tokens, &self::chain_refs(&chain));
         let line_index = LineIndex::new(&text);
         Self {
             text,
@@ -47,7 +50,7 @@ impl Document {
             ground,
             region,
             errors,
-            ts_tree: tree,
+            tokens,
         }
     }
 }

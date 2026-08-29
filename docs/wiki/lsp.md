@@ -18,7 +18,7 @@ Editor (VS Code)
     ▼
 quilt-lsp  (server.rs)
     │
-    ├─ tree-sitter-quilt parse      → syntax diagnostics + regions (regions.rs)
+    ├─ quilt::node::scan            → syntax diagnostics + regions (regions.rs)
     │
     ├─ Projection                   → virtual document (projection.rs)
     │   ├─ ground text (verbatim, with quilt constructs replaced by placeholders)

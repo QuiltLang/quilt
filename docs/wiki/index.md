@@ -74,7 +74,6 @@ quilt/
 ├── quilt/              # Core library + CLI
 ├── quilt-lsp/          # Language Server
 ├── quilt-python/       # PyO3 bindings (Python runtime)
-├── tree-sitter-quilt/  # Grammar for the Quilt bracket syntax
 ├── bin/                # Helper scripts: quilt, bootstrap, build-py, …
 ├── tools/quilt/        # VS Code extension
 ├── docs/wiki/          # This wiki

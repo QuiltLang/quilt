@@ -320,7 +320,6 @@ mod tests {
             &"file:///test.rs.quilt".parse().unwrap(),
             text.to_string(),
             1,
-            None,
         )
     }
 

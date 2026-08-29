@@ -6,7 +6,8 @@ pub mod langs;
 pub mod lift;
 pub mod meta;
 pub mod multi;
-#[cfg(feature = "parse")]
+// The Quilt surface parser is hand-written (issue #254), so it needs no
+// tree-sitter and is available in the runtime-only build too.
 pub mod node;
 pub mod prelude;
 pub mod qmatch;
