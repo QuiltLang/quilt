@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! // NOTE: the three classes below must list the same glyphs, and must match
-//! // GLYPHS in quilt/src/node.rs …
+//! // GLYPHS in quilt/src/glyphs.rs …
 //! ```
 //!
 //! …and until now nothing enforced it. That is exactly the shape of #141: `←`

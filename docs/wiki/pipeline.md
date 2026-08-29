@@ -8,7 +8,7 @@ This page describes how `quilt expand foo.rs.quilt` turns a `.quilt` file into `
 foo.rs.quilt
     │
     ▼
- Node::parse()          tree-sitter-quilt CST → Box<[Node]>
+ Node::parse()          source → Box<[Node]>     (hand-written scanner)
     │
     ▼
  Multi::parse_chain()   Node tree → Arc<QTerm>   (recursive, dispatches to Language impls)
@@ -22,9 +22,9 @@ foo.rs.quilt
 
 ## Stage 1: `Node::parse` — surface AST
 
-**File:** `quilt/src/node.rs`
+**File:** `quilt/src/node.rs`, `quilt/src/node/parse.rs`
 
-`Node::parse(source)` runs tree-sitter-quilt over the raw source string and produces a `Box<[Node]>`. `Node` is a simple enum:
+`Node::parse(source)` scans the raw source string and produces a `Box<[Node]>`. `Node` is a simple enum:
 
 ```rust
 pub enum Node {
@@ -40,7 +40,15 @@ pub enum Node {
 }
 ```
 
-`anno` is the language annotation before `↖`/`↙`; it is empty for un-annotated brackets. Quilt comments (`⟨//⟩` / `⟨/*⟩…⟨*/⟩`) are consumed by the tree-sitter grammar and never appear in the `Node` list.
+`anno` is the language annotation before `↖`/`↙`; it is empty for un-annotated brackets. Quilt comments (`⟨//⟩` / `⟨/*⟩…⟨*/⟩`) are consumed by the parser and never appear in the `Node` list — the line form takes the newline and indentation in front of it too, so removing one leaves no blank line behind.
+
+### Why the parser is hand-written
+
+It was tree-sitter until issue #254. Quilt's outer syntax is a *lexical* language — glyph-delimited brackets over otherwise-opaque text — so a generalised parser was building a CST only for `Node::from_ts` to walk it and throw it away. Scanning straight to `Node` is about **25× faster** (`cargo bench -p quiltlang --bench parse`) and drops tree-sitter from this stage entirely: `Node::parse` is available in the runtime-only build.
+
+`tree-sitter-quilt/grammar.js` is still the *specification*, and is still what [`quilt-lsp`](lsp.md) and the VS Code extension read. So it has to keep agreeing with the scanner, and `quilt/tests/parser_differential.rs` is what holds it to that: it runs both over every `.quilt` file in the repo, the grammar's own corpus, and ~120k generated inputs, and requires identical `Node` trees down to the spans. `quilt::node::ts` keeps the tree-sitter path compiling for exactly that purpose; nothing else calls it.
+
+Nesting is tracked on an explicit stack rather than by recursion, so a pathological input is a diagnostic rather than a stack overflow.
 
 ## Stage 2: `Multi::parse_chain` — building the QTerm tree
 

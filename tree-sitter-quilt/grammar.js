@@ -14,6 +14,13 @@ const blockComment = () => seq(
   '⟨*/⟩',         // match exactly 4 chars of "⟨*/⟩"
 );
 
+// This grammar is the *specification* of Quilt's surface syntax, and what
+// quilt-lsp's `regions` and the VS Code extension parse with. It is no longer
+// what `Node::parse` runs: since issue #254 that is a hand-written scanner in
+// quilt/src/node/parse.rs. The two must agree, and
+// quilt/tests/parser_differential.rs runs both over a shared corpus to make
+// sure they do — so a change here needs the scanner changed with it, and that
+// test will say so.
 module.exports = grammar({
   name: 'quilt',
   extras: $ => [], // NOTE: don't remove this
@@ -50,7 +57,7 @@ module.exports = grammar({
     ),
 
     // Same, inside brackets. The line comments are aliased back to the ground
-    // spelling so the parse tree — and `Node::from_ts` in quilt/src/node.rs —
+    // spelling so the parse tree — and `Node::from_ts` in quilt/src/node/ts.rs —
     // sees one node kind either way.
     _bracketed_node: $ => choice(
       $.content,
@@ -70,7 +77,7 @@ module.exports = grammar({
 
     content: $ => prec.right(repeat1(choice($._char, $._non_escape))),
     // NOTE: the three classes below must list the same glyphs, and must match
-    // GLYPHS in quilt/src/node.rs — they are the set of characters Quilt gives
+    // GLYPHS in quilt/src/glyphs.rs — they are the set of characters Quilt gives
     // special meaning to, and hence the set `\` can escape. `←` is included
     // because it is the emit glyph *and* Lean's monadic bind (issue #141).
     _char: $ => /[^\\↖↗↙↘↑↓←⟨⟩\n]/,

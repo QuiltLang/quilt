@@ -96,6 +96,16 @@ typescript = []
 wgsl = ["parse"]
 zsh = ["parse"]
 
+# `Node::parse` before and after issue #254 — the hand-written scanner against
+# the tree-sitter path it replaced, which `node::ts` keeps compiling as the
+# differential oracle. `harness = false` because it is a `fn main`, not
+# `#[bench]` (which is nightly-only) and not criterion (a dev-dependency tree
+# out of all proportion to one comparison).
+[[bench]]
+harness = false
+name = "parse"
+required-features = ["parse"]
+
 [[bin]]
 name = "quilt"
 path = "src/bin.rs"
