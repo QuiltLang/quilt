@@ -80,6 +80,18 @@ expression: rendered
     [Content("a\\nb")]
 --- "↖\\↗↗"
     [Quote { anno: "", nodes: [Content("↗")], span: 0..10 }]
+--- "//c\n⟨/*⟩z⟨*/⟩↖b↗"
+    [PlainLineComment("//c"), Quote { anno: "", nodes: [Content("b")], span: 21..28 }]
+--- "↖//c\n⟨/*⟩z⟨*/⟩↖b↗↗"
+    [Quote { anno: "", nodes: [PlainLineComment("//c"), Quote { anno: "", nodes: [Content("b")], span: 24..31 }], span: 0..34 }]
+--- "a/⟨/*⟩z⟨*/⟩/↖b↗"
+    [Content("a/"), Content("/"), Quote { anno: "", nodes: [Content("b")], span: 20..27 }]
+--- "a/⟨/*⟩z⟨*/⟩*↖b*/↗"
+    [Content("a/"), Content("*"), Quote { anno: "", nodes: [Content("b*/")], span: 20..29 }]
+--- "a\\/// x"
+    [Content("a\\/"), PlainLineComment("// x")]
+--- "↑/*//"
+    [Lift, Content("/*"), PlainLineComment("//")]
 --- "fn main() { let x = ↖1 + 2; }"
     ERR malformed Quilt syntax (source bytes 20..23) [20..23 "this bracket is never closed"]
 --- "fn main() { let x = 1 ↗ 2; }"

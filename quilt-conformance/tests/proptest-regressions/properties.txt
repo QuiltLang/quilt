@@ -11,3 +11,9 @@
 # because it is the one input the whole SQL-dialect axis is about, so it is
 # worth trying before any generated case.
 cc a59fcf479ced4240cbb3ea0f6fbbaab67815c263007c4cf49cda1d866c1988b4 # shrinks to cs = ['\\']
+# A line comment with a node after it on the same line, from
+# `quilt_source_round_trips`. `Node::parse` produces exactly this shape from
+# valid source — a Quilt comment takes the newline that ended the line comment
+# with it — and `coparse` used to print it back unparseable (issue #256). It is
+# the minimal case for `Node::write_seq`'s first rule.
+cc 4b177d3e4806e9cecc5575e2e85ba657f072bf864aa7349cc4fba507fa8346f6 # shrinks to nodes = [Unquote { anno: "", nodes: [Unquote { anno: "", nodes: [PlainLineComment("// "), Content("↗")], span: 0..0 }], span: 0..0 }]
