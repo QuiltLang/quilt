@@ -104,7 +104,7 @@ nix: 9 variadic
   path_expression
   string_expression
 
-python: 45 variadic
+python: 46 variadic
   argument_list
   assert_statement
   block
@@ -117,9 +117,9 @@ python: 45 variadic
   dictionary
   dictionary_comprehension
   dotted_name
+  except_clause
   exec_statement
   expression_list
-  expression_statement
   for_in_clause
   format_specifier
   future_import_statement
@@ -146,6 +146,7 @@ python: 45 variadic
   subscript
   try_statement
   tuple
+  tuple_expression
   tuple_pattern
   type_parameter
   union_pattern

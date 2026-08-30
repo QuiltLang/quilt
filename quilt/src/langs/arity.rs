@@ -133,7 +133,7 @@ pub static NIX: &[&str] = &[
     "string_expression",
 ];
 
-/// python: 45 node kind(s) the grammar gives a variable number of direct children.
+/// python: 46 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "python")]
 pub static PYTHON: &[&str] = &[
     "argument_list",
@@ -148,9 +148,9 @@ pub static PYTHON: &[&str] = &[
     "dictionary",
     "dictionary_comprehension",
     "dotted_name",
+    "except_clause",
     "exec_statement",
     "expression_list",
-    "expression_statement",
     "for_in_clause",
     "format_specifier",
     "future_import_statement",
@@ -177,6 +177,7 @@ pub static PYTHON: &[&str] = &[
     "subscript",
     "try_statement",
     "tuple",
+    "tuple_expression",
     "tuple_pattern",
     "type_parameter",
     "union_pattern",

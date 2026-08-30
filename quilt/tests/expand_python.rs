@@ -56,7 +56,7 @@ fn variadic() -> Result<()> {
         ↗
     "#})?;
     assert!(
-        literal.contains(r#"tb("block").c(tb("expression_statement")"#),
+        literal.contains(r#"tb("block").c(tb("call")"#),
         "a hole-free block should use plain .c() children; got:\n{literal}"
     );
     assert!(
@@ -104,20 +104,25 @@ fn homogeneous_lift_is_prefix() -> Result<()> {
 
 #[test]
 fn bare_tuple_quote() -> Result<()> {
-    // A bare tuple keeps its elements directly under the expression
-    // statement; the quote must not try to squash past it. This is the
-    // fold-through-a-quote join: `a, b` splices flat into expression
-    // position, so folding it again stays a flat comma-separated list.
+    // A bare tuple keeps its elements directly under the tuple node; the
+    // quote must not try to squash past it. This is the fold-through-a-quote
+    // join: `a, b` splices flat into expression position, so folding it again
+    // stays a flat comma-separated list.
     //
-    // The children are `.e`, not `.c`, because `expression_statement` is one of
-    // the containers the derived arity table picks up (#202) — its rule is
-    // `commaSep1(expression)`, which is exactly what a bare tuple exercises. For
+    // The node is `tuple_expression`, not `expression_statement`: upstream
+    // tree-sitter-python moved the bare-tuple alternative out of
+    // `expression_statement` (which it also made a supertype, so it no longer
+    // appears in a tree at all) into its own named rule. `tuple_expression` is
+    // what the derived arity table now picks up as the variadic container
+    // (#202, #184).
+    //
+    // The children are `.e`, not `.c`, because that container is variadic. For
     // a single child the two are the same call; what `.e` adds is that an emit
     // (`←`) can splice a whole sequence into the tuple.
     let out = expand_py("p = ↖↙a↘, ↙b↘↗")?;
     assert!(
-        out.contains(r#"tb("expression_statement").e(a).e(sym(",")).w(" ").e(b)"#),
-        "a bare tuple quote should keep the expression_statement whole; got:\n{out}"
+        out.contains(r#"tb("tuple_expression").e(a).e(sym(",")).w(" ").e(b)"#),
+        "a bare tuple quote should keep the tuple_expression whole; got:\n{out}"
     );
     Ok(())
 }
