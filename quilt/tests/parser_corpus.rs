@@ -185,6 +185,14 @@ const EDGE_CASES: &[&str] = &[
     "\\⟨T⟩",
     "a\\nb",
     "↖\\↗↗",
+    // seams a dropped Quilt comment leaves behind (issue #256): the nodes on
+    // either side are adjacent in the tree but were not in the source
+    "//c\n⟨/*⟩z⟨*/⟩↖b↗",
+    "↖//c\n⟨/*⟩z⟨*/⟩↖b↗↗",
+    "a/⟨/*⟩z⟨*/⟩/↖b↗",
+    "a/⟨/*⟩z⟨*/⟩*↖b*/↗",
+    "a\\/// x",
+    "↑/*//",
     // malformed
     "fn main() { let x = ↖1 + 2; }",
     "fn main() { let x = 1 ↗ 2; }",
@@ -212,11 +220,59 @@ fn grammar_corpus() {
 
 /// The alphabet for the generated sweeps. Every entry is here because it is a
 /// place the scanner has to make a decision, not because it is common.
+///
+/// `⟨/*⟩⟨*/⟩` is in it as a *pair* as well as in halves. It is the one token
+/// that vanishes without a trace, so it is what leaves two nodes adjacent in
+/// the tree that were not adjacent in the source — the shape issue #256 is
+/// about — and rolling the two halves next to each other is rare enough that
+/// the pair is worth a slot of its own.
 const ALPHABET: &[&str] = &[
-    "↖", "↗", "↙", "↘", "↑", "↓", "←", "py↖", "py↙", "py↓", "a1↓", "1a↓", "⟨T⟩", "⟨N⟩", "⟨//⟩",
-    "⟨/*⟩", "⟨*/⟩", "⟨", "⟩", "//", "/*", "*/", "/", "*", "// x", "/* x */", "\\↖", "\\⟨", "\\\\",
-    "\\x", "\\", "\n", " ", "\t", "\n  ", "\r", "x", "42", "ab1c", "aB", "lean4↖", "⟨*", "⟨/",
-    "*⟩", "/⟩",
+    "↖",
+    "↗",
+    "↙",
+    "↘",
+    "↑",
+    "↓",
+    "←",
+    "py↖",
+    "py↙",
+    "py↓",
+    "a1↓",
+    "1a↓",
+    "⟨T⟩",
+    "⟨N⟩",
+    "⟨//⟩",
+    "⟨/*⟩",
+    "⟨*/⟩",
+    "⟨",
+    "⟩",
+    "//",
+    "/*",
+    "*/",
+    "/",
+    "*",
+    "// x",
+    "/* x */",
+    "\\↖",
+    "\\⟨",
+    "\\\\",
+    "\\x",
+    "\\",
+    "\n",
+    " ",
+    "\t",
+    "\n  ",
+    "\r",
+    "x",
+    "42",
+    "ab1c",
+    "aB",
+    "lean4↖",
+    "⟨*",
+    "⟨/",
+    "*⟩",
+    "/⟩",
+    "⟨/*⟩⟨*/⟩",
 ];
 
 /// Run `check` over every input the sweeps generate: the repo's own `.quilt`
@@ -310,6 +366,36 @@ fn strict_and_recovering_agree_on_validity() {
             strict,
             errors.is_empty(),
             "{src:?}: Node::parse ok={strict} but scan reported {errors:?}"
+        );
+    });
+}
+
+/// What `coparse` prints, parses — and prints itself.
+///
+/// The in-process statement of the law `fuzz/fuzz_targets/escape_roundtrip.rs`
+/// asserts. The nightly fuzzer found it broken (issue #256) because a `Node`
+/// sequence is not always the concatenation of its nodes: Quilt's own comments
+/// are dropped from the tree, so what they separated in the source ends up
+/// adjacent in the output — a `// …` comment reaching a `↖` on the next line,
+/// or two content nodes whose seam spells a `//` neither of them contains.
+///
+/// `Node::write_seq` puts a separator back. The recorded cases above are what
+/// hold it to doing so; the *sweep* is what holds it to not doing so anywhere
+/// else, which is the harder half — both times the rule was too eager, a
+/// generated input caught it and no amount of staring at the code had.
+#[test]
+fn coparse_output_parses_and_prints_itself() {
+    over_every_input(|src| {
+        let Ok(nodes) = Node::parse(src) else {
+            return;
+        };
+        let printed = Node::coparse(&nodes);
+        let reparsed = Node::parse(&printed)
+            .unwrap_or_else(|e| panic!("{src:?} printed {printed:?}, which does not parse: {e}"));
+        assert_eq!(
+            &*Node::coparse(&reparsed),
+            &*printed,
+            "{src:?} printed {printed:?}, which does not print itself"
         );
     });
 }
