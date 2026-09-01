@@ -63,9 +63,14 @@ const Q_LINE: &str = "⟨//⟩";
 /// Quilt's own block comment delimiters. Also stripped.
 const Q_BLOCK_OPEN: &str = "⟨/*⟩";
 const Q_BLOCK_CLOSE: &str = "⟨*/⟩";
+/// An empty one. Because it is stripped, it is the only separator Quilt's
+/// surface syntax has that leaves no text of its own behind — which is what
+/// [`Node::coparse`] needs to keep two adjacent nodes from lexing as one
+/// comment token (issue #256).
+pub(super) const Q_BLOCK_EMPTY: &str = "⟨/*⟩⟨*/⟩";
 /// The `⟨T⟩` type placeholder and `⟨N⟩` name placeholder.
-const TYPE: &str = "⟨T⟩";
-const NAME: &str = "⟨N⟩";
+pub(super) const TYPE: &str = "⟨T⟩";
+pub(super) const NAME: &str = "⟨N⟩";
 
 /// Parse Quilt source into a flat list of [`Node`]s. See [`Node::parse`].
 pub(super) fn parse(src: &str) -> Result<Box<[Node]>> {

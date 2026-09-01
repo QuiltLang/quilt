@@ -86,11 +86,14 @@ fn spec_for(name: &str) -> Spec {
 
 /// Ordinary characters — everything Quilt gives no meaning to.
 ///
-/// `/` and `*` are out, deliberately: a generated `/*` with no closing `*/` is
-/// genuinely malformed Quilt, so including them would make the generator
-/// produce inputs the property must then exempt. Comments are covered as their
-/// own well-formed node kinds below instead. Newlines are out for the same
-/// reason — `Node::NewLine` is the node that spells one.
+/// `/` and `*` are out, deliberately — but not because they are malformed: an
+/// unterminated `/*` is ordinary content. It is that a `Node::Content` holding
+/// `//` is a tree no parse produces, since the parser would have made that a
+/// `PlainLineComment`, and asking a round trip to invert a tree nothing can
+/// build proves nothing. Comments are covered as their own well-formed node
+/// kinds below, and what a `/` does at a *seam* between nodes is covered from
+/// the source side, by the sweep in `quilt/tests/parser_corpus.rs`. Newlines
+/// are out for the same reason — `Node::NewLine` is the node that spells one.
 const ORDINARY: &[char] = &[
     'a', 'b', 'z', 'A', 'Z', '0', '9', ' ', '_', '"', '\'', '`', '$', '#', '(', ')', '{', '}', '[',
     ']', '<', '>', ';', ':', ',', '.', '=', '+', '-', '!', '?', '&', '|', '~', '^', '%', '@', 'é',
@@ -176,46 +179,14 @@ fn arb_nodes() -> impl Strategy<Value = Vec<Node>> {
             }),
         ]
     });
-    prop::collection::vec(node, 0..6).prop_map(|ns| terminate_line_comments(&ns))
-}
-
-/// Put a newline after every `// …` comment that lacks one.
-///
-/// A line comment consumes the rest of its line as raw text, closing brackets
-/// included — so `↙↙// x↘↘` is genuinely malformed Quilt, not a round-trip bug.
-/// The constraint belongs to the generator rather than to an exemption in the
-/// property: what is being tested is that *valid* syntax round-trips.
-fn terminate_line_comments(nodes: &[Node]) -> Vec<Node> {
-    let mut out: Vec<Node> = Vec::with_capacity(nodes.len());
-    for n in nodes {
-        let fixed = match n {
-            Node::Quote { anno, nodes, span } => Node::Quote {
-                anno: anno.clone(),
-                nodes: rewrap(nodes),
-                span: span.clone(),
-            },
-            Node::Unquote { anno, nodes, span } => Node::Unquote {
-                anno: anno.clone(),
-                nodes: rewrap(nodes),
-                span: span.clone(),
-            },
-            other => other.clone(),
-        };
-        let is_line_comment = matches!(fixed, Node::PlainLineComment(_));
-        out.push(fixed);
-        if is_line_comment {
-            out.push(Node::NewLine);
-        }
-    }
-    out
-}
-
-fn rewrap(nodes: &[Arc<Node>]) -> Box<[Arc<Node>]> {
-    let flat: Vec<Node> = nodes.iter().map(|n| (**n).clone()).collect();
-    terminate_line_comments(&flat)
-        .into_iter()
-        .map(Arc::new)
-        .collect()
+    // A `// …` comment is generated like any other node, with nothing put
+    // after it to close its line. It used to be: a line comment consumes the
+    // rest of its line as raw text, closing brackets included, so `↙↙// x↘↘`
+    // did not round-trip and the generator inserted the newline itself. That
+    // was the wrong place for it — `Node::parse` produces exactly that shape
+    // from valid source, which is how issue #256 reached the fuzzer — and
+    // `Node::write_seq` ends the line now.
+    prop::collection::vec(node, 0..6)
 }
 
 proptest! {
