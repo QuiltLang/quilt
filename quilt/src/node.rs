@@ -4,7 +4,7 @@ pub use parse::{scan, ParseError, Token, TokenKind};
 use crate::strcmd::PrefixWriter;
 use crate::term::Term;
 use crate::{prelude::*, term::STerm};
-use std::{fmt::Debug, iter::empty, sync::Arc};
+use std::{borrow::Borrow, fmt::Debug, iter::empty, sync::Arc};
 
 /**************************************************************/
 
@@ -14,6 +14,10 @@ use std::{fmt::Debug, iter::empty, sync::Arc};
 // behind the `parse` feature, and are re-exported here, where every caller
 // already looks for them.
 pub use crate::glyphs::{escape, unescape, ARROW_LEN, ESCAPE_LEN, GLYPHS};
+
+// The spellings the writer below shares with the parser, so the two cannot
+// drift apart.
+use parse::{NAME, Q_BLOCK_EMPTY, TYPE};
 
 /**************************************************************/
 
@@ -69,11 +73,122 @@ impl Node {
     pub fn coparse(nodes: &[Self]) -> Box<str> {
         let mut buf = std::io::BufWriter::new(Vec::new());
         let mut writer = PrefixWriter::new(&mut buf);
-        for n in nodes {
-            n.write(&mut writer);
-        }
+        Self::write_seq(nodes, &mut writer);
         let bytes = buf.into_inner().unwrap();
         String::from_utf8(bytes).unwrap().into()
+    }
+
+    /// Write a run of siblings, with the separators the surface syntax needs
+    /// for the result to parse back (issue #256).
+    ///
+    /// Writing each node's own spelling one after another is not enough:
+    /// Quilt's comment tokens are the one place where a node's text can reach
+    /// past its own end, and two nodes that are perfectly well-formed apart can
+    /// lex as one token together.
+    ///
+    /// * A `// …` comment runs to the end of its line, closing brackets
+    ///   included, so *anything* written after one on the same line vanishes
+    ///   into it. A tree can hold that shape without being malformed —
+    ///   `//c⟨/*⟩x⟨*/⟩↖q↗` parses fine, and the Quilt comment takes the newline
+    ///   with it — and the printed form then had a `↗` with no opener. Only a
+    ///   newline ends a line comment, so that is what goes in.
+    /// * A `/` ending one node and a `/` or `*` starting the next spell a
+    ///   comment introducer that neither node contains. The gap between them
+    ///   was a Quilt comment the parser dropped (`a/⟨/*⟩z⟨*/⟩/b` is two content
+    ///   nodes), so an empty [`Q_BLOCK_EMPTY`] comment puts a gap back — the
+    ///   one separator Quilt has that leaves no text behind.
+    ///
+    /// Both separators are idempotent: re-parsing what they produce yields a
+    /// sequence this writes the same way again.
+    fn write_seq<N: Borrow<Self>, W: std::io::Write>(
+        nodes: &[N],
+        writer: &mut PrefixWriter<'_, W>,
+    ) {
+        // What the text written so far ends in, as the lexer will read it back:
+        // a `\` still waiting to pair with the next character; a `/` that would
+        // begin a token, so a `/` or `*` after it spells a comment; and a
+        // `// …` comment still holding its line open.
+        //
+        // The pairing is why `bare_slash` is not just "the last byte is `/`":
+        // content is lexed in `\X` units, so the `/` ending `a\/` is the second
+        // half of one and cannot start anything — `a\/// x` prints itself
+        // unchanged, and separating it would be a bug, not a fix.
+        //
+        // A trailing `*` before a `/` is likewise not a seam. It would spell
+        // `*/`, which matters only if some earlier `/*` is still open — and one
+        // cannot be, because two nodes are only ever adjacent where a
+        // `⟨/*⟩…⟨*/⟩` was dropped, and that spells a `*/` in the source, so the
+        // earlier `/*` was a `/* … */` comment there and the node before the
+        // seam is that comment rather than content. Separating anyway would be
+        // worse than useless: the separator carries a `*/` of its own.
+        let mut pending_escape = false;
+        let mut bare_slash = false;
+        let mut in_line_comment = false;
+        for n in nodes {
+            let n = n.borrow();
+            // A node that writes nothing leaves the seam exactly where it was.
+            let Some(first) = n.first_byte() else {
+                continue;
+            };
+            if in_line_comment && first != b'\n' {
+                writer.newline();
+            } else if bare_slash && matches!(first, b'/' | b'*') {
+                writer.write(Q_BLOCK_EMPTY);
+            }
+            n.write(writer);
+            match n {
+                Node::Content(s) => {
+                    for c in escape(s).chars() {
+                        if pending_escape {
+                            pending_escape = false;
+                            bare_slash = false;
+                        } else if c == '\\' {
+                            pending_escape = true;
+                            bare_slash = false;
+                        } else {
+                            bare_slash = c == '/';
+                        }
+                    }
+                    in_line_comment = false;
+                }
+                // Every other node is a whole token: it leaves nothing dangling
+                // for the next one to join onto.
+                Node::PlainLineComment(_) => {
+                    pending_escape = false;
+                    bare_slash = false;
+                    in_line_comment = true;
+                }
+                _ => {
+                    pending_escape = false;
+                    bare_slash = false;
+                    in_line_comment = false;
+                }
+            }
+        }
+    }
+
+    /// The first byte [`STerm::write`] emits for this node, or `None` if it
+    /// emits nothing. Only `\n`, `/` and `*` are load-bearing in
+    /// [`Self::write_seq`], but the whole answer is cheaper to state than three
+    /// special cases are to keep in step with the writer.
+    fn first_byte(&self) -> Option<u8> {
+        let first = |s: &str| s.as_bytes().first().copied();
+        match self {
+            // `escape` only ever *prepends* a `\` to a glyph.
+            Node::Content(s) => match s.chars().next() {
+                Some(c) if GLYPHS.contains(&c) => Some(b'\\'),
+                _ => first(s),
+            },
+            Node::NewLine => Some(b'\n'),
+            Node::Quote { anno, .. } => first(anno).or_else(|| first("↖")),
+            Node::Unquote { anno, .. } => first(anno).or_else(|| first("↙")),
+            Node::Reduce { anno } => first(anno).or_else(|| first("↓")),
+            Node::Lift => first("↑"),
+            Node::Emit => first("←"),
+            Node::Type => first(TYPE),
+            Node::Name => first(NAME),
+            Node::PlainLineComment(s) | Node::PlainBlockComment(s) => first(s),
+        }
     }
 }
 
@@ -145,17 +260,13 @@ impl STerm for Node {
             Node::Quote { anno, nodes, .. } => {
                 writer.write(anno);
                 writer.write("↖");
-                for n in nodes {
-                    n.write(writer);
-                }
+                Node::write_seq(nodes, writer);
                 writer.write("↗");
             }
             Node::Unquote { anno, nodes, .. } => {
                 writer.write(anno);
                 writer.write("↙");
-                for n in nodes {
-                    n.write(writer);
-                }
+                Node::write_seq(nodes, writer);
                 writer.write("↘");
             }
             Node::Lift => writer.write("↑"),
@@ -164,8 +275,8 @@ impl STerm for Node {
                 writer.write("↓");
             }
             Node::Emit => writer.write("←"),
-            Node::Type => writer.write("⟨T⟩"),
-            Node::Name => writer.write("⟨N⟩"),
+            Node::Type => writer.write(TYPE),
+            Node::Name => writer.write(NAME),
             Node::PlainLineComment(s) | Node::PlainBlockComment(s) => writer.write(s),
         }
     }
@@ -197,6 +308,84 @@ mod tests {
         assert!(matches!(&nodes[0], Node::PlainLineComment(s) if &**s == "// line comment"));
         assert!(matches!(&nodes[2], Node::PlainBlockComment(s) if &**s == "/* block comment */"));
         assert_eq!(&*Node::coparse(&nodes), source_code);
+        Ok(())
+    }
+
+    /// What `coparse` prints must parse, and print the same thing again.
+    ///
+    /// The law `fuzz/fuzz_targets/escape_roundtrip.rs` states, against the
+    /// inputs that broke it (issue #256). Every case here is *valid* Quilt
+    /// whose parse leaves a node sequence that cannot simply be concatenated
+    /// back: Quilt's own comments are dropped from the tree, so they leave
+    /// behind a seam that the surrounding text closes over when it is re-read.
+    #[test]
+    fn coparse_output_parses_and_is_a_fixpoint() {
+        let cases = [
+            // The crash libFuzzer found. `⟨/*⟩…⟨*/⟩` takes the newline in front
+            // of it, so the `//n//` line comment reached the `↖` and swallowed
+            // it, leaving `↗` with no opener.
+            "ea//n//\n⟨/*⟩↖K//n*⟨*/⟩↖\n\0\0\0\0\0\0\0x↗;fft/",
+            // The same shape, minimised, at ground level and inside a bracket.
+            "//c\n⟨/*⟩z⟨*/⟩↖b↗",
+            "↖//c\n⟨/*⟩z⟨*/⟩↖b↗↗",
+            // A `//` that exists in neither node: the dropped comment was the
+            // only thing keeping the two slashes apart.
+            "a/⟨/*⟩z⟨*/⟩/↖b↗",
+            // And the `/*` and `*/` spellings of the same seam.
+            "a/⟨/*⟩z⟨*/⟩*↖b↗",
+            "a/⟨/*⟩z⟨*/⟩*↖b*/↗",
+            "a/⟨/*⟩z⟨*/⟩/* c */↖b↗",
+            // Seams that must *not* grow a separator.
+            "a/b/c",
+            "// line\n/* block */\ncode\n",
+            "↖//c↗",
+        ];
+        for src in cases {
+            let nodes = Node::parse(src).unwrap_or_else(|e| panic!("{src:?} does not parse: {e}"));
+            let printed = Node::coparse(&nodes);
+            let reparsed = Node::parse(&printed).unwrap_or_else(|e| {
+                panic!("{src:?} printed {printed:?}, which does not parse: {e}")
+            });
+            assert_eq!(
+                &*Node::coparse(&reparsed),
+                &*printed,
+                "{src:?} printed {printed:?}, which does not print itself"
+            );
+        }
+    }
+
+    /// The separators are only written where they are needed. Both of these
+    /// have a case in them that a separator would *break*, and both came out
+    /// of the sweep in `tests/parser_corpus.rs` rather than out of thinking
+    /// about it:
+    ///
+    /// * `a\/// x` is content `a\/` and a comment `// x`. The `/` ending the
+    ///   content is the second half of a `\/` unit and cannot start a token,
+    ///   so the two are already adjacent in valid source.
+    /// * `↑/*//` ends its content with `*`, not `/`. Separating there would put
+    ///   the separator's own `*/` where it closes the still-open `/*`, in the
+    ///   middle of a `⟨*/⟩` — leaving a stray `⟩` and no parse at all.
+    #[test]
+    fn separators_are_not_written_where_the_source_already_parses() -> Result<()> {
+        for src in [
+            "// line\n/* block */\ncode\n",
+            "a/b/c ↖x↗ /* c */ // done\n",
+            "↖//c↗",
+            "↖a/↗/b",
+            "a\\/// x",
+            "↑/*//",
+        ] {
+            assert_eq!(&*Node::coparse(&Node::parse(src)?), src, "{src:?}");
+        }
+        Ok(())
+    }
+
+    /// An empty `⟨/*⟩⟨*/⟩` really is inert — that is the whole reason
+    /// `write_seq` can use it as a separator.
+    #[test]
+    fn the_empty_block_comment_writes_nothing() -> Result<()> {
+        assert!(Node::parse(Q_BLOCK_EMPTY)?.is_empty());
+        assert_eq!(&*Node::coparse(&Node::parse("a⟨/*⟩⟨*/⟩b")?), "ab");
         Ok(())
     }
 
