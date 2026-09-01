@@ -56,7 +56,7 @@ tree-sitter-html = {git = "https://github.com/QuiltLang/tree-sitter-html.git", r
 # issue #133 for the one position that costs — a bare hole as a whole command.
 tree-sitter-lean = {git = "https://github.com/QuiltLang/tree-sitter-lean.git", rev = "86c2bcb379fe0b2ad13d8b3411400deff75b2785"}
 tree-sitter-nix = {git = "https://github.com/QuiltLang/tree-sitter-nix.git", rev = "3d0173d903e630b6e14d17f1cf79488791379ded"}
-tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "22a9fb0fde26ec430cd5f677036bf884c58dd004"}
+tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git", rev = "d712c42bea555331a0e7063cb0606b1c05c31303"}
 # `quilt_hole` is `token(prec(-1, "{}"))`, not a plain "{}" token: the lexer
 # prefers the longest match among the tokens valid in a state, so at plain
 # precedence it outbid the `{` starting a `block` wherever a pattern could still
