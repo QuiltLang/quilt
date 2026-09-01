@@ -10,10 +10,6 @@
         "name": "_statement"
       }
     },
-    "quilt_hole": {
-      "type": "STRING",
-      "value": "_"
-    },
     "_statement": {
       "type": "CHOICE",
       "members": [
@@ -568,10 +564,6 @@
         {
           "type": "SYMBOL",
           "name": "yield"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "quilt_hole"
         }
       ]
     },
@@ -3071,10 +3063,6 @@
         {
           "type": "SYMBOL",
           "name": "list_pattern"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "quilt_hole"
         }
       ]
     },
