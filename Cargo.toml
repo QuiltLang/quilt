@@ -64,7 +64,7 @@ tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git
 # or-pattern (issue #241, QuiltLang/tree-sitter-rust#1).
 # This rev merges upstream through `77a3747` ("0.24.2") and regenerates with CLI
 # 0.26.13 (QuiltLang/tree-sitter-rust#2, issue #184).
-tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "c5eb2ca3b5eaa38d6e1df2b4479d4154fdd05fce"}
+tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "db55a6f39342a60fe284f07d782e1160ce774c0f"}
 # SQL needs no Quilt hole patch either: `__QUILT_HOLE__` matches this grammar's
 # `_identifier` regex, so it parses unpatched in predicate, select-expression,
 # relation-name and `IN`-list position (the same free ride nix and lean get).
