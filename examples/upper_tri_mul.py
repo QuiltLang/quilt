@@ -28,7 +28,7 @@ def idx(n, i, j):
 def nodes(terms):
     out = None
     for t in terms:
-        out = t if out is None else tb("expression_statement").e(out).e(sym(",")).w(" ").e(t).b()
+        out = t if out is None else tb("tuple_expression").e(out).e(sym(",")).w(" ").e(t).b()
     return out
 
 

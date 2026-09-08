@@ -54,7 +54,7 @@ fn strlift_2() -> Result<()> {
     println!("{lifted}");
     assert_eq!(
         lifted,
-        r#"tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "hello")).c(&tb("parameters").c(&sym("(")).c(&tb("parameter").c(&leaf("identifier", "s")).c(&sym(":")).w(" ").c(&tb("reference_type").c(&sym("&")).c(&tb("generic_type").c(&leaf("type_identifier", "Arc")).c(&tb("type_arguments").c(&sym("<")).c(&leaf("type_identifier", "QTerm")).c(&sym(">")).b()).b()).b()).b()).c(&sym(")")).b()).w(" ").c(&tb("block").c(&sym("{")).p("    ").n().c(&tb("let_declaration").c(&sym("let")).w(" ").c(&leaf("identifier", "code")).w(" ").c(&sym("=")).w(" ").c(&quote("block", 1, "py", tb("function_definition").c(&sym("def")).w(" ").c(&leaf("identifier", "hello")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).c(&sym(":")).p("    ").n().c(&tb("block").c(&tb("expression_statement").c(&tb("call").c(&leaf("identifier", "print")).c(&tb("argument_list").c(&sym("(")).c(&unquote("identifier", 1, "py", leaf("identifier", "s"), &[cmd(write("↙")), HOLE, cmd(write("↘"))])).c(&sym(")")).b()).b()).b()).b()).x().b(), &[cmd(write("py")), cmd(write("↖")), cmd(push("    ")), cmd(NL), HOLE, cmd(POP), cmd(NL), cmd(write("↗"))])).c(&sym(";")).b()).n().c(&tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "dbg")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&leaf("identifier", "code")).c(&sym(")")).b()).b()).c(&sym(";")).b()).x().n().c(&sym("}")).b()).n().b()"#
+        r#"tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "hello")).c(&tb("parameters").c(&sym("(")).c(&tb("parameter").c(&leaf("identifier", "s")).c(&sym(":")).w(" ").c(&tb("reference_type").c(&sym("&")).c(&tb("generic_type").c(&leaf("type_identifier", "Arc")).c(&tb("type_arguments").c(&sym("<")).c(&leaf("type_identifier", "QTerm")).c(&sym(">")).b()).b()).b()).b()).c(&sym(")")).b()).w(" ").c(&tb("block").c(&sym("{")).p("    ").n().c(&tb("let_declaration").c(&sym("let")).w(" ").c(&leaf("identifier", "code")).w(" ").c(&sym("=")).w(" ").c(&quote("block", 1, "py", tb("function_definition").c(&sym("def")).w(" ").c(&leaf("identifier", "hello")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).c(&sym(":")).p("    ").n().c(&tb("block").c(&tb("call").c(&leaf("identifier", "print")).c(&tb("argument_list").c(&sym("(")).c(&unquote("identifier", 1, "py", leaf("identifier", "s"), &[cmd(write("↙")), HOLE, cmd(write("↘"))])).c(&sym(")")).b()).b()).b()).x().b(), &[cmd(write("py")), cmd(write("↖")), cmd(push("    ")), cmd(NL), HOLE, cmd(POP), cmd(NL), cmd(write("↗"))])).c(&sym(";")).b()).n().c(&tb("expression_statement").c(&tb("macro_invocation").c(&leaf("identifier", "dbg")).c(&sym("!")).c(&tb("token_tree").c(&sym("(")).c(&leaf("identifier", "code")).c(&sym(")")).b()).b()).c(&sym(";")).b()).x().n().c(&sym("}")).b()).n().b()"#
     );
     // this is the contents of the string above:
     let reduced = tb("function_item")
@@ -106,20 +106,18 @@ fn strlift_2() -> Result<()> {
                         .p("    ")
                         .n()
                         .c(&tb("block")
-                            .c(&tb("expression_statement")
-                                .c(&tb("call")
-                                    .c(&leaf("identifier", "print"))
-                                    .c(&tb("argument_list")
-                                        .c(&sym("("))
-                                        .c(&unquote(
-                                            "identifier",
-                                            1,
-                                            "py",
-                                            leaf("identifier", "s"),
-                                            &[cmd(write("↙")), HOLE, cmd(write("↘"))],
-                                        ))
-                                        .c(&sym(")"))
-                                        .b())
+                            .c(&tb("call")
+                                .c(&leaf("identifier", "print"))
+                                .c(&tb("argument_list")
+                                    .c(&sym("("))
+                                    .c(&unquote(
+                                        "identifier",
+                                        1,
+                                        "py",
+                                        leaf("identifier", "s"),
+                                        &[cmd(write("↙")), HOLE, cmd(write("↘"))],
+                                    ))
+                                    .c(&sym(")"))
                                     .b())
                                 .b())
                             .b())
