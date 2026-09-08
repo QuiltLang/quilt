@@ -92,6 +92,31 @@ as their first line (`#!/usr/bin/env quilt` also works, but the bare form is por
 
 Such a script usually wants no extension at all — `bin/issues`, a symlink to `examples/issue_triage.html.py.quilt`. Both `run` and `check` resolve the link and take the chain from the target's name, so an entry point can be validated as well as executed.
 
+### `quilt repl [chain]`
+
+An interactive machine session (see `docs/design/machines.md`): each line is
+Quilt source, parsed with the chain, expanded by the ground language's
+meta-language, and fed to that language's default **machine** from the park —
+so definitions persist across lines the same way they persist across reduces.
+A line that classifies as an expression is a *query* and prints the value's
+literal; definitions and statements feed silently; an error ends the line,
+not the session.
+
+```
+$ quilt repl py
+quilt repl — ground language py; ctrl-D to exit
+py> x = 5
+py> x * 8 + 2
+42
+```
+
+`chain` reads like a file stem (`py`, `wgsl.py` — rightmost is ground) and
+defaults to `py`. The machine behind the prompt is whatever the language
+declares: a persistent shell process for `bash`/`zsh` (state is real process
+state), the replayed-history script machine for `py`/`ts`. Quilt meta-code in
+a `py` session (quotes, `↑`) needs the `quilt` Python runtime importable —
+build it once with `bin/build-py`; plain Python needs nothing.
+
 ---
 
 ## `bin/` scripts

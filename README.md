@@ -55,7 +55,7 @@ Install the `quilt` command straight from the repo:
 cargo install --git https://github.com/QuiltLang/quilt quiltlang
 ```
 
-This builds the `quilt` binary (`expand`, `run`, `check`, `clean`) and drops it in `~/.cargo/bin`. (The package is named `quiltlang` — `quilt` is taken on crates.io — but the binary it installs is still `quilt`.) That's all you need to **expand** `.quilt` files into plain source.
+This builds the `quilt` binary (`expand`, `run`, `check`, `repl`, `clean`) and drops it in `~/.cargo/bin`. (The package is named `quiltlang` — `quilt` is taken on crates.io — but the binary it installs is still `quilt`.) That's all you need to **expand** `.quilt` files into plain source.
 
 To **run** a `.quilt` file as a script, you also need the runtime for its ground language:
 

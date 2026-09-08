@@ -48,6 +48,10 @@ pub struct MachineSpec {
     pub print_wrap: Box<str>,
     /// Suffix for the temp script file, e.g. `.py` (some runners sniff it).
     pub suffix: Box<str>,
+    /// Environment variables set for the interpreter (overriding inherited
+    /// values) — e.g. the `PYTHONPATH` that makes `from quilt import *`
+    /// resolve, the same path `reduce_py` teaches its one-shot script.
+    pub env: Box<[(Box<str>, Box<str>)]>,
 }
 
 impl MachineSpec {
@@ -64,6 +68,7 @@ impl MachineSpec {
             args: args.iter().map(|a| Box::from(*a)).collect(),
             print_wrap: print_wrap.into(),
             suffix: suffix.into(),
+            env: Box::default(),
         })
     }
 }
@@ -186,6 +191,7 @@ impl ScriptMachine {
         std::fs::write(file.path(), script).into_diagnostic()?;
         let output = Command::new(&*self.spec.program)
             .args(self.spec.args.iter().map(AsRef::<str>::as_ref))
+            .envs(self.spec.env.iter().map(|(k, v)| (&**k, &**v)))
             .arg(file.path())
             .output()
             .into_diagnostic()
@@ -262,6 +268,9 @@ pub struct ReplSpec {
     /// one feed's output is separated from the next without any framing
     /// support from the interpreter.
     pub echo_wrap: Box<str>,
+    /// Environment variables set for the interpreter (overriding inherited
+    /// values); see [`MachineSpec::env`].
+    pub env: Box<[(Box<str>, Box<str>)]>,
 }
 
 /// How long a [`ReplMachine`] waits for a feed's sentinel before declaring
@@ -301,6 +310,7 @@ impl ReplMachine {
 
         let mut child = Command::new(&*spec.program)
             .args(spec.args.iter().map(AsRef::<str>::as_ref))
+            .envs(spec.env.iter().map(|(k, v)| (&**k, &**v)))
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -498,6 +508,7 @@ mod tests {
                 args: Box::default(),
                 print_wrap: "echo $(( {} ))".into(),
                 suffix: ".sh".into(),
+                env: Box::default(),
             },
         )
     }
@@ -555,6 +566,7 @@ mod tests {
                 args: Box::default(),
                 print_wrap: "echo $(( {} ))".into(),
                 echo_wrap: "echo {}".into(),
+                env: Box::default(),
             },
         )
         .unwrap()

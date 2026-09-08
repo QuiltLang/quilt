@@ -35,9 +35,19 @@ impl TSProvider for PythonProvider {
     }
 
     /// `repr()` answers a query with Python's own literal for the value,
-    /// which is what makes a machine answer the inverse of lift.
+    /// which is what makes a machine answer the inverse of lift. The
+    /// `PYTHONPATH` entry resolves `from quilt import *` against the package
+    /// next to this crate — the same path `reduce_py` teaches its one-shot
+    /// script — so a machine can be fed expanded meta-code, not just plain
+    /// Python.
     fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
-        crate::machine::MachineSpec::from_hashbang(self.hashbang()?, "print(repr({}))", ".py")
+        let mut spec =
+            crate::machine::MachineSpec::from_hashbang(self.hashbang()?, "print(repr({}))", ".py")?;
+        spec.env = Box::new([(
+            "PYTHONPATH".into(),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../quilt-python").into(),
+        )]);
+        Some(spec)
     }
 
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not

@@ -43,6 +43,7 @@ impl TSProvider for BashProvider {
             args: Box::default(),
             print_wrap: "echo $(( {} ))".into(),
             echo_wrap: "echo {}".into(),
+            env: Box::default(),
         })
     }
 

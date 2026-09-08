@@ -41,6 +41,7 @@ impl TSProvider for ZshProvider {
             args: Box::default(),
             print_wrap: "echo $(( {} ))".into(),
             echo_wrap: "echo {}".into(),
+            env: Box::default(),
         })
     }
 

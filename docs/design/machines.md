@@ -333,12 +333,18 @@ Each step useful alone:
    the `Park` of live per-language defaults on `Multi`, with
    `Multi::machine(lang)` and the term-level `Multi::eval_on(lang, term)`
    closing the text→term loop at the rim.
-2. Persistent per-run park in `quilt run`; `↓` gains sharing; `[machine]` spec
-   sections + `machine` axis + the three laws in the battery.
-3. `ReplMachine` (bash/zsh/nix/sqlite first — the current worst-served
-   languages), then `JupyterMachine`.
-4. `MetaMachine` spellings, `⟨M⟩`, `m↓` resolution, `MachineRef` + `LiftTo`
-   impls, `quilt machine serve` / `quilt repl`.
+2. **(implemented)** `[machine]` spec sections + the `machine` axis + the
+   three laws in the battery (`probe_machine`). The warm park in `quilt run`
+   waits for phase 4's `↓` respelling — until `↓` expands to machine evals,
+   a CLI-side park has no consumer.
+3. **(first slice implemented)** `ReplMachine` — a persistent interpreter
+   with sentinel-framed feeds, driving bash and zsh (flipped to
+   `machine = supported`); still to come: sqlite/nix providers, then
+   `JupyterMachine`.
+4. **(`quilt repl` implemented)** — each line parsed, expanded, classified
+   and fed to the ground language's park machine. Still to come:
+   `MetaMachine` spellings, `⟨M⟩`, `m↓` resolution, `MachineRef` + `LiftTo`
+   impls, `quilt machine serve`.
 5. Capability subtraits (`Snapshot` / `Metered` / `Introspect`) and the
    LSP / nanobots integrations.
 
