@@ -78,6 +78,11 @@ quilt path/to/script.rs.quilt       # rust-script runner
 quilt path/to/script.py.quilt       # python3 runner (needs `bin/build-py` first)
 quilt path/to/script.ts.quilt       # node runner (needs `bin/build-ts` first)
 
+# Interactive machine session (docs/design/machines.md): each line is Quilt
+# source, expanded and fed to the ground language's default machine, so
+# definitions persist across lines. Chain reads like a file stem.
+quilt repl py
+
 # Build the quilt_python PyO3 module (the runtime .py.quilt files target).
 # Required once before running .py.quilt files; rebuild after editing the bindings.
 build-py

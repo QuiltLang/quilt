@@ -120,6 +120,16 @@ macro_rules! define_omni {
                     _ => Err(miette!("{lang:?} can't be used as Language")),
                 }
             }
+
+            fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+                match lang {
+                    $(
+                        #[cfg(feature = $feat)]
+                        $canon $(| $alias)* => $canon,
+                    )*
+                    _ => lang,
+                }
+            }
         }
 
         pub struct OmniMetaLanguages {
@@ -357,6 +367,16 @@ macro_rules! define_omni {
                         $canon $(| $alias)* => Ok(&mut self.$field),
                     )*
                     _ => Err(miette!("{lang:?} can't be used as Language")),
+                }
+            }
+
+            fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+                match lang {
+                    $(
+                        #[cfg(feature = $feat)]
+                        $canon $(| $alias)* => $canon,
+                    )*
+                    _ => lang,
                 }
             }
         }

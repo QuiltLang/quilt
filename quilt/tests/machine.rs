@@ -21,6 +21,19 @@ fn the_park_shares_definitions_between_evals() -> Result<()> {
     Ok(())
 }
 
+/// Aliases share one parked machine: a definition fed under `python` is
+/// visible to an eval under `py`.
+#[test]
+fn park_canonicalizes_aliases() -> Result<()> {
+    let mut multi = Omni::default();
+    multi
+        .machine("python")?
+        .feed_str(InnerKind::Item, "w = 6")?;
+    let term = multi.parse_lang("py", "w * 7")?;
+    assert_eq!(multi.eval_on("py", &term)?.coparse(), "42");
+    Ok(())
+}
+
 /// `spawn_machine` hands out a fresh machine that shares nothing with the
 /// park — the isolation law.
 #[test]

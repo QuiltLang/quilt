@@ -60,6 +60,13 @@ pub trait Languages {
 
     fn get(&self, lang: &str) -> Result<&Self::Language>;
     fn get_mut(&mut self, lang: &str) -> Result<&mut Self::Language>;
+
+    /// The canonical registry key for `lang`, resolving aliases (`python` →
+    /// `py`); identity for unknown names. The machine park keys by this, so
+    /// [`Multi::machine`] hands the same machine to every alias.
+    fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+        lang
+    }
 }
 
 pub trait MetaLanguages {
@@ -139,13 +146,15 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// The *default* machine for `lang`: parked in
     /// [`machines`](Multi::machines), spawned on first use, shared by every
     /// caller of this `Multi` — which is what lets one reduce see the
-    /// definitions another fed.
+    /// definitions another fed. Keyed by the canonical language name, so
+    /// aliases (`py` / `python`) share one machine.
     pub fn machine(&mut self, lang: &str) -> Result<&mut dyn crate::machine::Machine> {
-        if !self.machines.contains(lang) {
+        let key: Box<str> = self.langs.canonical(lang).into();
+        if !self.machines.contains(&key) {
             let machine = self.spawn_machine(lang)?;
-            self.machines.insert(lang, machine);
+            self.machines.insert(&key, machine);
         }
-        Ok(self.machines.get_mut(lang).unwrap())
+        Ok(self.machines.get_mut(&key).unwrap())
     }
 
     /// Evaluate a term on `lang`'s default machine and parse the answered
@@ -817,6 +826,10 @@ impl Languages for DictLanguages {
         self.langs
             .get_mut(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
+    }
+
+    fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+        canonical(&self.aliases, lang)
     }
 }
 
