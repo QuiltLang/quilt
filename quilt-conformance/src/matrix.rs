@@ -84,6 +84,9 @@ pub enum Axis {
     LiftFrom,
     /// `↓` has a backend for this host.
     Reduce,
+    /// A stateful machine executes this language: fed definitions, it holds
+    /// them, and answers queries with literals (docs/design/machines.md).
+    Machine,
     /// `←` into a variadic container.
     Emit,
     /// `let ↖…↗ = …` destructuring.
@@ -118,6 +121,7 @@ impl Axis {
         Axis::Host,
         Axis::LiftFrom,
         Axis::Reduce,
+        Axis::Machine,
         Axis::Emit,
         Axis::PatternMatch,
         Axis::Runnable,
@@ -140,6 +144,7 @@ impl Axis {
             Axis::Host => "host",
             Axis::LiftFrom => "lift-from",
             Axis::Reduce => "reduce",
+            Axis::Machine => "machine",
             Axis::Emit => "emit",
             Axis::PatternMatch => "pattern-match",
             Axis::Runnable => "runnable",
@@ -163,6 +168,7 @@ impl Axis {
             Axis::Host => "Host",
             Axis::LiftFrom => "Lift out",
             Axis::Reduce => "Reduce ↓",
+            Axis::Machine => "Machine",
             Axis::Emit => "Emit ←",
             Axis::PatternMatch => "Patterns",
             Axis::Runnable => "Runnable",
@@ -188,6 +194,9 @@ impl Axis {
             }
             Axis::LiftFrom => "targets this host can lift a value into",
             Axis::Reduce => "`↓` evaluates a fragment at generation time",
+            Axis::Machine => {
+                "a stateful machine executes this language, holding definitions between feeds"
+            }
             Axis::Emit => "`←` appends into the surrounding variadic container",
             Axis::PatternMatch => "`let ↖pattern↗ = value` destructures by matching shape",
             Axis::Runnable => "`quilt run` can execute a file in this language directly",
@@ -212,6 +221,7 @@ impl Axis {
             Axis::Host
             | Axis::LiftFrom
             | Axis::Reduce
+            | Axis::Machine
             | Axis::Emit
             | Axis::PatternMatch
             | Axis::Runnable

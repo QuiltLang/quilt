@@ -122,6 +122,12 @@
           "verified_by": "reduce/bash"
         },
         {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "needs the persistent REPL provider (docs/design/machines.md, phase 3): a long-lived shell process is the natural machine, and the replay `ScriptMachine` would re-run effects",
+          "verified_by": "machine/bash"
+        },
+        {
           "axis": "emit",
           "status": "unsupported",
           "note": "the string model has no `b_` accumulator for `←` to append to, and unlike Nix's `builtins.concatStringsSep` the shell's join cannot stand in as a spelling: an operator is applied *prefix* to what follows, while `printf '%s\\n' \"${xs[@]}\"` takes its operand inside a substitution. Collect the fragments in an array and splice the join itself",
@@ -269,6 +275,12 @@
           "status": "unsupported",
           "note": "target-only: no meta-language to reduce with",
           "verified_by": "reduce/html"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "markup: nothing to execute, so nothing for a machine to hold",
+          "verified_by": "machine/html"
         },
         {
           "axis": "emit",
@@ -424,6 +436,12 @@
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "issue": 132,
           "verified_by": "reduce/lean"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "needs a `lean --server` provider (docs/design/machines.md, phase 3)",
+          "verified_by": "machine/lean"
         },
         {
           "axis": "emit",
@@ -589,6 +607,12 @@
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "issue": 155,
           "verified_by": "reduce/nix"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "needs a `nix repl` / `nix eval` provider (docs/design/machines.md, phase 3)",
+          "verified_by": "machine/nix"
         },
         {
           "axis": "emit",
@@ -764,6 +788,14 @@
             "python → reduce()",
             "rs → reduce_rs()",
             "rust → reduce_rs()"
+          ]
+        },
+        {
+          "axis": "machine",
+          "status": "supported",
+          "verified_by": "machine/python",
+          "detail": [
+            "python3: y = 40; y + 2 = 42"
           ]
         },
         {
@@ -957,6 +989,12 @@
           ]
         },
         {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider is future work (docs/design/machines.md) — one-shot `↓` (reduce) covers evaluation meanwhile",
+          "verified_by": "machine/rust"
+        },
+        {
           "axis": "emit",
           "status": "supported",
           "verified_by": "emit/rust",
@@ -1133,6 +1171,12 @@
           "verified_by": "reduce/sql"
         },
         {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "the machine for SQL is a database connection holding schemas and temp tables; needs the db provider (docs/design/machines.md)",
+          "verified_by": "machine/sql"
+        },
+        {
           "axis": "emit",
           "status": "unsupported",
           "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
@@ -1270,6 +1314,12 @@
           "status": "unsupported",
           "note": "not a host: no meta-language to reduce with",
           "verified_by": "reduce/text"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "text holds code rather than running it, so there is no machine to feed",
+          "verified_by": "machine/text"
         },
         {
           "axis": "emit",
@@ -1418,6 +1468,15 @@
             "(homogeneous) → reduce()",
             "ts → reduce()",
             "typescript → reduce()"
+          ]
+        },
+        {
+          "axis": "machine",
+          "status": "supported",
+          "note": "ScriptMachine via node; queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing",
+          "verified_by": "machine/typescript",
+          "detail": [
+            "node: const y = 40; y + 2 = 42"
           ]
         },
         {
@@ -1573,6 +1632,12 @@
           "status": "unsupported",
           "note": "target-only: no meta-language to reduce with",
           "verified_by": "reduce/wgsl"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "a shader executes inside a GPU pipeline, not a scripting machine",
+          "verified_by": "machine/wgsl"
         },
         {
           "axis": "emit",
@@ -1762,6 +1827,12 @@
           "status": "unsupported",
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "verified_by": "reduce/zsh"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "needs the persistent REPL provider (docs/design/machines.md, phase 3): a long-lived shell process is the natural machine, and the replay `ScriptMachine` would re-run effects",
+          "verified_by": "machine/zsh"
         },
         {
           "axis": "emit",

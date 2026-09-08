@@ -35,6 +35,7 @@ highlights = {status = "supported"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported"}
+machine = {status = "supported"}
 emit = {status = "unsupported", note = "no statement-splice: Rust's variadic block is a *block expression* and can bind `let mut b_ = tb(..)`, but Python has no statement-block in expression position, so the block is built as a fluent `tb(..).e(child).b()` chain with no named accumulator — and the runtime exposes no `emit` method on a term either. A ground `←` is therefore a hard error naming the alternative: build the sequence with your own `tb(..)` builder in ground code and splice the finished term with `↙…↘`. Automatic emission of children into a variadic container is a separate mechanism (`wrap_child`) and is unaffected", issue = 152}
 pattern-match = {status = "unsupported", note = "`PythonMetaLanguage` sets no `pattern_tag`, so a Python host cannot write `let ↖…↗ = …`. Python *fragments* can still be destructured by a Rust host, which is what `expand_rust.rs::pattern_let_runtime` exercises"}
 runnable = {status = "supported"}
@@ -161,3 +162,10 @@ rs = "reduce_rs()"
 [cross]
 wrapper = "x = @"
 lift = "↑(v)"
+
+# The `machine` axis probe (docs/design/machines.md): drives a ScriptMachine
+# built from `machine_spec` — python3 replaying history, answering via repr().
+[machine]
+define = "y = 40"
+query = "y + 2"
+answer = "42"

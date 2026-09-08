@@ -153,6 +153,23 @@ pub struct MetaSpec {
     pub reduce_unsupported: Vec<String>,
 }
 
+/// The `machine` axis probe (docs/design/machines.md, phase 2): a definition,
+/// a query referencing it, and the literal the machine must answer. The
+/// battery drives a `ScriptMachine` from the language's `machine_spec` and
+/// holds it to the machine laws — the definition persists to the query
+/// (*sequencing*), the answered literal re-answers itself (*denotation*), and
+/// a fresh machine does not see the definition (*isolation*).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MachineProbe {
+    /// A definition to feed (`InnerKind::Item`), e.g. `y = 40`.
+    pub define: String,
+    /// A query referencing the definition (`InnerKind::Expr`), e.g. `y + 2`.
+    pub query: String,
+    /// The literal the machine must answer, e.g. `42`.
+    pub answer: String,
+}
+
 /// How a host embeds a quote of another language, for the cross-language grid
 /// (#158). Hosts only; a target-only language has no wrapper.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -226,6 +243,11 @@ pub struct Spec {
     /// Host-only: how this host embeds a quote, for the cross-language grid.
     #[serde(default)]
     pub cross: CrossSpec,
+
+    /// The `machine` axis probe; present exactly when the language registers
+    /// a `machine_spec` (the battery fails either half missing the other).
+    #[serde(default)]
+    pub machine: Option<MachineProbe>,
 
     /// The comment introducer the CLI puts on a generated file of this
     /// language — the claim `quilt::langs::header_comment` (and so the

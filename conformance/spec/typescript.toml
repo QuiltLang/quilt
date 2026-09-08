@@ -41,6 +41,7 @@ highlights = {status = "unsupported", note = "no `highlights.scm` is vendored fo
 host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported", note = "`quilt run` binds the bare `quilt` import to the Node runtime (`quilt-wasm/node`), which re-expands a generated stage by shelling out to the `quilt` binary; needs `bin/build-ts`"}
+machine = {status = "supported", note = "ScriptMachine via node; queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing"}
 emit = {status = "unsupported", note = "same fluent-chain shape as Python: `build_variadic_block` emits `tb(..).e(child).b()` with no named accumulator, so a ground `←` is a hard error naming the alternative (build the sequence with your own `tb(..)` builder and splice the finished term with `↙…↘`). An IIFE would give TypeScript statements in expression position, unlike Python — but `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` has no `emit` method, so the runtime half is missing too. Automatic emission into a variadic container (`wrap_child`) is unaffected", issue = 152}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"}
 runnable = {status = "supported"}
@@ -96,3 +97,11 @@ ts = "reduce()"
 [cross]
 wrapper = "let x = @;"
 lift = "↑(v)"
+
+# The `machine` axis probe (docs/design/machines.md): drives a ScriptMachine
+# built from `machine_spec` — node replaying history, answering via
+# JSON.stringify.
+[machine]
+define = "const y = 40"
+query = "y + 2"
+answer = "42"

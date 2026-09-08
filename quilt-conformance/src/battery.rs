@@ -193,6 +193,7 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
         probe_kinds(&mut ctx, &lang);
         probe_variadic(&mut ctx, &lang);
         probe_runnable(&mut ctx, &lang);
+        probe_machine(&mut ctx, &lang);
         probe_lift_into(&mut ctx, &mut lang);
         probe_glyphs(&mut ctx, &mut lang);
     }
@@ -539,6 +540,135 @@ fn probe_runnable(ctx: &mut Ctx, lang: &BoxLang) {
             ctx.declared(axis);
         }
     }
+}
+
+/// The `machine` axis (docs/design/machines.md, phase 2). A language with a
+/// registered `machine_spec` is held to the three machine laws through a
+/// `ScriptMachine` driven by the spec's `[machine]` probe; a language without
+/// one must claim it has no machine. The laws:
+///
+/// * **sequencing** — the fed definition is visible to the later query;
+/// * **denotation** — the answered literal, queried, answers itself;
+/// * **isolation** — a fresh machine does not see the definition.
+fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
+    use quilt::lang::InnerKind;
+    use quilt::machine::{Machine as _, ScriptMachine};
+
+    let axis = Axis::Machine;
+
+    let mspec = match run(|| Ok(lang.machine_spec())) {
+        Ran::Ok(s) => s,
+        Ran::Err(e) => {
+            ctx.fail(axis, "machine_spec", format!("failed: {e}"));
+            ctx.declared(axis);
+            return;
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "machine_spec", format!("PANICKED: {p}"));
+            ctx.declared(axis);
+            return;
+        }
+    };
+    ctx.check_status(axis, mspec.is_some(), "a machine spec");
+
+    let Some(mspec) = mspec else {
+        if ctx.spec.machine.is_some() {
+            ctx.fail(
+                axis,
+                "probe",
+                "spec has a [machine] probe but the language registers no machine spec",
+            );
+        }
+        ctx.verified(axis, Vec::new());
+        return;
+    };
+    let Some(probe) = ctx.spec.machine.clone() else {
+        ctx.fail(
+            axis,
+            "probe",
+            "language registers a machine spec but the spec has no [machine] probe to hold it to",
+        );
+        ctx.declared(axis);
+        return;
+    };
+
+    let mut m = ScriptMachine::new(&ctx.spec.name, mspec.clone());
+
+    // Sequencing: the definition persists to the query.
+    match run(|| m.feed_str(InnerKind::Item, &probe.define)) {
+        Ran::Ok(_) => {}
+        Ran::Err(e) => {
+            ctx.fail(
+                axis,
+                "define",
+                format!("feeding {:?} failed: {e}", probe.define),
+            );
+            ctx.declared(axis);
+            return;
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "define", format!("PANICKED: {p}"));
+            ctx.declared(axis);
+            return;
+        }
+    }
+    match run(|| m.feed_str(InnerKind::Expr, &probe.query)) {
+        Ran::Ok(a) => {
+            if a.value.as_deref() != Some(&*probe.answer) {
+                ctx.fail(
+                    axis,
+                    "sequencing",
+                    format!(
+                        "queried {:?} after defining {:?}; wanted {:?}, got {:?}",
+                        probe.query, probe.define, probe.answer, a.value
+                    ),
+                );
+            }
+        }
+        Ran::Err(e) => ctx.fail(axis, "sequencing", format!("query failed: {e}")),
+        Ran::Panicked(p) => ctx.fail(axis, "sequencing", format!("query PANICKED: {p}")),
+    }
+
+    // Denotation: the answered literal is a fixed point of evaluation.
+    match run(|| m.feed_str(InnerKind::Expr, &probe.answer)) {
+        Ran::Ok(a) => {
+            if a.value.as_deref() != Some(&*probe.answer) {
+                ctx.fail(
+                    axis,
+                    "denotation",
+                    format!(
+                        "the literal {:?} evaluated to {:?}, not itself",
+                        probe.answer, a.value
+                    ),
+                );
+            }
+        }
+        Ran::Err(e) => ctx.fail(axis, "denotation", format!("query failed: {e}")),
+        Ran::Panicked(p) => ctx.fail(axis, "denotation", format!("query PANICKED: {p}")),
+    }
+
+    // Isolation: a fresh machine must not see the parked one's definition.
+    let mut fresh = ScriptMachine::new(&ctx.spec.name, mspec.clone());
+    match run(|| fresh.feed_str(InnerKind::Expr, &probe.query)) {
+        Ran::Ok(a) if a.value.as_deref() == Some(&*probe.answer) => ctx.fail(
+            axis,
+            "isolation",
+            format!(
+                "a fresh machine answered {:?} = {:?} without the definition",
+                probe.query, probe.answer
+            ),
+        ),
+        Ran::Panicked(p) => ctx.fail(axis, "isolation", format!("query PANICKED: {p}")),
+        Ran::Ok(_) | Ran::Err(_) => {}
+    }
+
+    ctx.verified(
+        axis,
+        vec![format!(
+            "{}: {}; {} = {}",
+            mspec.program, probe.define, probe.query, probe.answer
+        )],
+    );
 }
 
 fn probe_host(ctx: &mut Ctx) {
