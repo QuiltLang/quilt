@@ -204,6 +204,17 @@ macro_rules! define_omni {
                 }
             }
 
+            fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.machine_spec(),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
             fn ident_tag(&self) -> &'static str {
                 match self {
                     $(

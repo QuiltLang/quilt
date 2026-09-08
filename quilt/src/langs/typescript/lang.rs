@@ -35,6 +35,18 @@ impl TSProvider for TypeScriptProvider {
         Some("#!/usr/bin/env -S node --experimental-strip-types")
     }
 
+    /// `JSON.stringify` spells numbers, strings, arrays and plain objects as
+    /// valid TypeScript literals — the value's own denotation, like Python's
+    /// `repr`. (Values JSON can't spell — functions, `undefined` — answer
+    /// nothing; a richer provider can bind those to names instead.)
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        crate::machine::MachineSpec::from_hashbang(
+            self.hashbang()?,
+            "console.log(JSON.stringify({}))",
+            ".ts",
+        )
+    }
+
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
     /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {

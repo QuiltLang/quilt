@@ -91,6 +91,10 @@ pub trait MetaLanguages {
 pub struct Multi<LS: Languages, MS: MetaLanguages> {
     pub langs: LS,
     pub metas: MS,
+    /// Live default machines, one per language, spawned on first use by
+    /// [`machine`](Multi::machine) — so successive reduces share definitions
+    /// for as long as this `Multi` lives. See `docs/design/machines.md`.
+    pub machines: crate::machine::Park,
 }
 
 impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
@@ -120,6 +124,47 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     }
     pub fn name_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.name_str(lang)
+    }
+
+    /// Spawn a *fresh* machine for `lang` — today always a
+    /// [`ScriptMachine`](crate::machine::ScriptMachine) built from the
+    /// language's [`machine_spec`](Language::machine_spec); richer providers
+    /// (REPL, Jupyter, DB) will register here as they land. The caller owns
+    /// it: nothing is parked, so it shares state with no other machine.
+    pub fn spawn_machine(&self, lang: &str) -> Result<Box<dyn crate::machine::Machine>> {
+        let spec = self.langs.get(lang)?.machine_spec().ok_or_else(|| {
+            miette!("language {lang:?} has no machine: no machine spec registered")
+        })?;
+        Ok(Box::new(crate::machine::ScriptMachine::new(lang, spec)))
+    }
+
+    /// The *default* machine for `lang`: parked in
+    /// [`machines`](Multi::machines), spawned on first use, shared by every
+    /// caller of this `Multi` — which is what lets one reduce see the
+    /// definitions another fed.
+    pub fn machine(&mut self, lang: &str) -> Result<&mut dyn crate::machine::Machine> {
+        if !self.machines.contains(lang) {
+            let machine = self.spawn_machine(lang)?;
+            self.machines.insert(lang, machine);
+        }
+        Ok(self.machines.get_mut(lang).unwrap())
+    }
+
+    /// Evaluate a term on `lang`'s default machine and parse the answered
+    /// literal back into a term of `lang` — the term-level loop the design
+    /// doc calls the rim: machines speak text ([`Machine::feed_str`] is the
+    /// primitive), and the `Language` re-reads the answer here, where it
+    /// lives.
+    pub fn eval_on(&mut self, lang: &str, term: &QTerm) -> Result<Arc<QTerm>> {
+        let answer = self.machine(lang)?.eval(term)?;
+        let value = answer.value.ok_or_else(|| {
+            miette!(
+                "the {lang} machine answered no value for {:?}",
+                term.coparse()
+            )
+        })?;
+        self.get_lang_mut(lang)?
+            .parse_expr(&crate::lang::one_liner(&value))
     }
 
     #[cfg(feature = "parse")]
@@ -450,6 +495,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let Multi {
             ref mut langs,
             ref mut metas,
+            ..
         } = self;
         let meta = metas.get(lang)?;
         Expander {

@@ -91,6 +91,11 @@ pub trait TSProvider {
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
+
+    /// See [`Language::machine_spec`](crate::lang::Language::machine_spec).
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        None
+    }
 }
 
 #[derive(Default)]
@@ -470,6 +475,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
     fn hashbang(&self) -> Option<&'static str> {
         self.provider.hashbang()
     }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.provider.machine_spec()
+    }
 }
 
 impl LanguagePost for TSLanguagePost {
@@ -566,6 +575,10 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
 
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
+    }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
     }
 }
 

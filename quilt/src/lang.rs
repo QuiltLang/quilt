@@ -290,6 +290,17 @@ pub trait Language {
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
+
+    /// How to drive this language as a stateful
+    /// [`Machine`](crate::machine::Machine): the runner and spellings a
+    /// [`ScriptMachine`](crate::machine::ScriptMachine) needs. The same
+    /// pattern as [`hashbang`](Self::hashbang) (and usually derived from it
+    /// via [`MachineSpec::from_hashbang`](crate::machine::MachineSpec::from_hashbang));
+    /// `None` means no script machine — a richer provider may still exist.
+    /// See `docs/design/machines.md`.
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        None
+    }
 }
 
 /// Split a [`Language::hashbang`] into the program to execute and the arguments
@@ -380,6 +391,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn hashbang(&self) -> Option<&'static str> {
         self.as_ref().hashbang()
+    }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.as_ref().machine_spec()
     }
 }
 

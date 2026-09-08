@@ -34,6 +34,12 @@ impl TSProvider for PythonProvider {
         Some("#!/usr/bin/env python3")
     }
 
+    /// `repr()` answers a query with Python's own literal for the value,
+    /// which is what makes a machine answer the inverse of lift.
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        crate::machine::MachineSpec::from_hashbang(self.hashbang()?, "print(repr({}))", ".py")
+    }
+
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
     /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {
