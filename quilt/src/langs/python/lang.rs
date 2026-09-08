@@ -1,11 +1,10 @@
 use crate::{
     lang::{Arity, Comments, InnerKind},
-    qterm::{tb, QTerm, QTermTag},
+    qterm::{QTerm, QTermTag},
     term::Term,
     treesitter::{DynTSLanguage, TSLanguage, TSProvider},
 };
 use miette::Result;
-use std::sync::Arc;
 use tree_sitter::Parser;
 
 /**************************************************************/
@@ -60,12 +59,11 @@ impl TSProvider for PythonProvider {
         // `26855eab`), so the node no longer appears in a parse tree: `f(x)` comes
         // back as `call`, not `expression_statement(call(...))`.
         //
-        // Quilt still uses that tag to *mean* "this fragment sits in statement
-        // position" — `classify_term` reads the tag alone. So where this used to
-        // match a wrapper the parser produced, it now synthesizes one. The rule is
-        // still in the grammar (a supertype is hidden from trees, not deleted), and
-        // a `QTerm` tag is quilt's own IR rather than an obligation to mirror
-        // tree-sitter, so generated code is unchanged either way.
+        // Quilt does not put the wrapper back. The statement-ness of a fragment is
+        // reported through the returned `InnerKind`, not encoded as a node quilt
+        // invented — keeping a wrapper alive so the kind could be read back off a
+        // tag would tie the expanded form to an implementation detail of the
+        // grammar, which is exactly the coupling Quilt is meant to avoid (#184).
         let QTermTag::Tuple(name) = qterm.tag() else {
             return Ok((qterm, ikind.unwrap_or(InnerKind::Expr)));
         };
@@ -81,12 +79,9 @@ impl TSProvider for PythonProvider {
             return Ok((qterm, InnerKind::Stmt));
         }
         match self.typ(&name) {
-            // An expression the caller explicitly placed in statement position:
-            // give it the wrapper back, so it classifies as a statement.
-            InnerKind::Expr if ikind == Some(InnerKind::Stmt) => {
-                let wrapped = tb("expression_statement").c(&Arc::new(qterm)).build();
-                Ok((wrapped, InnerKind::Stmt))
-            }
+            // An expression the caller explicitly placed in statement position.
+            // The term is unchanged; only the reported kind says so.
+            InnerKind::Expr if ikind == Some(InnerKind::Stmt) => Ok((qterm, InnerKind::Stmt)),
             InnerKind::Expr => Ok((qterm, InnerKind::Expr)),
             // Already statement-shaped (`if_statement`, `function_definition`, …).
             // An explicit `Expr` hint still wins, as it did before.

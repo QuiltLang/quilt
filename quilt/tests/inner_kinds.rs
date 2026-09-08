@@ -12,7 +12,9 @@
 //!    built term is emitted instead of silently dropped.
 //!
 //! 3. Python `unwrap` respects `ikind` — when the caller passes an explicit
-//!    `InnerKind` hint, Python's `unwrap` uses it instead of guessing.
+//!    `InnerKind` hint, Python's `unwrap` uses it instead of guessing, and
+//!    reports it through the returned kind rather than by wrapping the term
+//!    in a node quilt invented (issue #184).
 //!
 //! (Issue #25 item #2 — `typ` for target languages — is still deferred: it
 //! needs the emit/splice heuristic to classify a child by its *own* language
@@ -132,25 +134,37 @@ fn wgsl_expr_quote_stays_value_in_rust_block() -> Result<()> {
 // 3. Python `unwrap` respects `ikind`
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// When the caller passes `InnerKind::Stmt`, Python's `unwrap` should not
-/// squash an `expression_statement` down to its inner expression — it should
-/// keep the statement wrapper so the result is clearly a statement.
+/// When the caller passes `InnerKind::Stmt`, Python's `unwrap` honours the hint
+/// — and reports it through the returned `InnerKind` rather than by building a
+/// node to carry it.
 ///
-/// Before the fix Python's `unwrap` ignored the `ikind` hint.
+/// Upstream tree-sitter-python made `expression_statement` a supertype, so it
+/// no longer appears in a parse tree at all: `f(x)` comes back as `call`. Quilt
+/// deliberately does *not* synthesize the wrapper back (issue #184). A fragment
+/// that has been placed in statement position is described by the kind `unwrap`
+/// returns; encoding it as a node quilt invented would tie the expanded form to
+/// a detail of the grammar, which Quilt is meant to stay agnostic about.
+///
+/// So this asserts both halves: the hint is honoured, *and* the term is left
+/// exactly as parsed.
 #[test]
 fn py_unwrap_respects_stmt_ikind() -> Result<()> {
     use quilt::lang::Language as _;
-    use quilt::langs::python::lang::PythonLanguage;
+    use quilt::langs::python::lang::{PythonLanguage, PythonProvider};
+    use quilt::treesitter::TSProvider as _;
+
     let mut lang = PythonLanguage::default();
-    // `f(x)` parses as `expression_statement(call(...))`.
-    // With ikind=Stmt the result should be classified as Stmt (not Expr).
-    let q = lang.parse_as(Some(InnerKind::Stmt), &flat_nodes("f(x)"))?;
-    // The returned term should look like a statement (call is expression so
-    // the expression_statement is squashed to `call` currently; with the
-    // fix the InnerKind returned should be Stmt, i.e. the unwrap result
-    // classifies it as Stmt).
-    // We test by asking the language to classify the parsed term.
-    assert_eq!(lang.classify_term(&q), InnerKind::Stmt);
+    let call = lang.parse_as(Some(InnerKind::Expr), &flat_nodes("f(x)"))?;
+    let module = tb("module").c(&call).build();
+
+    let provider = PythonProvider::default();
+    let (term, kind) = provider.unwrap(module, Some(InnerKind::Stmt))?;
+
+    assert_eq!(kind, InnerKind::Stmt, "the explicit Stmt hint must be honoured");
+    assert!(
+        matches!(&term, QTerm::Tuple { tag, .. } if &**tag == "call"),
+        "the term must be left as parsed, with no synthesized wrapper; got {term:?}"
+    );
     Ok(())
 }
 
