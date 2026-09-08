@@ -49,7 +49,7 @@ highlights = {status = "unsupported", note = "the LSP projects Rust to rust-anal
 host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported"}
-machine = {status = "unsupported", note = "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider is future work (docs/design/machines.md) — one-shot `↓` (reduce) covers evaluation meanwhile"}
+machine = {status = "planned", note = "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider keeps items outside a synthesized `fn main` — one-shot `↓` (reduce) covers evaluation meanwhile", issue = 267}
 emit = {status = "supported"}
 pattern-match = {status = "supported"}
 runnable = {status = "supported"}

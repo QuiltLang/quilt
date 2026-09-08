@@ -55,6 +55,25 @@ impl TSProvider for SqlProvider {
         &mut self.0
     }
 
+    /// The machine for SQL is a database connection: a live `sqlite3` whose
+    /// temp tables and attached state are its definitions — which makes SQL
+    /// the first *target-only* language with a machine
+    /// (docs/design/machines.md). A query is any SQL expression (spelled
+    /// through `SELECT …;`), the typing judgment is sqlite's `typeof`, and
+    /// `-bail` keeps the contract that a rejected feed is an `Err` rather
+    /// than a silently-logged diagnostic. The sentinel is a `SELECT` of a
+    /// string literal, which prints as its own line.
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        Some(crate::machine::ReplSpec {
+            program: "sqlite3".into(),
+            args: Box::new(["-batch".into(), "-bail".into()]),
+            print_wrap: "SELECT {};".into(),
+            echo_wrap: "SELECT '{}';".into(),
+            env: Box::default(),
+            type_wrap: Some("SELECT typeof({});".into()),
+        })
+    }
+
     fn hole_str(&self) -> &'static str {
         // `__QUILT_HOLE__` matches this grammar's `_identifier` regex
         // (`/[A-Za-z_À-ſ][0-9A-Za-z_À-ſ]*/`), so it parses
@@ -496,6 +515,14 @@ impl Language for SqlLanguage {
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
     }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.0.repl_spec()
+    }
 }
 
 /// Boxed-`Post` form of [`SqlLanguage`], for the dynamic registry.
@@ -523,5 +550,13 @@ impl Language for DynSqlLanguage {
 
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
+    }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.0.repl_spec()
     }
 }

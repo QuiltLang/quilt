@@ -442,8 +442,9 @@
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "needs a `lean --server` provider (docs/design/machines.md, phase 3)",
+          "status": "planned",
+          "note": "a `lean` script machine: feeding a theorem checks it, `#eval` answers values, `#check` is the typing judgment (docs/design/machines.md); blocked on the toolchain joining the dev shell",
+          "issue": 265,
           "verified_by": "machine/lean"
         },
         {
@@ -613,8 +614,9 @@
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "needs a `nix repl` / `nix eval` provider (docs/design/machines.md, phase 3)",
+          "status": "planned",
+          "note": "a `nix eval` provider composing definitions with `let … in` (docs/design/machines.md); purity makes replay exact",
+          "issue": 264,
           "verified_by": "machine/nix"
         },
         {
@@ -993,8 +995,9 @@
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider is future work (docs/design/machines.md) — one-shot `↓` (reduce) covers evaluation meanwhile",
+          "status": "planned",
+          "note": "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider keeps items outside a synthesized `fn main` — one-shot `↓` (reduce) covers evaluation meanwhile",
+          "issue": 267,
           "verified_by": "machine/rust"
         },
         {
@@ -1175,9 +1178,12 @@
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "the machine for SQL is a database connection holding schemas and temp tables; needs the db provider (docs/design/machines.md)",
-          "verified_by": "machine/sql"
+          "status": "supported",
+          "note": "a live `sqlite3` connection (`ReplMachine`): temp tables are its definitions, `SELECT …;` its queries, `typeof` its typing judgment — the first target-only language with a machine",
+          "verified_by": "machine/sql",
+          "detail": [
+            "repl sqlite3: CREATE TEMP TABLE t(y INTEGER); INSERT INTO t VALUES (40);; (SELECT y FROM t) + 2 = 42"
+          ]
         },
         {
           "axis": "emit",
