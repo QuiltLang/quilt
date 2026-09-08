@@ -52,6 +52,11 @@ pub struct MachineSpec {
     /// values) — e.g. the `PYTHONPATH` that makes `from quilt import *`
     /// resolve, the same path `reduce_py` teaches its one-shot script.
     pub env: Box<[(Box<str>, Box<str>)]>,
+    /// The spelling of the *typing* judgment, when the language has one:
+    /// "print the type of this expression", `{}` standing for the
+    /// expression — python's `print(type({}).__name__)`, Lean's `#check {}`.
+    /// `None` gives [`Machine::type_of`]'s honest default error.
+    pub type_wrap: Option<Box<str>>,
 }
 
 impl MachineSpec {
@@ -69,6 +74,7 @@ impl MachineSpec {
             print_wrap: print_wrap.into(),
             suffix: suffix.into(),
             env: Box::default(),
+            type_wrap: None,
         })
     }
 }
@@ -133,6 +139,63 @@ pub trait Machine: Send {
     fn eval(&mut self, term: &QTerm) -> Result<Answer> {
         self.feed(InnerKind::Expr, term)
     }
+
+    /// The *typing* judgment: answer the type of `expr`, as a literal of
+    /// this language's type spellings (`int`, `42 : ℕ`, `unsat`). An
+    /// evaluator asks "what value"; a checker — Lean, a solver, an LSP —
+    /// asks this instead, and a proof language's machine may support *only*
+    /// this and Item-checking. Defaults to an honest error, the same
+    /// pattern as the operator spellings on `MetaLanguage`.
+    fn type_of(&mut self, expr: &str) -> Result<Answer> {
+        let _ = expr;
+        bail!(
+            "the {} machine has no typing judgment registered (no type_wrap in its spec)",
+            self.lang()
+        )
+    }
+}
+
+/**************************************************************/
+
+/// An opaque snapshot of one machine's state, for fork and rollback. The
+/// encoding is the providing machine's own; restoring into a different
+/// provider fails at decode rather than corrupting anything.
+pub struct Snapshot(Box<[u8]>);
+
+/// Machines that can checkpoint and roll back their environment — Racket
+/// namespaces, Smalltalk images, a solver's `push`/`pop`, and (trivially,
+/// exactly) a [`ScriptMachine`]'s history.
+pub trait SnapshotMachine: Machine {
+    fn snapshot(&self) -> Result<Snapshot>;
+    fn restore(&mut self, snapshot: &Snapshot) -> Result<()>;
+}
+
+/// What a bounded run of a [`MeteredMachine`] came back with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunResult {
+    Finished,
+    Suspended,
+}
+
+/// Machines whose execution is resource-bounded and resumable — the shape of
+/// nanobots' `StateMachine` (gas checked per basic block, explicit yields)
+/// and of wasmtime's fuel. No provider in this crate implements it yet; the
+/// trait is here so the downstream shape and the machine family agree.
+pub trait MeteredMachine: Machine {
+    fn add_gas(&mut self, amount: u32);
+    fn run(&mut self, max_gas: u32) -> Result<RunResult>;
+}
+
+/// One definition a machine's environment holds.
+pub struct Def {
+    pub name: Box<str>,
+    pub kind: InnerKind,
+}
+
+/// Machines that can enumerate what they hold — the machine-side symbol
+/// table `quilt-lsp` wants to inject into projections (issue #193).
+pub trait IntrospectMachine: Machine {
+    fn defs(&self) -> Result<Vec<Def>>;
 }
 
 /**************************************************************/
@@ -210,6 +273,26 @@ impl ScriptMachine {
     }
 }
 
+impl ScriptMachine {
+    /// Run `history + wrapped` and read the last non-empty stdout line as
+    /// the answered literal — the shared shape of the value and typing
+    /// queries.
+    fn query(&self, wrapped: &str) -> Result<Answer> {
+        let (stdout, stderr) = self.run(&self.script_with(wrapped))?;
+        let value = stdout
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .map(|line| Box::from(line.trim()));
+        Ok(Answer {
+            value,
+            name: None,
+            stdout,
+            stderr,
+        })
+    }
+}
+
 impl Machine for ScriptMachine {
     fn lang(&self) -> &str {
         &self.lang
@@ -217,19 +300,7 @@ impl Machine for ScriptMachine {
 
     fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
         if kind == InnerKind::Expr {
-            let printed = self.spec.print_wrap.replace("{}", src);
-            let (stdout, stderr) = self.run(&self.script_with(&printed))?;
-            let value = stdout
-                .lines()
-                .rev()
-                .find(|line| !line.trim().is_empty())
-                .map(|line| Box::from(line.trim()));
-            Ok(Answer {
-                value,
-                name: None,
-                stdout,
-                stderr,
-            })
+            self.query(&self.spec.print_wrap.replace("{}", src))
         } else {
             let (stdout, stderr) = self.run(&self.script_with(src))?;
             self.history.push(src.into());
@@ -240,6 +311,31 @@ impl Machine for ScriptMachine {
                 stderr,
             })
         }
+    }
+
+    fn type_of(&mut self, expr: &str) -> Result<Answer> {
+        let Some(wrap) = &self.spec.type_wrap else {
+            bail!(
+                "the {} machine has no typing judgment registered (no type_wrap in its spec)",
+                self.lang
+            )
+        };
+        self.query(&wrap.replace("{}", expr))
+    }
+}
+
+/// A [`ScriptMachine`]'s whole state is its history, so snapshots are exact
+/// and free: the replay model's one honest advantage over a live process.
+impl SnapshotMachine for ScriptMachine {
+    fn snapshot(&self) -> Result<Snapshot> {
+        Ok(Snapshot(
+            postcard::to_stdvec(&self.history).into_diagnostic()?.into(),
+        ))
+    }
+
+    fn restore(&mut self, snapshot: &Snapshot) -> Result<()> {
+        self.history = postcard::from_bytes(&snapshot.0).into_diagnostic()?;
+        Ok(())
     }
 }
 
@@ -271,6 +367,8 @@ pub struct ReplSpec {
     /// Environment variables set for the interpreter (overriding inherited
     /// values); see [`MachineSpec::env`].
     pub env: Box<[(Box<str>, Box<str>)]>,
+    /// The typing-judgment spelling; see [`MachineSpec::type_wrap`].
+    pub type_wrap: Option<Box<str>>,
 }
 
 /// How long a [`ReplMachine`] waits for a feed's sentinel before declaring
@@ -364,22 +462,16 @@ impl ReplMachine {
     }
 }
 
-impl Machine for ReplMachine {
-    fn lang(&self) -> &str {
-        &self.lang
-    }
-
-    fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
+impl ReplMachine {
+    /// One sentinel-framed exchange: write `payload`, read until the
+    /// sentinel, answer with the collected output (`value` from the last
+    /// non-empty line when `collect_value`).
+    fn exchange(&mut self, payload: &str, collect_value: bool) -> Result<Answer> {
         use std::io::Write as _;
         use std::sync::mpsc::RecvTimeoutError;
 
         self.feeds += 1;
         let sentinel = format!("__QUILT_REPL_DONE_{}__", self.feeds);
-        let payload = if kind == InnerKind::Expr {
-            self.spec.print_wrap.replace("{}", src)
-        } else {
-            src.to_string()
-        };
         let input = format!(
             "{payload}\n{}\n",
             self.spec.echo_wrap.replace("{}", &sentinel)
@@ -416,7 +508,7 @@ impl Machine for ReplMachine {
             }
         }
 
-        let value = (kind == InnerKind::Expr)
+        let value = collect_value
             .then(|| {
                 lines
                     .iter()
@@ -431,6 +523,32 @@ impl Machine for ReplMachine {
             stdout: lines.join("\n").into(),
             stderr: self.drain_stderr(),
         })
+    }
+}
+
+impl Machine for ReplMachine {
+    fn lang(&self) -> &str {
+        &self.lang
+    }
+
+    fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
+        if kind == InnerKind::Expr {
+            let payload = self.spec.print_wrap.replace("{}", src);
+            self.exchange(&payload, true)
+        } else {
+            self.exchange(src, false)
+        }
+    }
+
+    fn type_of(&mut self, expr: &str) -> Result<Answer> {
+        let Some(wrap) = &self.spec.type_wrap else {
+            bail!(
+                "the {} machine has no typing judgment registered (no type_wrap in its spec)",
+                self.lang
+            )
+        };
+        let payload = wrap.replace("{}", expr);
+        self.exchange(&payload, true)
     }
 }
 
@@ -509,6 +627,7 @@ mod tests {
                 print_wrap: "echo $(( {} ))".into(),
                 suffix: ".sh".into(),
                 env: Box::default(),
+                type_wrap: None,
             },
         )
     }
@@ -567,6 +686,7 @@ mod tests {
                 print_wrap: "echo $(( {} ))".into(),
                 echo_wrap: "echo {}".into(),
                 env: Box::default(),
+                type_wrap: None,
             },
         )
         .unwrap()
@@ -589,6 +709,34 @@ mod tests {
     fn a_dead_repl_is_an_error() {
         let mut m = sh_repl();
         assert!(m.feed_str(InnerKind::Stmt, "exit 0").is_err());
+    }
+
+    /// A snapshot is the whole state of a script machine, so restore rolls
+    /// definitions back exactly.
+    #[test]
+    fn snapshots_roll_definitions_back() {
+        let mut m = sh_machine();
+        m.feed_str(InnerKind::Item, "x=5").unwrap();
+        let snap = m.snapshot().unwrap();
+        m.feed_str(InnerKind::Item, "x=9").unwrap();
+        assert_eq!(
+            m.feed_str(InnerKind::Expr, "x").unwrap().value.as_deref(),
+            Some("9")
+        );
+        m.restore(&snap).unwrap();
+        assert_eq!(
+            m.feed_str(InnerKind::Expr, "x").unwrap().value.as_deref(),
+            Some("5")
+        );
+    }
+
+    /// A machine without a `type_wrap` refuses the typing judgment with an
+    /// actionable message rather than a broken query.
+    #[test]
+    fn no_type_wrap_is_an_honest_error() {
+        let mut m = sh_machine();
+        let err = m.type_of("1 + 1").unwrap_err();
+        assert!(err.to_string().contains("typing judgment"), "got: {err}");
     }
 
     /// The spec `PythonProvider` registers, exercised without the `parse`
@@ -616,5 +764,20 @@ mod tests {
                 .as_deref(),
             Some("'abab'")
         );
+    }
+
+    /// The typing judgment answers the type's spelling, and sees the fed
+    /// definitions like any other query.
+    #[test]
+    fn python_answers_types() {
+        let spec = MachineSpec {
+            type_wrap: Some("print(type({}).__name__)".into()),
+            ..MachineSpec::from_hashbang("#!/usr/bin/env python3", "print(repr({}))", ".py")
+                .unwrap()
+        };
+        let mut m = ScriptMachine::new("py", spec);
+        assert_eq!(m.type_of("21 + 21").unwrap().value.as_deref(), Some("int"));
+        m.feed_str(InnerKind::Item, "s = 'hi'").unwrap();
+        assert_eq!(m.type_of("s * 2").unwrap().value.as_deref(), Some("str"));
     }
 }

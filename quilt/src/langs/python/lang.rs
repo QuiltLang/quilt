@@ -47,6 +47,8 @@ impl TSProvider for PythonProvider {
             "PYTHONPATH".into(),
             concat!(env!("CARGO_MANIFEST_DIR"), "/../quilt-python").into(),
         )]);
+        // The typing judgment: `type_of("21 + 21")` answers `int`.
+        spec.type_wrap = Some("print(type({}).__name__)".into());
         Some(spec)
     }
 

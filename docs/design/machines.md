@@ -134,15 +134,15 @@ check:
 - **Isolation**: two spawned machines share nothing (until explicitly
   connected).
 
-### Capabilities as subtraits
+### Capabilities as subtraits (implemented)
 
 Mirroring how the capability matrix refuses to pretend all languages are
-equal:
+equal, `machine.rs` now carries:
 
 ```rust
 pub trait SnapshotMachine: Machine {          // fork/rollback (Racket
-    fn snapshot(&self) -> Result<Snapshot>;   // namespaces, Smalltalk images)
-    fn restore(&mut self, s: &Snapshot) -> Result<()>;
+    fn snapshot(&self) -> Result<Snapshot>;   // namespaces, Smalltalk images,
+    fn restore(&mut self, s: &Snapshot) -> Result<()>; // a solver's push/pop)
 }
 pub trait MeteredMachine: Machine {           // nanobots' StateMachine shape
     fn add_gas(&mut self, amount: u32);       // and wasmtime fuel
@@ -152,6 +152,114 @@ pub trait IntrospectMachine: Machine {        // what's defined — for the LSP
     fn defs(&self) -> Result<Vec<Def>>;       // to project machine state
 }
 ```
+
+`ScriptMachine` implements `SnapshotMachine` exactly and for free — its
+whole state *is* its history, the replay model's one honest advantage over a
+live process. The typing judgment sits on `Machine` itself as `type_of`
+(default: an honest error), spelled per language by an optional `type_wrap`
+in the spec — python answers `int`; `Metered` and `Introspect` await their
+providers (nanobots-shaped runners; the LSP).
+
+## Why `Machine` is not a better `Language`
+
+A fair question: is the machine just what `Language` should have been? No —
+they are duals, and merging them would cost both their strengths.
+
+`Language` is *denotational and stateless*: text in, term out, the same
+answer every time, no resources owned, safe to share behind one registry
+entry, compiled for wasm. `Machine` is *operational and stateful*: it owns a
+process or connection, its answers depend on everything fed before, and two
+of them deliberately diverge. The cardinality alone settles it: there is one
+Rust `Language` and there are as many Rust machines as you spawn — a
+singleton registry versus a park of instances. A language also has *many*
+machine shapes (script, REPL, kernel, DB connection), so machine-ness is a
+1:N relation off `Language`, not an is-a.
+
+The seam between them is the factory: `Language::machine_spec` /
+`repl_spec`, the same pattern as `hashbang` — the language *knows how to
+start* its machines, and nothing more. Everything stateful lives behind the
+`Machine` trait. (In the algebra/coalgebra reading: `Language` is the
+algebra of syntax, `Machine` the coalgebra of behavior; `coparse` and `feed`
+are the two directions.)
+
+## Who else can implement `Machine`
+
+The trait is deliberately the *smallest* interface over "a stateful thing
+that accepts programs", so a surprising amount of existing tooling already
+has the right shape. Beyond the interpreters:
+
+- **Language servers.** `quilt-lsp`'s `ChildServer` already *is* a
+  request-multiplexed persistent child process; an `LspMachine` wraps one:
+  feeding an Item is `didOpen`/`didChange` on the virtual document, and the
+  machine-level queries are the tooling judgments — diagnostics, hover
+  types, completions. This is not `eval` (an LSP must not run code), which
+  is exactly why the *judging* generalization below matters: an LSP is a
+  machine whose answers are judgments about programs rather than values of
+  them. The payoff runs both directions — `IntrospectMachine::defs()` feeds
+  the LSP's projections (issue #193's missing module context is "the
+  definitions the ground program will have fed by fragment-run time"), and
+  the LSP's own downstream servers become machines in the park.
+- **Debug adapters (DAP).** A debugger session is a machine whose `feed` is
+  setting breakpoints and stepping and whose queries (`evaluate`, watch
+  expressions) answer in the debuggee's literal syntax. DAP is, like LSP and
+  Jupyter, one adapter for many languages.
+- **SMT solvers.** SMT-LIB is almost embarrassingly this protocol already:
+  `declare-const`/`assert` are Item feeds, `check-sat`/`get-model` are
+  queries, `push`/`pop` are `SnapshotMachine`. A `z3 -in` process is a
+  `ReplMachine` with `print_wrap = "(eval {})"` and nothing else new.
+- **Proof assistants.** Lean and Coq servers — see the judging section
+  below.
+- **Databases.** A connection is the SQL machine (temp tables and prepared
+  statements are its definitions); `sqlite3` on stdin is a `ReplMachine`
+  today, a real driver is a native provider tomorrow.
+- **Notebook kernels.** One Jupyter adapter is ~100 languages of maintained
+  machines, with `execute_request` as `feed` and rich MIME answers as
+  display.
+- **Browsers.** The Chrome DevTools Protocol's `Runtime.evaluate` makes a
+  page a JS/TS machine — which is where quilt-wasm's in-browser `↓` wants
+  to land anyway.
+- **Downstream: nanobots.** Its `StateMachine` is `MeteredMachine` minus the
+  language coupling; convergence means quilt supplies the trait nanobots
+  hand-rolls.
+
+## Machines that judge: proof languages
+
+The evaluator framing ("execute statements, reduce expressions") is one
+species of a more general thing: a machine *maintains a context and renders
+judgments over fed programs*. Lean makes the general shape unavoidable — a
+proof checker's job is not to run your theorem but to *accept or reject*
+it — and the design accommodates it without a new `InnerKind`:
+
+- **No new `InnerKind`.** The kinds are *syntactic roles*, and they already
+  fit: a `theorem`/`def` is an [`Item`], a `#check`/`#eval` command is
+  [`Stmt`]-like, a term is an [`Expr`]. What a proof language adds is not a
+  new syntactic role but a new *judgment* over the same roles — and
+  judgments are the machine's side of the protocol, not the parser's. Adding
+  a `Theorem` kind would repeat the mistake `InnerKind` was designed to
+  avoid: encoding one language's semantics in the shared vocabulary.
+- **Checking is what feeding an Item already means.** Feeding
+  `theorem t : P := proof` to a Lean machine extends the context iff the
+  proof checks; rejection is the `Err` of the feed, carrying the
+  diagnostic. This is the same contract every machine has — python rejects
+  an Item with a syntax error the same way — proof languages just have a
+  much richer rejection judgment. (A refinement worth making while alpha:
+  give `Answer` an explicit `verdict` so a *rejection with output* is not
+  squeezed through `Err` — accepted-with-warnings (`sorry`!) is a verdict,
+  not a failure. See the API-changes section.)
+- **The missing query is `type_of`, not a new kind.** An evaluator's query
+  is "what value"; a checker's is "what type / does it hold". So `Machine`
+  gains a second query with the same literal-answer contract:
+  `type_of(expr)` answers the literal of the *type* — `int` from python's
+  `type({}).__name__`, `42 : ℕ` from Lean's `#check {}`, `sat`/`unsat` from
+  a solver's `check-sat`. Spelled per language as an optional `type_wrap` in
+  the machine spec, defaulting to an honest error, exactly like the operator
+  spellings on `MetaLanguage`. `⟨T⟩` foreshadowed this: quilt already knows
+  types are language-relative spellings.
+
+A Lean `ScriptMachine` needs nothing beyond a spec (`lean` on a replayed
+file of commands; effects-free by nature, so the replay model is *exact*
+for it, not degenerate) — it is unimplemented only because the toolchain is
+not in the dev shell yet.
 
 ## Providers: adapters, not interpreters
 
@@ -271,6 +379,145 @@ runtime shadow, one level per live `↓` (the reflective-tower picture, in the
 collapsing-towers sense that adjacent levels can fuse when the machine is a
 `ScriptMachine` replay).
 
+## Homogeneous vs heterogeneous machines
+
+The homogeneous/heterogeneous distinction (meta-language == language, or
+not) matters in exactly two places, and both are about *what can cross the
+boundary*:
+
+1. **Value transport.** Heterogeneous answers must go through the literal
+   channel: text a `Language` can re-read. That is the whole design — it is
+   what makes the protocol language-agnostic — but it caps fidelity at "what
+   has a literal", governed by the same grid as `LiftTo`. Homogeneous pairs
+   may upgrade the transport: rust↔rust already ships arbitrary
+   `Serialize` values over postcard (today's `reduce::<T>`), and a
+   same-process homogeneous machine can share memory outright. The rule:
+   *the literal channel is the portable floor; a provider may negotiate a
+   richer channel only when both ends speak the same language.* This is why
+   `reduce::<T>` survives as a homogeneous fast path rather than being
+   replaced.
+2. **Residues and cross-stage persistence.** An `Answer::name` residue is a
+   name *in one machine's environment* — meaningful only to later feeds of
+   that same machine. Lifting a residue across languages is meaningless;
+   lifting a `MachineRef` (the address of the machine) is how state crosses
+   a stage or language boundary, and it is heterogeneous-safe precisely
+   because a URI is a string in every language. MetaOCaml's cross-stage
+   persistence is the homogeneous special case (same language, adjacent
+   stages, values flow directly); Quilt's general case must route through
+   ref + re-query.
+
+The homogeneous case also has one structural gift: the ground program is
+itself a machine of its own language, so a homogeneous `↓` *could* evaluate
+in-process (the identity machine — no spawn, collapsing one tower level, in
+the Amin–Rompf sense). Worth doing eventually; it must stay
+indistinguishable from the subprocess semantics up to isolation.
+
+## Examples
+
+What works on this branch today:
+
+```console
+$ quilt repl py
+quilt repl — ground language py; ctrl-D to exit
+py> x = 5
+py> x * 8 + 2
+42
+py> def area(r): return 3.14159 * r * r
+py> area(10)
+314.159
+```
+
+A shell machine is *persistent* (state is the process), so effects run once
+and definitions include functions and cwd:
+
+```console
+$ quilt repl bash
+bash> y=40
+bash> y + 2        # a query is an arithmetic expression
+42
+```
+
+Machines as a library — the park on `Multi` is what `↓` will ride:
+
+```rust
+use quilt::lang::InnerKind;
+use quilt::langs::omni::Omni;
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    let mut multi = Omni::default();
+
+    // Feed a definition to the default python machine; it persists.
+    multi.machine("py")?.feed_str(InnerKind::Item, "y = 40")?;
+
+    // Later — different call site, same park — evaluate a *term* against it
+    // and get a term back: the literal, re-read by the Language at the rim.
+    let term = multi.parse_lang("py", "y + 2")?;
+    let answer = multi.eval_on("py", &term)?;
+    assert_eq!(answer.coparse(), "42");
+
+    // A spawned machine is isolated from the park (the isolation law).
+    let mut fresh = multi.spawn_machine("py")?;
+    assert!(fresh.feed_str(InnerKind::Expr, "y").is_err());
+    Ok(())
+}
+```
+
+Where the syntax is heading (design, not yet implemented — `m↓` is phase 4's
+remaining half):
+
+```rust
+// .rs.quilt — two reduces sharing one machine's definitions:
+↓↖import numpy as np↗;                  // feed the ambient py machine
+let v: f64 = ↓↖np.linalg.norm([3, 4])↗; // 5.0 — numpy is still imported
+
+// A named machine as a host value, and its handle lifted into the next stage:
+let m = spawn::<Py>()?;
+m↓↖model = train(data)↗;
+let stage2 = python↖
+    m = quilt.connect(↙m.reference().↑↘)   // the same machine, next stage
+    print(m.eval("model.score(test)"))
+↗;
+```
+
+## API changes worth making while alpha
+
+Asked directly: yes, some existing surface should move, and early alpha is
+the time.
+
+- **`hashbang()` should fold into the machine family.** It is a one-shot
+  run spec wearing older clothes; `MachineSpec` already subsumes it
+  (program + args came *from* it via `from_hashbang`). End state:
+  `quilt run` derives its runner from the machine spec, `hashbang` becomes a
+  derived convenience or disappears, and the `runnable` axis folds into
+  `machine` (a language is runnable iff a script-shaped machine exists).
+- **`Answer` should grow a `verdict`.** Today rejection is `Err`, which
+  conflates "the machine judged this program wrong" with "the transport
+  died", and cannot express accepted-with-warnings (Lean's `sorry`). A small
+  `Verdict { Accepted, Rejected }` plus diagnostics on `Answer` fixes the
+  checker story without touching the trait shape.
+- **`typ()`/`classify_term` quality becomes semantic, not just cosmetic.**
+  The REPL and every machine feed route on classification, so issue #191
+  (four languages classify everything as `File`) graduates from
+  matrix-cell blemish to behavior bug. Fixing it upgrades the shells' REPL
+  for free.
+- **`InnerKind` stays.** No `Theorem`, no `Query` variant — the machine-side
+  judgments (`feed` vs `eval` vs `type_of`) carry the semantic load, and the
+  syntactic vocabulary stays shared. This is the same division of labor the
+  parser already lives by.
+- **`Multi`'s park keying should canonicalize aliases.** `machine("py")` and
+  `machine("python")` currently spawn two machines; the registries already
+  have the alias maps to fix this.
+- **One assumption worth loosening later: one machine, one language.** The
+  trait pins `Machine::lang` to a single registry key, which fits every
+  provider here but excludes genuinely polyglot machines (a GraalVM
+  `Context`, a .NET Interactive session, a Jupyter kernel with magics). If
+  those matter, `lang()` becomes "the default dialect" and `feed` gains an
+  optional language, at no cost to current providers. This is also the one
+  place the original "machines that speak *those languages*" framing was
+  (mildly) narrower than the tool landscape — nothing else in the brief
+  precluded a cleaner result.
+
 ## Conformance, CLI, LSP
 
 - **New axes** in `Axis::ALL` (every language forced to answer, per the
@@ -345,8 +592,9 @@ Each step useful alone:
    and fed to the ground language's park machine. Still to come:
    `MetaMachine` spellings, `⟨M⟩`, `m↓` resolution, `MachineRef` + `LiftTo`
    impls, `quilt machine serve`.
-5. Capability subtraits (`Snapshot` / `Metered` / `Introspect`) and the
-   LSP / nanobots integrations.
+5. **(traits implemented)** Capability subtraits (`Snapshot` / `Metered` /
+   `Introspect`, plus `type_of` on `Machine`); still to come: the LSP and
+   nanobots integrations behind them.
 
 ## Open questions
 
