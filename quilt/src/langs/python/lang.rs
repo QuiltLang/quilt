@@ -73,34 +73,39 @@ impl TSProvider for PythonProvider {
             return Ok((qterm, InnerKind::File));
         }
         let qterm = qterm.squash();
-        if qterm.tag() == QTermTag::tuple("expression_statement") {
-            // A bare tuple (`a, b`) keeps its elements directly under the
-            // statement — there is no single inner node to squash to. Keep
-            // the statement whole; bare tuples render without delimiters, so
-            // the fragment splices flat into expression position.
-            if qterm.len() != 1 {
-                return Ok((qterm, InnerKind::Expr));
-            }
-            let inner = qterm.squash();
-            if inner.tag() == QTermTag::tuple("assignment") {
-                // An assignment is always a statement, regardless of position.
-                return Ok((inner, InnerKind::Stmt));
-            }
-            // A non-assignment expression statement like `foo()`. When the
-            // caller explicitly placed the hole in statement position, honour
-            // that: keep the `expression_statement` wrapper and report Stmt.
-            // Otherwise treat it as a bare expression and squash to the inner.
-            if ikind == Some(InnerKind::Stmt) {
-                return Ok((qterm, InnerKind::Stmt));
-            }
-            return Ok((inner, InnerKind::Expr));
-        }
-        // If the caller explicitly expected an expression (e.g. the hole was
-        // in expression position), trust that over the default Stmt guess.
-        if ikind == Some(InnerKind::Expr) {
+        // Upstream marks `expression_statement` as a supertype (tree-sitter-python
+        // `26855eab`), so the node no longer appears in a parse tree: `f(x)` comes
+        // back as `call`, not `expression_statement(call(...))`.
+        //
+        // Quilt does not put the wrapper back. The statement-ness of a fragment is
+        // reported through the returned `InnerKind`, not encoded as a node quilt
+        // invented — keeping a wrapper alive so the kind could be read back off a
+        // tag would tie the expanded form to an implementation detail of the
+        // grammar, which is exactly the coupling Quilt is meant to avoid (#184).
+        let QTermTag::Tuple(name) = qterm.tag() else {
+            return Ok((qterm, ikind.unwrap_or(InnerKind::Expr)));
+        };
+        if &*name == "tuple_expression" {
+            // A bare tuple (`a, b`) renders without delimiters, so the fragment
+            // splices flat into expression position. Keep it whole rather than
+            // squashing past it. Upstream moved this case out of
+            // `expression_statement` into its own node in the same release.
             return Ok((qterm, InnerKind::Expr));
         }
-        Ok((qterm, InnerKind::Stmt))
+        if &*name == "assignment" {
+            // An assignment is always a statement, regardless of position.
+            return Ok((qterm, InnerKind::Stmt));
+        }
+        match self.typ(&name) {
+            // An expression the caller explicitly placed in statement position.
+            // The term is unchanged; only the reported kind says so.
+            InnerKind::Expr if ikind == Some(InnerKind::Stmt) => Ok((qterm, InnerKind::Stmt)),
+            InnerKind::Expr => Ok((qterm, InnerKind::Expr)),
+            // Already statement-shaped (`if_statement`, `function_definition`, …).
+            // An explicit `Expr` hint still wins, as it did before.
+            _ if ikind == Some(InnerKind::Expr) => Ok((qterm, InnerKind::Expr)),
+            _ => Ok((qterm, InnerKind::Stmt)),
+        }
     }
 }
 
