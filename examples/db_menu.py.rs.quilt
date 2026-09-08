@@ -1,0 +1,72 @@
+#!/usr/bin/env quilt
+//! Machines at generation time (docs/design/machines.md): a live sqlite3
+//! machine computes over data this meta-program feeds it, and the generated
+//! Python ships only the answers. Three languages cooperate — Rust is the
+//! meta-language, SQL fragments are built as terms and fed to the machine,
+//! Python is the target — and the ground program is a *meta-machine*: a Rust
+//! machine whose values include a SQL machine.
+//!
+//! Run with `quilt run examples/db_menu.py.rs.quilt` (needs sqlite3 on PATH).
+use quilt::lang::InnerKind;
+use quilt::machine::{Machine, ReplMachine, ReplSpec};
+use quilt::prelude::*;
+
+fn main() -> Result<()> {
+    // The SQL machine: a live sqlite3 process; its temp tables are its
+    // definitions. (This program is built runtime-only, with no language
+    // registry, so the spec is written out — it is the same one
+    // `SqlProvider::repl_spec` registers for `Multi::machine("sql")`.)
+    let mut db = ReplMachine::spawn(
+        "sql",
+        ReplSpec {
+            program: "sqlite3".into(),
+            args: Box::new(["-batch".into(), "-bail".into()]),
+            print_wrap: "SELECT {};".into(),
+            echo_wrap: "SELECT '{}';".into(),
+            env: Box::default(),
+            type_wrap: Some("SELECT typeof({});".into()),
+        },
+    )?;
+    db.feed(InnerKind::Item, &sql↖CREATE TEMP TABLE menu(item TEXT, price REAL);↗)?;
+
+    // Each row is built as a SQL *term*, with `↑` lifting the Rust values
+    // into SQL literals — a lifted string becomes a literal node with every
+    // quote doubled, so O'Malley's apostrophe cannot escape the string and
+    // continue the statement (issue #219).
+    let menu = [("espresso", 2.50), ("latte", 3.75), ("O'Malley's blend", 4.20)];
+    for (item, price) in menu {
+        db.feed(InnerKind::Stmt, &sql↖INSERT INTO menu VALUES (↙item.↑↘, ↙price.↑↘);↗)?;
+    }
+
+    // Ask the machine. Answers come back as SQL literals — text the meta-
+    // program parses into Rust values.
+    let count: i64 = query(&mut db, "(SELECT COUNT(*) FROM menu)")?
+        .parse()
+        .map_err(|e| miette!("count did not parse: {e}"))?;
+    let total: f64 = query(&mut db, "(SELECT SUM(price) FROM menu)")?
+        .parse()
+        .map_err(|e| miette!("total did not parse: {e}"))?;
+    let dearest = query(&mut db, "(SELECT item FROM menu ORDER BY price DESC LIMIT 1)")?;
+
+    // Generate the Python report — `↑` again, now lifting the same Rust
+    // values into *Python* literals. The emitted program needs no database.
+    let program = ↖
+        def report():
+            print("menu items:", ↙count.↑↘)
+            print("total:", ↙total.↑↘)
+            print("dearest:", ↙dearest.↑↘)
+
+        report()
+    ↗;
+    println!("{}", program.coparse());
+    Ok(())
+}
+
+/// One Expr feed, unwrapped to the answered literal's text.
+fn query(db: &mut ReplMachine, q: &str) -> Result<String> {
+    let answer = db.feed_str(InnerKind::Expr, q)?;
+    let value = answer
+        .value
+        .ok_or_else(|| miette!("the sql machine answered no value for {q:?}"))?;
+    Ok(value.into())
+}

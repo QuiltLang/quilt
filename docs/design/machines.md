@@ -414,7 +414,23 @@ indistinguishable from the subprocess semantics up to isolation.
 
 ## Examples
 
-What works on this branch today:
+Two runnable ones ship with the repo:
+
+- **`cargo run -p quiltlang --example machines`** — the machine tour: a
+  python `ScriptMachine` (definitions, literal answers, the `type_of`
+  judgment), a persistent bash `ReplMachine` (functions and variables as
+  real process state), a live sqlite3 connection as the SQL machine
+  (`typeof` as its typing judgment), and the isolation + snapshot laws
+  demonstrated. One Rust program driving machines of three languages — a
+  meta-machine.
+- **`quilt run examples/db_menu.py.rs.quilt`** — machines at generation
+  time: the ground Rust meta-program feeds a sqlite machine rows built as
+  SQL *terms* (`↑` lifting Rust values into injection-safe SQL literals,
+  #219), asks it aggregates, and generates a Python report with the answers
+  lifted into *Python* literals. Three languages, one machine, no database
+  needed by the emitted program.
+
+What else works on this branch today:
 
 ```console
 $ quilt repl py
