@@ -94,7 +94,7 @@ case "${1:-}" in
     ;;
   --html)
     cargo llvm-cov "${COMMON[@]}" --html
-    echo "wrote $ROOT/target/llvm-cov/html/index.html"
+    echo "wrote ${CARGO_TARGET_DIR:-$ROOT/target}/llvm-cov/html/index.html"
     ;;
   --lcov)
     out="${2:?--lcov needs an output path}"
