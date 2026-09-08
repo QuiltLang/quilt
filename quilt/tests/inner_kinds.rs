@@ -160,7 +160,11 @@ fn py_unwrap_respects_stmt_ikind() -> Result<()> {
     let provider = PythonProvider::default();
     let (term, kind) = provider.unwrap(module, Some(InnerKind::Stmt))?;
 
-    assert_eq!(kind, InnerKind::Stmt, "the explicit Stmt hint must be honoured");
+    assert_eq!(
+        kind,
+        InnerKind::Stmt,
+        "the explicit Stmt hint must be honoured"
+    );
     assert!(
         matches!(&term, QTerm::Tuple { tag, .. } if &**tag == "call"),
         "the term must be left as parsed, with no synthesized wrapper; got {term:?}"
