@@ -239,6 +239,222 @@ impl Machine for ScriptMachine {
 
 /**************************************************************/
 
+/// What a [`ReplMachine`] needs to know about a language: how to start its
+/// interactive interpreter, how to spell a value query, and how to spell
+/// "print exactly this text" — the sentinel that marks where one feed's
+/// output ends.
+///
+/// Declared per language via
+/// [`Language::repl_spec`](crate::lang::Language::repl_spec), preferred over
+/// [`machine_spec`](crate::lang::Language::machine_spec) when both exist.
+#[derive(Debug, Clone)]
+pub struct ReplSpec {
+    /// The interpreter to run and keep alive, e.g. `bash`.
+    pub program: Box<str>,
+    pub args: Box<[Box<str>]>,
+    /// The spelling of "print the value of this expression as a literal",
+    /// with `{}` standing for the expression — for the shells,
+    /// `echo $(( {} ))` (a shell query is an arithmetic expression).
+    pub print_wrap: Box<str>,
+    /// The spelling of "print exactly this text on its own line", with `{}`
+    /// standing for the text. Fed after every fragment with a fresh sentinel;
+    /// the machine reads output until the sentinel comes back, which is how
+    /// one feed's output is separated from the next without any framing
+    /// support from the interpreter.
+    pub echo_wrap: Box<str>,
+}
+
+/// How long a [`ReplMachine`] waits for a feed's sentinel before declaring
+/// the interpreter hung.
+const REPL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A persistent machine: one long-lived interpreter process, fed fragments
+/// on stdin. State is real process state — definitions persist because the
+/// process does — so, unlike [`ScriptMachine`], effects run exactly once and
+/// nothing is replayed.
+///
+/// The wire protocol is the least an interactive interpreter can offer:
+/// write the fragment, write an `echo` of a fresh sentinel, read stdout
+/// until the sentinel comes back. An interpreter that dies (or never echoes
+/// within [`REPL_TIMEOUT`]) turns the feed into an error carrying whatever
+/// stderr said. This is the phase-3 provider from `docs/design/machines.md`;
+/// it fits any interpreter whose input is a statement stream (the shells,
+/// `sqlite3`), while block-structured REPLs (python's `...` continuations)
+/// need the richer per-language protocols that come later.
+pub struct ReplMachine {
+    lang: Box<str>,
+    spec: ReplSpec,
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    /// Lines the reader thread has pulled off the interpreter's stdout.
+    stdout: std::sync::mpsc::Receiver<String>,
+    /// Everything stderr has said since the last feed (drained per feed).
+    stderr: std::sync::Arc<std::sync::Mutex<String>>,
+    /// Feed counter, salting the sentinel.
+    feeds: usize,
+}
+
+impl ReplMachine {
+    /// Start the interpreter and attach the stream readers.
+    pub fn spawn(lang: &str, spec: ReplSpec) -> Result<ReplMachine> {
+        use std::io::{BufRead as _, BufReader};
+
+        let mut child = Command::new(&*spec.program)
+            .args(spec.args.iter().map(AsRef::<str>::as_ref))
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .into_diagnostic()
+            .wrap_err_with(|| format!("failed to start {:?}", spec.program))?;
+        let stdin = child.stdin.take().expect("stdin was piped");
+        let stdout_pipe = child.stdout.take().expect("stdout was piped");
+        let stderr_pipe = child.stderr.take().expect("stderr was piped");
+
+        let (tx, stdout) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout_pipe).lines() {
+                let Ok(line) = line else { break };
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let sink = std::sync::Arc::clone(&stderr);
+        std::thread::spawn(move || {
+            for line in BufReader::new(stderr_pipe).lines() {
+                let Ok(line) = line else { break };
+                if let Ok(mut buf) = sink.lock() {
+                    buf.push_str(&line);
+                    buf.push('\n');
+                }
+            }
+        });
+
+        Ok(ReplMachine {
+            lang: lang.into(),
+            spec,
+            child,
+            stdin,
+            stdout,
+            stderr,
+            feeds: 0,
+        })
+    }
+
+    /// Take whatever stderr has said since the last drain.
+    fn drain_stderr(&self) -> Box<str> {
+        self.stderr
+            .lock()
+            .map(|mut buf| std::mem::take(&mut *buf))
+            .unwrap_or_default()
+            .into()
+    }
+}
+
+impl Machine for ReplMachine {
+    fn lang(&self) -> &str {
+        &self.lang
+    }
+
+    fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
+        use std::io::Write as _;
+        use std::sync::mpsc::RecvTimeoutError;
+
+        self.feeds += 1;
+        let sentinel = format!("__QUILT_REPL_DONE_{}__", self.feeds);
+        let payload = if kind == InnerKind::Expr {
+            self.spec.print_wrap.replace("{}", src)
+        } else {
+            src.to_string()
+        };
+        let input = format!(
+            "{payload}\n{}\n",
+            self.spec.echo_wrap.replace("{}", &sentinel)
+        );
+        if let Err(e) = self
+            .stdin
+            .write_all(input.as_bytes())
+            .and_then(|()| self.stdin.flush())
+        {
+            bail!(
+                "{} machine: {:?} is gone ({e}):\n{}",
+                self.lang,
+                self.spec.program,
+                self.drain_stderr()
+            );
+        }
+
+        let mut lines = Vec::new();
+        loop {
+            match self.stdout.recv_timeout(REPL_TIMEOUT) {
+                Ok(line) if line.trim() == sentinel => break,
+                Ok(line) => lines.push(line),
+                Err(RecvTimeoutError::Timeout) => bail!(
+                    "{} machine: {:?} did not answer within {REPL_TIMEOUT:?}",
+                    self.lang,
+                    self.spec.program
+                ),
+                Err(RecvTimeoutError::Disconnected) => bail!(
+                    "{} machine: {:?} exited mid-feed:\n{}",
+                    self.lang,
+                    self.spec.program,
+                    self.drain_stderr()
+                ),
+            }
+        }
+
+        let value = (kind == InnerKind::Expr)
+            .then(|| {
+                lines
+                    .iter()
+                    .rev()
+                    .find(|line| !line.trim().is_empty())
+                    .map(|line| Box::from(line.trim()))
+            })
+            .flatten();
+        Ok(Answer {
+            value,
+            name: None,
+            stdout: lines.join("\n").into(),
+            stderr: self.drain_stderr(),
+        })
+    }
+}
+
+impl Drop for ReplMachine {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/**************************************************************/
+
+/// Spawn the best machine a [`Language`](crate::lang::Language) declares: the
+/// persistent [`ReplMachine`] when the language has a
+/// [`repl_spec`](crate::lang::Language::repl_spec), else the replay-based
+/// [`ScriptMachine`] from its
+/// [`machine_spec`](crate::lang::Language::machine_spec), else an error.
+/// Shared by [`Multi`](crate::multi::Multi) and the conformance battery, so
+/// the machine a claim is verified against is the machine users get.
+pub fn spawn_machine<L: crate::lang::Language + ?Sized>(
+    lang_name: &str,
+    lang: &L,
+) -> Result<Box<dyn Machine>> {
+    if let Some(spec) = lang.repl_spec() {
+        return Ok(Box::new(ReplMachine::spawn(lang_name, spec)?));
+    }
+    if let Some(spec) = lang.machine_spec() {
+        return Ok(Box::new(ScriptMachine::new(lang_name, spec)));
+    }
+    bail!("language {lang_name:?} has no machine: no repl or script spec registered")
+}
+
+/**************************************************************/
+
 /// The pool of live default machines, one per language, spawned on first
 /// use. [`Multi`](crate::multi::Multi) carries one so that successive
 /// reduces in a run share definitions; `quilt run` will keep it warm for the
@@ -328,6 +544,39 @@ mod tests {
         // The failed fragment was not recorded, so the machine still answers.
         let ask = m.feed_str(InnerKind::Expr, "x + 2").unwrap();
         assert_eq!(ask.value.as_deref(), Some("7"));
+    }
+
+    /// POSIX sh as a *persistent* machine, for the [`ReplMachine`] tests.
+    fn sh_repl() -> ReplMachine {
+        ReplMachine::spawn(
+            "sh",
+            ReplSpec {
+                program: "sh".into(),
+                args: Box::default(),
+                print_wrap: "echo $(( {} ))".into(),
+                echo_wrap: "echo {}".into(),
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn repl_state_persists_without_replay() {
+        let mut m = sh_repl();
+        let fed = m.feed_str(InnerKind::Stmt, "echo hi").unwrap();
+        assert!(fed.stdout.contains("hi"));
+        m.feed_str(InnerKind::Item, "x=5").unwrap();
+        let ask = m.feed_str(InnerKind::Expr, "x + 2").unwrap();
+        assert_eq!(ask.value.as_deref(), Some("7"));
+        // The effect ran exactly once: the query's own output does not
+        // re-print "hi" — a live process, not replayed history.
+        assert!(!ask.stdout.contains("hi"), "got: {:?}", ask.stdout);
+    }
+
+    #[test]
+    fn a_dead_repl_is_an_error() {
+        let mut m = sh_repl();
+        assert!(m.feed_str(InnerKind::Stmt, "exit 0").is_err());
     }
 
     /// The spec `PythonProvider` registers, exercised without the `parse`

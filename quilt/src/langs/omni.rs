@@ -215,6 +215,17 @@ macro_rules! define_omni {
                 }
             }
 
+            fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.repl_spec(),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
             fn ident_tag(&self) -> &'static str {
                 match self {
                     $(

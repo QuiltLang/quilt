@@ -96,7 +96,7 @@ highlights = {status = "supported"}
 host = {status = "supported", note = "string-based, like Nix and Lean: a quote becomes a double-quoted word and a host unquote is spliced into it verbatim, since a shell expansion carries its own `$`"}
 lift-from = {status = "unsupported", note = "`↑` has no spelling: a shell value is already text, so there is no conversion to name, and an operator that expands to nothing is an invisible no-op rather than an operator. Splice with `↙…↘`, which interpolates as written"}
 reduce = {status = "unsupported", note = "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against"}
-machine = {status = "unsupported", note = "needs the persistent REPL provider (docs/design/machines.md, phase 3): a long-lived shell process is the natural machine, and the replay `ScriptMachine` would re-run effects"}
+machine = {status = "supported", note = "a persistent `ReplMachine` drives a long-lived shell: definitions are real process state and effects run once (no replay); a query is an arithmetic expression, answered via `echo $(( … ))`"}
 emit = {status = "unsupported", note = "the string model has no `b_` accumulator for `←` to append to, and unlike Nix's `builtins.concatStringsSep` the shell's join cannot stand in as a spelling: an operator is applied *prefix* to what follows, while `printf '%s\\n' \"${xs[@]}\"` takes its operand inside a substitution. Collect the fragments in an array and splice the join itself"}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; bash fragments can still be destructured by a Rust host"}
 runnable = {status = "supported", note = "`quilt run foo.bash.quilt` expands to a script that prints the generated code and executes it under `#!/usr/bin/env bash` — no per-runner setup, since a string host needs no runtime importable"}
@@ -180,3 +180,11 @@ reduce_unsupported = ["", "bash", "zsh", "nix", "rust", "rs", "python", "py", "w
 [cross]
 wrapper = "echo @"
 lift = "↑ v"
+
+# The `machine` axis probe (docs/design/machines.md): drives the persistent
+# ReplMachine from `repl_spec` — one long-lived shell process, sentinel-framed
+# feeds, arithmetic queries.
+[machine]
+define = "y=40"
+query = "y + 2"
+answer = "42"

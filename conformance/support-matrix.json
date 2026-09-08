@@ -123,9 +123,12 @@
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "needs the persistent REPL provider (docs/design/machines.md, phase 3): a long-lived shell process is the natural machine, and the replay `ScriptMachine` would re-run effects",
-          "verified_by": "machine/bash"
+          "status": "supported",
+          "note": "a persistent `ReplMachine` drives a long-lived shell: definitions are real process state and effects run once (no replay); a query is an arithmetic expression, answered via `echo $(( … ))`",
+          "verified_by": "machine/bash",
+          "detail": [
+            "repl bash: y=40; y + 2 = 42"
+          ]
         },
         {
           "axis": "emit",
@@ -795,7 +798,7 @@
           "status": "supported",
           "verified_by": "machine/python",
           "detail": [
-            "python3: y = 40; y + 2 = 42"
+            "script python3: y = 40; y + 2 = 42"
           ]
         },
         {
@@ -1476,7 +1479,7 @@
           "note": "ScriptMachine via node; queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing",
           "verified_by": "machine/typescript",
           "detail": [
-            "node: const y = 40; y + 2 = 42"
+            "script node: const y = 40; y + 2 = 42"
           ]
         },
         {
@@ -1830,9 +1833,12 @@
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "needs the persistent REPL provider (docs/design/machines.md, phase 3): a long-lived shell process is the natural machine, and the replay `ScriptMachine` would re-run effects",
-          "verified_by": "machine/zsh"
+          "status": "supported",
+          "note": "a persistent `ReplMachine` drives a long-lived shell: definitions are real process state and effects run once (no replay); a query is an arithmetic expression, answered via `echo $(( … ))`",
+          "verified_by": "machine/zsh",
+          "detail": [
+            "repl zsh: y=40; y + 2 = 42"
+          ]
         },
         {
           "axis": "emit",

@@ -542,21 +542,28 @@ fn probe_runnable(ctx: &mut Ctx, lang: &BoxLang) {
     }
 }
 
-/// The `machine` axis (docs/design/machines.md, phase 2). A language with a
-/// registered `machine_spec` is held to the three machine laws through a
-/// `ScriptMachine` driven by the spec's `[machine]` probe; a language without
-/// one must claim it has no machine. The laws:
+/// The `machine` axis (docs/design/machines.md, phases 2–3). A language that
+/// declares a machine — a persistent `repl_spec` or a replay `machine_spec`
+/// — is held to the three machine laws through whatever
+/// `quilt::machine::spawn_machine` gives users, driven by the spec's
+/// `[machine]` probe; a language without one must claim it has no machine.
+/// The laws:
 ///
 /// * **sequencing** — the fed definition is visible to the later query;
 /// * **denotation** — the answered literal, queried, answers itself;
 /// * **isolation** — a fresh machine does not see the definition.
 fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
     use quilt::lang::InnerKind;
-    use quilt::machine::{Machine as _, ScriptMachine};
 
     let axis = Axis::Machine;
 
-    let mspec = match run(|| Ok(lang.machine_spec())) {
+    // (provider kind, interpreter) — repl preferred, matching `spawn_machine`.
+    let declared = match run(|| {
+        Ok(lang
+            .repl_spec()
+            .map(|s| ("repl", s.program))
+            .or_else(|| lang.machine_spec().map(|s| ("script", s.program))))
+    }) {
         Ran::Ok(s) => s,
         Ran::Err(e) => {
             ctx.fail(axis, "machine_spec", format!("failed: {e}"));
@@ -569,9 +576,9 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
             return;
         }
     };
-    ctx.check_status(axis, mspec.is_some(), "a machine spec");
+    ctx.check_status(axis, declared.is_some(), "a machine (repl or script spec)");
 
-    let Some(mspec) = mspec else {
+    let Some((provider, program)) = declared else {
         if ctx.spec.machine.is_some() {
             ctx.fail(
                 axis,
@@ -592,7 +599,19 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
         return;
     };
 
-    let mut m = ScriptMachine::new(&ctx.spec.name, mspec.clone());
+    let mut m = match run(|| quilt::machine::spawn_machine(&ctx.spec.name, lang)) {
+        Ran::Ok(m) => m,
+        Ran::Err(e) => {
+            ctx.fail(axis, "spawn", format!("failed: {e}"));
+            ctx.declared(axis);
+            return;
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "spawn", format!("PANICKED: {p}"));
+            ctx.declared(axis);
+            return;
+        }
+    };
 
     // Sequencing: the definition persists to the query.
     match run(|| m.feed_str(InnerKind::Item, &probe.define)) {
@@ -647,8 +666,22 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
         Ran::Panicked(p) => ctx.fail(axis, "denotation", format!("query PANICKED: {p}")),
     }
 
-    // Isolation: a fresh machine must not see the parked one's definition.
-    let mut fresh = ScriptMachine::new(&ctx.spec.name, mspec.clone());
+    // Isolation: a fresh machine must not see the first one's definition.
+    let fresh = match run(|| quilt::machine::spawn_machine(&ctx.spec.name, lang)) {
+        Ran::Ok(m) => Some(m),
+        Ran::Err(e) => {
+            ctx.fail(axis, "isolation", format!("second spawn failed: {e}"));
+            None
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "isolation", format!("second spawn PANICKED: {p}"));
+            None
+        }
+    };
+    let Some(mut fresh) = fresh else {
+        ctx.declared(axis);
+        return;
+    };
     match run(|| fresh.feed_str(InnerKind::Expr, &probe.query)) {
         Ran::Ok(a) if a.value.as_deref() == Some(&*probe.answer) => ctx.fail(
             axis,
@@ -665,8 +698,8 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
     ctx.verified(
         axis,
         vec![format!(
-            "{}: {}; {} = {}",
-            mspec.program, probe.define, probe.query, probe.answer
+            "{provider} {program}: {}; {} = {}",
+            probe.define, probe.query, probe.answer
         )],
     );
 }

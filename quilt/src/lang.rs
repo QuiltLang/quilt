@@ -301,6 +301,16 @@ pub trait Language {
     fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
         None
     }
+
+    /// How to drive this language as a *persistent*
+    /// [`ReplMachine`](crate::machine::ReplMachine): a long-lived interactive
+    /// interpreter fed on stdin, so state is real process state rather than
+    /// [`machine_spec`](Self::machine_spec)'s replayed history. Preferred
+    /// over the script spec when both exist
+    /// (see [`spawn_machine`](crate::machine::spawn_machine)).
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        None
+    }
 }
 
 /// Split a [`Language::hashbang`] into the program to execute and the arguments
@@ -395,6 +405,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
         self.as_ref().machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.as_ref().repl_spec()
     }
 }
 

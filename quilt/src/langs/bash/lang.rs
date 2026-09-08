@@ -33,6 +33,19 @@ impl TSProvider for BashProvider {
         &mut self.0
     }
 
+    /// A long-lived `bash` process is the paradigm stateful machine:
+    /// functions, variables and the cwd are real process state, so nothing is
+    /// replayed. A query is an arithmetic expression, answered via
+    /// `echo $(( … ))`; the sentinel is a plain `echo`.
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        Some(crate::machine::ReplSpec {
+            program: "bash".into(),
+            args: Box::default(),
+            print_wrap: "echo $(( {} ))".into(),
+            echo_wrap: "echo {}".into(),
+        })
+    }
+
     fn hole_str(&self) -> &'static str {
         // The grammar.js fork defines `quilt_hole` and adds it to
         // statement/expression positions, but parser.c has never been

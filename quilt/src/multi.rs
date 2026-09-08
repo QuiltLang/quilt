@@ -126,16 +126,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         self.metas.name_str(lang)
     }
 
-    /// Spawn a *fresh* machine for `lang` — today always a
-    /// [`ScriptMachine`](crate::machine::ScriptMachine) built from the
-    /// language's [`machine_spec`](Language::machine_spec); richer providers
-    /// (REPL, Jupyter, DB) will register here as they land. The caller owns
-    /// it: nothing is parked, so it shares state with no other machine.
+    /// Spawn a *fresh* machine for `lang`: the persistent
+    /// [`ReplMachine`](crate::machine::ReplMachine) when the language
+    /// declares a [`repl_spec`](Language::repl_spec), else the replay-based
+    /// [`ScriptMachine`](crate::machine::ScriptMachine) from its
+    /// [`machine_spec`](Language::machine_spec). The caller owns it: nothing
+    /// is parked, so it shares state with no other machine.
     pub fn spawn_machine(&self, lang: &str) -> Result<Box<dyn crate::machine::Machine>> {
-        let spec = self.langs.get(lang)?.machine_spec().ok_or_else(|| {
-            miette!("language {lang:?} has no machine: no machine spec registered")
-        })?;
-        Ok(Box::new(crate::machine::ScriptMachine::new(lang, spec)))
+        crate::machine::spawn_machine(lang, self.langs.get(lang)?)
     }
 
     /// The *default* machine for `lang`: parked in
