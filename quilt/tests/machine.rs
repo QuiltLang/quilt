@@ -80,6 +80,30 @@ fn method_position_reduce_spells_eval() -> Result<()> {
     Ok(())
 }
 
+/// The method-position rule is an *addition*: a host that has not opted into
+/// it keeps the reading a flush `(` already had. TypeScript's `gen(7).↓(6)`
+/// reduces a generated function and calls it — the shape `quilt run` drives in
+/// `tests/cli.rs`, which was broken by #268 and invisible because those tests
+/// skip themselves unless `bin/build-ts` has run. This one does not skip.
+#[cfg(feature = "typescript")]
+#[test]
+fn method_position_falls_back_to_the_operator() -> Result<()> {
+    let mut multi = Omni::default();
+    let term = multi.parse_lang("ts", "const v = gen(7).↓(6);")?;
+    let expanded = multi.expand_lang("ts", &term)?;
+    assert_eq!(expanded.coparse().trim(), "const v = gen(7).reduce()(6);");
+
+    // `⟨T⟩` falls back the same way, for the same reason.
+    let term = multi.parse_lang("ts", "const v = f.⟨T⟩(6);")?;
+    let expanded = multi.expand_lang("ts", &term)?;
+    assert_eq!(expanded.coparse().trim(), "const v = f.QTerm(6);");
+
+    // A host that *has* the reading keeps its own diagnostic instead: this is
+    // a real mistake, not a second meaning.
+    assert!(multi.parse_lang("py", "db.py↓(term)").is_err());
+    Ok(())
+}
+
 /// A parenthesized SQL query is a *value*, and machine-eval routing rides
 /// classification — so it must classify Expr, not fall through to the
 /// statement/file kinds (the #191 failure mode, surfaced by `db.↓(…)`).

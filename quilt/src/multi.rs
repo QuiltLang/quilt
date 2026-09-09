@@ -405,7 +405,19 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 // name, completed by the source's own parentheses (#268).
                 // Everywhere else it is the reduce operator as before.
                 Node::Reduce { anno } if method_position(nodes, i) => {
-                    code.push(FlatNode::Str(self.reduce_method_str(lang, anno)?));
+                    let spelling = match self.reduce_method_str(lang, anno) {
+                        Ok(spelling) => spelling,
+                        // A host with no method-position reading *at all*
+                        // keeps `↓`'s operator meaning, which is what a flush
+                        // `(` meant before the rule existed: TypeScript's
+                        // `gen(7).↓(6)` reduces a generated function and calls
+                        // it. A host that has the reading and merely refused
+                        // this annotation keeps its own diagnostic, which is
+                        // more useful than either spelling.
+                        Err(e) if self.reduce_method_str(lang, "").is_ok() => return Err(e),
+                        Err(_) => self.reduce_str(lang, anno)?,
+                    };
+                    code.push(FlatNode::Str(spelling));
                 }
                 Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
                 Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
@@ -414,7 +426,14 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 // `db.↓(term)`'s value judgment (#273). In operand position it
                 // is the term type as before.
                 Node::Type if method_position(nodes, i) => {
-                    code.push(FlatNode::Str(self.type_method_str(lang)?));
+                    // Same fallback as `↓` above: a host with no typing-
+                    // judgment spelling keeps `⟨T⟩`'s operand meaning rather
+                    // than losing a reading it already had.
+                    let spelling = match self.type_method_str(lang) {
+                        Ok(spelling) => spelling,
+                        Err(_) => self.type_str(lang)?,
+                    };
+                    code.push(FlatNode::Str(spelling));
                 }
                 Node::Type => code.push(FlatNode::Str(self.type_str(lang)?)),
                 Node::Name => code.push(FlatNode::Str(self.name_str(lang)?)),

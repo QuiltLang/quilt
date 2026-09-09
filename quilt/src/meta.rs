@@ -154,8 +154,16 @@ pub trait MetaLanguage {
     /// against an argument list, `recv.↓(term)`: a bare method name, which
     /// the source's own parentheses complete. This is machine-directed
     /// reduce (`db.↓(schema)` evaluates a term on a machine value, issue
-    /// #268), so hosts spell it as their machine-eval method; the default is
-    /// an honest error, like every other spelling a host may lack.
+    /// #268), so hosts spell it as their machine-eval method.
+    ///
+    /// The default is an error, but unlike the other spellings it is not the
+    /// end of the line: a host that returns one has not *opted into* the
+    /// method-position reading, so the expander falls back to the operator
+    /// spelling — the meaning a flush `(` had before this rule existed, and
+    /// still the right one for `gen(7).↓(6)` in TypeScript, which reduces a
+    /// generated function and calls it. Only a host that answers the
+    /// un-annotated case and then refuses an annotated one gets its error
+    /// surfaced.
     #[inline]
     fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
         miette::bail!(
@@ -189,6 +197,9 @@ pub trait MetaLanguage {
     /// judgment, the companion of [`Self::reduce_method_str`]'s value
     /// judgment (issue #273). A bare method name, completed by the source's
     /// own parentheses; `⟨T⟩` anywhere else keeps meaning the term type.
+    ///
+    /// Falls back to [`Self::type_str`] on `Err`, for the same reason
+    /// [`Self::reduce_method_str`] falls back to the operator spelling.
     #[inline]
     fn type_method_str(&self) -> Result<&'static str> {
         miette::bail!("this meta-language has no type-of spelling for `⟨T⟩(…)` in method position")
