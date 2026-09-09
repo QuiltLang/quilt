@@ -10,13 +10,19 @@
 //! and the [`Park`] of live per-language defaults that
 //! [`Multi`](crate::multi::Multi) carries.
 //!
-//! The wire is text, not trees (tenet 2): [`Machine::feed_str`] is the
-//! primitive, and the term-level conveniences coparse first, so a machine
-//! implementation never touches `QTerm` internals. Parsing an answer back
-//! into a term is the `Multi` rim's job
-//! ([`eval_on`](crate::multi::Multi::eval_on)), because that is where the
-//! `Language` lives. Like `lift`, this module has no tree-sitter dependency
-//! and is part of the runtime-only build.
+//! The trait traffics in terms ([`Machine::feed`]), like every other Quilt
+//! interface — tenet 2 is about the *end user* writing plain source text,
+//! not about internal APIs. The validated textual doors live where the
+//! `Language` that can parse lives: [`Multi::feed_on`] takes user text in,
+//! and [`Multi::eval_on`] parses the answered literal back out. A provider
+//! whose *wire* is text (a subprocess's stdin) coparses internally — its
+//! business, not the caller's — and exposes that raw door as inherent
+//! `feed_str`/`type_of_str` methods on the concrete type. Like `lift`, this
+//! module has no tree-sitter dependency and is part of the runtime-only
+//! build.
+//!
+//! [`Multi::feed_on`]: crate::multi::Multi::feed_on
+//! [`Multi::eval_on`]: crate::multi::Multi::eval_on
 
 use crate::lang::InnerKind;
 use crate::prelude::*;
@@ -122,32 +128,34 @@ pub struct Answer {
 /// `Send` is a supertrait because parked machines travel with their `Multi`
 /// (test harnesses hold one behind a `Mutex`); a machine is a handle to a
 /// process or connection, which sends fine.
+///
+/// The trait traffics in **terms**, like every other Quilt interface. Tenet
+/// 2 is about the *end user* writing plain source text rather than builder
+/// calls — it says nothing about internal APIs, and the parser that can turn
+/// user text into a term lives with the `Language`, not here. So the
+/// validated textual door is [`Multi::feed_on`](crate::multi::Multi::feed_on)
+/// at the rim; a provider whose *wire* is text (a subprocess's stdin)
+/// coparses internally, which is its business and no caller's.
 pub trait Machine: Send {
     /// The language this machine speaks (a registry key, e.g. `"py"`).
     fn lang(&self) -> &str;
 
-    /// Feed one fragment of source text. Definitions and effects accumulate;
-    /// queries answer. The textual primitive every other method wraps.
-    fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer>;
-
-    /// Feed a term: coparse, then [`feed_str`](Machine::feed_str).
-    fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer> {
-        self.feed_str(kind, &term.coparse())
-    }
+    /// Feed one term. Definitions and effects accumulate; queries answer.
+    fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer>;
 
     /// Query a term's value: [`feed`](Machine::feed) as [`InnerKind::Expr`].
     fn eval(&mut self, term: &QTerm) -> Result<Answer> {
         self.feed(InnerKind::Expr, term)
     }
 
-    /// The *typing* judgment: answer the type of `expr`, as a literal of
+    /// The *typing* judgment: answer the type of the term, as a literal of
     /// this language's type spellings (`int`, `42 : ℕ`, `unsat`). An
     /// evaluator asks "what value"; a checker — Lean, a solver, an LSP —
     /// asks this instead, and a proof language's machine may support *only*
     /// this and Item-checking. Defaults to an honest error, the same
     /// pattern as the operator spellings on `MetaLanguage`.
-    fn type_of(&mut self, expr: &str) -> Result<Answer> {
-        let _ = expr;
+    fn type_of(&mut self, term: &QTerm) -> Result<Answer> {
+        let _ = term;
         bail!(
             "the {} machine has no typing judgment registered (no type_wrap in its spec)",
             self.lang()
@@ -293,12 +301,12 @@ impl ScriptMachine {
     }
 }
 
-impl Machine for ScriptMachine {
-    fn lang(&self) -> &str {
-        &self.lang
-    }
-
-    fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
+impl ScriptMachine {
+    /// The raw-text door on the concrete provider (this machine's wire *is*
+    /// text). Callers holding a term go through [`Machine::feed`]; callers
+    /// holding user-typed source go through
+    /// [`Multi::feed_on`](crate::multi::Multi::feed_on), which parses first.
+    pub fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
         if kind == InnerKind::Expr {
             self.query(&self.spec.print_wrap.replace("{}", src))
         } else {
@@ -313,7 +321,8 @@ impl Machine for ScriptMachine {
         }
     }
 
-    fn type_of(&mut self, expr: &str) -> Result<Answer> {
+    /// Raw-text twin of [`Machine::type_of`].
+    pub fn type_of_str(&mut self, expr: &str) -> Result<Answer> {
         let Some(wrap) = &self.spec.type_wrap else {
             bail!(
                 "the {} machine has no typing judgment registered (no type_wrap in its spec)",
@@ -321,6 +330,20 @@ impl Machine for ScriptMachine {
             )
         };
         self.query(&wrap.replace("{}", expr))
+    }
+}
+
+impl Machine for ScriptMachine {
+    fn lang(&self) -> &str {
+        &self.lang
+    }
+
+    fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer> {
+        self.feed_str(kind, term.coparse().trim())
+    }
+
+    fn type_of(&mut self, term: &QTerm) -> Result<Answer> {
+        self.type_of_str(term.coparse().trim())
     }
 }
 
@@ -526,12 +549,10 @@ impl ReplMachine {
     }
 }
 
-impl Machine for ReplMachine {
-    fn lang(&self) -> &str {
-        &self.lang
-    }
-
-    fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
+impl ReplMachine {
+    /// The raw-text door on the concrete provider; see
+    /// [`ScriptMachine::feed_str`] for who belongs at which door.
+    pub fn feed_str(&mut self, kind: InnerKind, src: &str) -> Result<Answer> {
         if kind == InnerKind::Expr {
             let payload = self.spec.print_wrap.replace("{}", src);
             self.exchange(&payload, true)
@@ -540,7 +561,8 @@ impl Machine for ReplMachine {
         }
     }
 
-    fn type_of(&mut self, expr: &str) -> Result<Answer> {
+    /// Raw-text twin of [`Machine::type_of`].
+    pub fn type_of_str(&mut self, expr: &str) -> Result<Answer> {
         let Some(wrap) = &self.spec.type_wrap else {
             bail!(
                 "the {} machine has no typing judgment registered (no type_wrap in its spec)",
@@ -549,6 +571,20 @@ impl Machine for ReplMachine {
         };
         let payload = wrap.replace("{}", expr);
         self.exchange(&payload, true)
+    }
+}
+
+impl Machine for ReplMachine {
+    fn lang(&self) -> &str {
+        &self.lang
+    }
+
+    fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer> {
+        self.feed_str(kind, term.coparse().trim())
+    }
+
+    fn type_of(&mut self, term: &QTerm) -> Result<Answer> {
+        self.type_of_str(term.coparse().trim())
     }
 }
 
@@ -735,7 +771,7 @@ mod tests {
     #[test]
     fn no_type_wrap_is_an_honest_error() {
         let mut m = sh_machine();
-        let err = m.type_of("1 + 1").unwrap_err();
+        let err = m.type_of_str("1 + 1").unwrap_err();
         assert!(err.to_string().contains("typing judgment"), "got: {err}");
     }
 
@@ -776,8 +812,14 @@ mod tests {
                 .unwrap()
         };
         let mut m = ScriptMachine::new("py", spec);
-        assert_eq!(m.type_of("21 + 21").unwrap().value.as_deref(), Some("int"));
+        assert_eq!(
+            m.type_of_str("21 + 21").unwrap().value.as_deref(),
+            Some("int")
+        );
         m.feed_str(InnerKind::Item, "s = 'hi'").unwrap();
-        assert_eq!(m.type_of("s * 2").unwrap().value.as_deref(), Some("str"));
+        assert_eq!(
+            m.type_of_str("s * 2").unwrap().value.as_deref(),
+            Some("str")
+        );
     }
 }

@@ -2,7 +2,8 @@
 
 use super::ops::{
     build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block, lift_spelling,
-    pattern_let_code, pattern_var_code, reduce_spelling, wrap_emit, wrap_splice,
+    pattern_let_code, pattern_var_code, reduce_method_spelling, reduce_spelling, wrap_emit,
+    wrap_splice,
 };
 use crate::lang::Arity;
 use crate::meta::OuterKind;
@@ -90,6 +91,10 @@ impl MetaLanguage for RustMetaLanguage {
 
     fn reduce_str(&self, target: &str) -> Result<&'static str> {
         reduce_spelling(target)
+    }
+
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        reduce_method_spelling(target)
     }
 
     fn name_str(&self) -> Result<&'static str> {

@@ -148,6 +148,8 @@ emit_error = "your own `tb(..)` builder"
 type_str = "QTerm"
 name_str = "name"
 reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]
+# Method-position ↓ (`db.↓(term)`, #268): the machine-eval method name.
+reduce_method = { "" = "eval" }
 
 [meta.reduce]
 "" = "reduce()"

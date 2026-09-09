@@ -92,13 +92,20 @@ pub struct Answer {
 
 Three deliberate choices, each anchored in a tenet:
 
-**The wire is text, not trees** (tenet 2). Almost every real machine — a REPL
-subprocess, a Jupyter kernel, a DB connection, `nix repl` — accepts source
-text. Making `feed_str` the primitive and `feed(term)` a coparse-wrapper means
-a machine implementation never touches `QTerm` internals, exactly as tenet 2
-demands ("languages already expose textual syntax as their primary
-interface"). It also means `machine.rs` lives beside `lift.rs` in the
-tree-sitter-free runtime half of the crate.
+**The trait traffics in terms; text is the end user's door** (tenet 2, read
+correctly — an earlier draft made `feed_str` the trait primitive, which
+misread the tenet: it is about the *end user* writing plain source text
+rather than builder calls, and says nothing about internal APIs). So
+`Machine::feed`/`eval`/`type_of` take `&QTerm` like every other Quilt
+interface, and the validated textual doors live at the rim, where the
+`Language` that can parse lives: `Multi::feed_on(lang, kind, src)` parses
+user text into a term before any machine sees it, and `Multi::eval_on`
+re-reads the answered literal into a term. A provider whose *wire* is text —
+a subprocess's stdin — coparses internally, which is its business and no
+caller's; the raw door survives as inherent `feed_str`/`type_of_str` on the
+concrete providers. `machine.rs` still lives beside `lift.rs` in the
+tree-sitter-free runtime half of the crate, which is exactly why the parsing
+side of the loop belongs to `Multi`.
 
 **Answers are literals** (tenets 2+3). What does "the value of `21 + 21`" mean
 language-agnostically? The one representation every language already has: its
@@ -317,10 +324,17 @@ Today `↓`'s annotation names a *meta-language* (`reduce_str(target)`, issue
 - **`py↓t`** — the default machine for that language, as now, but uniformly
   for every language with a provider rather than the two hand-wired pairs
   (`reduce_py()`, `reduce_rs()`).
-- **`m↓t` (new)** — `m` resolves first as an in-scope host binding of machine
-  type, then as a language name. In host code this is just sugar: `↓` expands
-  to `m.eval(&t)` / `machine("py").eval(&t)` instead of today's `reduce()`.
-  The annotation grammar (`([a-z][a-z0-9]*)?↓`) already parses it.
+- **`db.↓(t)` (implemented)** — machine-directed reduce, method position:
+  the glyph flush against an argument list spells the host's machine-eval
+  method (`db.eval(t)` in Python and Rust), completed by the source's own
+  parentheses. The machine value, not an annotation, knows its language, and
+  `eval` classifies what it is fed — definitions and statements feed,
+  expressions answer — so one glyph serves the whole session. The operator
+  forms (`t.↓`, `py↓`) are untouched, and `↓ (t)` with a space stays the
+  operator.
+- **`m↓t` (future)** — the annotation slot resolving machine bindings; with
+  `db.↓(t)` landed this may never be needed, which answers the namespace
+  question on #262 by construction.
 - **Typed convenience survives**: `reduce::<T>` = eval + parse-the-literal
   back (the inverse-lift direction), with the postcard shuttle demoted from
   "the definition of reduce" to one transport a provider may use.
@@ -429,6 +443,12 @@ Two runnable ones ship with the repo:
   #219), asks it aggregates, and generates a Python report with the answers
   lifted into *Python* literals. Three languages, one machine, no database
   needed by the emitted program.
+- **`quilt run examples/sql_session.sql.py.quilt`** — the machine syntax
+  itself: a Python ground program `spawn("sql")`s a live sqlite machine
+  through the quilt-python bindings (#271) and drives it with `db.↓(↖…↗)` —
+  method-position reduce — feeding schema and rows as terms, splicing one
+  predicate term into two queries, and asking the `typeof` judgment. No
+  `coparse` anywhere: terms go in, answers come back.
 
 What else works on this branch today:
 
@@ -604,10 +624,13 @@ Each step useful alone:
    with sentinel-framed feeds, driving bash and zsh (flipped to
    `machine = supported`); still to come: sqlite/nix providers, then
    `JupyterMachine`.
-4. **(`quilt repl` implemented)** — each line parsed, expanded, classified
-   and fed to the ground language's park machine. Still to come:
-   `MetaMachine` spellings, `⟨M⟩`, `m↓` resolution, `MachineRef` + `LiftTo`
-   impls, `quilt machine serve`.
+4. **(`quilt repl`, method-position `↓`, and python bindings implemented)**
+   — each REPL line parsed, expanded, classified and fed to the ground
+   language's park machine; `db.↓(term)` spells the machine-eval method in
+   Python and Rust (`reduce_method_str`, pinned in the specs); and
+   quilt-python exposes `spawn`/`Machine` (#271), so a `.sql.py.quilt`
+   program drives a live sqlite machine with quilt syntax end to end. Still
+   to come: `⟨M⟩`, `MachineRef` + `LiftTo` impls, `quilt machine serve`.
 5. **(traits implemented)** Capability subtraits (`Snapshot` / `Metered` /
    `Introspect`, plus `type_of` on `Machine`); still to come: the LSP and
    nanobots integrations behind them.

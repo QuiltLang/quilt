@@ -365,9 +365,8 @@ fn repl_line(multi: &mut Omni, chain: &[&str], line: &str) -> Result<Option<Stri
     let host = chain[0];
     let term = multi.parse_chain(chain, line)?;
     let expanded = multi.expand_lang(host, &term)?;
-    let src = expanded.coparse();
     let kind = classify_for_feed(multi.get_lang(host)?, &expanded);
-    let answer = multi.machine(host)?.feed_str(kind, src.trim())?;
+    let answer = multi.machine(host)?.feed(kind, &expanded)?;
     if let Some(value) = answer.value {
         return Ok(Some(value.into()));
     }

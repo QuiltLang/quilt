@@ -71,6 +71,19 @@ impl MetaLanguage for PythonMetaLanguage {
         }
     }
 
+    /// Machine-directed reduce: `db.↓(term)` spells the machine binding's
+    /// `eval` method (#268). Target-agnostic — the machine value, not the
+    /// annotation, knows its language.
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        match target {
+            "" => Ok("eval"),
+            _ => miette::bail!(
+                "python spells machine eval as a method on the machine value — write \
+                 `m.↓(term)` with no annotation; the machine knows its own language"
+            ),
+        }
+    }
+
     fn name_str(&self) -> Result<&'static str> {
         Ok("name")
     }

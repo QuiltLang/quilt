@@ -2,40 +2,30 @@
 # A Python program creating and instrumenting a SQL machine with Quilt
 # syntax (docs/design/machines.md). The `.sql.py` stem makes Python the
 # ground language and SQL the default for bare quote brackets, so every
-# fragment fed to the machine is authored as a SQL *term* — inspected,
-# composed and spliced as data — and only coparsed at the machine's door.
+# fragment fed to the machine is authored as a SQL *term* — composed and
+# spliced as data, never as string concatenation.
 #
-# The machine here is the stdlib sqlite3 connection: a native provider held
-# by hand (temp tables are its definitions), until quilt-python grows
-# bindings for the Machine trait itself. Values ride the machine's own `?`
-# placeholders — never the SQL text — and a Python-side lift into SQL
-# literals is the other tracked follow-up.
+# `spawn("sql")` is a live sqlite3 connection behind quilt's Machine trait
+# (issue #271); its temp tables are its definitions. The down-arrow glyph in
+# method position is machine-directed reduce (issue #268): `db.` + down-arrow
+# + `(term)` expands to `db.eval(term)`, which classifies the term with the
+# language itself — definitions and statements feed, expressions answer.
+# Lifting Python values into SQL literals is tracked as issue #272; until
+# then, data rides inside quoted terms.
 #
 # Run with `quilt run examples/sql_session.sql.py.quilt`
-# (needs the quilt_python module: bin/build-py).
+# (needs the quilt_python module: bin/build-py; sqlite3 on PATH).
 from quilt import *
-import sqlite3
 
-# Create the machine: a live connection; its tables are its definitions.
-db = sqlite3.connect(":memory:")
+# Create the machine and feed it definitions, authored as terms.
+db = spawn("sql")
+db.↓(↖CREATE TEMP TABLE menu(item TEXT, price REAL);↗)
+db.↓(↖INSERT INTO menu VALUES ('espresso', 2.5), ('latte', 3.75), ('cortado', 3.25);↗)
 
-# Feed it a definition, built as a term.
-schema = ↖CREATE TABLE menu(item TEXT, price REAL);↗
-db.execute(schema.coparse())
-
-# Values go through the machine's own placeholders, so the statement is a
-# fixed term with literal `?` holes and the data never touches SQL text.
-insert = ↖INSERT INTO menu VALUES (?, ?);↗
-rows = [("espresso", 2.50), ("latte", 3.75), ("O'Malley's blend", 4.20)]
-db.executemany(insert.coparse(), rows)
-
-# Instrument it: one predicate term, spliced into two different queries —
-# composition as data, not string concatenation.
+# Instrument it: one predicate term, spliced into two different queries.
 pricey = ↖price > 3.0↗
-count = ↖SELECT COUNT(*) FROM menu WHERE ↙pricey↘;↗
-names = ↖SELECT item FROM menu WHERE ↙pricey↘ ORDER BY price DESC;↗
+print("pricey items:", db.↓(↖(SELECT COUNT(*) FROM menu WHERE ↙pricey↘)↗))
+print("they are:", db.↓(↖SELECT item FROM menu WHERE ↙pricey↘;↗))
 
-(n,) = db.execute(count.coparse()).fetchone()
-print("pricey items:", n)
-for (item,) in db.execute(names.coparse()):
-    print(" -", item)
+# The typing judgment, in the machine's own spelling.
+print("SUM(price) is a", db.type_of(↖(SELECT SUM(price) FROM menu)↗))

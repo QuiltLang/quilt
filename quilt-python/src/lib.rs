@@ -315,6 +315,109 @@ fn qlift_html(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
 
 /**************************************************************/
 
+/// A stateful machine speaking one language (docs/design/machines.md, issue
+/// #271) — the value `db.↓(term)` expands onto, since `↓` in method position
+/// spells `eval`. Wraps the Rust `Machine` trait together with the language
+/// registry, which `eval` uses to classify what it is fed: definitions and
+/// statements feed, expressions answer their value's literal.
+#[pyclass(name = "Machine", unsendable)]
+struct PyMachine {
+    inner: Box<dyn quilt::machine::Machine>,
+    /// The language registry, for classification — owned, like the parser
+    /// scratch inside it.
+    langs: quilt::langs::omni::OmniLanguages,
+    lang: String,
+}
+
+/// Machine errors surface as ordinary Python exceptions.
+fn machine_err(e: impl std::fmt::Display) -> PyErr {
+    pyo3::exceptions::PyRuntimeError::new_err(e.to_string())
+}
+
+fn kind_from(kind: &str) -> PyResult<quilt::lang::InnerKind> {
+    use quilt::lang::InnerKind;
+    Ok(match kind {
+        "expr" => InnerKind::Expr,
+        "stmt" => InnerKind::Stmt,
+        "item" => InnerKind::Item,
+        "block" => InnerKind::Block,
+        "file" => InnerKind::File,
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown kind {kind:?} (expected expr / stmt / item / block / file)"
+            )))
+        }
+    })
+}
+
+#[pymethods]
+impl PyMachine {
+    /// The registry key of the language this machine speaks.
+    #[getter]
+    fn lang(&self) -> String {
+        self.inner.lang().to_string()
+    }
+
+    /// Feed one term with an explicit kind (`"item"`, `"stmt"`, `"expr"`,
+    /// `"file"`, `"block"`); an expression answers its value's literal.
+    fn feed(&mut self, kind: &str, term: PyQTerm) -> PyResult<Option<String>> {
+        let kind = kind_from(kind)?;
+        let answer = self.inner.feed(kind, &term.0).map_err(machine_err)?;
+        Ok(answer.value.map(Into::into))
+    }
+
+    /// Evaluate a term — what `db.↓(term)` expands to. The machine's own
+    /// language classifies the term: an expression answers its value's
+    /// literal; a definition or statement feeds, answering whatever the
+    /// machine printed (SQL's `SELECT` is a statement that prints its rows).
+    fn eval(&mut self, term: PyQTerm) -> PyResult<Option<String>> {
+        use quilt::lang::Language as _;
+        use quilt::multi::Languages as _;
+        let kind = self
+            .langs
+            .get(&self.lang)
+            .map_err(machine_err)?
+            .classify_term(&term.0);
+        let answer = self.inner.feed(kind, &term.0).map_err(machine_err)?;
+        Ok(answer.value.map(Into::into).or_else(|| {
+            let out = answer.stdout.trim();
+            (!out.is_empty()).then(|| out.to_string())
+        }))
+    }
+
+    /// The typing judgment: the term's type, in the language's own spelling
+    /// (`int`, `real`, …).
+    fn type_of(&mut self, term: PyQTerm) -> PyResult<Option<String>> {
+        let answer = self.inner.type_of(&term.0).map_err(machine_err)?;
+        Ok(answer.value.map(Into::into))
+    }
+
+    fn __repr__(&self) -> String {
+        format!("Machine({:?})", self.inner.lang())
+    }
+}
+
+/// Spawn a machine for `lang` (docs/design/machines.md): the persistent
+/// REPL provider when the language declares one (`sql` → a live sqlite3,
+/// `bash`/`zsh` → a long-lived shell), else the replay script machine
+/// (`py`, `python`).
+#[pyfunction]
+fn spawn(lang: &str) -> PyResult<PyMachine> {
+    use quilt::multi::Languages as _;
+    let langs = quilt::langs::omni::OmniLanguages::default();
+    let inner = {
+        let l = langs.get(lang).map_err(machine_err)?;
+        quilt::machine::spawn_machine(lang, l).map_err(machine_err)?
+    };
+    Ok(PyMachine {
+        inner,
+        langs,
+        lang: lang.to_string(),
+    })
+}
+
+/**************************************************************/
+
 /// Deserialize a `QTerm` from postcard bytes (the `rs↓` protocol in Python).
 #[pyfunction]
 fn from_postcard_bytes(data: &[u8]) -> PyResult<PyQTerm> {
@@ -344,6 +447,8 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(qlift, m)?)?;
     m.add_function(wrap_pyfunction!(qlift_html, m)?)?;
     m.add_function(wrap_pyfunction!(from_postcard_bytes, m)?)?;
+    m.add_class::<PyMachine>()?;
+    m.add_function(wrap_pyfunction!(spawn, m)?)?;
 
     m.add("NL", PyStrCmd(StrCmd::NewLine))?;
     m.add("POP", PyStrCmd(StrCmd::Pop))?;

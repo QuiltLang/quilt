@@ -83,6 +83,9 @@ pub trait MetaLanguages {
     fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.get(lang)?.reduce_str(target)
     }
+    fn reduce_method_str(&self, lang: &str, target: &str) -> Result<&'static str> {
+        self.get(lang)?.reduce_method_str(target)
+    }
     fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.get(lang)?.emit_str()
     }
@@ -123,6 +126,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     pub fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.reduce_str(lang, target)
     }
+    pub fn reduce_method_str(&self, lang: &str, target: &str) -> Result<&'static str> {
+        self.metas.reduce_method_str(lang, target)
+    }
     pub fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.emit_str(lang)
     }
@@ -157,10 +163,25 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         Ok(self.machines.get_mut(&key).unwrap())
     }
 
+    /// The end-user text door (tenet 2's actual subject): parse `src` as
+    /// `kind` with `lang`'s `Language` — validating it — then feed the term
+    /// to the default machine. Machines themselves traffic only in terms;
+    /// raw text is turned into a term here, where the parser lives.
+    pub fn feed_on(
+        &mut self,
+        lang: &str,
+        kind: crate::lang::InnerKind,
+        src: &str,
+    ) -> Result<crate::machine::Answer> {
+        let term = self
+            .get_lang_mut(lang)?
+            .parse_as(Some(kind), &crate::lang::flat_nodes(src))?;
+        self.machine(lang)?.feed(kind, &term)
+    }
+
     /// Evaluate a term on `lang`'s default machine and parse the answered
-    /// literal back into a term of `lang` — the term-level loop the design
-    /// doc calls the rim: machines speak text ([`Machine::feed_str`] is the
-    /// primitive), and the `Language` re-reads the answer here, where it
+    /// literal back into a term of `lang` — machines answer with the
+    /// value's own syntax, and the `Language` re-reads it here, where it
     /// lives.
     pub fn eval_on(&mut self, lang: &str, term: &QTerm) -> Result<Arc<QTerm>> {
         let answer = self.machine(lang)?.eval(term)?;
@@ -329,7 +350,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
 
         // Pass 3: build up a string of code with holes // TODO: avoid creating string
         let mut code = Vec::with_capacity(nodes.len());
-        for n in nodes {
+        for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 Node::Content(s) => code.push(FlatNode::Str(s)),
                 Node::NewLine => code.push(FlatNode::NewLine),
@@ -345,6 +366,13 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 Node::Lift => code.push(FlatNode::Str(
                     self.lift_str(lang, splice_target.unwrap_or(lang))?,
                 )),
+                // `↓` flush against an argument list — `db.↓(schema)` — is
+                // *method position*: it spells the host's machine-eval method
+                // name, completed by the source's own parentheses (#268).
+                // Everywhere else it is the reduce operator as before.
+                Node::Reduce { anno } if method_position(nodes, i) => {
+                    code.push(FlatNode::Str(self.reduce_method_str(lang, anno)?));
+                }
                 Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
                 Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
                 Node::Type => code.push(FlatNode::Str(self.type_str(lang)?)),
@@ -513,6 +541,15 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         }
         .expand(&Default::default(), qterm)
     }
+}
+
+/// Whether the node after `i` opens an argument list flush against the
+/// operator — `recv.↓(arg)` — making the operator a *method name* that the
+/// source's own parentheses complete. Flush means exactly that: `↓ (x)`
+/// (with a space) stays the ordinary operator.
+#[cfg(feature = "parse")]
+fn method_position(nodes: &[Arc<Node>], i: usize) -> bool {
+    matches!(nodes.get(i + 1).map(|n| &**n), Some(Node::Content(s)) if s.starts_with('('))
 }
 
 /// An "unquote depth too high" error pointing at the offending unquote when

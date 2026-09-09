@@ -792,7 +792,8 @@
             "py → reduce()",
             "python → reduce()",
             "rs → reduce_rs()",
-            "rust → reduce_rs()"
+            "rust → reduce_rs()",
+            "method → eval"
           ]
         },
         {
@@ -990,7 +991,8 @@
             "py → reduce_py()",
             "python → reduce_py()",
             "rs → reduce()",
-            "rust → reduce()"
+            "rust → reduce()",
+            "method → eval"
           ]
         },
         {

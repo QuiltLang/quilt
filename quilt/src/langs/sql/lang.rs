@@ -147,6 +147,13 @@ impl TSProvider for SqlProvider {
     /// single-statement fragment arrives wrapped in `program` — and, when it
     /// keeps its terminating `;`, wrapped in a *two*-child `program` whose root
     /// tag alone would read `File` for what is really one statement.
+    ///
+    /// One more override: a *parenthesized* select at statement level — the
+    /// grammar's `statement("(", select, ")")` — classifies as
+    /// [`Expr`](InnerKind::Expr). Parentheses are exactly how SQL marks "the
+    /// value of this query" (a scalar subquery), and machine-eval routing
+    /// rides classification: `db.↓(…)` on a parenthesized query must
+    /// *answer* it, not feed it as an effect.
     fn classify_term(&self, term: &QTerm) -> InnerKind {
         match term {
             QTerm::Tuple { tag, terms, .. } if &**tag == "program" => match terms.len() {
@@ -156,6 +163,19 @@ impl TSProvider for SqlProvider {
                 // Empty (0) or several statements (3+): a whole script.
                 _ => InnerKind::File,
             },
+            // Only the opener is checked: with a splice hole in the body the
+            // parser can hang the closing `)` off the inner `select` instead
+            // of the `statement`, so requiring the 3-child shape would read
+            // the same source two ways depending on whether it was spliced.
+            QTerm::Tuple { tag, terms, .. }
+                if &**tag == "statement"
+                    && matches!(
+                        terms.first().map(AsRef::as_ref),
+                        Some(QTerm::Tuple { tag, .. }) if &**tag == "("
+                    ) =>
+            {
+                InnerKind::Expr
+            }
             QTerm::Tuple { tag, .. } => self.typ(tag),
             _ => InnerKind::default(),
         }

@@ -220,6 +220,21 @@ pub fn reduce_spelling(target: &str) -> Result<&'static str> {
     }
 }
 
+/// The Rust spelling of `↓` in *method position* — `db.↓(&term)`, machine-
+/// directed reduce (#268): the machine binding's `eval` method
+/// ([`crate::machine::Machine::eval`]), which the source's own argument
+/// list completes. Target-agnostic: the machine value, not the annotation,
+/// knows its language.
+pub fn reduce_method_spelling(target: &str) -> Result<&'static str> {
+    match target {
+        "" => Ok("eval"),
+        _ => bail!(
+            "rust spells machine eval as a method on the machine value — write `m.↓(&term)` \
+             with no annotation; the machine knows its own language"
+        ),
+    }
+}
+
 /// Evaluate a `QTerm` by running it as Python code, then deserialize the
 /// result (the `py↓` operator from a Rust meta-program). The term's code is
 /// run via `python3` with the `quilt` Python bindings on `PYTHONPATH`; the

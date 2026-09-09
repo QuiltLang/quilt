@@ -151,6 +151,10 @@ pub struct MetaSpec {
     /// rather than an oversight.
     #[serde(default)]
     pub reduce_unsupported: Vec<String>,
+    /// target → spelling of `↓` in *method position* (`db.↓(term)`, the
+    /// machine-eval method name, #268). `""` is the un-annotated case.
+    #[serde(default)]
+    pub reduce_method: BTreeMap<String, String>,
 }
 
 /// The `machine` axis probe (docs/design/machines.md, phase 2): a definition,

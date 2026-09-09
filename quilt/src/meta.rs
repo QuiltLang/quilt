@@ -128,6 +128,18 @@ pub trait MetaLanguage {
         let _ = target;
         Ok(REDUCE)
     }
+    /// The spelling `↓` expands to in *method position* — the glyph flush
+    /// against an argument list, `recv.↓(term)`: a bare method name, which
+    /// the source's own parentheses complete. This is machine-directed
+    /// reduce (`db.↓(schema)` evaluates a term on a machine value, issue
+    /// #268), so hosts spell it as their machine-eval method; the default is
+    /// an honest error, like every other spelling a host may lack.
+    #[inline]
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        miette::bail!(
+            "this meta-language has no machine-eval spelling for `{target}↓(…)` in method position"
+        )
+    }
     /// The spelling `←` expands to. Like [`Self::lift_str`] this returns a
     /// `Result` because not every meta-language *has* an emit: a string-based
     /// meta (nix, lean) has no `b_` accumulator to emit into, and must fail
@@ -221,6 +233,10 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn reduce_str(&self, target: &str) -> Result<&'static str> {
         (**self).reduce_str(target)
+    }
+
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        (**self).reduce_method_str(target)
     }
 
     fn emit_str(&self) -> Result<&'static str> {

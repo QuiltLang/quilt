@@ -193,7 +193,7 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
         probe_kinds(&mut ctx, &lang);
         probe_variadic(&mut ctx, &lang);
         probe_runnable(&mut ctx, &lang);
-        probe_machine(&mut ctx, &lang);
+        probe_machine(&mut ctx, &mut lang);
         probe_lift_into(&mut ctx, &mut lang);
         probe_glyphs(&mut ctx, &mut lang);
     }
@@ -552,7 +552,7 @@ fn probe_runnable(ctx: &mut Ctx, lang: &BoxLang) {
 /// * **sequencing** — the fed definition is visible to the later query;
 /// * **denotation** — the answered literal, queried, answers itself;
 /// * **isolation** — a fresh machine does not see the definition.
-fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
+fn probe_machine(ctx: &mut Ctx, lang: &mut BoxLang) {
     use quilt::lang::InnerKind;
 
     let axis = Axis::Machine;
@@ -613,8 +613,33 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
         }
     };
 
+    // Machines take terms, so the probe's fragments go through the
+    // language's own parser first — which also makes this a check that the
+    // fragments a machine is held to really are the language's syntax.
+    let mut parse = |lang: &mut BoxLang, kind, src: &str, what: &str| match run(|| {
+        lang.parse_as(Some(kind), &flat_nodes(src))
+    }) {
+        Ran::Ok(t) => Some(t),
+        Ran::Err(e) => {
+            ctx.fail(axis, what, format!("{src:?} did not parse: {e}"));
+            None
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, what, format!("parsing {src:?} PANICKED: {p}"));
+            None
+        }
+    };
+    let (Some(define), Some(query), Some(answer)) = (
+        parse(lang, InnerKind::File, &probe.define, "define"),
+        parse(lang, InnerKind::Expr, &probe.query, "query"),
+        parse(lang, InnerKind::Expr, &probe.answer, "answer"),
+    ) else {
+        ctx.declared(axis);
+        return;
+    };
+
     // Sequencing: the definition persists to the query.
-    match run(|| m.feed_str(InnerKind::Item, &probe.define)) {
+    match run(|| m.feed(InnerKind::File, &define)) {
         Ran::Ok(_) => {}
         Ran::Err(e) => {
             ctx.fail(
@@ -631,7 +656,7 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
             return;
         }
     }
-    match run(|| m.feed_str(InnerKind::Expr, &probe.query)) {
+    match run(|| m.eval(&query)) {
         Ran::Ok(a) => {
             if a.value.as_deref() != Some(&*probe.answer) {
                 ctx.fail(
@@ -649,7 +674,7 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
     }
 
     // Denotation: the answered literal is a fixed point of evaluation.
-    match run(|| m.feed_str(InnerKind::Expr, &probe.answer)) {
+    match run(|| m.eval(&answer)) {
         Ran::Ok(a) => {
             if a.value.as_deref() != Some(&*probe.answer) {
                 ctx.fail(
@@ -682,7 +707,7 @@ fn probe_machine(ctx: &mut Ctx, lang: &BoxLang) {
         ctx.declared(axis);
         return;
     };
-    match run(|| fresh.feed_str(InnerKind::Expr, &probe.query)) {
+    match run(|| fresh.eval(&query)) {
         Ran::Ok(a) if a.value.as_deref() == Some(&*probe.answer) => ctx.fail(
             axis,
             "isolation",
@@ -1194,6 +1219,30 @@ fn probe_reduce(ctx: &mut Ctx) {
                 target,
                 format!("reduce_str PANICKED (must return Err): {p}"),
             ),
+        }
+    }
+
+    // Method-position spellings (`db.↓(term)` → the machine-eval method,
+    // #268): pinned the same way as the operator spellings above.
+    for (target, want) in &ctx.spec.meta.reduce_method {
+        match run(|| meta.reduce_method_str(target)) {
+            Ran::Ok(got) => {
+                if got == want {
+                    detail.push(format!("method → {got}"));
+                } else {
+                    ctx.fail(
+                        axis,
+                        target,
+                        format!("reduce_method_str({target:?}) spells {got:?}, spec says {want:?}"),
+                    );
+                }
+            }
+            Ran::Err(e) => ctx.fail(
+                axis,
+                target,
+                format!("spec says method-position ↓ spells {want:?}, but: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(axis, target, format!("reduce_method_str PANICKED: {p}")),
         }
     }
 
