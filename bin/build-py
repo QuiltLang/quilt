@@ -7,14 +7,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/quilt-python"
 
-maturin build --release "$@"
+# Build into a directory we name rather than maturin's default. That default is
+# a `wheels/` dir inside the *cargo target* directory, which is not necessarily
+# "$ROOT/target": CARGO_TARGET_DIR and `build.target-dir` both move it, and a
+# shared build cache (as CI and agent checkouts use) routinely does. This script
+# used to look in "$ROOT/target/wheels" unconditionally, so under a redirected
+# target dir the wheel built fine and then the extract step died on `ls: cannot
+# access`. A directory we chose is also empty every run, which is what lets the
+# match below be a plain glob with no staleness to guard against.
+outdir="$(mktemp -d)"
+trap 'rm -rf "$outdir"' EXIT
+
+maturin build --release --out "$outdir" "$@"
 
 # Extract the freshly built abi3 module into the `quilt/` package dir. Match
 # the wheel by its abi3 shape rather than the distribution name (which is
 # `quilt_python` on PyPI; see quilt-python/pyproject.toml) so a future rename
-# can't break this. maturin builds exactly one wheel here; `-t` picks the
-# freshest in case stale ones linger in a cached target/wheels.
-wheel="$(ls -t "$ROOT"/target/wheels/*-abi3-*.whl | head -1)"
+# can't break this. maturin builds exactly one wheel here.
+wheel="$(ls -t "$outdir"/*-abi3-*.whl | head -1)"
 echo "extracting from $wheel"
 unzip -o -j "$wheel" 'quilt/_quilt.abi3.so' -d quilt/
 echo "installed quilt/_quilt.abi3.so"
