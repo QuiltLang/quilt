@@ -18,7 +18,6 @@
 ⟨//⟩
 ⟨//⟩ Each family below is a sample literal, a root tag to descend to, and the
 ⟨//⟩ expression that replaces the sample's text. Adding a target is adding rows.
-use quilt::prelude::*;
 use quilt::term::CmdOrHole;
 use std::process::Command;
 

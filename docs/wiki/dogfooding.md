@@ -103,7 +103,6 @@ working `.quilt` file, not a sketch:
 
 ```rust
 #!/usr/bin/env quilt
-use quilt::prelude::*;
 use quilt::term::STerm;
 
 fn main() -> Result<()> {

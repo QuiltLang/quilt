@@ -12,8 +12,6 @@ A Rust program that generates Python. `python↖…↗` quotes Python source and
 
 ```rust
 #!/usr/bin/env quilt
-use quilt::prelude::*;
-
 fn main() -> Result<()> {
     // Runs at generation time, in Rust.
     let squares: Vec<u64> = (1..=5).map(|n| n * n).collect();
@@ -72,6 +70,12 @@ quilt = { package = "quiltlang", git = "https://github.com/QuiltLang/quilt" }
 ```
 
 With the `package =` rename, all the `use quilt::prelude::*` code in this README and the wiki works verbatim.
+
+A `.quilt` file does not need to write that import itself: `quilt expand` and
+`quilt run` open the generated file with the runtime import its ground language
+calls into — `use quilt::prelude::*;` for Rust, `from quilt import *` for
+Python, a named `import … from "quilt"` for TypeScript. Write it anyway and it
+is left alone; see [CLI](docs/wiki/cli.md#the-runtime-import-issue-274).
 
 ### Editor tooling (LSP + VS Code)
 

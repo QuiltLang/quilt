@@ -190,6 +190,14 @@ mod tests {
         (src.to_string(), li, proj)
     }
 
+    /// The virtual line a quilt line lands on. The ground projection opens with
+    /// a synthetic prologue (the runtime import, issue #274), so a fixture that
+    /// hands the server a *virtual* position has to say which line that is
+    /// rather than assuming the two numberings agree.
+    fn vline(proj: &Projection, line: u32) -> u32 {
+        line + u32::try_from(proj.text[..proj.prologue_len].lines().count()).unwrap()
+    }
+
     #[test]
     fn hover_range_remapped() {
         let (text, li, proj) = mapper_ctx();
@@ -201,10 +209,11 @@ mod tests {
             quilt_index: &li,
             proj: &proj,
         };
-        // A hover whose range is line 1 (the `let y` line) in the virtual doc.
+        // A hover whose range is the `let y` line in the virtual doc.
+        let l = vline(&proj, 1);
         let hover = json!({
             "contents": "stuff",
-            "range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 5}}
+            "range": {"start": {"line": l, "character": 4}, "end": {"line": l, "character": 5}}
         });
         let out = translate_result("textDocument/hover", hover, &m);
         // Line 1 maps straight through (ground line, unaffected by the quote).
@@ -252,8 +261,10 @@ mod tests {
             .position(&proj.text, proj.fragment_ranges[0].start, Encoding::Utf16)
             .line;
         let rng = |l: u32, c0: u32, c1: u32| json!({"start": {"line": l, "character": c0}, "end": {"line": l, "character": c1}});
+        let main_line = vline(&proj, 0);
         let symbols = json!([
-            {"name": "main", "kind": 12, "range": rng(0, 0, 12), "selectionRange": rng(0, 3, 7)},
+            {"name": "main", "kind": 12,
+             "range": rng(main_line, 0, 12), "selectionRange": rng(main_line, 3, 7)},
             {"name": "_quilt_q0", "kind": 12,
              "range": rng(frag_line, 0, 5), "selectionRange": rng(frag_line, 3, 5)},
         ]);
@@ -275,9 +286,10 @@ mod tests {
             quilt_index: &li,
             proj: &proj,
         };
+        let l = vline(&proj, 1);
         let loc = json!({
             "uri": "file:///x/foo.rs",
-            "range": {"start": {"line": 1, "character": 4}, "end": {"line": 1, "character": 5}}
+            "range": {"start": {"line": l, "character": 4}, "end": {"line": l, "character": 5}}
         });
         let out = translate_result("textDocument/definition", loc, &m);
         assert_eq!(out["uri"], "file:///x/foo.rs.quilt");

@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-from quilt import *
 
 # Three-stage code generation, glyph-native: a program that writes a program
 # that writes a program. Every layer is built with Quilt quotes (the upper

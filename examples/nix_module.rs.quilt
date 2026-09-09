@@ -12,7 +12,6 @@
 //! the example never builds terms by hand. The inner Rust block over the
 //! dependencies runs at *generation* time: it emits one list element per
 //! dependency, unrolling the list into the emitted source.
-use quilt::prelude::*;
 
 fn main() -> Result<()> {
     // The package, fixed at generation time.

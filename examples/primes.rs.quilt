@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-use quilt::prelude::*;
 
 fn sieve(limit: u64) -> Vec<u64> {
     let mut composite = vec![false; (limit + 1) as usize];

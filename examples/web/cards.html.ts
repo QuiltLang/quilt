@@ -13,11 +13,12 @@
 // runtime; index.html loads the expansion as an ES module and injects
 // render() into the page. It is deliberately annotation-free so the expansion
 // is valid JavaScript a browser can run without a transpile step.
-import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
 
 // One card as a quoted HTML fragment. `↑(x)` lifts a plain string into inert,
 // entity-escaped HTML text; the surrounding unquote splices that text into the
 // hole. Try editing a title or body and re-running.
+import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
+
 function card(title, body) {
   return tb("element").c(tb("start_tag").c(sym("<")).c(leaf("tag_name", "article")).w(" ").c(tb("attribute").c(leaf("attribute_name", "class")).c(sym("=")).c(tb("quoted_attribute_value").c(sym("\"")).c(leaf("attribute_value", "card")).c(sym("\"")).b()).b()).c(sym(">")).b()).p("  ").n().c(tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "h2")).c(sym(">")).b()).e(qlift_html(title)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "h2")).c(sym(">")).b()).b()).n().c(tb("element").e(tb("start_tag").c(sym("<")).c(leaf("tag_name", "p")).c(sym(">")).b()).e(qlift_html(body)).e(tb("end_tag").c(sym("</")).c(leaf("tag_name", "p")).c(sym(">")).b()).b()).x().n().c(tb("end_tag").c(sym("</")).c(leaf("tag_name", "article")).c(sym(">")).b()).b();
 }

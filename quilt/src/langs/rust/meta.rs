@@ -2,11 +2,12 @@
 
 use super::ops::{
     build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block, lift_spelling,
-    pattern_let_code, pattern_var_code, reduce_method_spelling, reduce_spelling, spawn_spelling,
-    type_method_spelling, wrap_emit, wrap_splice,
+    pattern_let_code, pattern_var_code, prelude_spelling, reduce_method_spelling, reduce_spelling,
+    spawn_spelling, type_method_spelling, wrap_emit, wrap_splice,
 };
 use crate::lang::Arity;
 use crate::meta::OuterKind;
+use crate::meta::Prelude;
 use crate::prelude::{Index, *};
 use crate::qmatch::pattern_binding_at;
 use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
@@ -115,6 +116,10 @@ impl MetaLanguage for RustMetaLanguage {
 
     fn emit_str(&self) -> Result<&'static str> {
         Ok("emit(&mut b_)")
+    }
+
+    fn prelude(&self, _targets: &[&str]) -> Option<Prelude> {
+        Some(prelude_spelling())
     }
 }
 

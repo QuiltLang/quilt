@@ -18,6 +18,7 @@
 //! `rewrite_naive` can find them.
 
 use crate::langs::chain::{Chain, Lit, RUST};
+use crate::meta::Prelude;
 use crate::prelude::*;
 use crate::term::CmdOrHole;
 use miette::{bail, IntoDiagnostic};
@@ -186,6 +187,21 @@ fn strlit_term(s: &str) -> Arc<QTerm> {
         b = b.c(&leaf("string_content", &str_body(s)));
     }
     b.c(&sym("\"")).b()
+}
+
+/// The runtime import expanded Rust opens with (used by the generated
+/// `RustMetaLanguage::prelude`, and shared with the bootstrap meta, whose
+/// generated code calls the same runtime under different names — `bs_lift`
+/// rather than `qlift`, both re-exported by `quilt::prelude`).
+///
+/// Target-independent: `↑` reaches every object language through `qlift_to::<L>`
+/// and the `LiftTo` impls, all of which arrive with the one glob (issue #274).
+///
+/// The marker is the *path*, not the whole line, so a file that says
+/// `use quilt::prelude::{tb, name};` — or writes `quilt::prelude::tb(..)` out
+/// in full — counts as having brought the runtime in itself.
+pub fn prelude_spelling() -> Prelude {
+    Prelude::new("use quilt::prelude::*;", ["quilt::prelude"])
 }
 
 /// The Rust spelling of `↑` lifting into the object language `target` (used

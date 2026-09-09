@@ -322,6 +322,24 @@ impl MetaLanguageAdapter for RustAdapter {
     fn glyph_placeholder(&self) -> &'static str {
         "__q__"
     }
+    fn ground_prologue(&self) -> &'static str {
+        // The runtime import `quilt expand` now injects for this host (issue
+        // #274), so that a source which no longer writes it by hand still
+        // typechecks in the editor. Without it, deleting `use
+        // quilt::prelude::*;` from a `.rs.quilt` file left rust-analyzer unable
+        // to resolve the `qlift()`, `tb(..)` and `Result` the *source itself*
+        // uses: the file would go red while expanding and compiling fine.
+        //
+        // Doubling it is harmless — a repeated glob import is not even a
+        // warning in Rust — so this is emitted unconditionally rather than
+        // conditioned on what the buffer happens to contain. Kept in agreement
+        // with the expander by `ground_prologue_carries_the_quilt_prelude`.
+        //
+        // In a project that does not depend on quilt this is an unresolved
+        // import, which is exactly the case the prologue exists to absorb:
+        // diagnostics landing in it are dropped.
+        "use quilt::prelude::*;\n"
+    }
     fn splice_block(&self) -> SpliceBlock {
         // A block expression: valid in expression position, and `{ }` for a
         // quote with no ground splices.
@@ -502,7 +520,14 @@ impl MetaLanguageAdapter for PythonAdapter {
         // `from quilt import *`, which is the documented idiom, but
         // `quilt._quilt` is a stub-less native module so pyright flags the
         // wildcard. Left on, it warned on line 1 of every `.py.quilt` file.
+        //
+        // The `from quilt import *` is the second half: it is the import
+        // `quilt expand` injects for this host (issue #274), carried here so a
+        // source that no longer writes it by hand still resolves the `tb(..)`
+        // and `qlift(..)` the *source itself* uses. A repeated glob import is
+        // harmless in Python, so it is emitted unconditionally.
         "# pyright: reportWildcardImportFromLibrary=false\n\
+         from quilt import *\n\
          import typing as _quilt_typing\n\
          __q__: _quilt_typing.Any = ...\n"
     }
@@ -958,6 +983,40 @@ mod tests {
             ground_lang(&url("file:///x/shaders.wgsl.rs.quilt")).as_deref(),
             Some("rs")
         );
+    }
+
+    /// The ground prologue carries the runtime import the *expander* injects
+    /// (issue #274), and stays in agreement with it. Two copies of a string,
+    /// pinned by a test rather than by a shared constant: `ground_prologue`
+    /// returns `&'static str`, while `MetaLanguage::prelude` is computed (it
+    /// takes the file's lift targets), so there is nothing to share directly.
+    ///
+    /// If this fails, the expander changed how a host imports its runtime and
+    /// the editor projection has not been told.
+    #[test]
+    fn ground_prologue_carries_the_quilt_prelude() {
+        use quilt::meta::MetaLanguage as _;
+        let cases: Vec<(&str, Option<quilt::meta::Prelude>)> = vec![
+            #[cfg(feature = "rust")]
+            (
+                "rs",
+                quilt::langs::rust::meta::RustMetaLanguage.prelude(&["rust"]),
+            ),
+            #[cfg(feature = "python")]
+            (
+                "py",
+                quilt::langs::python::meta::PythonMetaLanguage.prelude(&["python"]),
+            ),
+        ];
+        for (lang, prelude) in cases {
+            let prelude = prelude.expect("this host injects a prelude");
+            let prologue = meta_adapter(lang).unwrap().ground_prologue();
+            assert!(
+                prologue.contains(&*prelude.text),
+                "{lang}: prologue {prologue:?} does not carry the injected prelude {:?}",
+                prelude.text
+            );
+        }
     }
 
     #[test]

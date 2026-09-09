@@ -12,7 +12,6 @@
 //! hand. Everything interesting -- the job table and the loop over it -- runs
 //! at *generation* time; the emitted script is a flat, unrolled sequence of
 //! commands, one grouped block per job.
-use quilt::prelude::*;
 
 fn main() -> Result<()> {
     // The backup jobs, fixed at generation time: (label, source directory).

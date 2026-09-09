@@ -2,7 +2,6 @@
 // Partial evaluation of lam p: lam b: b^p specialized to a given p.
 // The binary squaring loop runs at *generation* time; the emitted closure has
 // no exponent, no loop, no branches — just let-bindings and multiplications.
-use quilt::prelude::*;
 
 fn main() -> Result<()> {
     let p: u32 = std::env::args()

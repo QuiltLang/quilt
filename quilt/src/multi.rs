@@ -101,6 +101,9 @@ pub trait MetaLanguages {
     fn spawn_str(&self, lang: &str, target: &str) -> Result<String> {
         self.get(lang)?.spawn_str(target)
     }
+    fn prelude(&self, lang: &str, targets: &[&str]) -> Result<Option<crate::meta::Prelude>> {
+        Ok(self.get(lang)?.prelude(targets))
+    }
 }
 
 #[derive(Default)]
@@ -137,6 +140,12 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     }
     pub fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.emit_str(lang)
+    }
+    /// The runtime import a file expanded with `lang`'s meta must open with
+    /// (issue #274), given the object languages it may lift into. See
+    /// [`MetaLanguage::prelude`](crate::meta::MetaLanguage::prelude).
+    pub fn prelude(&self, lang: &str, targets: &[&str]) -> Result<Option<crate::meta::Prelude>> {
+        self.metas.prelude(lang, targets)
     }
     pub fn type_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.type_str(lang)

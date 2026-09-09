@@ -8,6 +8,11 @@ The `quilt_python` crate exposes the core Quilt IR to Python via PyO3. It is the
 from quilt import *
 ```
 
+`quilt expand` and `quilt run` put that line at the top of the generated file
+themselves (issue #274), so a `.py.quilt` source only writes it when it wants
+the names in scope in its *own* stage-0 code. See
+[CLI](cli.md#the-runtime-import-issue-274).
+
 ## Building
 
 ```sh

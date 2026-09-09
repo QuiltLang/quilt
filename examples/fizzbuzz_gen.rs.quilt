@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-use quilt::prelude::*;
 
 fn main() -> Result<()> {
     let n: i32 = std::env::args()

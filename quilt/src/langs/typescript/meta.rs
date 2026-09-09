@@ -3,7 +3,11 @@ use miette::Result;
 use super::ops::{build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block};
 use crate::lang::Arity;
 use crate::prelude::{Index, *};
-use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
+use crate::{
+    meta::{MetaLanguage, Prelude},
+    qterm::QTerm,
+    term::CmdOrHole,
+};
 
 /**************************************************************/
 
@@ -103,5 +107,46 @@ impl MetaLanguage for TypeScriptMetaLanguage {
              accumulator to emit into — build the sequence with your own `tb(..)` builder in \
              ground code and splice the finished term with `↙…↘`"
         )
+    }
+
+    /// The `import { … } from "quilt"` an expanded file opens with (issue
+    /// #274) — bound by `quilt run` to `quilt-wasm/node`, and in the browser
+    /// demos by an import map to `examples/web/quilt-rt.js`.
+    ///
+    /// This is the one host where the prelude is not a constant, and the reason
+    /// the hook takes `targets` at all: TypeScript has no glob import, so the
+    /// list has to name every runtime function the expansion calls — and
+    /// [`lift_str`](Self::lift_str) is target-directed, so quoting a *new*
+    /// language adds a name to it. Written by hand that is boilerplate you can
+    /// get wrong in a way the source does not hint at: a file that starts
+    /// quoting HTML needs `qlift_html` added, and finds out at run time.
+    ///
+    /// Unknown targets are skipped rather than reported: a language with no
+    /// lift spelling here fails at the `↑` itself, with a message about that
+    /// glyph, which is a better place to hear it than a prelude.
+    fn prelude(&self, targets: &[&str]) -> Option<Prelude> {
+        // The builder vocabulary every expansion uses, in the order the
+        // hand-written imports have always listed it, with the lift spellings
+        // slotted in where `qlift` sat.
+        const HEAD: [&str; 9] = [
+            "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push", "name",
+        ];
+        const TAIL: [&str; 3] = ["NL", "POP", "HOLE"];
+        let mut names: Vec<&str> = HEAD.to_vec();
+        for target in targets {
+            if let Ok(lift) = self.lift_str(target) {
+                if !names.contains(&lift) {
+                    names.push(lift);
+                }
+            }
+        }
+        names.extend_from_slice(&TAIL);
+        Some(Prelude::new(
+            format!("import {{ {} }} from \"quilt\";", names.join(", ")),
+            // Both spellings of the specifier, because a duplicate *named*
+            // import is a hard `Duplicate identifier` error here — unlike the
+            // glob imports the other hosts inject, which double harmlessly.
+            ["from \"quilt\"", "from 'quilt'"],
+        ))
     }
 }
