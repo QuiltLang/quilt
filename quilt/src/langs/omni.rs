@@ -120,6 +120,16 @@ macro_rules! define_omni {
                     _ => Err(miette!("{lang:?} can't be used as Language")),
                 }
             }
+
+            fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+                match lang {
+                    $(
+                        #[cfg(feature = $feat)]
+                        $canon $(| $alias)* => $canon,
+                    )*
+                    _ => lang,
+                }
+            }
         }
 
         pub struct OmniMetaLanguages {
@@ -198,6 +208,28 @@ macro_rules! define_omni {
                     $(
                         #[cfg(feature = $feat)]
                         OmniLanguage::$variant(lang) => lang.hashbang(),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
+            fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.machine_spec(),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
+            fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.repl_spec(),
                     )*
                     #[allow(unreachable_patterns)]
                     _ => None,
@@ -335,6 +367,16 @@ macro_rules! define_omni {
                         $canon $(| $alias)* => Ok(&mut self.$field),
                     )*
                     _ => Err(miette!("{lang:?} can't be used as Language")),
+                }
+            }
+
+            fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+                match lang {
+                    $(
+                        #[cfg(feature = $feat)]
+                        $canon $(| $alias)* => $canon,
+                    )*
+                    _ => lang,
                 }
             }
         }
@@ -507,6 +549,10 @@ impl MetaLanguage for OmniMetaLanguage {
         self.inner().reduce_str(target)
     }
 
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        self.inner().reduce_method_str(target)
+    }
+
     fn emit_str(&self) -> Result<&'static str> {
         self.inner().emit_str()
     }
@@ -517,6 +563,14 @@ impl MetaLanguage for OmniMetaLanguage {
 
     fn name_str(&self) -> Result<&'static str> {
         self.inner().name_str()
+    }
+
+    fn type_method_str(&self) -> Result<&'static str> {
+        self.inner().type_method_str()
+    }
+
+    fn spawn_str(&self, lang: &str) -> Result<String> {
+        self.inner().spawn_str(lang)
     }
 }
 

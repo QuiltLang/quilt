@@ -42,25 +42,26 @@ Columns:
 
 ## As a host (meta) language
 
-| Language | Host | Lift out | Reduce ↓ | Emit ← | Patterns | Runnable | Runtime |
-|---|---|---|---|---|---|---|---|
-| **Bash** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
-| **HTML** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **Lean 4** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/132) | [🔵](https://github.com/QuiltLang/quilt/issues/133) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/132) |
-| **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🟡](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
-| **Python** | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
-| **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **SQL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **TypeScript** | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
-| **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **Zsh** | ✅ | ⬜ | ⬜ | ⬜ | ⬜ | ✅ | ⬜ |
+| Language | Host | Lift out | Reduce ↓ | Machine | Emit ← | Patterns | Runnable | Runtime |
+|---|---|---|---|---|---|---|---|---|
+| **Bash** | ✅ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ✅ | ⬜ |
+| **HTML** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **Lean 4** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/132) | [🔵](https://github.com/QuiltLang/quilt/issues/265) | [🔵](https://github.com/QuiltLang/quilt/issues/133) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/132) |
+| **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🔵](https://github.com/QuiltLang/quilt/issues/264) | [🟡](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
+| **Python** | ✅ | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
+| **Rust** | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/267) | ✅ | ✅ | ✅ | ✅ |
+| **SQL** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **TypeScript** | ✅ | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
+| **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **Zsh** | ✅ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ✅ | ⬜ |
 
 Columns:
 
 - **Host** — has a `MetaLanguage`, so it can be the ground language of a `.quilt` file
 - **Lift out** — targets this host can lift a value into
 - **Reduce ↓** — `↓` evaluates a fragment at generation time
+- **Machine** — a stateful machine executes this language, holding definitions between feeds
 - **Emit ←** — `←` appends into the surrounding variadic container
 - **Patterns** — `let ↖pattern↗ = value` destructures by matching shape
 - **Runnable** — `quilt run` can execute a file in this language directly

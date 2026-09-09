@@ -27,6 +27,7 @@ All Quilt operators are Unicode characters. The VS Code extension provides chord
 | `←`   | emit          | Append a term into the surrounding variadic block |
 | `⟨T⟩` | type          | Placeholder for `Arc<QTerm>` in bootstrap source  |
 | `⟨N⟩` | name          | Create an identifier node                         |
+| `⟨M⟩` | machine       | Obtain a machine speaking a language              |
 
 Quilt-level line comments are written `⟨//⟩ ...` and block comments `⟨/*⟩ ... ⟨*/⟩`. They are stripped during parsing and never appear in the output.
 
@@ -171,12 +172,38 @@ The operators `↑` (lift), `↓` (reduce), and `←` (emit) are **staged** like
 let n: i32 = ↓↖21 + 21↗;  // evaluates to 42 at generation time
 ```
 
-## The `⟨T⟩` and `⟨N⟩` operators
+## The `⟨T⟩`, `⟨N⟩` and `⟨M⟩` operators
 
-These are used internally in bootstrap source:
+The first two are used internally in bootstrap source:
 
 - `⟨T⟩` expands to `Arc<QTerm>` — the canonical type of a quilt term in Rust meta-code.
 - `⟨N⟩` creates an `identifier` node from a string — useful when building code that references a named variable.
+
+`⟨M⟩` obtains a **machine** — a stateful evaluator of a language
+([machines](../design/machines.md), issue #273). Like `↖…↗` it takes an
+optional language annotation, and like `↖…↗` the bare form resolves through
+the file's extension chain, so a `.sql.py.quilt` file needs no annotation at
+all:
+
+```python
+# report.sql.py.quilt — Python ground, SQL fragments, a SQL machine
+db = ⟨M⟩                       # = spawn("sql")
+sh = bash⟨M⟩                   # = spawn("bash"), a persistent shell
+db.↓(↖CREATE TEMP TABLE menu(item TEXT, price REAL);↗)
+print("SUM(price) is a", db.⟨T⟩(↖(SELECT SUM(price) FROM menu)↗))
+```
+
+Each occurrence obtains one machine; sharing is ordinary binding, so two
+`⟨M⟩`s are two isolated machines. The syntax names the *language* — which
+provider answers (a live `sqlite3`, a persistent shell, a replay script) is
+the registry's question, which is what keeps provider details out of the
+program. In Rust ground it spells `qspawn("sql")`, which returns a
+`Result`, so it is usually written `sql⟨M⟩?`.
+
+The last two lines above show the **method-position** rule that `↓` and `⟨T⟩`
+share: a glyph flush against an argument list is the machine judgment it
+names, spelled as a method. `db.↓(t)` asks for a value, `db.⟨T⟩(t)` asks for
+a type; with a space, or anywhere else, both keep their operator meanings.
 
 Each host answers for itself: a string-based host (nix, lean) represents a
 fragment as a plain string, so lean's `⟨T⟩` is `String` and `⟨N⟩` is the

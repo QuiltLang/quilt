@@ -151,6 +151,42 @@ pub struct MetaSpec {
     /// rather than an oversight.
     #[serde(default)]
     pub reduce_unsupported: Vec<String>,
+    /// target → spelling of `↓` in *method position* (`db.↓(term)`, the
+    /// machine-eval method name, #268). `""` is the un-annotated case.
+    #[serde(default)]
+    pub reduce_method: BTreeMap<String, String>,
+    /// Spelling of `⟨T⟩` in *method position* (`db.⟨T⟩(term)`, the machine's
+    /// typing judgment, #273). Omitted when the host has no machine handle to
+    /// ask.
+    #[serde(default)]
+    pub type_method: Option<String>,
+    /// language → spelling of `lang⟨M⟩`, the machine-acquisition expression
+    /// (#273). Keyed by the *resolved* language, since the expander resolves
+    /// the annotation (and the bare form's chain default) before asking.
+    #[serde(default)]
+    pub spawn: BTreeMap<String, String>,
+    /// A distinctive substring the `⟨M⟩` refusal must contain, for hosts that
+    /// have no spelling — so "unsupported" is checked for being *actionable*
+    /// (it should name `quilt machine serve`, #268) rather than just an error.
+    #[serde(default)]
+    pub spawn_error: Option<String>,
+}
+
+/// The `machine` axis probe (docs/design/machines.md, phase 2): a definition,
+/// a query referencing it, and the literal the machine must answer. The
+/// battery drives a `ScriptMachine` from the language's `machine_spec` and
+/// holds it to the machine laws — the definition persists to the query
+/// (*sequencing*), the answered literal re-answers itself (*denotation*), and
+/// a fresh machine does not see the definition (*isolation*).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MachineProbe {
+    /// A definition to feed (`InnerKind::Item`), e.g. `y = 40`.
+    pub define: String,
+    /// A query referencing the definition (`InnerKind::Expr`), e.g. `y + 2`.
+    pub query: String,
+    /// The literal the machine must answer, e.g. `42`.
+    pub answer: String,
 }
 
 /// How a host embeds a quote of another language, for the cross-language grid
@@ -226,6 +262,11 @@ pub struct Spec {
     /// Host-only: how this host embeds a quote, for the cross-language grid.
     #[serde(default)]
     pub cross: CrossSpec,
+
+    /// The `machine` axis probe; present exactly when the language registers
+    /// a `machine_spec` (the battery fails either half missing the other).
+    #[serde(default)]
+    pub machine: Option<MachineProbe>,
 
     /// The comment introducer the CLI puts on a generated file of this
     /// language — the claim `quilt::langs::header_comment` (and so the

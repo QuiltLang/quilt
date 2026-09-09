@@ -53,7 +53,7 @@
 //! type, not to this file.
 
 use super::Node;
-use crate::glyphs::{ESCAPE_LEN, GLYPHS};
+use crate::glyphs::{ESCAPE_LEN, GLYPHS, MACHINE};
 use crate::prelude::*;
 use miette::LabeledSpan;
 
@@ -113,6 +113,8 @@ pub enum TokenKind {
     Emit,
     Type,
     Name,
+    /// `anno⟨M⟩`, annotation included.
+    Machine,
     /// `// …`, which passes through to the output.
     PlainLineComment,
     /// `/* … */`, which passes through to the output.
@@ -211,6 +213,7 @@ fn token_kind(node: &Node) -> TokenKind {
         Node::Emit => TokenKind::Emit,
         Node::Type => TokenKind::Type,
         Node::Name => TokenKind::Name,
+        Node::Machine { .. } => TokenKind::Machine,
         Node::PlainLineComment(_) => TokenKind::PlainLineComment,
         Node::PlainBlockComment(_) => TokenKind::PlainBlockComment,
         // `step` never returns a bracket as a `Step::Node`; they arrive as
@@ -218,6 +221,16 @@ fn token_kind(node: &Node) -> TokenKind {
         Node::Quote { .. } => TokenKind::OpenQuote,
         Node::Unquote { .. } => TokenKind::OpenUnquote,
     }
+}
+
+/// What a language annotation is attached to. Almost always a single glyph;
+/// `⟨M⟩` (issue #273) is the exception, which is why this is not a `char`.
+#[derive(Clone, Copy)]
+enum Annotated {
+    /// `anno↖`, `anno↙` or `anno↓`.
+    Glyph(char),
+    /// `anno⟨M⟩`.
+    Machine,
 }
 
 /// One open `anno↖` / `anno↙` and the nodes collected inside it so far.
@@ -440,8 +453,13 @@ impl<'a> Parser<'a> {
             // followed by `↖`, `↙` or `↓`.
             c if c.is_ascii_lowercase() => {
                 let run = self.ident_run_end(start);
-                match self.annotation_glyph(run) {
-                    Some(g) => {
+                match self.annotation_target(run) {
+                    Some(Annotated::Machine) => {
+                        let anno: Box<str> = self.src[start..run].into();
+                        self.pos = run + MACHINE.len();
+                        Step::Node(Node::Machine { anno })
+                    }
+                    Some(Annotated::Glyph(g)) => {
                         let anno: Box<str> = self.src[start..run].into();
                         self.pos = run + g.len_utf8();
                         match g {
@@ -487,7 +505,7 @@ impl<'a> Parser<'a> {
                 _ if c.is_ascii_lowercase() || c.is_ascii_digit() => {
                     let run = self.ident_run_end(self.pos);
                     let anno = self
-                        .annotation_glyph(run)
+                        .annotation_target(run)
                         .and_then(|_| self.first_lowercase(self.pos, run));
                     match anno {
                         // `step` dispatches an annotation before it ever calls
@@ -519,6 +537,12 @@ impl<'a> Parser<'a> {
             self.pos = start + NAME.len();
             return Step::Node(Node::Name);
         }
+        if self.at(start, MACHINE) {
+            self.pos = start + MACHINE.len();
+            return Step::Node(Node::Machine {
+                anno: Box::default(),
+            });
+        }
         if self.at(start, Q_LINE) {
             self.pos = start + Q_LINE.len();
             self.pos = self.line_end(bracketed);
@@ -533,7 +557,7 @@ impl<'a> Parser<'a> {
             return Step::Skip;
         }
         self.pos = start + '⟨'.len_utf8();
-        Step::Error("`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨//⟩` or `⟨/*⟩`")
+        Step::Error("`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`")
     }
 
     /// A Quilt comment reached from the newline in front of it, which it takes
@@ -652,10 +676,14 @@ impl<'a> Parser<'a> {
         p
     }
 
-    /// The glyph an annotation ending at `run` would be attached to, if any.
-    fn annotation_glyph(&self, run: usize) -> Option<char> {
+    /// What an annotation ending at `run` would be attached to, if anything.
+    fn annotation_target(&self, run: usize) -> Option<Annotated> {
         match self.char_at(run) {
-            Some(g @ ('↖' | '↙' | '↓')) => Some(g),
+            Some(g @ ('↖' | '↙' | '↓')) => Some(Annotated::Glyph(g)),
+            // `⟨M⟩` is the one annotated spelling wider than a single glyph, so
+            // it is matched as a string rather than by its first character —
+            // `sql⟨N⟩` is content, not an annotated name placeholder.
+            Some('⟨') if self.at(run, MACHINE) => Some(Annotated::Machine),
             _ => None,
         }
     }
@@ -739,7 +767,11 @@ mod tests {
                 4..7,
                 "expected `↘` here: the open bracket is a `↙` unquote",
             ),
-            ("⟨X⟩", 0..3, "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨//⟩` or `⟨/*⟩`"),
+            (
+                "⟨X⟩",
+                0..3,
+                "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`",
+            ),
             (
                 "⟩",
                 0..3,
@@ -765,6 +797,42 @@ mod tests {
                 "{src:?}: wrong span"
             );
             assert_eq!(labels[0].label(), Some(label), "{src:?}: wrong label");
+        }
+    }
+
+    /// `⟨M⟩` is the one annotated spelling wider than a single glyph (#273),
+    /// so the annotation scan cannot key on the character after the run the
+    /// way it does for `↖`/`↙`/`↓`. The cases that go wrong if it does.
+    #[test]
+    fn the_machine_glyph_takes_the_same_annotation_as_the_arrows() {
+        let m = |anno: &str| Node::Machine { anno: anno.into() };
+        let c = |s: &str| Node::Content(s.into());
+        for (src, want) in [
+            ("⟨M⟩", vec![m("")]),
+            ("sql⟨M⟩", vec![m("sql")]),
+            // A digit inside the run is fine; a digit *starting* it is not an
+            // annotation at all, so `42` stays content — the same rule that
+            // keeps `x = 42↖…↗` a literal followed by a bare quote.
+            ("lean4⟨M⟩", vec![m("lean4")]),
+            ("42⟨M⟩", vec![c("42"), m("")]),
+            ("x = 42⟨M⟩", vec![c("x = 42"), m("")]),
+            // An annotation starts at the run's first *letter*, so a leading
+            // digit splits the run rather than voiding it.
+            ("1sql⟨M⟩", vec![c("1"), m("sql")]),
+            ("a1sql⟨M⟩", vec![m("a1sql")]),
+            ("x = sql⟨M⟩", vec![c("x = "), m("sql")]),
+            // `⟨N⟩` and `⟨T⟩` take no annotation, so a run in front of one is
+            // ordinary content — matching by the `⟨` alone would break this.
+            ("sql⟨N⟩", vec![c("sql"), Node::Name]),
+            ("sql⟨T⟩", vec![c("sql"), Node::Type]),
+            // The escape is the existing `\⟨`/`\⟩` pair; nothing new is
+            // reserved, and an escape never merges with its neighbours.
+            (r"\⟨M\⟩", vec![c("⟨"), c("M"), c("⟩")]),
+        ] {
+            let got = Node::parse(src).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+            assert_eq!(&*got, &*want, "{src:?}");
+            // And every one of them round-trips through the writer.
+            assert_eq!(&*Node::coparse(&got), src, "{src:?} does not coparse back");
         }
     }
 

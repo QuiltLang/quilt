@@ -135,6 +135,25 @@ reduce_rs(term)  # the `rs↓` operator: evaluate a term as Rust via rust-script
 `run()` remains for when you want the stage's whole namespace rather than a
 single value.
 
+## Machines: `spawn` and `Machine`
+
+The bindings expose quilt's machines (`docs/design/machines.md`, issue
+#271): `spawn(lang)` starts the language's registered provider — a live
+`sqlite3` connection for `sql`, a persistent shell for `bash`/`zsh`, the
+replay script machine for `py` — and returns a `Machine` with:
+
+- `m.eval(term)` — what `db.↓(term)` expands to (`↓` in *method position*,
+  the glyph flush against an argument list, spells `eval`). The machine's
+  own language classifies the term: definitions and statements feed,
+  expressions answer their value's literal (a string, e.g. `"42"`).
+- `m.feed(kind, term)` — an explicit-kind feed (`"item"`, `"stmt"`,
+  `"expr"`, `"file"`, `"block"`).
+- `m.type_of(term)` — the typing judgment, in the language's own spelling
+  (`typeof` for sqlite: `"integer"`, `"real"`).
+
+See `examples/sql_session.sql.py.quilt` for a Python program driving a SQL
+machine entirely through terms — no string pasting, no `coparse`.
+
 ## How expanded `.py.quilt` code looks
 
 When the Quilt engine expands a Python `.quilt` file, each `↖…↗` quote becomes a call that constructs a `QTerm`:

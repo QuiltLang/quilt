@@ -212,7 +212,7 @@
 		"keywords": {
 			"patterns": [{
 				"name": "keyword.special.quilt",
-				"comment": "Operator glyphs (lift/reduce/emit, stray brackets mid-edit) and ⟨T⟩/⟨N⟩ placeholders",
+				"comment": "Operator glyphs (lift/reduce/emit, stray brackets mid-edit) and the ⟨T⟩/⟨N⟩/⟨M⟩ placeholders",
 				"match": "[←→↑↓↔↕↖↗↙↘]|⟨\\w*⟩"
 			}]
 		},

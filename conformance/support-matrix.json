@@ -122,6 +122,15 @@
           "verified_by": "reduce/bash"
         },
         {
+          "axis": "machine",
+          "status": "supported",
+          "note": "a persistent `ReplMachine` drives a long-lived shell: definitions are real process state and effects run once (no replay); a query is an arithmetic expression, answered via `echo $(( … ))`",
+          "verified_by": "machine/bash",
+          "detail": [
+            "repl bash: y=40; y + 2 = 42"
+          ]
+        },
+        {
           "axis": "emit",
           "status": "unsupported",
           "note": "the string model has no `b_` accumulator for `←` to append to, and unlike Nix's `builtins.concatStringsSep` the shell's join cannot stand in as a spelling: an operator is applied *prefix* to what follows, while `printf '%s\\n' \"${xs[@]}\"` takes its operand inside a substitution. Collect the fragments in an array and splice the join itself",
@@ -269,6 +278,12 @@
           "status": "unsupported",
           "note": "target-only: no meta-language to reduce with",
           "verified_by": "reduce/html"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "markup: nothing to execute, so nothing for a machine to hold",
+          "verified_by": "machine/html"
         },
         {
           "axis": "emit",
@@ -424,6 +439,13 @@
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "issue": 132,
           "verified_by": "reduce/lean"
+        },
+        {
+          "axis": "machine",
+          "status": "planned",
+          "note": "a `lean` script machine: feeding a theorem checks it, `#eval` answers values, `#check` is the typing judgment (docs/design/machines.md); blocked on the toolchain joining the dev shell",
+          "issue": 265,
+          "verified_by": "machine/lean"
         },
         {
           "axis": "emit",
@@ -589,6 +611,13 @@
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "issue": 155,
           "verified_by": "reduce/nix"
+        },
+        {
+          "axis": "machine",
+          "status": "planned",
+          "note": "a `nix eval` provider composing definitions with `let … in` (docs/design/machines.md); purity makes replay exact",
+          "issue": 264,
+          "verified_by": "machine/nix"
         },
         {
           "axis": "emit",
@@ -763,7 +792,20 @@
             "py → reduce()",
             "python → reduce()",
             "rs → reduce_rs()",
-            "rust → reduce_rs()"
+            "rust → reduce_rs()",
+            "method → eval",
+            "type method → type_of",
+            "⟨M⟩ bash → spawn(\"bash\")",
+            "⟨M⟩ python → spawn(\"python\")",
+            "⟨M⟩ sql → spawn(\"sql\")"
+          ]
+        },
+        {
+          "axis": "machine",
+          "status": "supported",
+          "verified_by": "machine/python",
+          "detail": [
+            "script python3: y = 40; y + 2 = 42"
           ]
         },
         {
@@ -953,8 +995,20 @@
             "py → reduce_py()",
             "python → reduce_py()",
             "rs → reduce()",
-            "rust → reduce()"
+            "rust → reduce()",
+            "method → eval",
+            "type method → type_of",
+            "⟨M⟩ bash → qspawn(\"bash\")",
+            "⟨M⟩ python → qspawn(\"python\")",
+            "⟨M⟩ sql → qspawn(\"sql\")"
           ]
+        },
+        {
+          "axis": "machine",
+          "status": "planned",
+          "note": "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider keeps items outside a synthesized `fn main` — one-shot `↓` (reduce) covers evaluation meanwhile",
+          "issue": 267,
+          "verified_by": "machine/rust"
         },
         {
           "axis": "emit",
@@ -1133,6 +1187,15 @@
           "verified_by": "reduce/sql"
         },
         {
+          "axis": "machine",
+          "status": "supported",
+          "note": "a live `sqlite3` connection (`ReplMachine`): temp tables are its definitions, `SELECT …;` its queries, `typeof` its typing judgment — the first target-only language with a machine",
+          "verified_by": "machine/sql",
+          "detail": [
+            "repl sqlite3: CREATE TEMP TABLE t(y INTEGER); INSERT INTO t VALUES (40);; (SELECT y FROM t) + 2 = 42"
+          ]
+        },
+        {
           "axis": "emit",
           "status": "unsupported",
           "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
@@ -1270,6 +1333,12 @@
           "status": "unsupported",
           "note": "not a host: no meta-language to reduce with",
           "verified_by": "reduce/text"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "text holds code rather than running it, so there is no machine to feed",
+          "verified_by": "machine/text"
         },
         {
           "axis": "emit",
@@ -1418,6 +1487,15 @@
             "(homogeneous) → reduce()",
             "ts → reduce()",
             "typescript → reduce()"
+          ]
+        },
+        {
+          "axis": "machine",
+          "status": "supported",
+          "note": "ScriptMachine via node; queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing",
+          "verified_by": "machine/typescript",
+          "detail": [
+            "script node: const y = 40; y + 2 = 42"
           ]
         },
         {
@@ -1573,6 +1651,12 @@
           "status": "unsupported",
           "note": "target-only: no meta-language to reduce with",
           "verified_by": "reduce/wgsl"
+        },
+        {
+          "axis": "machine",
+          "status": "unsupported",
+          "note": "a shader executes inside a GPU pipeline, not a scripting machine",
+          "verified_by": "machine/wgsl"
         },
         {
           "axis": "emit",
@@ -1762,6 +1846,15 @@
           "status": "unsupported",
           "note": "no reduce backend: the string-based meta has no `QTerm` runtime to evaluate against",
           "verified_by": "reduce/zsh"
+        },
+        {
+          "axis": "machine",
+          "status": "supported",
+          "note": "a persistent `ReplMachine` drives a long-lived shell: definitions are real process state and effects run once (no replay); a query is an arithmetic expression, answered via `echo $(( … ))`",
+          "verified_by": "machine/zsh",
+          "detail": [
+            "repl zsh: y=40; y + 2 = 42"
+          ]
         },
         {
           "axis": "emit",

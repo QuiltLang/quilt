@@ -4,6 +4,9 @@ pub mod grammars;
 pub mod lang;
 pub mod langs;
 pub mod lift;
+// Machines (stateful evaluators; docs/design/machines.md) are, like `lift`,
+// part of the runtime-only build: no tree-sitter dependency.
+pub mod machine;
 pub mod meta;
 pub mod multi;
 // The Quilt surface parser is hand-written (issue #254), so it needs no

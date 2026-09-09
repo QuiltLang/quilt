@@ -37,6 +37,9 @@ enum Commands {
     Run(RunArgs),
     /// Validate .quilt files without writing output
     Check(CheckArgs),
+    /// Interactive machine session: each line is Quilt source, expanded and
+    /// fed to the ground language's default machine
+    Repl(ReplArgs),
     /// Clear the expand cache
     Clean,
 }
@@ -71,6 +74,14 @@ struct CheckArgs {
 }
 
 #[derive(Args, Debug)]
+struct ReplArgs {
+    /// Language chain, as in a file stem: `py`, or `wgsl.py` (rightmost is
+    /// the ground language — the one the machine speaks)
+    #[clap(default_value = "py")]
+    chain: String,
+}
+
+#[derive(Args, Debug)]
 struct RunArgs {
     /// .quilt file to run
     filename: String,
@@ -96,6 +107,7 @@ fn main() -> Result<()> {
         (Some(Commands::Expand(args)), _) => expand(args),
         (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
         (Some(Commands::Check(args)), _) => check(args),
+        (Some(Commands::Repl(args)), _) => repl(args),
         (Some(Commands::Clean), _) => clean(),
         (None, None) => {
             use clap::CommandFactory;
@@ -303,6 +315,75 @@ fn lang_chain<'a, LS: Languages, MS: MetaLanguages>(
         chain.push(parts.last().copied().unwrap_or(""));
     }
     chain
+}
+
+/// `quilt repl` (docs/design/machines.md, phase 4): a REPL is the ground
+/// machine with the expander in front. Each line is Quilt source: parsed
+/// with the chain, expanded by the host's meta-language, classified, and fed
+/// to the host's default machine from the park — so definitions persist
+/// across lines exactly as they persist across reduces.
+fn repl(args: &ReplArgs) -> Result<()> {
+    use std::io::{BufRead as _, IsTerminal as _, Write as _};
+
+    let mut multi = Omni::default();
+    let stem = format!("repl.{}", args.chain);
+    let chain = lang_chain(&multi, &stem);
+    let host = chain[0];
+    // Spawn eagerly, so "this language has no machine" is the first line out
+    // rather than a surprise after the first input.
+    multi.machine(host)?;
+
+    let stdin = std::io::stdin();
+    let tty = stdin.is_terminal();
+    if tty {
+        eprintln!("quilt repl — ground language {host}; ctrl-D to exit");
+    }
+    let mut lines = stdin.lock().lines();
+    loop {
+        if tty {
+            eprint!("{host}> ");
+            let _ = std::io::stderr().flush();
+        }
+        let Some(line) = lines.next() else { break };
+        let line = line.into_diagnostic()?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        // An error ends the line, not the session.
+        match repl_line(&mut multi, &chain, &line) {
+            Ok(Some(out)) => println!("{out}"),
+            Ok(None) => {}
+            Err(e) => eprintln!("{e:?}"),
+        }
+    }
+    Ok(())
+}
+
+/// One REPL turn: parse, expand, classify, feed. `Some` is the text to show —
+/// a query's answered literal, else whatever the feed printed.
+fn repl_line(multi: &mut Omni, chain: &[&str], line: &str) -> Result<Option<String>> {
+    let host = chain[0];
+    let term = multi.parse_chain(chain, line)?;
+    let expanded = multi.expand_lang(host, &term)?;
+    let kind = classify_for_feed(multi.get_lang(host)?, &expanded);
+    let answer = multi.machine(host)?.feed(kind, &expanded)?;
+    if let Some(value) = answer.value {
+        return Ok(Some(value.into()));
+    }
+    let out = answer.stdout.trim();
+    Ok((!out.is_empty()).then(|| out.to_string()))
+}
+
+/// Classify a term for feeding a machine, seeing through the tagless root
+/// wrapper `parse_chain` builds around the parsed fragment (whose tag would
+/// otherwise classify by the language's default).
+fn classify_for_feed<L: Language + ?Sized>(lang: &L, term: &QTerm) -> quilt::lang::InnerKind {
+    match term {
+        QTerm::Tuple { tag, terms, .. } if tag.is_empty() && terms.len() == 1 => {
+            classify_for_feed(lang, &terms[0])
+        }
+        _ => lang.classify_term(term),
+    }
 }
 
 fn run(args: &RunArgs) -> Result<()> {
@@ -606,5 +687,38 @@ fn cache_store(path: &str, mtime_secs: u64, mtime_nanos: u32, multi: &str, term:
     let file = dir.join(format!("{hash:016x}.postcard"));
     if let Ok(bytes) = postcard::to_stdvec(term.as_ref()) {
         let _ = fs::write(file, bytes);
+    }
+}
+
+/**************************************************************/
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The REPL rides the park: a definition fed by one line answers a
+    /// query on a later line. Plain Python only — the quilt runtime module
+    /// is a `bin/build-py` artifact the unit suite must not require.
+    #[test]
+    fn repl_lines_share_the_machine() {
+        let mut multi = Omni::default();
+        assert_eq!(repl_line(&mut multi, &["py"], "x = 5").unwrap(), None);
+        assert_eq!(
+            repl_line(&mut multi, &["py"], "x + 2").unwrap().as_deref(),
+            Some("7")
+        );
+    }
+
+    /// A bad line reports and leaves the session usable.
+    #[test]
+    fn repl_errors_do_not_poison_the_session() {
+        let mut multi = Omni::default();
+        assert!(repl_line(&mut multi, &["py"], "1 +").is_err());
+        assert_eq!(
+            repl_line(&mut multi, &["py"], "20 + 22")
+                .unwrap()
+                .as_deref(),
+            Some("42")
+        );
     }
 }

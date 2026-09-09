@@ -193,6 +193,7 @@ pub fn run_language(spec: &Spec) -> Result<Outcome> {
         probe_kinds(&mut ctx, &lang);
         probe_variadic(&mut ctx, &lang);
         probe_runnable(&mut ctx, &lang);
+        probe_machine(&mut ctx, &mut lang);
         probe_lift_into(&mut ctx, &mut lang);
         probe_glyphs(&mut ctx, &mut lang);
     }
@@ -539,6 +540,193 @@ fn probe_runnable(ctx: &mut Ctx, lang: &BoxLang) {
             ctx.declared(axis);
         }
     }
+}
+
+/// The `machine` axis (docs/design/machines.md, phases 2–3). A language that
+/// declares a machine — a persistent `repl_spec` or a replay `machine_spec`
+/// — is held to the three machine laws through whatever
+/// `quilt::machine::spawn_machine` gives users, driven by the spec's
+/// `[machine]` probe; a language without one must claim it has no machine.
+/// The laws:
+///
+/// * **sequencing** — the fed definition is visible to the later query;
+/// * **denotation** — the answered literal, queried, answers itself;
+/// * **isolation** — a fresh machine does not see the definition.
+fn probe_machine(ctx: &mut Ctx, lang: &mut BoxLang) {
+    use quilt::lang::InnerKind;
+
+    let axis = Axis::Machine;
+
+    // (provider kind, interpreter) — repl preferred, matching `spawn_machine`.
+    let declared = match run(|| {
+        Ok(lang
+            .repl_spec()
+            .map(|s| ("repl", s.program))
+            .or_else(|| lang.machine_spec().map(|s| ("script", s.program))))
+    }) {
+        Ran::Ok(s) => s,
+        Ran::Err(e) => {
+            ctx.fail(axis, "machine_spec", format!("failed: {e}"));
+            ctx.declared(axis);
+            return;
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "machine_spec", format!("PANICKED: {p}"));
+            ctx.declared(axis);
+            return;
+        }
+    };
+    ctx.check_status(axis, declared.is_some(), "a machine (repl or script spec)");
+
+    let Some((provider, program)) = declared else {
+        if ctx.spec.machine.is_some() {
+            ctx.fail(
+                axis,
+                "probe",
+                "spec has a [machine] probe but the language registers no machine spec",
+            );
+        }
+        ctx.verified(axis, Vec::new());
+        return;
+    };
+    let Some(probe) = ctx.spec.machine.clone() else {
+        ctx.fail(
+            axis,
+            "probe",
+            "language registers a machine spec but the spec has no [machine] probe to hold it to",
+        );
+        ctx.declared(axis);
+        return;
+    };
+
+    let mut m = match run(|| quilt::machine::spawn_machine(&ctx.spec.name, lang)) {
+        Ran::Ok(m) => m,
+        Ran::Err(e) => {
+            ctx.fail(axis, "spawn", format!("failed: {e}"));
+            ctx.declared(axis);
+            return;
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "spawn", format!("PANICKED: {p}"));
+            ctx.declared(axis);
+            return;
+        }
+    };
+
+    // Machines take terms, so the probe's fragments go through the
+    // language's own parser first — which also makes this a check that the
+    // fragments a machine is held to really are the language's syntax.
+    let mut parse = |lang: &mut BoxLang, kind, src: &str, what: &str| match run(|| {
+        lang.parse_as(Some(kind), &flat_nodes(src))
+    }) {
+        Ran::Ok(t) => Some(t),
+        Ran::Err(e) => {
+            ctx.fail(axis, what, format!("{src:?} did not parse: {e}"));
+            None
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, what, format!("parsing {src:?} PANICKED: {p}"));
+            None
+        }
+    };
+    let (Some(define), Some(query), Some(answer)) = (
+        parse(lang, InnerKind::File, &probe.define, "define"),
+        parse(lang, InnerKind::Expr, &probe.query, "query"),
+        parse(lang, InnerKind::Expr, &probe.answer, "answer"),
+    ) else {
+        ctx.declared(axis);
+        return;
+    };
+
+    // Sequencing: the definition persists to the query.
+    match run(|| m.feed(InnerKind::File, &define)) {
+        Ran::Ok(_) => {}
+        Ran::Err(e) => {
+            ctx.fail(
+                axis,
+                "define",
+                format!("feeding {:?} failed: {e}", probe.define),
+            );
+            ctx.declared(axis);
+            return;
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "define", format!("PANICKED: {p}"));
+            ctx.declared(axis);
+            return;
+        }
+    }
+    match run(|| m.eval(&query)) {
+        Ran::Ok(a) => {
+            if a.value.as_deref() != Some(&*probe.answer) {
+                ctx.fail(
+                    axis,
+                    "sequencing",
+                    format!(
+                        "queried {:?} after defining {:?}; wanted {:?}, got {:?}",
+                        probe.query, probe.define, probe.answer, a.value
+                    ),
+                );
+            }
+        }
+        Ran::Err(e) => ctx.fail(axis, "sequencing", format!("query failed: {e}")),
+        Ran::Panicked(p) => ctx.fail(axis, "sequencing", format!("query PANICKED: {p}")),
+    }
+
+    // Denotation: the answered literal is a fixed point of evaluation.
+    match run(|| m.eval(&answer)) {
+        Ran::Ok(a) => {
+            if a.value.as_deref() != Some(&*probe.answer) {
+                ctx.fail(
+                    axis,
+                    "denotation",
+                    format!(
+                        "the literal {:?} evaluated to {:?}, not itself",
+                        probe.answer, a.value
+                    ),
+                );
+            }
+        }
+        Ran::Err(e) => ctx.fail(axis, "denotation", format!("query failed: {e}")),
+        Ran::Panicked(p) => ctx.fail(axis, "denotation", format!("query PANICKED: {p}")),
+    }
+
+    // Isolation: a fresh machine must not see the first one's definition.
+    let fresh = match run(|| quilt::machine::spawn_machine(&ctx.spec.name, lang)) {
+        Ran::Ok(m) => Some(m),
+        Ran::Err(e) => {
+            ctx.fail(axis, "isolation", format!("second spawn failed: {e}"));
+            None
+        }
+        Ran::Panicked(p) => {
+            ctx.fail(axis, "isolation", format!("second spawn PANICKED: {p}"));
+            None
+        }
+    };
+    let Some(mut fresh) = fresh else {
+        ctx.declared(axis);
+        return;
+    };
+    match run(|| fresh.eval(&query)) {
+        Ran::Ok(a) if a.value.as_deref() == Some(&*probe.answer) => ctx.fail(
+            axis,
+            "isolation",
+            format!(
+                "a fresh machine answered {:?} = {:?} without the definition",
+                probe.query, probe.answer
+            ),
+        ),
+        Ran::Panicked(p) => ctx.fail(axis, "isolation", format!("query PANICKED: {p}")),
+        Ran::Ok(_) | Ran::Err(_) => {}
+    }
+
+    ctx.verified(
+        axis,
+        vec![format!(
+            "{provider} {program}: {}; {} = {}",
+            probe.define, probe.query, probe.answer
+        )],
+    );
 }
 
 fn probe_host(ctx: &mut Ctx) {
@@ -1030,6 +1218,99 @@ fn probe_reduce(ctx: &mut Ctx) {
                 axis,
                 target,
                 format!("reduce_str PANICKED (must return Err): {p}"),
+            ),
+        }
+    }
+
+    // Method-position spellings (`db.↓(term)` → the machine-eval method,
+    // #268): pinned the same way as the operator spellings above.
+    for (target, want) in &ctx.spec.meta.reduce_method {
+        match run(|| meta.reduce_method_str(target)) {
+            Ran::Ok(got) => {
+                if got == want {
+                    detail.push(format!("method → {got}"));
+                } else {
+                    ctx.fail(
+                        axis,
+                        target,
+                        format!("reduce_method_str({target:?}) spells {got:?}, spec says {want:?}"),
+                    );
+                }
+            }
+            Ran::Err(e) => ctx.fail(
+                axis,
+                target,
+                format!("spec says method-position ↓ spells {want:?}, but: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(axis, target, format!("reduce_method_str PANICKED: {p}")),
+        }
+    }
+
+    // `db.⟨T⟩(term)` — the typing judgment, the other half of the method-
+    // position pair (#273).
+    match (
+        run(|| meta.type_method_str()),
+        ctx.spec.meta.type_method.as_deref(),
+    ) {
+        (Ran::Ok(got), Some(want)) if got == want => detail.push(format!("type method → {got}")),
+        (Ran::Ok(got), Some(want)) => ctx.fail(
+            axis,
+            "type_method",
+            format!("type_method_str spells {got:?}, spec says {want:?}"),
+        ),
+        (Ran::Ok(got), None) => ctx.fail(
+            axis,
+            "type_method",
+            format!("spec declares no method-position ⟨T⟩, but it spells {got:?} — pin it"),
+        ),
+        (Ran::Err(e), Some(want)) => ctx.fail(
+            axis,
+            "type_method",
+            format!("spec says method-position ⟨T⟩ spells {want:?}, but: {e}"),
+        ),
+        (Ran::Err(_), None) => {}
+        (Ran::Panicked(p), _) => ctx.fail(axis, "type_method", format!("PANICKED: {p}")),
+    }
+
+    // `lang⟨M⟩` — machine acquisition (#273). Pinned per *resolved* language,
+    // since that is what the expander hands the host.
+    for (target, want) in &ctx.spec.meta.spawn {
+        match run(|| meta.spawn_str(target)) {
+            Ran::Ok(got) if got == *want => detail.push(format!("⟨M⟩ {target} → {got}")),
+            Ran::Ok(got) => ctx.fail(
+                axis,
+                target,
+                format!("spawn_str({target:?}) spells {got:?}, spec says {want:?}"),
+            ),
+            Ran::Err(e) => ctx.fail(
+                axis,
+                target,
+                format!("spec says {target}⟨M⟩ spells {want:?}, but: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(axis, target, format!("spawn_str PANICKED: {p}")),
+        }
+    }
+
+    // A host with no `⟨M⟩` spelling must say what would unblock it — the
+    // daemon in #268 — rather than fail blankly. Probed against a language
+    // that *does* have a machine, so the refusal is about the host.
+    if let Some(want) = ctx.spec.meta.spawn_error.as_deref() {
+        match run(|| meta.spawn_str("sql")) {
+            Ran::Ok(got) => ctx.fail(
+                axis,
+                "spawn_error",
+                format!("spec says ⟨M⟩ is unsupported, but it spells {got:?} — promote it"),
+            ),
+            Ran::Err(e) if e.contains(want) => {}
+            Ran::Err(e) => ctx.fail(
+                axis,
+                "spawn_error",
+                format!("the ⟨M⟩ refusal should mention {want:?}, but says: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(
+                axis,
+                "spawn_error",
+                format!("spawn_str PANICKED (must return Err): {p}"),
             ),
         }
     }

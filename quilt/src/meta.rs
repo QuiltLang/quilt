@@ -13,6 +13,28 @@ pub const EMIT: &str = "__EMIT__";
 pub const TYPE: &str = "__TYPE__";
 pub const NAME: &str = "__NAME__";
 
+/// The body every host's [`MetaLanguage::spawn_str`] shares: refuse a
+/// language no provider backs, then let the host spell the rest.
+///
+/// The refusal is here rather than in generated code so that `wgsl⟨M⟩` is a
+/// diagnostic at expansion time — pointing at the glyph in the `.quilt`
+/// source, where the mistake is — instead of a failure inside an artifact
+/// whose reader has no idea a glyph produced it.
+pub fn spawn_spelling(
+    host: &str,
+    lang: &str,
+    spell: impl FnOnce(&str) -> String,
+) -> Result<String> {
+    if !crate::machine::has_spec(lang) {
+        miette::bail!(
+            "no machine is registered for {lang:?}, so `{lang}⟨M⟩` gives {host} nothing to \
+             spawn; quilt knows: {}",
+            crate::machine::REGISTERED_SPECS.join(", ")
+        );
+    }
+    Ok(spell(lang))
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub enum OuterKind {
     #[default]
@@ -128,6 +150,26 @@ pub trait MetaLanguage {
         let _ = target;
         Ok(REDUCE)
     }
+    /// The spelling `↓` expands to in *method position* — the glyph flush
+    /// against an argument list, `recv.↓(term)`: a bare method name, which
+    /// the source's own parentheses complete. This is machine-directed
+    /// reduce (`db.↓(schema)` evaluates a term on a machine value, issue
+    /// #268), so hosts spell it as their machine-eval method.
+    ///
+    /// The default is an error, but unlike the other spellings it is not the
+    /// end of the line: a host that returns one has not *opted into* the
+    /// method-position reading, so the expander falls back to the operator
+    /// spelling — the meaning a flush `(` had before this rule existed, and
+    /// still the right one for `gen(7).↓(6)` in TypeScript, which reduces a
+    /// generated function and calls it. Only a host that answers the
+    /// un-annotated case and then refuses an annotated one gets its error
+    /// surfaced.
+    #[inline]
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        miette::bail!(
+            "this meta-language has no machine-eval spelling for `{target}↓(…)` in method position"
+        )
+    }
     /// The spelling `←` expands to. Like [`Self::lift_str`] this returns a
     /// `Result` because not every meta-language *has* an emit: a string-based
     /// meta (nix, lean) has no `b_` accumulator to emit into, and must fail
@@ -149,6 +191,35 @@ pub trait MetaLanguage {
     #[inline]
     fn name_str(&self) -> Result<&'static str> {
         Ok(NAME)
+    }
+    /// The spelling `⟨T⟩` expands to in *method position* — the glyph flush
+    /// against an argument list, `db.⟨T⟩(term)`: the machine's *typing*
+    /// judgment, the companion of [`Self::reduce_method_str`]'s value
+    /// judgment (issue #273). A bare method name, completed by the source's
+    /// own parentheses; `⟨T⟩` anywhere else keeps meaning the term type.
+    ///
+    /// Falls back to [`Self::type_str`] on `Err`, for the same reason
+    /// [`Self::reduce_method_str`] falls back to the operator spelling.
+    #[inline]
+    fn type_method_str(&self) -> Result<&'static str> {
+        miette::bail!("this meta-language has no type-of spelling for `⟨T⟩(…)` in method position")
+    }
+    /// The spelling `lang⟨M⟩` expands to: an expression obtaining a machine
+    /// speaking `lang` (issue #273). The annotation is already resolved by
+    /// the expander, so `lang` is a concrete language name — which is why
+    /// this is the one spelling that is not a `&'static str`.
+    ///
+    /// The default is an honest error naming what would unblock it, like
+    /// every other spelling a host may lack: a string-based meta (nix, lean)
+    /// has no runtime to hold a machine handle, so it needs the out-of-process
+    /// daemon from issue #268 rather than a spelling.
+    #[inline]
+    fn spawn_str(&self, lang: &str) -> Result<String> {
+        miette::bail!(
+            "this meta-language has no spelling for `{lang}⟨M⟩`: it has no runtime to hold a \
+             machine handle. Drive the machine from a host that does (rust, python), or wait on \
+             the `quilt machine serve` daemon (issue #268)"
+        )
     }
 }
 
@@ -223,6 +294,10 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
         (**self).reduce_str(target)
     }
 
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        (**self).reduce_method_str(target)
+    }
+
     fn emit_str(&self) -> Result<&'static str> {
         (**self).emit_str()
     }
@@ -233,5 +308,13 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn name_str(&self) -> Result<&'static str> {
         (**self).name_str()
+    }
+
+    fn type_method_str(&self) -> Result<&'static str> {
+        (**self).type_method_str()
+    }
+
+    fn spawn_str(&self, lang: &str) -> Result<String> {
+        (**self).spawn_str(lang)
     }
 }

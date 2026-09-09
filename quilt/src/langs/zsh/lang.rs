@@ -33,6 +33,13 @@ impl TSProvider for ZshProvider {
         &mut self.0
     }
 
+    /// Same shape as bash's (see `BashProvider::repl_spec`): a persistent
+    /// `zsh` process, arithmetic queries, sentinel via `echo`.
+    /// Registered in `machine::repl_spec`; see `PythonProvider::machine_spec`.
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        crate::machine::repl_spec("zsh")
+    }
+
     fn hole_str(&self) -> &'static str {
         // The grammar.js fork already defines `quilt_hole` and adds it to
         // statement/expression positions, but parser.c has never been

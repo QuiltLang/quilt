@@ -49,6 +49,7 @@ highlights = {status = "unsupported", note = "the LSP projects Rust to rust-anal
 host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported"}
+machine = {status = "planned", note = "the flat `ScriptMachine` replay does not fit Rust's item/`fn main` split; a structured provider keeps items outside a synthesized `fn main` — one-shot `↓` (reduce) covers evaluation meanwhile", issue = 267}
 emit = {status = "supported"}
 pattern-match = {status = "supported"}
 runnable = {status = "supported"}
@@ -174,6 +175,11 @@ name_str = "name"
 pattern_tag = "let_declaration"
 pattern_var = 'mvar("x")'
 reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]
+# Method-position ↓ (`db.↓(term)`, #268): the machine-eval method name.
+reduce_method = { "" = "eval" }
+# Method-position ⟨T⟩ and the machine glyph (#273).
+type_method = "type_of"
+spawn = { sql = 'qspawn("sql")', python = 'qspawn("python")', bash = 'qspawn("bash")' }
 
 [meta.reduce]
 "" = "reduce()"

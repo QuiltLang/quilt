@@ -55,6 +55,19 @@ impl TSProvider for SqlProvider {
         &mut self.0
     }
 
+    /// The machine for SQL is a database connection: a live `sqlite3` whose
+    /// temp tables and attached state are its definitions — which makes SQL
+    /// the first *target-only* language with a machine
+    /// (docs/design/machines.md). A query is any SQL expression (spelled
+    /// through `SELECT …;`), the typing judgment is sqlite's `typeof`, and
+    /// `-bail` keeps the contract that a rejected feed is an `Err` rather
+    /// than a silently-logged diagnostic. The sentinel is a `SELECT` of a
+    /// string literal, which prints as its own line.
+    /// Registered in `machine::repl_spec`; see `PythonProvider::machine_spec`.
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        crate::machine::repl_spec("sql")
+    }
+
     fn hole_str(&self) -> &'static str {
         // `__QUILT_HOLE__` matches this grammar's `_identifier` regex
         // (`/[A-Za-z_À-ſ][0-9A-Za-z_À-ſ]*/`), so it parses
@@ -128,6 +141,13 @@ impl TSProvider for SqlProvider {
     /// single-statement fragment arrives wrapped in `program` — and, when it
     /// keeps its terminating `;`, wrapped in a *two*-child `program` whose root
     /// tag alone would read `File` for what is really one statement.
+    ///
+    /// One more override: a *parenthesized* select at statement level — the
+    /// grammar's `statement("(", select, ")")` — classifies as
+    /// [`Expr`](InnerKind::Expr). Parentheses are exactly how SQL marks "the
+    /// value of this query" (a scalar subquery), and machine-eval routing
+    /// rides classification: `db.↓(…)` on a parenthesized query must
+    /// *answer* it, not feed it as an effect.
     fn classify_term(&self, term: &QTerm) -> InnerKind {
         match term {
             QTerm::Tuple { tag, terms, .. } if &**tag == "program" => match terms.len() {
@@ -137,6 +157,19 @@ impl TSProvider for SqlProvider {
                 // Empty (0) or several statements (3+): a whole script.
                 _ => InnerKind::File,
             },
+            // Only the opener is checked: with a splice hole in the body the
+            // parser can hang the closing `)` off the inner `select` instead
+            // of the `statement`, so requiring the 3-child shape would read
+            // the same source two ways depending on whether it was spliced.
+            QTerm::Tuple { tag, terms, .. }
+                if &**tag == "statement"
+                    && matches!(
+                        terms.first().map(AsRef::as_ref),
+                        Some(QTerm::Tuple { tag, .. }) if &**tag == "("
+                    ) =>
+            {
+                InnerKind::Expr
+            }
             QTerm::Tuple { tag, .. } => self.typ(tag),
             _ => InnerKind::default(),
         }
@@ -496,6 +529,14 @@ impl Language for SqlLanguage {
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
     }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.0.repl_spec()
+    }
 }
 
 /// Boxed-`Post` form of [`SqlLanguage`], for the dynamic registry.
@@ -523,5 +564,13 @@ impl Language for DynSqlLanguage {
 
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
+    }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.0.repl_spec()
     }
 }

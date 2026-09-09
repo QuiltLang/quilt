@@ -3,7 +3,7 @@ use crate::lang::{Arity, Language, LanguagePost};
 use crate::lang::{FlatNode, Hole};
 use crate::meta::{MetaLanguage, OuterKind};
 #[cfg(feature = "parse")]
-use crate::node::Node;
+use crate::node::{Node, MACHINE};
 use crate::prelude::*;
 #[cfg(feature = "parse")]
 use crate::qterm::QTermBuilder;
@@ -60,6 +60,13 @@ pub trait Languages {
 
     fn get(&self, lang: &str) -> Result<&Self::Language>;
     fn get_mut(&mut self, lang: &str) -> Result<&mut Self::Language>;
+
+    /// The canonical registry key for `lang`, resolving aliases (`python` →
+    /// `py`); identity for unknown names. The machine park keys by this, so
+    /// [`Multi::machine`] hands the same machine to every alias.
+    fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+        lang
+    }
 }
 
 pub trait MetaLanguages {
@@ -76,6 +83,9 @@ pub trait MetaLanguages {
     fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.get(lang)?.reduce_str(target)
     }
+    fn reduce_method_str(&self, lang: &str, target: &str) -> Result<&'static str> {
+        self.get(lang)?.reduce_method_str(target)
+    }
     fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.get(lang)?.emit_str()
     }
@@ -85,12 +95,22 @@ pub trait MetaLanguages {
     fn name_str(&self, lang: &str) -> Result<&'static str> {
         self.get(lang)?.name_str()
     }
+    fn type_method_str(&self, lang: &str) -> Result<&'static str> {
+        self.get(lang)?.type_method_str()
+    }
+    fn spawn_str(&self, lang: &str, target: &str) -> Result<String> {
+        self.get(lang)?.spawn_str(target)
+    }
 }
 
 #[derive(Default)]
 pub struct Multi<LS: Languages, MS: MetaLanguages> {
     pub langs: LS,
     pub metas: MS,
+    /// Live default machines, one per language, spawned on first use by
+    /// [`machine`](Multi::machine) — so successive reduces share definitions
+    /// for as long as this `Multi` lives. See `docs/design/machines.md`.
+    pub machines: crate::machine::Park,
 }
 
 impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
@@ -112,6 +132,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     pub fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.reduce_str(lang, target)
     }
+    pub fn reduce_method_str(&self, lang: &str, target: &str) -> Result<&'static str> {
+        self.metas.reduce_method_str(lang, target)
+    }
     pub fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.emit_str(lang)
     }
@@ -120,6 +143,68 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     }
     pub fn name_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.name_str(lang)
+    }
+    pub fn type_method_str(&self, lang: &str) -> Result<&'static str> {
+        self.metas.type_method_str(lang)
+    }
+    pub fn spawn_str(&self, lang: &str, target: &str) -> Result<String> {
+        self.metas.spawn_str(lang, target)
+    }
+
+    /// Spawn a *fresh* machine for `lang`: the persistent
+    /// [`ReplMachine`](crate::machine::ReplMachine) when the language
+    /// declares a [`repl_spec`](Language::repl_spec), else the replay-based
+    /// [`ScriptMachine`](crate::machine::ScriptMachine) from its
+    /// [`machine_spec`](Language::machine_spec). The caller owns it: nothing
+    /// is parked, so it shares state with no other machine.
+    pub fn spawn_machine(&self, lang: &str) -> Result<Box<dyn crate::machine::Machine>> {
+        crate::machine::spawn_machine(lang, self.langs.get(lang)?)
+    }
+
+    /// The *default* machine for `lang`: parked in
+    /// [`machines`](Multi::machines), spawned on first use, shared by every
+    /// caller of this `Multi` — which is what lets one reduce see the
+    /// definitions another fed. Keyed by the canonical language name, so
+    /// aliases (`py` / `python`) share one machine.
+    pub fn machine(&mut self, lang: &str) -> Result<&mut dyn crate::machine::Machine> {
+        let key: Box<str> = self.langs.canonical(lang).into();
+        if !self.machines.contains(&key) {
+            let machine = self.spawn_machine(lang)?;
+            self.machines.insert(&key, machine);
+        }
+        Ok(self.machines.get_mut(&key).unwrap())
+    }
+
+    /// The end-user text door (tenet 2's actual subject): parse `src` as
+    /// `kind` with `lang`'s `Language` — validating it — then feed the term
+    /// to the default machine. Machines themselves traffic only in terms;
+    /// raw text is turned into a term here, where the parser lives.
+    pub fn feed_on(
+        &mut self,
+        lang: &str,
+        kind: crate::lang::InnerKind,
+        src: &str,
+    ) -> Result<crate::machine::Answer> {
+        let term = self
+            .get_lang_mut(lang)?
+            .parse_as(Some(kind), &crate::lang::flat_nodes(src))?;
+        self.machine(lang)?.feed(kind, &term)
+    }
+
+    /// Evaluate a term on `lang`'s default machine and parse the answered
+    /// literal back into a term of `lang` — machines answer with the
+    /// value's own syntax, and the `Language` re-reads it here, where it
+    /// lives.
+    pub fn eval_on(&mut self, lang: &str, term: &QTerm) -> Result<Arc<QTerm>> {
+        let answer = self.machine(lang)?.eval(term)?;
+        let value = answer.value.ok_or_else(|| {
+            miette!(
+                "the {lang} machine answered no value for {:?}",
+                term.coparse()
+            )
+        })?;
+        self.get_lang_mut(lang)?
+            .parse_expr(&crate::lang::one_liner(&value))
     }
 
     #[cfg(feature = "parse")]
@@ -276,8 +361,28 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let nodes = &nodes[usize::from(first_nl)..nodes.len() - usize::from(last_nl)];
 
         // Pass 3: build up a string of code with holes // TODO: avoid creating string
+        //
+        // `lang⟨M⟩` is the one operator whose expansion is *computed* rather
+        // than a `&'static str` — it interpolates the resolved language name
+        // (issue #273) — so the spellings are built here, up front, and the
+        // `FlatNode::Str`s below borrow from this vector. Deferred `⟨M⟩`s
+        // (sky depth > 0) belong to a later stage and get no spelling at all.
+        let spawns: Vec<String> = if sky_depth > 0 {
+            Vec::new()
+        } else {
+            nodes
+                .iter()
+                .filter_map(|n| match &**n {
+                    Node::Machine { anno } => Some(anno),
+                    _ => None,
+                })
+                .map(|anno| self.spawn_str(lang, &machine_lang(zipper, lang, anno)))
+                .collect::<Result<_>>()?
+        };
+        let mut spawns = spawns.iter();
+
         let mut code = Vec::with_capacity(nodes.len());
-        for n in nodes {
+        for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 Node::Content(s) => code.push(FlatNode::Str(s)),
                 Node::NewLine => code.push(FlatNode::NewLine),
@@ -287,16 +392,55 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 // defer it as a hole so it survives `coparse` as its glyph and
                 // is spelled out when that stage runs, instead of being expanded
                 // here one stage too early.
-                Node::Lift | Node::Reduce { .. } | Node::Emit if sky_depth > 0 => {
+                Node::Lift | Node::Reduce { .. } | Node::Emit | Node::Machine { .. }
+                    if sky_depth > 0 =>
+                {
                     code.push(FlatNode::Hole);
                 }
                 Node::Lift => code.push(FlatNode::Str(
                     self.lift_str(lang, splice_target.unwrap_or(lang))?,
                 )),
+                // `↓` flush against an argument list — `db.↓(schema)` — is
+                // *method position*: it spells the host's machine-eval method
+                // name, completed by the source's own parentheses (#268).
+                // Everywhere else it is the reduce operator as before.
+                Node::Reduce { anno } if method_position(nodes, i) => {
+                    let spelling = match self.reduce_method_str(lang, anno) {
+                        Ok(spelling) => spelling,
+                        // A host with no method-position reading *at all*
+                        // keeps `↓`'s operator meaning, which is what a flush
+                        // `(` meant before the rule existed: TypeScript's
+                        // `gen(7).↓(6)` reduces a generated function and calls
+                        // it. A host that has the reading and merely refused
+                        // this annotation keeps its own diagnostic, which is
+                        // more useful than either spelling.
+                        Err(e) if self.reduce_method_str(lang, "").is_ok() => return Err(e),
+                        Err(_) => self.reduce_str(lang, anno)?,
+                    };
+                    code.push(FlatNode::Str(spelling));
+                }
                 Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
                 Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
+                // `⟨T⟩` flush against an argument list — `db.⟨T⟩(term)` — is
+                // the *typing* judgment on a machine, the companion of
+                // `db.↓(term)`'s value judgment (#273). In operand position it
+                // is the term type as before.
+                Node::Type if method_position(nodes, i) => {
+                    // Same fallback as `↓` above: a host with no typing-
+                    // judgment spelling keeps `⟨T⟩`'s operand meaning rather
+                    // than losing a reading it already had.
+                    let spelling = match self.type_method_str(lang) {
+                        Ok(spelling) => spelling,
+                        Err(_) => self.type_str(lang)?,
+                    };
+                    code.push(FlatNode::Str(spelling));
+                }
                 Node::Type => code.push(FlatNode::Str(self.type_str(lang)?)),
                 Node::Name => code.push(FlatNode::Str(self.name_str(lang)?)),
+                Node::Machine { .. } => {
+                    let spelling = spawns.next().expect("one spelling per `⟨M⟩`, built above");
+                    code.push(FlatNode::Str(spelling));
+                }
                 Node::PlainLineComment(s) | Node::PlainBlockComment(s) => {
                     code.push(FlatNode::Str(s));
                 }
@@ -342,6 +486,15 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         .ok_or_else(|| miette!("Ran out of holes for emit: {n:?}"))?;
                     plugs.push(leaf(ident_tag, "←"));
                 }
+                Node::Machine { anno } if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for machine: {n:?}"))?;
+                    // The *unresolved* annotation goes back in: the stage that
+                    // runs this fragment resolves the bare form against its own
+                    // chain, exactly as this one would have.
+                    plugs.push(leaf(ident_tag, &format!("{anno}{MACHINE}")));
+                }
                 Node::Content(_)
                 | Node::NewLine
                 | Node::Lift
@@ -349,6 +502,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 | Node::Emit
                 | Node::Type
                 | Node::Name
+                | Node::Machine { .. }
                 | Node::PlainLineComment(_)
                 | Node::PlainBlockComment(_) => {}
                 Node::Quote { anno, nodes, span } => {
@@ -450,6 +604,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let Multi {
             ref mut langs,
             ref mut metas,
+            ..
         } = self;
         let meta = metas.get(lang)?;
         Expander {
@@ -460,6 +615,33 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         }
         .expand(&Default::default(), qterm)
     }
+}
+
+/// The language a `⟨M⟩` names. An annotation says it outright; the bare form
+/// resolves exactly as a bare `↖…↗` does — the chain's next default language
+/// via the zipper's `.back()`, falling back to the host — so `⟨M⟩` in a
+/// `.sql.py.quilt` file is a SQL machine and in a plain `.py.quilt` file a
+/// Python one (issue #273).
+#[cfg(feature = "parse")]
+fn machine_lang(zipper: &Zipper<Box<str>>, lang: &str, anno: &str) -> Box<str> {
+    let zipper = if anno.is_empty() {
+        zipper
+            .clone()
+            .back()
+            .unwrap_or_else(|| zipper.clone().cons(lang.into()))
+    } else {
+        zipper.clone().cons(anno.into())
+    };
+    zipper.head().expect("a consed zipper has a head").clone()
+}
+
+/// Whether the node after `i` opens an argument list flush against the
+/// operator — `recv.↓(arg)` — making the operator a *method name* that the
+/// source's own parentheses complete. Flush means exactly that: `↓ (x)`
+/// (with a space) stays the ordinary operator.
+#[cfg(feature = "parse")]
+fn method_position(nodes: &[Arc<Node>], i: usize) -> bool {
+    matches!(nodes.get(i + 1).map(|n| &**n), Some(Node::Content(s)) if s.starts_with('('))
 }
 
 /// An "unquote depth too high" error pointing at the offending unquote when
@@ -773,6 +955,10 @@ impl Languages for DictLanguages {
         self.langs
             .get_mut(canonical(&self.aliases, lang))
             .ok_or_else(|| miette!("Language {lang} not found"))
+    }
+
+    fn canonical<'a>(&'a self, lang: &'a str) -> &'a str {
+        canonical(&self.aliases, lang)
     }
 }
 

@@ -3,7 +3,11 @@ use miette::Result;
 use super::ops::{build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block};
 use crate::lang::Arity;
 use crate::prelude::{Index, *};
-use crate::{meta::MetaLanguage, qterm::QTerm, term::CmdOrHole};
+use crate::{
+    meta::{spawn_spelling, MetaLanguage},
+    qterm::QTerm,
+    term::CmdOrHole,
+};
 
 /**************************************************************/
 
@@ -71,12 +75,40 @@ impl MetaLanguage for PythonMetaLanguage {
         }
     }
 
+    /// Machine-directed reduce: `db.↓(term)` spells the machine binding's
+    /// `eval` method (#268). Target-agnostic — the machine value, not the
+    /// annotation, knows its language.
+    fn reduce_method_str(&self, target: &str) -> Result<&'static str> {
+        match target {
+            "" => Ok("eval"),
+            _ => miette::bail!(
+                "python spells machine eval as a method on the machine value — write \
+                 `m.↓(term)` with no annotation; the machine knows its own language"
+            ),
+        }
+    }
+
     fn name_str(&self) -> Result<&'static str> {
         Ok("name")
     }
 
     fn type_str(&self) -> Result<&'static str> {
         Ok("QTerm")
+    }
+
+    /// The typing judgment on a machine: `db.⟨T⟩(term)` spells the machine
+    /// binding's `type_of` method (#273), the companion of
+    /// [`Self::reduce_method_str`]'s value judgment.
+    fn type_method_str(&self) -> Result<&'static str> {
+        Ok("type_of")
+    }
+
+    /// `lang⟨M⟩` spells the `spawn` the Python bindings already export
+    /// (`quilt-python`, #271) — the same provider choice `Multi::machine`
+    /// makes, so the machine a `.py.quilt` file gets is the machine the
+    /// conformance battery verifies.
+    fn spawn_str(&self, lang: &str) -> Result<String> {
+        spawn_spelling("python", lang, |l| format!("spawn({l:?})"))
     }
 
     /// No spelling: `←` needs a named `b_` accumulator in scope, and this host

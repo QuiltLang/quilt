@@ -32,6 +32,7 @@ highlights = {status = "supported"}
 host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion. SQL has no facility for building its own syntax trees, so there is nothing for a string-based meta to emit either"}
 lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
 reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
+machine = {status = "supported", note = "a live `sqlite3` connection (`ReplMachine`): temp tables are its definitions, `SELECT …;` its queries, `typeof` its typing judgment — the first target-only language with a machine"}
 emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
 pattern-match = {status = "unsupported", note = "target-only; SQL fragments can still be destructured by a Rust host"}
 runnable = {status = "unsupported", note = "a query is executed by a database server, not by an interpreter reading a shebang"}
@@ -178,3 +179,12 @@ block = "stmt"
 binary_expression = "expr"
 literal = "expr"
 identifier = "expr"
+
+# The `machine` axis probe (docs/design/machines.md): drives the persistent
+# ReplMachine from `repl_spec` — one long-lived sqlite3 connection, sentinel-
+# framed feeds, temp tables as definitions. Isolation holds because a fresh
+# connection has no temp tables.
+[machine]
+define = "CREATE TEMP TABLE t(y INTEGER); INSERT INTO t VALUES (40);"
+query = "(SELECT y FROM t) + 2"
+answer = "42"

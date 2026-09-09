@@ -412,6 +412,14 @@ impl Language for LeanLanguage {
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
     }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.0.repl_spec()
+    }
 }
 
 impl Comments for LeanLanguage {
@@ -443,5 +451,13 @@ impl Language for DynLeanLanguage {
 
     fn hashbang(&self) -> Option<&'static str> {
         self.0.hashbang()
+    }
+
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        self.0.machine_spec()
+    }
+
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        self.0.repl_spec()
     }
 }

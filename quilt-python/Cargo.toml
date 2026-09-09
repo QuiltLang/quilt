@@ -18,4 +18,11 @@ postcard = {workspace = true, features = ["alloc"]}
 # `python` gives us `langs::python::ops`, which builds the Python source that
 # reconstructs a term — what `qlift` on an already-built QTerm must return
 # under the `↓(↑(x)) == x` law (issue #166). The feature pulls no parser.
-quilt = {workspace = true, features = ["python"]}
+#
+# `parse` (+ the language features) exists for `spawn`/`Machine` (issue #271):
+# spawning goes through each `Language`'s machine specs, and `Machine.eval`
+# classifies fed terms with the language's own parser-side knowledge. The set
+# is the machine-relevant languages — sql (a live sqlite3), bash/zsh
+# (persistent shells), python itself — not the whole grammar zoo (lean alone
+# is a ~44MB parser.c, issue #134).
+quilt = {workspace = true, features = ["python", "parse", "sql", "bash", "zsh"]}

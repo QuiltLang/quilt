@@ -34,6 +34,19 @@ impl TSProvider for PythonProvider {
         Some("#!/usr/bin/env python3")
     }
 
+    /// `repr()` answers a query with Python's own literal for the value,
+    /// which is what makes a machine answer the inverse of lift. The
+    /// `PYTHONPATH` entry resolves `from quilt import *` against the package
+    /// next to this crate — the same path `reduce_py` teaches its one-shot
+    /// script — so a machine can be fed expanded meta-code, not just plain
+    /// Python.
+    /// The spec itself is data, so it lives in the runtime-side table
+    /// (`machine::script_spec`) that `qspawn` also reads — one source of
+    /// truth for the registry, the battery and `⟨M⟩` (issue #273).
+    fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
+        crate::machine::script_spec("python")
+    }
+
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
     /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {

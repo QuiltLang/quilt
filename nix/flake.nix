@@ -44,6 +44,17 @@
             python
             pkgs.rust-script
             pkgs.rustup
+            # The interpreters the machine providers drive (#262): `sqlite3` is
+            # the SQL machine and `zsh` is the zsh one, so the conformance
+            # battery starts them and `bin/check-matrix` records the result in
+            # the committed support matrix. Same argument as python3 above —
+            # relying on the ambient profile makes the matrix depend on which
+            # machine regenerated it. It already did: `ubuntu-latest` ships no
+            # zsh, so the zsh `machine` cell was verified on a developer's Mac
+            # and declaration-only on CI, and the no-drift gate failed on every
+            # push regardless of what the push contained.
+            pkgs.sqlite
+            pkgs.zsh
             pkgs.tree-sitter
             # wasm-pack builds the quilt-wasm runtime (`bin/build-ts`), which
             # `quilt run` needs to run a .ts.quilt file at all.
