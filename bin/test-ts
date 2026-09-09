@@ -22,7 +22,10 @@ fi
 # Build once so the expander the reduce tests shell out to is a real binary
 # rather than a `cargo run` per invocation.
 cargo build --quiet --manifest-path "$ROOT/Cargo.toml" -p quiltlang
-QUILT="$ROOT/target/debug/quilt"
+# Honour CARGO_TARGET_DIR (as bin/check-downstream does): a shared build cache
+# moves the binary out of "$ROOT/target", and this used to hand node a path
+# that did not exist, so every reduce test died on spawnSync ENOENT.
+QUILT="${CARGO_TARGET_DIR:-$ROOT/target}/debug/quilt"
 export QUILT
 
 echo "==> reduce tests (node)"

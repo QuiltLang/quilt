@@ -30,7 +30,7 @@ CFLAGS_wasm32_wasip1="--sysroot=$WASI_SDK_PATH/share/wasi-sysroot" \
 AR_wasm32_wasip1="$WASI_SDK_PATH/bin/llvm-ar" \
   cargo build -p quilt-expand-wasm --release --target wasm32-wasip1
 
-out="$ROOT/target/wasm32-wasip1/release/quilt-expand-wasm.wasm"
+out="${CARGO_TARGET_DIR:-$ROOT/target}/wasm32-wasip1/release/quilt-expand-wasm.wasm"
 echo "built $out ($(du -h "$out" | cut -f1))"
 
 if command -v wasm-opt >/dev/null 2>&1; then
