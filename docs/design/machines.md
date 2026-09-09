@@ -630,7 +630,9 @@ Each step useful alone:
    Python and Rust (`reduce_method_str`, pinned in the specs); and
    quilt-python exposes `spawn`/`Machine` (#271), so a `.sql.py.quilt`
    program drives a live sqlite machine with quilt syntax end to end. Still
-   to come: `⟨M⟩`, `MachineRef` + `LiftTo` impls, `quilt machine serve`.
+   to come: `⟨M⟩` — the machine glyph, chain-defaulted like bare quotes, so
+   `db = ⟨M⟩` replaces `spawn("sql")` entirely (designed in #273) —
+   `MachineRef` + `LiftTo` impls, `quilt machine serve`.
 5. **(traits implemented)** Capability subtraits (`Snapshot` / `Metered` /
    `Introspect`, plus `type_of` on `Machine`); still to come: the LSP and
    nanobots integrations behind them.
