@@ -7,13 +7,16 @@
 # fragment fed to the machine is authored as a SQL *term* — composed and
 # spliced as data, never as string concatenation.
 #
-# `spawn("sql")` is a live sqlite3 connection behind quilt's Machine trait
-# (issue #271); its temp tables are its definitions. The down-arrow glyph in
-# method position is machine-directed reduce (issue #268): `db.` + down-arrow
-# + `(term)` expands to `db.eval(term)`, which classifies the term with the
-# language itself — definitions and statements feed, expressions answer.
-# Lifting Python values into SQL literals is tracked as issue #272; until
-# then, data rides inside quoted terms.
+# The machine glyph is machine *acquisition* (issue #273): it expands to
+# `spawn("sql")`, a live sqlite3 connection behind quilt's Machine trait
+# (issue #271), whose temp tables are its definitions. Bare, it takes the
+# language the file stem already declared — this program never writes the
+# word "sql" or names a provider. The down-arrow glyph in method position is
+# machine-directed reduce (issue #268): `db.` + down-arrow + `(term)` expands
+# to `db.eval(term)`, which classifies the term with the language itself —
+# definitions and statements feed, expressions answer. Lifting Python values
+# into SQL literals is tracked as issue #272; until then, data rides inside
+# quoted terms.
 #
 # Run with `quilt run examples/sql_session.sql.py.quilt`
 # (needs the quilt_python module: bin/build-py; sqlite3 on PATH).
@@ -29,5 +32,6 @@ pricey = tb("binary_expression").c(tb("field").c(leaf("identifier", "price")).b(
 print("pricey items:", db.eval(tb("statement").c(sym("(")).c(tb("select").c(leaf("keyword_select", "SELECT")).w(" ").c(tb("select_expression").c(tb("term").c(tb("invocation").c(tb("object_reference").c(leaf("identifier", "COUNT")).b()).c(sym("(")).c(tb("term").c(tb("all_fields").c(sym("*")).b()).b()).c(sym(")")).b()).b()).b()).b()).w(" ").c(tb("from").c(leaf("keyword_from", "FROM")).w(" ").c(tb("relation").c(tb("object_reference").c(leaf("identifier", "menu")).b()).b()).w(" ").c(tb("where").c(leaf("keyword_where", "WHERE")).w(" ").c(pricey).b()).b()).c(sym(")")).b()))
 print("they are:", db.eval(tb("program").c(tb("statement").c(tb("select").c(leaf("keyword_select", "SELECT")).w(" ").c(tb("select_expression").c(tb("term").c(tb("field").c(leaf("identifier", "item")).b()).b()).b()).b()).w(" ").c(tb("from").c(leaf("keyword_from", "FROM")).w(" ").c(tb("relation").c(tb("object_reference").c(leaf("identifier", "menu")).b()).b()).w(" ").c(tb("where").c(leaf("keyword_where", "WHERE")).w(" ").c(pricey).b()).b()).b()).c(sym(";")).b()))
 
-# The typing judgment, in the machine's own spelling.
+# The typing judgment: the same method-position shape as the down-arrow
+# above, asking the machine for a type instead of a value.
 print("SUM(price) is a", db.type_of(tb("statement").c(sym("(")).c(tb("select").c(leaf("keyword_select", "SELECT")).w(" ").c(tb("select_expression").c(tb("term").c(tb("invocation").c(tb("object_reference").c(leaf("identifier", "SUM")).b()).c(sym("(")).c(tb("term").c(tb("field").c(leaf("identifier", "price")).b()).b()).c(sym(")")).b()).b()).b()).b()).w(" ").c(tb("from").c(leaf("keyword_from", "FROM")).w(" ").c(tb("relation").c(tb("object_reference").c(leaf("identifier", "menu")).b()).b()).b()).c(sym(")")).b()))

@@ -63,15 +63,9 @@ impl TSProvider for SqlProvider {
     /// `-bail` keeps the contract that a rejected feed is an `Err` rather
     /// than a silently-logged diagnostic. The sentinel is a `SELECT` of a
     /// string literal, which prints as its own line.
+    /// Registered in `machine::repl_spec`; see `PythonProvider::machine_spec`.
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
-        Some(crate::machine::ReplSpec {
-            program: "sqlite3".into(),
-            args: Box::new(["-batch".into(), "-bail".into()]),
-            print_wrap: "SELECT {};".into(),
-            echo_wrap: "SELECT '{}';".into(),
-            env: Box::default(),
-            type_wrap: Some("SELECT typeof({});".into()),
-        })
+        crate::machine::repl_spec("sql")
     }
 
     fn hole_str(&self) -> &'static str {

@@ -37,15 +37,9 @@ impl TSProvider for BashProvider {
     /// functions, variables and the cwd are real process state, so nothing is
     /// replayed. A query is an arithmetic expression, answered via
     /// `echo $(( … ))`; the sentinel is a plain `echo`.
+    /// Registered in `machine::repl_spec`; see `PythonProvider::machine_spec`.
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
-        Some(crate::machine::ReplSpec {
-            program: "bash".into(),
-            args: Box::default(),
-            print_wrap: "echo $(( {} ))".into(),
-            echo_wrap: "echo {}".into(),
-            env: Box::default(),
-            type_wrap: None,
-        })
+        crate::machine::repl_spec("bash")
     }
 
     fn hole_str(&self) -> &'static str {

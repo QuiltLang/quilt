@@ -3,7 +3,7 @@ use crate::lang::{Arity, Language, LanguagePost};
 use crate::lang::{FlatNode, Hole};
 use crate::meta::{MetaLanguage, OuterKind};
 #[cfg(feature = "parse")]
-use crate::node::Node;
+use crate::node::{Node, MACHINE};
 use crate::prelude::*;
 #[cfg(feature = "parse")]
 use crate::qterm::QTermBuilder;
@@ -95,6 +95,12 @@ pub trait MetaLanguages {
     fn name_str(&self, lang: &str) -> Result<&'static str> {
         self.get(lang)?.name_str()
     }
+    fn type_method_str(&self, lang: &str) -> Result<&'static str> {
+        self.get(lang)?.type_method_str()
+    }
+    fn spawn_str(&self, lang: &str, target: &str) -> Result<String> {
+        self.get(lang)?.spawn_str(target)
+    }
 }
 
 #[derive(Default)]
@@ -137,6 +143,12 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     }
     pub fn name_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.name_str(lang)
+    }
+    pub fn type_method_str(&self, lang: &str) -> Result<&'static str> {
+        self.metas.type_method_str(lang)
+    }
+    pub fn spawn_str(&self, lang: &str, target: &str) -> Result<String> {
+        self.metas.spawn_str(lang, target)
     }
 
     /// Spawn a *fresh* machine for `lang`: the persistent
@@ -349,6 +361,26 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let nodes = &nodes[usize::from(first_nl)..nodes.len() - usize::from(last_nl)];
 
         // Pass 3: build up a string of code with holes // TODO: avoid creating string
+        //
+        // `lang⟨M⟩` is the one operator whose expansion is *computed* rather
+        // than a `&'static str` — it interpolates the resolved language name
+        // (issue #273) — so the spellings are built here, up front, and the
+        // `FlatNode::Str`s below borrow from this vector. Deferred `⟨M⟩`s
+        // (sky depth > 0) belong to a later stage and get no spelling at all.
+        let spawns: Vec<String> = if sky_depth > 0 {
+            Vec::new()
+        } else {
+            nodes
+                .iter()
+                .filter_map(|n| match &**n {
+                    Node::Machine { anno } => Some(anno),
+                    _ => None,
+                })
+                .map(|anno| self.spawn_str(lang, &machine_lang(zipper, lang, anno)))
+                .collect::<Result<_>>()?
+        };
+        let mut spawns = spawns.iter();
+
         let mut code = Vec::with_capacity(nodes.len());
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
@@ -360,7 +392,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 // defer it as a hole so it survives `coparse` as its glyph and
                 // is spelled out when that stage runs, instead of being expanded
                 // here one stage too early.
-                Node::Lift | Node::Reduce { .. } | Node::Emit if sky_depth > 0 => {
+                Node::Lift | Node::Reduce { .. } | Node::Emit | Node::Machine { .. }
+                    if sky_depth > 0 =>
+                {
                     code.push(FlatNode::Hole);
                 }
                 Node::Lift => code.push(FlatNode::Str(
@@ -375,8 +409,19 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 }
                 Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
                 Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
+                // `⟨T⟩` flush against an argument list — `db.⟨T⟩(term)` — is
+                // the *typing* judgment on a machine, the companion of
+                // `db.↓(term)`'s value judgment (#273). In operand position it
+                // is the term type as before.
+                Node::Type if method_position(nodes, i) => {
+                    code.push(FlatNode::Str(self.type_method_str(lang)?));
+                }
                 Node::Type => code.push(FlatNode::Str(self.type_str(lang)?)),
                 Node::Name => code.push(FlatNode::Str(self.name_str(lang)?)),
+                Node::Machine { .. } => {
+                    let spelling = spawns.next().expect("one spelling per `⟨M⟩`, built above");
+                    code.push(FlatNode::Str(spelling));
+                }
                 Node::PlainLineComment(s) | Node::PlainBlockComment(s) => {
                     code.push(FlatNode::Str(s));
                 }
@@ -422,6 +467,15 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         .ok_or_else(|| miette!("Ran out of holes for emit: {n:?}"))?;
                     plugs.push(leaf(ident_tag, "←"));
                 }
+                Node::Machine { anno } if sky_depth > 0 => {
+                    holes
+                        .next()
+                        .ok_or_else(|| miette!("Ran out of holes for machine: {n:?}"))?;
+                    // The *unresolved* annotation goes back in: the stage that
+                    // runs this fragment resolves the bare form against its own
+                    // chain, exactly as this one would have.
+                    plugs.push(leaf(ident_tag, &format!("{anno}{MACHINE}")));
+                }
                 Node::Content(_)
                 | Node::NewLine
                 | Node::Lift
@@ -429,6 +483,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 | Node::Emit
                 | Node::Type
                 | Node::Name
+                | Node::Machine { .. }
                 | Node::PlainLineComment(_)
                 | Node::PlainBlockComment(_) => {}
                 Node::Quote { anno, nodes, span } => {
@@ -541,6 +596,24 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         }
         .expand(&Default::default(), qterm)
     }
+}
+
+/// The language a `⟨M⟩` names. An annotation says it outright; the bare form
+/// resolves exactly as a bare `↖…↗` does — the chain's next default language
+/// via the zipper's `.back()`, falling back to the host — so `⟨M⟩` in a
+/// `.sql.py.quilt` file is a SQL machine and in a plain `.py.quilt` file a
+/// Python one (issue #273).
+#[cfg(feature = "parse")]
+fn machine_lang(zipper: &Zipper<Box<str>>, lang: &str, anno: &str) -> Box<str> {
+    let zipper = if anno.is_empty() {
+        zipper
+            .clone()
+            .back()
+            .unwrap_or_else(|| zipper.clone().cons(lang.into()))
+    } else {
+        zipper.clone().cons(anno.into())
+    };
+    zipper.head().expect("a consed zipper has a head").clone()
 }
 
 /// Whether the node after `i` opens an argument list flush against the

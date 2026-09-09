@@ -321,7 +321,8 @@ fn emit_ground(
             | TokenKind::Reduce
             | TokenKind::Emit
             | TokenKind::Type
-            | TokenKind::Name => {
+            | TokenKind::Name
+            | TokenKind::Machine => {
                 if stage == 0 {
                     b.synth(env.meta.glyph_placeholder());
                 }
@@ -393,7 +394,8 @@ fn emit_fragment(
             | TokenKind::Reduce
             | TokenKind::Emit
             | TokenKind::Type
-            | TokenKind::Name => {
+            | TokenKind::Name
+            | TokenKind::Machine => {
                 b.synth(lang.splice_placeholder());
                 *i += 1;
             }

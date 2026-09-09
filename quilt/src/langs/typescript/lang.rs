@@ -39,12 +39,9 @@ impl TSProvider for TypeScriptProvider {
     /// valid TypeScript literals — the value's own denotation, like Python's
     /// `repr`. (Values JSON can't spell — functions, `undefined` — answer
     /// nothing; a richer provider can bind those to names instead.)
+    /// Registered in `machine::script_spec`; see `PythonProvider::machine_spec`.
     fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
-        crate::machine::MachineSpec::from_hashbang(
-            self.hashbang()?,
-            "console.log(JSON.stringify({}))",
-            ".ts",
-        )
+        crate::machine::script_spec("typescript")
     }
 
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not

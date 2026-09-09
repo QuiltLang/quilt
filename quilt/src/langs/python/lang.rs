@@ -40,16 +40,11 @@ impl TSProvider for PythonProvider {
     /// next to this crate — the same path `reduce_py` teaches its one-shot
     /// script — so a machine can be fed expanded meta-code, not just plain
     /// Python.
+    /// The spec itself is data, so it lives in the runtime-side table
+    /// (`machine::script_spec`) that `qspawn` also reads — one source of
+    /// truth for the registry, the battery and `⟨M⟩` (issue #273).
     fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
-        let mut spec =
-            crate::machine::MachineSpec::from_hashbang(self.hashbang()?, "print(repr({}))", ".py")?;
-        spec.env = Box::new([(
-            "PYTHONPATH".into(),
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../quilt-python").into(),
-        )]);
-        // The typing judgment: `type_of("21 + 21")` answers `int`.
-        spec.type_wrap = Some("print(type({}).__name__)".into());
-        Some(spec)
+        crate::machine::script_spec("python")
     }
 
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not

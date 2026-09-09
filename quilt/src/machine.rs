@@ -597,6 +597,111 @@ impl Drop for ReplMachine {
 
 /**************************************************************/
 
+/// Every language quilt knows how to run as a machine, in table order.
+///
+/// The table is *data* — program names, print/echo wrappers, a suffix — and
+/// carries no parsing knowledge, which is why it lives here on the
+/// runtime-only path rather than behind the `parse` feature with the
+/// `Language` registry (issue #273). Three consumers read it and cannot
+/// disagree: [`Language::machine_spec`](crate::lang::Language::machine_spec)
+/// and [`repl_spec`](crate::lang::Language::repl_spec) delegate into it, the
+/// conformance battery drives the machine those return, and [`qspawn`] — what
+/// `lang⟨M⟩` expands to in a Rust ground program, which has no registry at
+/// all — reads it directly.
+pub const REGISTERED_SPECS: &[&str] = &["python", "py", "typescript", "ts", "sql", "bash", "zsh"];
+
+/// Whether `lang` has a registered machine spec.
+///
+/// A host's `spawn_str` asks before it spells `lang⟨M⟩`, so a machine no
+/// provider backs is a diagnostic at expansion time — pointing at the glyph in
+/// the source — rather than a failure inside generated code.
+#[must_use]
+pub fn has_spec(lang: &str) -> bool {
+    repl_spec(lang).is_some() || script_spec(lang).is_some()
+}
+
+/// The persistent-REPL spec registered for `lang`, if any. See
+/// [`REGISTERED_SPECS`]; the per-provider reasoning lives on the
+/// [`Language::repl_spec`](crate::lang::Language::repl_spec) impl that
+/// delegates here.
+#[must_use]
+pub fn repl_spec(lang: &str) -> Option<ReplSpec> {
+    let (program, args, print_wrap, echo_wrap, type_wrap): (_, &[&str], _, _, _) = match lang {
+        // `-batch` so sqlite3 reads stdin without its interactive banner, and
+        // `-bail` so a failed statement is an error rather than silence.
+        "sql" => (
+            "sqlite3",
+            &["-batch", "-bail"],
+            "SELECT {};",
+            "SELECT '{}';",
+            Some("SELECT typeof({});"),
+        ),
+        // A shell query is an arithmetic expression, so that is what "print
+        // the value of this expression" means for both shells.
+        "bash" => ("bash", &[], "echo $(( {} ))", "echo {}", None),
+        "zsh" => ("zsh", &[], "echo $(( {} ))", "echo {}", None),
+        _ => return None,
+    };
+    Some(ReplSpec {
+        program: program.into(),
+        args: args.iter().map(|a| Box::from(*a)).collect(),
+        print_wrap: print_wrap.into(),
+        echo_wrap: echo_wrap.into(),
+        env: Box::default(),
+        type_wrap: type_wrap.map(Box::from),
+    })
+}
+
+/// The replay-script spec registered for `lang`, if any. See
+/// [`REGISTERED_SPECS`].
+#[must_use]
+pub fn script_spec(lang: &str) -> Option<MachineSpec> {
+    match lang {
+        "python" | "py" => {
+            let mut spec =
+                MachineSpec::from_hashbang("#!/usr/bin/env python3", "print(repr({}))", ".py")?;
+            // The `PYTHONPATH` that makes `from quilt import *` resolve — the
+            // same path `reduce_py` teaches its one-shot script.
+            spec.env = Box::new([(
+                "PYTHONPATH".into(),
+                concat!(env!("CARGO_MANIFEST_DIR"), "/../quilt-python").into(),
+            )]);
+            // The typing judgment: `type_of("21 + 21")` answers `int`.
+            spec.type_wrap = Some("print(type({}).__name__)".into());
+            Some(spec)
+        }
+        "typescript" | "ts" => MachineSpec::from_hashbang(
+            "#!/usr/bin/env -S node --experimental-strip-types",
+            "console.log(JSON.stringify({}))",
+            ".ts",
+        ),
+        _ => None,
+    }
+}
+
+/// Spawn a machine for `lang` from the registered spec table, preferring the
+/// persistent provider — what `lang⟨M⟩` expands to in Rust (issue #273).
+///
+/// The registry-driven [`spawn_machine`] is the same choice made through a
+/// [`Language`](crate::lang::Language); this one needs no registry, so it is
+/// available to a Rust ground program built runtime-only
+/// (`default-features = false`), which is how expanded `.rs.quilt` files are
+/// built.
+pub fn qspawn(lang: &str) -> Result<Box<dyn Machine>> {
+    if let Some(spec) = repl_spec(lang) {
+        return Ok(Box::new(ReplMachine::spawn(lang, spec)?));
+    }
+    if let Some(spec) = script_spec(lang) {
+        return Ok(Box::new(ScriptMachine::new(lang, spec)));
+    }
+    bail!(
+        "no machine is registered for {lang:?}; quilt knows: {}",
+        REGISTERED_SPECS.join(", ")
+    )
+}
+
+/**************************************************************/
+
 /// Spawn the best machine a [`Language`](crate::lang::Language) declares: the
 /// persistent [`ReplMachine`] when the language has a
 /// [`repl_spec`](crate::lang::Language::repl_spec), else the replay-based

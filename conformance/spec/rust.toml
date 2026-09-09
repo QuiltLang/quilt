@@ -177,6 +177,9 @@ pattern_var = 'mvar("x")'
 reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]
 # Method-position ↓ (`db.↓(term)`, #268): the machine-eval method name.
 reduce_method = { "" = "eval" }
+# Method-position ⟨T⟩ and the machine glyph (#273).
+type_method = "type_of"
+spawn = { sql = 'qspawn("sql")', python = 'qspawn("python")', bash = 'qspawn("bash")' }
 
 [meta.reduce]
 "" = "reduce()"

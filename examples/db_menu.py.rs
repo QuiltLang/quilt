@@ -10,25 +10,18 @@
 //!
 //! Run with `quilt run examples/db_menu.py.rs.quilt` (needs sqlite3 on PATH).
 use quilt::lang::InnerKind;
-use quilt::machine::{Machine, ReplMachine, ReplSpec};
 use quilt::prelude::*;
 
 fn main() -> Result<()> {
     // The SQL machine: a live sqlite3 process; its temp tables are its
-    // definitions. (This program is built runtime-only, with no language
-    // registry, so the spec is written out — it is the same one
-    // `SqlProvider::repl_spec` registers for `Multi::machine("sql")`.)
-    let mut db = ReplMachine::spawn(
-        "sql",
-        ReplSpec {
-            program: "sqlite3".into(),
-            args: Box::new(["-batch".into(), "-bail".into()]),
-            print_wrap: "SELECT {};".into(),
-            echo_wrap: "SELECT '{}';".into(),
-            env: Box::default(),
-            type_wrap: Some("SELECT typeof({});".into()),
-        },
-    )?;
+    // definitions. The machine glyph (issue #273) names the *language* and
+    // lets the registered spec pick the provider — so this program says
+    // nothing about sqlite3, and stays right when the provider improves. It
+    // expands to `qspawn("sql")`, which reads the same spec table
+    // `Multi::machine("sql")` reaches through the language registry — from
+    // the runtime-only side of the feature gate, which is where an expanded
+    // `.rs.quilt` file is built.
+    let mut db = qspawn("sql")?;
     db.feed(InnerKind::Item, &tb("program").c(&tb("statement").c(&tb("create_table").c(&leaf("keyword_create", "CREATE")).w(" ").c(&leaf("keyword_temp", "TEMP")).w(" ").c(&leaf("keyword_table", "TABLE")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "menu")).b()).c(&tb("column_definitions").c(&sym("(")).c(&tb("column_definition").c(&leaf("identifier", "item")).w(" ").c(&leaf("keyword_text", "TEXT")).b()).c(&sym(",")).w(" ").c(&tb("column_definition").c(&leaf("identifier", "price")).w(" ").c(&tb("double").c(&leaf("keyword_real", "REAL")).b()).b()).c(&sym(")")).b()).b()).b()).c(&sym(";")).b())?;
     
     // Each row is built as a SQL *term*, with `↑` lifting the Rust values
@@ -51,13 +44,16 @@ fn main() -> Result<()> {
     
     // Ask the machine. Answers come back as SQL literals — text the meta-
     // program parses into Rust values.
-    let count: i64 = query(&mut db, "(SELECT COUNT(*) FROM menu)")?
+    let count: i64 = query(&mut *db, &tb("statement").c(&sym("(")).c(&tb("select").c(&leaf("keyword_select", "SELECT")).w(" ").c(&tb("select_expression").c(&tb("term").c(&tb("invocation").c(&tb("object_reference").c(&leaf("identifier", "COUNT")).b()).c(&sym("(")).c(&tb("term").c(&tb("all_fields").c(&sym("*")).b()).b()).c(&sym(")")).b()).b()).b()).b()).w(" ").c(&tb("from").c(&leaf("keyword_from", "FROM")).w(" ").c(&tb("relation").c(&tb("object_reference").c(&leaf("identifier", "menu")).b()).b()).b()).c(&sym(")")).b())?
         .parse()
         .map_err(|e| miette!("count did not parse: {e}"))?;
-    let total: f64 = query(&mut db, "(SELECT SUM(price) FROM menu)")?
+    let total: f64 = query(&mut *db, &tb("statement").c(&sym("(")).c(&tb("select").c(&leaf("keyword_select", "SELECT")).w(" ").c(&tb("select_expression").c(&tb("term").c(&tb("invocation").c(&tb("object_reference").c(&leaf("identifier", "SUM")).b()).c(&sym("(")).c(&tb("term").c(&tb("field").c(&leaf("identifier", "price")).b()).b()).c(&sym(")")).b()).b()).b()).b()).w(" ").c(&tb("from").c(&leaf("keyword_from", "FROM")).w(" ").c(&tb("relation").c(&tb("object_reference").c(&leaf("identifier", "menu")).b()).b()).b()).c(&sym(")")).b())?
         .parse()
         .map_err(|e| miette!("total did not parse: {e}"))?;
-    let dearest = query(&mut db, "(SELECT item FROM menu ORDER BY price DESC LIMIT 1)")?;
+    let dearest = query(
+        &mut *db,
+        &tb("statement").c(&sym("(")).c(&tb("select").c(&leaf("keyword_select", "SELECT")).w(" ").c(&tb("select_expression").c(&tb("term").c(&tb("field").c(&leaf("identifier", "item")).b()).b()).b()).b()).w(" ").c(&tb("from").c(&leaf("keyword_from", "FROM")).w(" ").c(&tb("relation").c(&tb("object_reference").c(&leaf("identifier", "menu")).b()).b()).w(" ").c(&tb("order_by").c(&leaf("keyword_order", "ORDER")).w(" ").c(&leaf("keyword_by", "BY")).w(" ").c(&tb("order_target").c(&tb("field").c(&leaf("identifier", "price")).b()).w(" ").c(&tb("direction").c(&leaf("keyword_desc", "DESC")).b()).b()).b()).w(" ").c(&tb("limit").c(&leaf("keyword_limit", "LIMIT")).w(" ").c(&leaf("literal", "1")).b()).b()).c(&sym(")")).b(),
+    )?;
     
     // Generate the Python report — `↑` again, now lifting the same Rust
     // values into *Python* literals. The emitted program needs no database.
@@ -93,11 +89,15 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// One Expr feed, unwrapped to the answered literal's text.
-fn query(db: &mut ReplMachine, q: &str) -> Result<String> {
-    let answer = db.feed_str(InnerKind::Expr, q)?;
-    let value = answer
-        .value
-        .ok_or_else(|| miette!("the sql machine answered no value for {q:?}"))?;
+/// One Expr feed, unwrapped to the answered literal's text. Takes a *term*,
+/// like everything else here: `qspawn` hands back a `Box<dyn Machine>`, whose
+/// door is the terms-first `feed` rather than any one provider's raw-text
+/// shortcut — which is the right door anyway for a file whose point is that
+/// SQL is composed as data.
+fn query(db: &mut dyn Machine, q: &Arc<QTerm>) -> Result<String> {
+    let answer = db.feed(InnerKind::Expr, q)?;
+    let value = answer.value.ok_or_else(|| {
+        miette!("the sql machine answered no value for {:?}", q.coparse())
+    })?;
     Ok(value.into())
 }

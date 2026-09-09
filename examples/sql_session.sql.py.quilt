@@ -5,20 +5,23 @@
 # fragment fed to the machine is authored as a SQL *term* — composed and
 # spliced as data, never as string concatenation.
 #
-# `spawn("sql")` is a live sqlite3 connection behind quilt's Machine trait
-# (issue #271); its temp tables are its definitions. The down-arrow glyph in
-# method position is machine-directed reduce (issue #268): `db.` + down-arrow
-# + `(term)` expands to `db.eval(term)`, which classifies the term with the
-# language itself — definitions and statements feed, expressions answer.
-# Lifting Python values into SQL literals is tracked as issue #272; until
-# then, data rides inside quoted terms.
+# The machine glyph is machine *acquisition* (issue #273): it expands to
+# `spawn("sql")`, a live sqlite3 connection behind quilt's Machine trait
+# (issue #271), whose temp tables are its definitions. Bare, it takes the
+# language the file stem already declared — this program never writes the
+# word "sql" or names a provider. The down-arrow glyph in method position is
+# machine-directed reduce (issue #268): `db.` + down-arrow + `(term)` expands
+# to `db.eval(term)`, which classifies the term with the language itself —
+# definitions and statements feed, expressions answer. Lifting Python values
+# into SQL literals is tracked as issue #272; until then, data rides inside
+# quoted terms.
 #
 # Run with `quilt run examples/sql_session.sql.py.quilt`
 # (needs the quilt_python module: bin/build-py; sqlite3 on PATH).
 from quilt import *
 
 # Create the machine and feed it definitions, authored as terms.
-db = spawn("sql")
+db = ⟨M⟩
 db.↓(↖CREATE TEMP TABLE menu(item TEXT, price REAL);↗)
 db.↓(↖INSERT INTO menu VALUES ('espresso', 2.5), ('latte', 3.75), ('cortado', 3.25);↗)
 
@@ -27,5 +30,6 @@ pricey = ↖price > 3.0↗
 print("pricey items:", db.↓(↖(SELECT COUNT(*) FROM menu WHERE ↙pricey↘)↗))
 print("they are:", db.↓(↖SELECT item FROM menu WHERE ↙pricey↘;↗))
 
-# The typing judgment, in the machine's own spelling.
-print("SUM(price) is a", db.type_of(↖(SELECT SUM(price) FROM menu)↗))
+# The typing judgment: the same method-position shape as the down-arrow
+# above, asking the machine for a type instead of a value.
+print("SUM(price) is a", db.⟨T⟩(↖(SELECT SUM(price) FROM menu)↗))

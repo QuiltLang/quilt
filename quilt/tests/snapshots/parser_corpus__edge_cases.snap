@@ -68,6 +68,22 @@ expression: rendered
     [Content("a_"), Quote { anno: "c", nodes: [Content("x")], span: 2..10 }]
 --- "lean4↖x↗ lean4↙y↘ lean4↓"
     [Quote { anno: "lean4", nodes: [Content("x")], span: 0..12 }, Content(" "), Unquote { anno: "lean4", nodes: [Content("y")], span: 13..25 }, Content(" "), Reduce { anno: "lean4" }]
+--- "⟨M⟩"
+    [Machine { anno: "" }]
+--- "sql⟨M⟩"
+    [Machine { anno: "sql" }]
+--- "x = 42⟨M⟩"
+    [Content("x = 42"), Machine { anno: "" }]
+--- "1sql⟨M⟩"
+    [Content("1"), Machine { anno: "sql" }]
+--- "sql⟨N⟩"
+    [Content("sql"), Name]
+--- "sql⟨T⟩"
+    [Content("sql"), Type]
+--- "sql⟨M"
+    ERR malformed Quilt syntax (source bytes 3..6) [3..6 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`"]
+--- "sql⟨"
+    ERR malformed Quilt syntax (source bytes 3..6) [3..6 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`"]
 --- "a \\↖ b"
     [Content("a "), Content("↖"), Content(" b")]
 --- "a\\↖b"
@@ -76,6 +92,8 @@ expression: rendered
     [Content("↖"), Content("↗")]
 --- "\\⟨T⟩"
     ERR malformed Quilt syntax (source bytes 5..8) [5..8 "a bare `⟩` has no meaning; `\\⟩` writes one literally"]
+--- "\\⟨M\\⟩"
+    [Content("⟨"), Content("M"), Content("⟩")]
 --- "a\\nb"
     [Content("a\\nb")]
 --- "↖\\↗↗"
@@ -109,6 +127,6 @@ expression: rendered
 --- "↖//x↘↗"
     ERR malformed Quilt syntax (source bytes 6..9) [6..9 "expected `↗` here: the open bracket is a `↖` quote"]
 --- "⟨X⟩"
-    ERR malformed Quilt syntax (source bytes 0..3) [0..3 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨//⟩` or `⟨/*⟩`"]
+    ERR malformed Quilt syntax (source bytes 0..3) [0..3 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`"]
 --- "a\\"
     ERR malformed Quilt syntax (source bytes 1..2) [1..2 "a `\\` escape needs a character after it"]

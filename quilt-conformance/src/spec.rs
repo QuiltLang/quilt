@@ -155,6 +155,21 @@ pub struct MetaSpec {
     /// machine-eval method name, #268). `""` is the un-annotated case.
     #[serde(default)]
     pub reduce_method: BTreeMap<String, String>,
+    /// Spelling of `⟨T⟩` in *method position* (`db.⟨T⟩(term)`, the machine's
+    /// typing judgment, #273). Omitted when the host has no machine handle to
+    /// ask.
+    #[serde(default)]
+    pub type_method: Option<String>,
+    /// language → spelling of `lang⟨M⟩`, the machine-acquisition expression
+    /// (#273). Keyed by the *resolved* language, since the expander resolves
+    /// the annotation (and the bare form's chain default) before asking.
+    #[serde(default)]
+    pub spawn: BTreeMap<String, String>,
+    /// A distinctive substring the `⟨M⟩` refusal must contain, for hosts that
+    /// have no spelling — so "unsupported" is checked for being *actionable*
+    /// (it should name `quilt machine serve`, #268) rather than just an error.
+    #[serde(default)]
+    pub spawn_error: Option<String>,
 }
 
 /// The `machine` axis probe (docs/design/machines.md, phase 2): a definition,

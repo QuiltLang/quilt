@@ -40,6 +40,13 @@ pub const GLYPHS: [char; 9] = ['↖', '↗', '↙', '↘', '↑', '↓', '←', 
 /// *content* must not. Brackets are never deferred, so they are never ambiguous.
 pub const OPERATOR_GLYPHS: [char; 3] = ['↑', '↓', '←'];
 
+/// The machine glyph: `lang⟨M⟩` is an expression obtaining a machine speaking
+/// `lang` (issue #273). It lives here rather than in `node::parse` next to
+/// `⟨T⟩` and `⟨N⟩` because it is the one `⟨…⟩` spelling that can be *deferred*
+/// — [`is_deferred_operator`] below has to recognise it, and that check is on
+/// the runtime-only path where the parser is not.
+pub const MACHINE: &str = "⟨M⟩";
+
 /// Escape every Quilt glyph in `s` with a leading `\`.
 ///
 /// This is the inverse of the grammar's `escape` rule and exists so that
@@ -84,15 +91,37 @@ pub fn unescape(s: &str) -> Box<str> {
     out.into()
 }
 
+/// Whether `s` is a language annotation: `[a-z][a-z0-9]*`, or empty.
+///
+/// The leading letter is load-bearing — without it `42↖…↗` would be a quote of
+/// a language named "42" rather than the literal `42` followed by a bare quote
+/// — and so are the digits, which is how `lean4` annotates anything at all.
+/// This is the shape `node::parse` scans; it is spelled once, here, so the two
+/// cannot drift.
+#[must_use]
+pub fn is_annotation(s: &str) -> bool {
+    let mut cs = s.chars();
+    match cs.next() {
+        None => true,
+        Some(c) => {
+            c.is_ascii_lowercase() && cs.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        }
+    }
+}
+
 /// Whether `s` is exactly one deferred Quilt operator, as
-/// `Multi::build_nodes` plugs it back into a term: `↑`, `←`, or a reduce with
-/// its optional language annotation (`↓`, `py↓`).
+/// `Multi::build_nodes` plugs it back into a term: `↑`, `←`, or a reduce or
+/// machine glyph with its optional language annotation (`↓`, `py↓`, `⟨M⟩`,
+/// `sql⟨M⟩`).
 #[must_use]
 pub fn is_deferred_operator(s: &str) -> bool {
+    if let Some(anno) = s.strip_suffix(MACHINE) {
+        return is_annotation(anno);
+    }
     match s.strip_suffix('↓') {
-        // A reduce annotation is `[a-z]*` in the grammar, so anything else with
-        // a trailing `↓` is content that merely ends in the glyph.
-        Some(anno) => anno.chars().all(|c| c.is_ascii_lowercase()),
+        // Anything else with a trailing `↓` is content that merely ends in the
+        // glyph.
+        Some(anno) => is_annotation(anno),
         None => s == "↑" || s == "←",
     }
 }
@@ -103,13 +132,38 @@ mod tests {
 
     #[test]
     fn deferred_operators_are_exactly_the_plugged_spellings() {
-        // `a↓` is in this list, not the next one: the grammar spells a reduce
-        // annotation `[a-z]*`, so a one-letter annotation is as real as `py`.
-        for s in ["↑", "←", "↓", "a↓", "py↓", "rs↓"] {
+        // `a↓` is in this list, not the next one: a one-letter annotation is
+        // as real as `py`, and a digit *after* the first letter is too —
+        // `lean4` is a registered alias.
+        for s in [
+            "↑",
+            "←",
+            "↓",
+            "a↓",
+            "py↓",
+            "rs↓",
+            "lean4↓",
+            "⟨M⟩",
+            "sql↓",
+            "sql⟨M⟩",
+        ] {
             assert!(is_deferred_operator(s), "{s:?} is a deferred operator");
         }
         // Content that merely contains or ends with a glyph is not.
-        for s in ["", "x", "↖", "⟨", "x↑", "↑↑", "1 ↓", "A↓", "x ↓"] {
+        for s in [
+            "",
+            "x",
+            "↖",
+            "⟨",
+            "x↑",
+            "↑↑",
+            "1 ↓",
+            "A↓",
+            "x ↓",
+            "4lean⟨M⟩",
+            "M⟩",
+            "⟨M",
+        ] {
             assert!(!is_deferred_operator(s), "{s:?} is not one");
         }
     }

@@ -35,15 +35,9 @@ impl TSProvider for ZshProvider {
 
     /// Same shape as bash's (see `BashProvider::repl_spec`): a persistent
     /// `zsh` process, arithmetic queries, sentinel via `echo`.
+    /// Registered in `machine::repl_spec`; see `PythonProvider::machine_spec`.
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
-        Some(crate::machine::ReplSpec {
-            program: "zsh".into(),
-            args: Box::default(),
-            print_wrap: "echo $(( {} ))".into(),
-            echo_wrap: "echo {}".into(),
-            env: Box::default(),
-            type_wrap: None,
-        })
+        crate::machine::repl_spec("zsh")
     }
 
     fn hole_str(&self) -> &'static str {

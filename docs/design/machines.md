@@ -499,21 +499,50 @@ fn main() -> Result<()> {
 }
 ```
 
-Where the syntax is heading (design, not yet implemented — `m↓` is phase 4's
-remaining half):
+The syntax as it stands (#273). A machine is *acquired* with `⟨M⟩`, held as
+an ordinary host binding, and asked the two judgments in method position:
 
 ```rust
-// .rs.quilt — two reduces sharing one machine's definitions:
+// .py.rs.quilt — a Rust meta-program driving a live python machine.
+let mut py = python⟨M⟩?;                  // = qspawn("python")
+py.↓(&↖import numpy as np↗)?;             // a definition: feed
+let norm = py.↓(&↖np.linalg.norm([3, 4])↗)?;  // a query: answer
+let ty = py.⟨T⟩(&↖np.linalg.norm([3, 4])↗)?;  // the typing judgment
+```
+
+The annotation is optional, because the file stem has already said which
+language the fragments are: a bare `⟨M⟩` resolves the way a bare `↖…↗` does,
+through the chain. So a `.sql.py.quilt` file names neither the language nor
+the provider —
+
+```python
+db = ⟨M⟩                                  # = spawn("sql")
+db.↓(↖CREATE TEMP TABLE menu(item TEXT, price REAL);↗)
+```
+
+— and each occurrence is one machine: sharing is ordinary binding, so two
+`⟨M⟩`s are two isolated machines. Which *provider* answers is the registry's
+question (repl before script), which is what keeps `sqlite3` out of the
+program. Like `↑ ↓ ←`, a `⟨M⟩` at sky depth > 0 is deferred, so a generated
+generator can spawn machines of its own.
+
+Where the syntax is still heading (design, not yet implemented):
+
+```rust
+// The ambient machine — a bare `↓` on a per-language default, shared by
+// every reduce in the run, complementing `⟨M⟩`'s named-and-isolated handles:
 ↓↖import numpy as np↗;                  // feed the ambient py machine
 let v: f64 = ↓↖np.linalg.norm([3, 4])↗; // 5.0 — numpy is still imported
 
-// A named machine as a host value, and its handle lifted into the next stage:
-let m = spawn::<Py>()?;
-m↓↖model = train(data)↗;
+// A machine handle lifted into the next stage:
+let m = python⟨M⟩?;
 let stage2 = python↖
     m = quilt.connect(↙m.reference().↑↘)   // the same machine, next stage
     print(m.eval("model.score(test)"))
 ↗;
+
+// Configured spawns, on the same method-position shape (#273):
+db = sql⟨M⟩("file:menu.db")             // = spawn("sql", "file:menu.db")
 ```
 
 ## API changes worth making while alpha
@@ -624,14 +653,16 @@ Each step useful alone:
    with sentinel-framed feeds, driving bash and zsh (flipped to
    `machine = supported`); still to come: sqlite/nix providers, then
    `JupyterMachine`.
-4. **(`quilt repl`, method-position `↓`, and python bindings implemented)**
-   — each REPL line parsed, expanded, classified and fed to the ground
-   language's park machine; `db.↓(term)` spells the machine-eval method in
-   Python and Rust (`reduce_method_str`, pinned in the specs); and
-   quilt-python exposes `spawn`/`Machine` (#271), so a `.sql.py.quilt`
-   program drives a live sqlite machine with quilt syntax end to end. Still
-   to come: `⟨M⟩` — the machine glyph, chain-defaulted like bare quotes, so
-   `db = ⟨M⟩` replaces `spawn("sql")` entirely (designed in #273) —
+4. **(`quilt repl`, the method-position judgments, the machine glyph, and
+   python bindings implemented)** — each REPL line parsed, expanded,
+   classified and fed to the ground language's park machine; `db.↓(term)`
+   and `db.⟨T⟩(term)` spell the machine's value and typing judgments in
+   Python and Rust (`reduce_method_str` / `type_method_str`, pinned in the
+   specs); quilt-python exposes `spawn`/`Machine` (#271); and `⟨M⟩` — the
+   machine glyph, chain-defaulted like bare quotes — is machine
+   *acquisition*, so `db = ⟨M⟩` replaces `spawn("sql")` entirely (#273) and
+   a `.sql.py.quilt` program drives a live sqlite machine with quilt syntax
+   end to end, naming neither the language nor the provider. Still to come:
    `MachineRef` + `LiftTo` impls, `quilt machine serve`.
 5. **(traits implemented)** Capability subtraits (`Snapshot` / `Metered` /
    `Introspect`, plus `type_of` on `Machine`); still to come: the LSP and

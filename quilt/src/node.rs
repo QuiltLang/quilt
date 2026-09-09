@@ -13,7 +13,7 @@ use std::{borrow::Borrow, fmt::Debug, iter::empty, sync::Arc};
 // as `.quilt` source (#223) — so they live in `crate::glyphs`, which is not
 // behind the `parse` feature, and are re-exported here, where every caller
 // already looks for them.
-pub use crate::glyphs::{escape, unescape, ARROW_LEN, ESCAPE_LEN, GLYPHS};
+pub use crate::glyphs::{escape, unescape, ARROW_LEN, ESCAPE_LEN, GLYPHS, MACHINE};
 
 // The spellings the writer below shares with the parser, so the two cannot
 // drift apart.
@@ -47,6 +47,13 @@ pub enum Node {
     Emit,
     Type,
     Name,
+    /// `⟨M⟩` — an expression obtaining a machine (issue #273).
+    Machine {
+        /// The language annotation, e.g. `"sql"` for `sql⟨M⟩`. Empty means
+        /// the chain's default embedded language, resolved exactly as a bare
+        /// `↖…↗` resolves it.
+        anno: Box<str>,
+    },
     /// Plain `// …` line comment: passes through verbatim to output.
     /// The `/.*/` in the grammar consumes the rest of the line as raw text,
     /// so Quilt special chars inside are not interpreted.
@@ -187,6 +194,7 @@ impl Node {
             Node::Emit => first("←"),
             Node::Type => first(TYPE),
             Node::Name => first(NAME),
+            Node::Machine { anno } => first(anno).or_else(|| first(MACHINE)),
             Node::PlainLineComment(s) | Node::PlainBlockComment(s) => first(s),
         }
     }
@@ -204,6 +212,7 @@ pub enum NodeTag {
     Emit,
     Name,
     Type,
+    Machine,
     PlainLineComment,
     PlainBlockComment,
 }
@@ -222,6 +231,7 @@ impl Term for Node {
             Node::Emit => NodeTag::Emit,
             Node::Type => NodeTag::Type,
             Node::Name => NodeTag::Name,
+            Node::Machine { .. } => NodeTag::Machine,
             Node::PlainLineComment(_) => NodeTag::PlainLineComment,
             Node::PlainBlockComment(_) => NodeTag::PlainBlockComment,
         }
@@ -277,6 +287,10 @@ impl STerm for Node {
             Node::Emit => writer.write("←"),
             Node::Type => writer.write(TYPE),
             Node::Name => writer.write(NAME),
+            Node::Machine { anno } => {
+                writer.write(anno);
+                writer.write(MACHINE);
+            }
             Node::PlainLineComment(s) | Node::PlainBlockComment(s) => writer.write(s),
         }
     }

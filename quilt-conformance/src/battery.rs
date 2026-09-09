@@ -1246,6 +1246,75 @@ fn probe_reduce(ctx: &mut Ctx) {
         }
     }
 
+    // `db.⟨T⟩(term)` — the typing judgment, the other half of the method-
+    // position pair (#273).
+    match (
+        run(|| meta.type_method_str()),
+        ctx.spec.meta.type_method.as_deref(),
+    ) {
+        (Ran::Ok(got), Some(want)) if got == want => detail.push(format!("type method → {got}")),
+        (Ran::Ok(got), Some(want)) => ctx.fail(
+            axis,
+            "type_method",
+            format!("type_method_str spells {got:?}, spec says {want:?}"),
+        ),
+        (Ran::Ok(got), None) => ctx.fail(
+            axis,
+            "type_method",
+            format!("spec declares no method-position ⟨T⟩, but it spells {got:?} — pin it"),
+        ),
+        (Ran::Err(e), Some(want)) => ctx.fail(
+            axis,
+            "type_method",
+            format!("spec says method-position ⟨T⟩ spells {want:?}, but: {e}"),
+        ),
+        (Ran::Err(_), None) => {}
+        (Ran::Panicked(p), _) => ctx.fail(axis, "type_method", format!("PANICKED: {p}")),
+    }
+
+    // `lang⟨M⟩` — machine acquisition (#273). Pinned per *resolved* language,
+    // since that is what the expander hands the host.
+    for (target, want) in &ctx.spec.meta.spawn {
+        match run(|| meta.spawn_str(target)) {
+            Ran::Ok(got) if got == *want => detail.push(format!("⟨M⟩ {target} → {got}")),
+            Ran::Ok(got) => ctx.fail(
+                axis,
+                target,
+                format!("spawn_str({target:?}) spells {got:?}, spec says {want:?}"),
+            ),
+            Ran::Err(e) => ctx.fail(
+                axis,
+                target,
+                format!("spec says {target}⟨M⟩ spells {want:?}, but: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(axis, target, format!("spawn_str PANICKED: {p}")),
+        }
+    }
+
+    // A host with no `⟨M⟩` spelling must say what would unblock it — the
+    // daemon in #268 — rather than fail blankly. Probed against a language
+    // that *does* have a machine, so the refusal is about the host.
+    if let Some(want) = ctx.spec.meta.spawn_error.as_deref() {
+        match run(|| meta.spawn_str("sql")) {
+            Ran::Ok(got) => ctx.fail(
+                axis,
+                "spawn_error",
+                format!("spec says ⟨M⟩ is unsupported, but it spells {got:?} — promote it"),
+            ),
+            Ran::Err(e) if e.contains(want) => {}
+            Ran::Err(e) => ctx.fail(
+                axis,
+                "spawn_error",
+                format!("the ⟨M⟩ refusal should mention {want:?}, but says: {e}"),
+            ),
+            Ran::Panicked(p) => ctx.fail(
+                axis,
+                "spawn_error",
+                format!("spawn_str PANICKED (must return Err): {p}"),
+            ),
+        }
+    }
+
     let works =
         matches!(run(|| meta.reduce_str("")), Ran::Ok(_)) || !ctx.spec.meta.reduce.is_empty();
     ctx.check_status(axis, works, "a reduce backend");

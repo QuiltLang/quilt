@@ -564,6 +564,14 @@ impl MetaLanguage for OmniMetaLanguage {
     fn name_str(&self) -> Result<&'static str> {
         self.inner().name_str()
     }
+
+    fn type_method_str(&self) -> Result<&'static str> {
+        self.inner().type_method_str()
+    }
+
+    fn spawn_str(&self, lang: &str) -> Result<String> {
+        self.inner().spawn_str(lang)
+    }
 }
 
 pub type Omni = Multi<OmniLanguages, OmniMetaLanguages>;

@@ -235,6 +235,32 @@ pub fn reduce_method_spelling(target: &str) -> Result<&'static str> {
     }
 }
 
+/// The Rust spelling of `⟨T⟩` in *method position* — `db.⟨T⟩(&term)`, the
+/// machine's typing judgment (#273): [`Machine::type_of`], which the
+/// source's own argument list completes. The companion of
+/// [`reduce_method_spelling`]'s value judgment, and target-agnostic for the
+/// same reason.
+///
+/// [`Machine::type_of`]: crate::machine::Machine::type_of
+pub fn type_method_spelling() -> Result<&'static str> {
+    Ok("type_of")
+}
+
+/// The Rust spelling of `lang⟨M⟩` — [`qspawn`], which reads the same
+/// registered spec table `Multi::machine` reaches through the `Language`
+/// registry (#273).
+///
+/// `qspawn` and not `Multi::spawn_machine` because an expanded `.rs.quilt`
+/// file is built runtime-only (`default-features = false`), where there is no
+/// registry: the spec table is data and lives on that side of the feature
+/// gate, so the expansion is a stable one-liner rather than a `ReplSpec`
+/// literal frozen into every artifact.
+///
+/// [`qspawn`]: crate::machine::qspawn
+pub fn spawn_spelling(lang: &str) -> Result<String> {
+    crate::meta::spawn_spelling("rust", lang, |lang| format!("qspawn({lang:?})"))
+}
+
 /// Evaluate a `QTerm` by running it as Python code, then deserialize the
 /// result (the `py↓` operator from a Rust meta-program). The term's code is
 /// run via `python3` with the `quilt` Python bindings on `PYTHONPATH`; the

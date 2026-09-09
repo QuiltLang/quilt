@@ -150,6 +150,9 @@ name_str = "name"
 reduce_unsupported = ["wgsl", "html", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts"]
 # Method-position ↓ (`db.↓(term)`, #268): the machine-eval method name.
 reduce_method = { "" = "eval" }
+# Method-position ⟨T⟩ and the machine glyph (#273).
+type_method = "type_of"
+spawn = { sql = 'spawn("sql")', python = 'spawn("python")', bash = 'spawn("bash")' }
 
 [meta.reduce]
 "" = "reduce()"

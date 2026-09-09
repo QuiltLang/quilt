@@ -793,7 +793,11 @@
             "python → reduce()",
             "rs → reduce_rs()",
             "rust → reduce_rs()",
-            "method → eval"
+            "method → eval",
+            "type method → type_of",
+            "⟨M⟩ bash → spawn(\"bash\")",
+            "⟨M⟩ python → spawn(\"python\")",
+            "⟨M⟩ sql → spawn(\"sql\")"
           ]
         },
         {
@@ -992,7 +996,11 @@
             "python → reduce_py()",
             "rs → reduce()",
             "rust → reduce()",
-            "method → eval"
+            "method → eval",
+            "type method → type_of",
+            "⟨M⟩ bash → qspawn(\"bash\")",
+            "⟨M⟩ python → qspawn(\"python\")",
+            "⟨M⟩ sql → qspawn(\"sql\")"
           ]
         },
         {
