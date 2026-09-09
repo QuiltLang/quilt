@@ -1,0 +1,41 @@
+#!/usr/bin/env quilt
+# A Python program creating and instrumenting a SQL machine with Quilt
+# syntax (docs/design/machines.md). The `.sql.py` stem makes Python the
+# ground language and SQL the default for bare quote brackets, so every
+# fragment fed to the machine is authored as a SQL *term* — inspected,
+# composed and spliced as data — and only coparsed at the machine's door.
+#
+# The machine here is the stdlib sqlite3 connection: a native provider held
+# by hand (temp tables are its definitions), until quilt-python grows
+# bindings for the Machine trait itself. Values ride the machine's own `?`
+# placeholders — never the SQL text — and a Python-side lift into SQL
+# literals is the other tracked follow-up.
+#
+# Run with `quilt run examples/sql_session.sql.py.quilt`
+# (needs the quilt_python module: bin/build-py).
+from quilt import *
+import sqlite3
+
+# Create the machine: a live connection; its tables are its definitions.
+db = sqlite3.connect(":memory:")
+
+# Feed it a definition, built as a term.
+schema = ↖CREATE TABLE menu(item TEXT, price REAL);↗
+db.execute(schema.coparse())
+
+# Values go through the machine's own placeholders, so the statement is a
+# fixed term with literal `?` holes and the data never touches SQL text.
+insert = ↖INSERT INTO menu VALUES (?, ?);↗
+rows = [("espresso", 2.50), ("latte", 3.75), ("O'Malley's blend", 4.20)]
+db.executemany(insert.coparse(), rows)
+
+# Instrument it: one predicate term, spliced into two different queries —
+# composition as data, not string concatenation.
+pricey = ↖price > 3.0↗
+count = ↖SELECT COUNT(*) FROM menu WHERE ↙pricey↘;↗
+names = ↖SELECT item FROM menu WHERE ↙pricey↘ ORDER BY price DESC;↗
+
+(n,) = db.execute(count.coparse()).fetchone()
+print("pricey items:", n)
+for (item,) in db.execute(names.coparse()):
+    print(" -", item)
