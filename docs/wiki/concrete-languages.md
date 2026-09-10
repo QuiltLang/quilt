@@ -142,11 +142,15 @@ Two properties follow from being on Node rather than in a page:
 
 ---
 
-## HTML (`html`) — target only
+## HTML (`html`) — target, identity host, and machine
 
-**Files:** `langs/html/lang.rs`, `langs/html/mod.rs`
+**Files:** `langs/html/lang.rs`, `langs/html/meta.rs`, `langs/html/mod.rs`, `machine/html.rs`
 
-HTML is a *target-only* language: it can appear inside quotes (`html↖<p>Hello</p>↗`) but is never the ground host and has no `MetaLanguage`. The Rust or Python host's meta-language drives expansion.
+HTML is a *target* language — it appears inside quotes (`html↖<p>Hello</p>↗`) and the Rust, Python or TypeScript host's meta-language drives expansion — and, since notebooks, three more things:
+
+- An **identity host**. `HtmlMetaLanguage` is the same `HoldMetaLanguage` the text meta is: markup computes nothing, so an `.html.quilt` file expands to itself with its quoted cells held verbatim. That is what `quilt check` validates (every cell parsed with its own grammar, none run); `quilt expand` and `quilt run` on an HTML-ground file render the notebook instead. Every operator (`↑ ↓ ← ⟨T⟩ ⟨N⟩`) is refused with the real host to use.
+- A **machine** — the native, in-process `HtmlMachine`: a document held as a term whose *definitions are its ids*. Feeding `<p id="y">40</p>` replaces the element with that id or appends; `#y` queries it back as its own markup (the denotation law: a fragment queried answers itself); the typing judgment answers the tag name. `html⟨M⟩` spawns one from Python or Rust, and it is the page a `quilt notebook` runs on.
+- The ground language of a **notebook** — see [Notebooks](notebook.md).
 
 The HTML grammar is based on the forked `tree-sitter-html` with hole support.
 

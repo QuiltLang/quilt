@@ -258,7 +258,7 @@ fn lean_dquote_escape(s: &str) -> String {
 /// `PostgreSQL` with `standard_conforming_strings = on` (the default since 9.1),
 /// as well as `SQLite` and SQL Server. It is **not** safe for `MySQL` in its
 /// default mode — write `mysql↖ … ↗` and get [`mysql_squote_escape`] instead.
-fn sql_squote_escape(s: &str) -> String {
+pub(crate) fn sql_squote_escape(s: &str) -> String {
     s.replace('\'', "''")
 }
 
@@ -282,7 +282,7 @@ fn sql_squote_escape(s: &str) -> String {
 /// Those two are the whole rule: `MySQL`'s other escape sequences (`\n`, `\0`,
 /// `\Z`, `\%`, …) all begin with a backslash, so escaping every backslash
 /// leaves nothing else that can be read as anything but itself.
-fn mysql_squote_escape(s: &str) -> String {
+pub(crate) fn mysql_squote_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "''")
 }
 

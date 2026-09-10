@@ -44,6 +44,13 @@ impl TSProvider for TypeScriptProvider {
         crate::machine::script_spec("typescript")
     }
 
+    /// Preferred over the replay spec: one long-lived `node` running a small
+    /// `vm`-context kernel (`machine::TYPESCRIPT_KERNEL`), so a `const` fed
+    /// by one feed is real process state for the next, and effects run once.
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        crate::machine::repl_spec("typescript")
+    }
+
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
     /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {

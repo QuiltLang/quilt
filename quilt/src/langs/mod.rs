@@ -10,6 +10,9 @@ pub mod bootstrap;
     feature = "typescript"
 ))]
 pub mod chain;
+// The identity meta both `text` and `html` are dialects of; ungated, because
+// either may be enabled without the other.
+pub mod hold;
 #[cfg(feature = "html")]
 pub mod html;
 #[cfg(feature = "lean")]

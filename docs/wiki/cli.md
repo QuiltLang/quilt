@@ -112,10 +112,54 @@ py> x * 8 + 2
 
 `chain` reads like a file stem (`py`, `wgsl.py` — rightmost is ground) and
 defaults to `py`. The machine behind the prompt is whatever the language
-declares: a persistent shell process for `bash`/`zsh` (state is real process
-state), the replayed-history script machine for `py`/`ts`. Quilt meta-code in
-a `py` session (quotes, `↑`) needs the `quilt` Python runtime importable —
-build it once with `bin/build-py`; plain Python needs nothing.
+declares: a persistent process for every registered language — a long-lived
+shell for `bash`/`zsh`, a live `sqlite3` for `sql`, and for `py`/`ts` a small
+stdin *kernel* (one `python3` / one `node`) that runs each line in one
+namespace, so effects run once and an exception is reported for the line
+without ending the session. Quilt meta-code in a `py` session (quotes, `↑`)
+needs the `quilt` Python runtime importable — build it once with
+`bin/build-py`; plain Python needs nothing.
+
+`quilt repl html` is the polyglot one: a [notebook](notebook.md) session a
+line at a time. Markup defines an element (by id) or appends it; a quote —
+`py↖x = 5↗`, `sql↖SELECT 1;↗`, `bash↖echo $x↗` — is a cell, run on its
+language's machine; `#id` reads an element back; and the page is printed when
+the session ends. Every line names its language, and every language's
+definitions persist.
+
+```
+$ quilt repl html
+html> <p id="x">5</p>
+html> py↖int(↙#x↘) * 2↗
+10
+html> sql↖SELECT ↙#x↘ + 1;↗
+6
+```
+
+### `quilt notebook <file.html.quilt>`
+
+Run a [notebook](notebook.md): an `.html.quilt` page whose quoted cells run
+on the machines of their languages, with the page itself as the HTML machine.
+Each cell is rendered — source, output, errors — into a `<figure>` where the
+quote stood, and the page is written beside the source, as the input name
+without `.quilt`, starting with a `<!-- DO NOT EDIT … -->` header. A failed
+cell is rendered, not fatal; the summary on stderr says how many failed.
+
+```sh
+quilt notebook notes.html.quilt            # writes notes.html
+quilt notebook notes.html.quilt -o out.html
+quilt notebook notes.html.quilt --stdout   # the page on stdout instead
+quilt notebook notes.html.quilt --open     # …and open it in the browser
+quilt notebook notes.html.quilt --strict   # exit non-zero if any cell failed
+```
+
+Two of the other subcommands follow suit on an HTML-ground file, because the
+identity expansion of a notebook is nothing anyone wants written: `quilt
+expand notes.html.quilt` renders it (never cached — a run is not a function of
+the source alone), and `quilt run notes.html.quilt` prints the page, so a
+notebook with a `#!/usr/bin/env quilt` shebang is a script whose output is its
+page. `quilt check` is the one that does *not* run anything: it parses every
+cell with its own grammar and stops there.
 
 ---
 

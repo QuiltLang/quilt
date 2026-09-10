@@ -303,7 +303,24 @@ tree-sitter grammars the world already has. Nobody writes an interpreter:
   grammars.
 - **Native machines** where bindings exist: embedded CPython for the Python
   runtime (its `run()` returning `ns` is the seed), a retained `vm` context
-  for Node, a `wasmtime::Store` for wasm targets.
+  for Node, a `wasmtime::Store` for wasm targets. **(implemented for HTML)**:
+  `Language::native_machine` is the hook, preferred over both subprocess
+  providers, and `HtmlMachine` (`machine/html.rs`) is the first one — a
+  document held as a term, in-process, whose *definitions are its ids*:
+  feeding an element with a known `id` replaces it, `#id` queries it back as
+  its own markup, and the typing judgment is the tag name. No interpreter
+  runs; the state is the term. It is what a `quilt notebook` page is
+  (`docs/wiki/notebook.md`), and the reason a language with nothing to
+  *execute* can still have a machine: a machine is a thing that remembers.
+- **Persistent kernels (implemented for python and typescript)**: where a
+  language's own REPL cannot be sentinel-framed (Python's `...`
+  continuations), a twenty-line stdin kernel can — `python3 -c` /
+  `node -e` reading chunks up to the echo line and exec-ing each in one
+  namespace. The `ReplMachine` protocol gained two bits for them: an
+  optional `echo_err_wrap` frames stderr per feed (so a traceback is exactly
+  this feed's), and an interpreter that can tell echoes `sentinel !` for a
+  rejected feed, which is the `Err` the replay machine got from a non-zero
+  exit. The shells spell the latter off `$?`.
 - **`DbMachine`** for SQL — a connection. This flips SQL's saddest matrix
   cell: `runnable = unsupported ("executed by a database server")` becomes
   `machine = supported (provider = "db")`. Schemas, temp tables and prepared
@@ -667,6 +684,18 @@ Each step useful alone:
 5. **(traits implemented)** Capability subtraits (`Snapshot` / `Metered` /
    `Introspect`, plus `type_of` on `Machine`); still to come: the LSP and
    nanobots integrations behind them.
+6. **(implemented)** The first meta-machine *artifact*: notebooks
+   (`quilt/src/notebook.rs`, `docs/wiki/notebook.md`). An `.html.quilt`
+   page is a program whose quotes are cells; HTML's meta is the identity
+   (so `quilt check` validates every cell without running one) and its
+   machine is native (the page, definitions by id); each cell is expanded
+   by its own meta and fed to its language's park machine, its output is
+   fed back to the page — redefining ids elsewhere on it — and an unquote
+   that reaches the page (`↙#id↘`) reads an element as a literal of the
+   cell's language, which is how machines that share nothing exchange
+   values. Output is read as Quilt-in-HTML, so cells create cells (capped
+   by generation). The python and typescript kernels above were built for
+   it, and `quilt repl html` is the same session a line at a time.
 
 ## Open questions
 

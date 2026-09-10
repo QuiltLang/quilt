@@ -207,6 +207,22 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             .parse_expr(&crate::lang::one_liner(&value))
     }
 
+    /// Classify a term for feeding a machine — which message sort it is —
+    /// seeing through the tagless root wrapper `parse_chain` builds around a
+    /// parsed fragment (whose tag would otherwise classify by the language's
+    /// default). The REPL and the notebook both route feeds through this.
+    pub fn classify_for_feed(&self, lang: &str, term: &QTerm) -> Result<crate::lang::InnerKind> {
+        fn go<L: Language + ?Sized>(lang: &L, term: &QTerm) -> crate::lang::InnerKind {
+            match term {
+                QTerm::Tuple { tag, terms, .. } if tag.is_empty() && terms.len() == 1 => {
+                    go(lang, &terms[0])
+                }
+                _ => lang.classify_term(term),
+            }
+        }
+        Ok(go(self.get_lang(lang)?, term))
+    }
+
     #[cfg(feature = "parse")]
     pub fn parse(&mut self, s: &str) -> Result<Arc<QTerm>> {
         self.parse_lang(DEFAULT_LANG, s)

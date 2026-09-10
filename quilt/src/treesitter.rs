@@ -97,6 +97,11 @@ pub trait TSProvider {
         None
     }
 
+    /// See [`Language::native_machine`](crate::lang::Language::native_machine).
+    fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+        None
+    }
+
     /// See [`Language::repl_spec`](crate::lang::Language::repl_spec).
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
         None
@@ -488,6 +493,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
         self.provider.repl_spec()
     }
+
+    fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+        self.provider.native_machine()
+    }
 }
 
 impl LanguagePost for TSLanguagePost {
@@ -592,6 +601,10 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
 
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
         self.0.repl_spec()
+    }
+
+    fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+        self.0.native_machine()
     }
 }
 

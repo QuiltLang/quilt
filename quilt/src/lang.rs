@@ -311,6 +311,17 @@ pub trait Language {
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
         None
     }
+
+    /// A machine for this language that needs no interpreter at all — state
+    /// held in-process, as terms. HTML's is a document
+    /// ([`HtmlMachine`](crate::machine::HtmlMachine)); a language with a
+    /// native evaluator would answer the same way. Preferred over both
+    /// subprocess providers by
+    /// [`spawn_machine`](crate::machine::spawn_machine), and spawned fresh on
+    /// each call — the returned machine is the caller's.
+    fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+        None
+    }
 }
 
 /// Split a [`Language::hashbang`] into the program to execute and the arguments
@@ -409,6 +420,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
         self.as_ref().repl_spec()
+    }
+
+    fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+        self.as_ref().native_machine()
     }
 }
 

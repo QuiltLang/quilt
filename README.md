@@ -55,7 +55,7 @@ Install the `quilt` command straight from the repo:
 cargo install --git https://github.com/QuiltLang/quilt quiltlang
 ```
 
-This builds the `quilt` binary (`expand`, `run`, `check`, `repl`, `clean`) and drops it in `~/.cargo/bin`. (The package is named `quiltlang` — `quilt` is taken on crates.io — but the binary it installs is still `quilt`.) That's all you need to **expand** `.quilt` files into plain source.
+This builds the `quilt` binary (`expand`, `run`, `check`, `repl`, `notebook`, `clean`) and drops it in `~/.cargo/bin`. (The package is named `quiltlang` — `quilt` is taken on crates.io — but the binary it installs is still `quilt`.) That's all you need to **expand** `.quilt` files into plain source.
 
 To **run** a `.quilt` file as a script, you also need the runtime for its ground language:
 
@@ -115,6 +115,15 @@ The VS Code extension (syntax highlighting, glyph keybindings, LSP client) is on
    ```sh
    quilt expand squares.py.rs.quilt   # writes plain Rust to squares.py.rs
    ```
+
+5. For the polyglot side of the same idea, run the **notebook**: an HTML page whose quoted cells (`py↖…↗`, `sql↖…↗`, `bash↖…↗`, `ts↖…↗`) run on the machines of their languages, with the page itself as the HTML machine — cells share state within a language, edit the page by `id`, read it back with `↙#id↘`, and create further cells.
+
+   ```sh
+   quilt notebook examples/notebook/tour.html.quilt --open   # renders tour.html and opens it
+   quilt repl html                                           # the same, a line at a time
+   ```
+
+   See [Notebooks](docs/wiki/notebook.md); the Python cells that quote HTML need `bin/build-py`.
 
 For more, browse the [`examples/`](examples/) directory and the [Documentation Wiki](docs/wiki/index.md).
 

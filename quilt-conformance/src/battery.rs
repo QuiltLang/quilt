@@ -557,11 +557,13 @@ fn probe_machine(ctx: &mut Ctx, lang: &mut BoxLang) {
 
     let axis = Axis::Machine;
 
-    // (provider kind, interpreter) — repl preferred, matching `spawn_machine`.
+    // (provider kind, interpreter) — native, then repl, then script: the
+    // order `spawn_machine` prefers them in.
     let declared = match run(|| {
         Ok(lang
-            .repl_spec()
-            .map(|s| ("repl", s.program))
+            .native_machine()
+            .map(|m| ("native", Box::from(m.lang())))
+            .or_else(|| lang.repl_spec().map(|s| ("repl", s.program)))
             .or_else(|| lang.machine_spec().map(|s| ("script", s.program))))
     }) {
         Ran::Ok(s) => s,
@@ -576,7 +578,11 @@ fn probe_machine(ctx: &mut Ctx, lang: &mut BoxLang) {
             return;
         }
     };
-    ctx.check_status(axis, declared.is_some(), "a machine (repl or script spec)");
+    ctx.check_status(
+        axis,
+        declared.is_some(),
+        "a machine (native, repl or script)",
+    );
 
     let Some((provider, program)) = declared else {
         if ctx.spec.machine.is_some() {
@@ -749,7 +755,10 @@ fn probe_host(ctx: &mut Ctx) {
 
     // A host must declare which kind of meta it is; a target must not claim one.
     let kind_ok = if has_meta {
-        matches!(ctx.spec.meta_kind.as_str(), "runtime" | "string")
+        matches!(
+            ctx.spec.meta_kind.as_str(),
+            "runtime" | "string" | "identity"
+        )
     } else {
         ctx.spec.meta_kind == "none"
     };

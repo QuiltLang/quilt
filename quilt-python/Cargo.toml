@@ -23,6 +23,7 @@ postcard = {workspace = true, features = ["alloc"]}
 # spawning goes through each `Language`'s machine specs, and `Machine.eval`
 # classifies fed terms with the language's own parser-side knowledge. The set
 # is the machine-relevant languages — sql (a live sqlite3), bash/zsh
-# (persistent shells), python itself — not the whole grammar zoo (lean alone
-# is a ~44MB parser.c, issue #134).
-quilt = {workspace = true, features = ["python", "parse", "sql", "bash", "zsh"]}
+# (persistent shells), html (the in-process page machine, `html⟨M⟩`), python
+# itself — not the whole grammar zoo (lean alone is a ~44MB parser.c, issue
+# #134).
+quilt = {workspace = true, features = ["python", "parse", "sql", "bash", "zsh", "html"]}

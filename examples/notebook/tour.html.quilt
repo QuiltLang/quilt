@@ -1,0 +1,134 @@
+#!/usr/bin/env quilt
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>A polyglot notebook</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 62rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #1f2328; }
+    h1 { font-size: 1.6rem; } h2 { font-size: 1.2rem; margin-top: 2.5rem; border-bottom: 1px solid #d0d7de; padding-bottom: .25rem; }
+    p.lede { color: #57606a; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; align-items: start; }
+    .grid .quilt-cell { margin: .5rem 0; }
+    .rosetta { border-collapse: collapse; width: 100%; }
+    .rosetta td { vertical-align: top; padding: 0 .35rem; width: 25%; }
+    .rosetta .quilt-cell { margin: .5rem 0; }
+    aside { float: right; width: 17rem; margin: 0 0 1rem 1.5rem; padding: .75rem 1rem; background: #f6f8fa; border-radius: 6px; font-size: .9rem; }
+    figure#chart { margin: 1rem 0; } figure#chart svg { max-width: 100%; height: auto; }
+    details summary { cursor: pointer; color: #57606a; }
+    code { background: #f4f4f4; padding: .1rem .3rem; border-radius: 4px; }
+    @media (max-width: 40rem) { .grid { grid-template-columns: 1fr; } aside { float: none; width: auto; } .rosetta td { display: block; width: auto; } }
+    @media (prefers-color-scheme: dark) { body { color: #e6edf3; background: #0d1117; } aside { background: #161b22; } code { background: #161b22; } h2 { border-color: #3d444d; } }
+  </style>
+</head>
+<body>
+
+<h1>A polyglot notebook</h1>
+<p id="headline" class="lede">This line will be rewritten by a cell further down the page.</p>
+
+<aside>
+  <b>How to read this page.</b> Every box with a coloured edge is a <i>cell</i>: a quote of
+  another language spliced into the HTML, run on that language's machine. The source is the
+  file <code>tour.html.quilt</code>; the file you are reading is what
+  <code>quilt notebook</code> wrote after running it. <code>quilt check</code> validates every
+  cell's syntax without running one.
+</aside>
+
+<p>
+  HTML is the ground language here, so the page is the program and the cells are its quotes.
+  Each language's cells share one <i>machine</i> that persists for the whole run &mdash; a
+  Python kernel, a live <code>sqlite3</code>, a long-lived shell, a Node context &mdash; and the
+  page itself is the HTML machine: what a cell prints goes back into it.
+</p>
+
+<h2>1. Machines persist across cells</h2>
+<p>A definition in one cell is there for the next. Left, Python; right, SQL; the arrangement is
+just a CSS grid.</p>
+<div class="grid">
+  <div>
+    py↖
+      menu = {"espresso": 2.5, "latte": 3.75, "cortado": 3.25, "flat white": 3.5}
+      def pricey(threshold):
+          return sorted(k for k, v in menu.items() if v > threshold)
+    ↗
+    py↖pricey(3.0)↗
+  </div>
+  <div>
+    sql↖
+      CREATE TEMP TABLE menu(item TEXT, price REAL);
+      INSERT INTO menu VALUES ('espresso', 2.5), ('latte', 3.75), ('cortado', 3.25), ('flat white', 3.5);
+    ↗
+    sql↖SELECT item FROM menu WHERE price > 3.0 ORDER BY item;↗
+  </div>
+</div>
+
+<h2>2. Cells edit the page</h2>
+<p>Output that carries an <code>id</code> the page already has <i>redefines</i> that element
+wherever it stands. The chart below is drawn by the cell after it &mdash; the page held an empty
+figure with that id, and the cell's output replaced it. The headline at the top of the page is
+rewritten the same way.</p>
+<figure id="chart"><em>(the chart cell has not run yet)</em></figure>
+py↖
+  bars = html↖↗
+  for i, (name, price) in enumerate(sorted(menu.items(), key=lambda kv: -kv[1])):
+      y, w = 8 + i * 26, int(price * 60)
+      bars = html↖
+        ↙bars↘
+        <rect x="90" y="↙↑(y)↘" width="↙↑(w)↘" height="18" rx="3" fill="#8250df" opacity="0.85"></rect>
+        <text x="84" y="↙↑(y + 13)↘" text-anchor="end" font-size="12">↙↑(name)↘</text>
+        <text x="↙↑(96 + w)↘" y="↙↑(y + 13)↘" font-size="12">↙↑(f"{price:.2f}")↘</text>
+      ↗
+  print(html↖<figure id="chart"><svg viewBox="0 0 360 ↙↑(8 + len(menu) * 26)↘" width="360" font-family="system-ui, sans-serif">↙bars↘</svg><figcaption>Prices, drawn by the cell below this figure.</figcaption></figure>↗.coparse())
+  print(html↖<p id="headline" class="lede">Rewritten by a cell: the dearest drink is <b>↙↑(max(menu, key=menu.get))↘</b>.</p>↗.coparse())
+↗
+
+<h2>3. The page is the bus</h2>
+<p>Machines share nothing with each other; what they share is the page. An unquote that reaches
+the page reads it: <code>\↙#total\↘</code> is the text of the element with that id, spliced into
+the cell as a string literal of the cell's language. SQL answers into <code>#total</code>, and
+one row of four languages reads it back.</p>
+sql↖SELECT '<b id="total">' || printf('%.2f', SUM(price)) || '</b>' FROM menu;↗
+<table class="rosetta">
+  <tr>
+    <td>py↖round(float(↙#total↘) / len(menu), 3)↗</td>
+    <td>ts↖const total: number = Number(↙#total↘); total * 100↗</td>
+    <td>bash↖total=↙#total↘; echo "cents: ${total/./}"↗</td>
+    <td>sql↖SELECT ↙#total↘ - (SELECT MIN(price) FROM menu);↗</td>
+  </tr>
+</table>
+
+<h2>4. Cells create cells</h2>
+<p>Output is read as Quilt-in-HTML, so a quote in it is a new cell, run right away and rendered
+in place (dashed edge). Python builds each new cell as a Python <i>term</i> &mdash; <code>\↑</code>
+lifts the name into it as a Python literal &mdash; and splices the term into the page markup two
+quote levels up, <code>\↙\↙cell\↘\↘</code>. A shell loop writes cells too (<code>${i}</code>
+braced, because bash reads the byte after <code>$i</code> as part of the name).</p>
+<div class="grid">
+  <div>
+    py↖
+      for name in pricey(3.0):
+          cell = py↖print(↙↑(name)↘, "costs", menu[↙↑(name)↘])↗
+          print(html↖<div>py↖↙↙cell↘↘↗</div>↗.coparse())
+    ↗
+  </div>
+  <div>
+    bash↖for i in 1 2 3; do echo html↖<div>bash↖echo "cell ↙↙${i}↘↘ of 3, made by a shell loop"↗</div>↗; done↗
+  </div>
+</div>
+
+<h2>5. Layout is yours</h2>
+<p>Cells are elements, so anything HTML can do with an element it can do with a cell. A cell in a
+collapsible section:</p>
+<details>
+  <summary>A TypeScript cell, folded away</summary>
+  ts↖
+    const rows = ["espresso", "latte"].map((n, i) => `${i + 1}. ${n}`);
+    console.log(rows.join("\n"));
+  ↗
+</details>
+<p>And a cell whose language has no machine fails on its own, with the notebook going on:</p>
+wgsl↖fn f() -> f32 { return 1.0; }↗
+
+<p class="lede">The same session, a line at a time: <code>quilt repl html</code>.</p>
+</body>
+</html>

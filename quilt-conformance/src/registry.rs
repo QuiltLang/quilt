@@ -37,7 +37,16 @@ pub const LANGUAGES: &[&str] = &[
 ];
 
 /// Canonical names of every registered *host* (a language with a `MetaLanguage`).
-pub const HOSTS: &[&str] = &["bash", "lean", "nix", "python", "rust", "typescript", "zsh"];
+pub const HOSTS: &[&str] = &[
+    "bash",
+    "html",
+    "lean",
+    "nix",
+    "python",
+    "rust",
+    "typescript",
+    "zsh",
+];
 
 /// Build one language. Expensive — call once per language, not once per probe.
 pub fn language(name: &str) -> Result<BoxLang> {
@@ -105,6 +114,7 @@ pub fn meta(name: &str) -> Option<Box<dyn MetaLanguage>> {
     Some(match name {
         "bash" => bx(langs::shell::meta::BashMetaLanguage::default()),
         "zsh" => bx(langs::shell::meta::ZshMetaLanguage::default()),
+        "html" => bx(langs::html::meta::HtmlMetaLanguage::default()),
         "lean" => bx(langs::lean::meta::LeanMetaLanguage),
         "nix" => bx(langs::nix::meta::NixMetaLanguage),
         "python" => bx(langs::python::meta::PythonMetaLanguage),
