@@ -84,6 +84,14 @@ impl TSProvider for HtmlProvider {
     fn hashbang(&self) -> Option<&'static str> {
         None
     }
+
+    /// Markup runs nothing, but a document *holds* things: the HTML machine
+    /// is a document whose definitions are its ids, kept in-process as a
+    /// term — see `machine::html`. Registered in `machine::native_machine`,
+    /// the way the interpreters are registered in `script_spec`/`repl_spec`.
+    fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+        crate::machine::native_machine("html")
+    }
 }
 
 /// Tags that are HTML "expressions" (used only to label squashed

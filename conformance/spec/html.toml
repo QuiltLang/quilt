@@ -2,12 +2,21 @@ name = "html"
 display = "HTML"
 aliases = []
 feature = "html"
-meta_kind = "none"
+meta_kind = "identity"
 lang_src = "quilt/src/langs/html/lang.rs"
+meta_src = "quilt/src/langs/html/meta.rs"
 blurb = """
-A target-only language for code-generated pages, reports and templates. The \
+A target language for code-generated pages, reports and templates — the \
 Python and TypeScript hosts lift values into it through `qlift_html`, which \
-entity-escapes so a lifted value is inert as text or as an attribute value."""
+entity-escapes so a lifted value is inert as text or as an attribute value — \
+and the ground language of a *notebook*: an `.html.quilt` page whose quoted \
+cells (`py↖…↗`, `sql↖…↗`, `bash↖…↗`) run on the machines of their languages, \
+with the page itself as the HTML machine (`quilt notebook`)."""
+
+# An identity host: the meta holds every quote verbatim, so it can lift from
+# nothing — a fragment of markup is already the text it stands for.
+lift_from = []
+lift_from_unsupported = ["", "html", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts", "text", "txt", "sql", "mysql", "mariadb"]
 
 # Derived from the grammar's `REPEAT` rules (#202) — the one language whose
 # hand-written table the derivation reproduced exactly.
@@ -21,17 +30,17 @@ variadic-containers = {status = "supported"}
 kind-classification = {status = "unsupported", note = "no `typ()` override, so every tag reports the default `File`"}
 lift-into = {status = "partial", note = "no `LiftTo<Html>` marker, so a Rust host cannot lift into an HTML quote; the Python and TypeScript hosts lift through `qlift_html` instead, which is a host-side spelling rather than a `LiftTo` impl", issue = 149}
 highlights = {status = "supported"}
-host = {status = "unsupported", note = "target-only: no `MetaLanguage`, so the host's meta drives expansion"}
-lift-from = {status = "unsupported", note = "target-only: nothing to lift from"}
-reduce = {status = "unsupported", note = "target-only: no meta-language to reduce with"}
-machine = {status = "unsupported", note = "markup: nothing to execute, so nothing for a machine to hold"}
-emit = {status = "unsupported", note = "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis"}
-pattern-match = {status = "unsupported", note = "target-only; HTML fragments can still be destructured by a Rust host"}
-runnable = {status = "unsupported", note = "a document is rendered by a browser, not executed"}
-runtime-binding = {status = "unsupported", note = "target-only: no runtime library"}
+host = {status = "supported", note = "an *identity* host (`HtmlMetaLanguage`, the same `HoldMetaLanguage` text uses): markup computes nothing, so an `.html.quilt` file expands to itself with its quoted cells held verbatim — which is what lets `quilt check` validate every cell of a notebook with that cell's own grammar without running one. The computation lives in the machine instead: `quilt notebook` runs the held cells on their languages' machines and feeds the results back into the page"}
+lift-from = {status = "unsupported", note = "an identity host has no values: a fragment of markup is already the text it stands for, so `↑` is refused with the real host to lift from"}
+reduce = {status = "unsupported", note = "an identity host has no runtime to evaluate with; a notebook cell is reduced by feeding it to its language's machine, which is what `quilt notebook` does for every cell"}
+machine = {status = "supported", note = "native and in-process (`HtmlMachine`): a document held as a term, whose *definitions* are its elements' ids — feeding `<p id=\"y\">40</p>` replaces the element with that id or appends, `#y` queries it back as its own markup, and the typing judgment answers the tag name. The page of a `quilt notebook` is one of these; `html⟨M⟩` spawns one from Python or Rust; `quilt repl html` talks to one"}
+emit = {status = "unsupported", note = "an identity host holds its output whole and has no `b_` accumulator; as a *target*, what matters is having variadic containers to receive emitted children, which is the Variadic axis"}
+pattern-match = {status = "unsupported", note = "no `pattern_tag`; HTML fragments can still be destructured by a Rust host"}
+runnable = {status = "unsupported", note = "no shebang: a page is rendered by a browser, not executed. `quilt run` on an `.html.quilt` file renders the notebook instead (the page to stdout), as `quilt notebook --stdout` does"}
+runtime-binding = {status = "unsupported", note = "no runtime library: an identity host generates no builder calls"}
 glyph-collisions = {status = "supported"}
 chain-member = {status = "supported", note = "`report.html.py.quilt` makes bare quotes default to HTML inside a Python host"}
-header-comment = {status = "unsupported", note = "target-only: never the ground language, so no generated-file header is produced"}
+header-comment = {status = "unsupported", note = "delimited comments have no prefix spelling, so `Comments::HEADER` is `None`; a rendered notebook carries an HTML comment header written by `quilt notebook` itself"}
 lsp = {status = "partial", note = "embedded-quote highlighting only, from the vendored `highlights.scm`; no downstream HTML server is proxied", issue = 154}
 
 [[fragments]]
@@ -57,3 +66,26 @@ ikinds = ["file"]
 [kinds]
 element = "file"
 document = "file"
+
+# The identity host has no operator spellings at all; each refusal names the
+# alternative (a real host quoting `html↖ … ↗`).
+[meta]
+emit_error = "holds code"
+type_error = "no type syntax"
+reduce_unsupported = ["", "html", "rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "bash", "zsh", "typescript", "ts", "text", "txt", "sql", "mysql", "mariadb"]
+spawn_error = "no runtime"
+
+# How this host embeds a quote of another language, for the cross-language grid
+# (#158): a quote at ground contributes its body, and that is all. `lift` must
+# fail, per `lift_from_unsupported` above.
+[cross]
+wrapper = "@"
+lift = "↑ v"
+
+# The `machine` axis probe (docs/design/machines.md): the native `HtmlMachine`.
+# The definition is an element with an id, the query the selector naming it,
+# and the answer the element's own markup — the literal of an HTML value.
+[machine]
+define = "<p id=\"y\">40</p>"
+query = "#y"
+answer = "<p id=\"y\">40</p>"

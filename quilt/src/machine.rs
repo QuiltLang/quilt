@@ -31,6 +31,12 @@ use miette::{bail, IntoDiagnostic, WrapErr};
 use std::collections::BTreeMap;
 use std::process::Command;
 
+// The one *native* provider: a document held in-process, whose definitions
+// are elements with ids. Term-only, so it belongs on this runtime path like
+// the rest of the module.
+pub mod html;
+pub use html::HtmlMachine;
+
 /**************************************************************/
 
 /// What a [`ScriptMachine`] needs to know about a language: how to run a
@@ -222,11 +228,20 @@ pub trait IntrospectMachine: Machine {
 /// A query's answer is the last non-empty stdout line of the run, produced by
 /// the spec's `print_wrap` spelling. A fragment whose run fails does not
 /// enter the history.
+///
+/// An [`Answer::stdout`] is what *this* feed printed: the replayed history
+/// prints again on every run, and that prefix is stripped — the output of
+/// a feed should not depend on which provider the language happens to have.
+/// (History whose output varies between runs defeats the stripping; that is
+/// the replay model's honest cost, not a framing bug.)
 pub struct ScriptMachine {
     lang: Box<str>,
     spec: MachineSpec,
     /// Every successfully fed non-query fragment, in feed order.
     history: Vec<Box<str>>,
+    /// What running the history alone printed, last time it was run — the
+    /// prefix every later run's stdout starts with.
+    replayed: Box<str>,
 }
 
 impl ScriptMachine {
@@ -236,7 +251,16 @@ impl ScriptMachine {
             lang: lang.into(),
             spec,
             history: Vec::new(),
+            replayed: Box::default(),
         }
+    }
+
+    /// `stdout` with the history's own output removed from the front.
+    fn fresh(&self, stdout: &str) -> Box<str> {
+        stdout
+            .strip_prefix(&*self.replayed)
+            .unwrap_or(stdout)
+            .into()
     }
 
     /// The replayed prelude plus `frag`, as one script.
@@ -295,7 +319,7 @@ impl ScriptMachine {
         Ok(Answer {
             value,
             name: None,
-            stdout,
+            stdout: self.fresh(&stdout),
             stderr,
         })
     }
@@ -311,11 +335,13 @@ impl ScriptMachine {
             self.query(&self.spec.print_wrap.replace("{}", src))
         } else {
             let (stdout, stderr) = self.run(&self.script_with(src))?;
+            let fresh = self.fresh(&stdout);
             self.history.push(src.into());
+            self.replayed = stdout;
             Ok(Answer {
                 value: None,
                 name: None,
-                stdout,
+                stdout: fresh,
                 stderr,
             })
         }
@@ -386,12 +412,27 @@ pub struct ReplSpec {
     /// the machine reads output until the sentinel comes back, which is how
     /// one feed's output is separated from the next without any framing
     /// support from the interpreter.
+    ///
+    /// The protocol has one more bit: an interpreter that can tell the
+    /// fragment *failed* echoes the sentinel followed by ` !` instead, and
+    /// the feed is an error carrying what stderr said — the same contract
+    /// the replay machine gets from a non-zero exit. The shells spell this
+    /// off `$?`; the python and node kernels off the exception they caught.
     pub echo_wrap: Box<str>,
     /// Environment variables set for the interpreter (overriding inherited
     /// values); see [`MachineSpec::env`].
     pub env: Box<[(Box<str>, Box<str>)]>,
     /// The typing-judgment spelling; see [`MachineSpec::type_wrap`].
     pub type_wrap: Option<Box<str>>,
+    /// The spelling of "print exactly this text on its own line **on
+    /// stderr**", with `{}` standing for the text — `echo {} >&2` for the
+    /// shells. When present, every feed is framed on both streams: the
+    /// machine reads stderr up to the sentinel too, so an [`Answer::stderr`]
+    /// is exactly what *this* feed said rather than whatever had arrived by
+    /// the time stdout's sentinel did (a traceback's last lines used to be
+    /// a race). `None` keeps the best-effort drain, for interpreters with
+    /// no way to echo to stderr (`sqlite3`).
+    pub echo_err_wrap: Option<Box<str>>,
 }
 
 /// How long a [`ReplMachine`] waits for a feed's sentinel before declaring
@@ -418,8 +459,8 @@ pub struct ReplMachine {
     stdin: std::process::ChildStdin,
     /// Lines the reader thread has pulled off the interpreter's stdout.
     stdout: std::sync::mpsc::Receiver<String>,
-    /// Everything stderr has said since the last feed (drained per feed).
-    stderr: std::sync::Arc<std::sync::Mutex<String>>,
+    /// Lines the other reader thread has pulled off its stderr.
+    stderr: std::sync::mpsc::Receiver<String>,
     /// Feed counter, salting the sentinel.
     feeds: usize,
 }
@@ -442,27 +483,37 @@ impl ReplMachine {
         let stdout_pipe = child.stdout.take().expect("stdout was piped");
         let stderr_pipe = child.stderr.take().expect("stderr was piped");
 
-        let (tx, stdout) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            for line in BufReader::new(stdout_pipe).lines() {
-                let Ok(line) = line else { break };
-                if tx.send(line).is_err() {
-                    break;
+        // One reader thread per stream, each feeding a channel of lines.
+        // Lines are read as bytes and converted lossily: an interpreter that
+        // writes a byte sequence that is not UTF-8 (macOS's bash 3.2 does,
+        // for a multibyte character right after a `$var`) must not end the
+        // stream — `lines()` would, and the machine would then look dead.
+        let lines_of = |pipe: Box<dyn std::io::Read + Send>| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(pipe);
+                let mut buf = Vec::new();
+                loop {
+                    buf.clear();
+                    match reader.read_until(b'\n', &mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                    if buf.last() == Some(&b'\n') {
+                        buf.pop();
+                        if buf.last() == Some(&b'\r') {
+                            buf.pop();
+                        }
+                    }
+                    if tx.send(String::from_utf8_lossy(&buf).into_owned()).is_err() {
+                        break;
+                    }
                 }
-            }
-        });
-
-        let stderr = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-        let sink = std::sync::Arc::clone(&stderr);
-        std::thread::spawn(move || {
-            for line in BufReader::new(stderr_pipe).lines() {
-                let Ok(line) = line else { break };
-                if let Ok(mut buf) = sink.lock() {
-                    buf.push_str(&line);
-                    buf.push('\n');
-                }
-            }
-        });
+            });
+            rx
+        };
+        let stdout = lines_of(Box::new(stdout_pipe));
+        let stderr = lines_of(Box::new(stderr_pipe));
 
         Ok(ReplMachine {
             lang: lang.into(),
@@ -475,13 +526,41 @@ impl ReplMachine {
         })
     }
 
-    /// Take whatever stderr has said since the last drain.
+    /// Take whatever stderr has said so far — the best-effort answer, for a
+    /// spec with no stderr echo, and for reporting a dead interpreter.
     fn drain_stderr(&self) -> Box<str> {
-        self.stderr
-            .lock()
-            .map(|mut buf| std::mem::take(&mut *buf))
-            .unwrap_or_default()
-            .into()
+        let mut out = String::new();
+        while let Ok(line) = self.stderr.try_recv() {
+            out.push_str(&line);
+            out.push('\n');
+        }
+        out.into()
+    }
+
+    /// Read stderr up to this feed's sentinel — exact, when the spec can
+    /// echo to stderr.
+    fn stderr_until(&self, sentinel: &str) -> Result<Box<str>> {
+        use std::sync::mpsc::RecvTimeoutError;
+        let mut out = String::new();
+        loop {
+            match self.stderr.recv_timeout(REPL_TIMEOUT) {
+                Ok(line) if line.trim() == sentinel => return Ok(out.into()),
+                Ok(line) => {
+                    out.push_str(&line);
+                    out.push('\n');
+                }
+                Err(RecvTimeoutError::Timeout) => bail!(
+                    "{} machine: {:?} did not echo on stderr within {REPL_TIMEOUT:?}",
+                    self.lang,
+                    self.spec.program
+                ),
+                Err(RecvTimeoutError::Disconnected) => bail!(
+                    "{} machine: {:?} exited mid-feed:\n{out}",
+                    self.lang,
+                    self.spec.program
+                ),
+            }
+        }
     }
 }
 
@@ -495,10 +574,14 @@ impl ReplMachine {
 
         self.feeds += 1;
         let sentinel = format!("__QUILT_REPL_DONE_{}__", self.feeds);
-        let input = format!(
+        let mut input = format!(
             "{payload}\n{}\n",
             self.spec.echo_wrap.replace("{}", &sentinel)
         );
+        if let Some(err_wrap) = &self.spec.echo_err_wrap {
+            input.push_str(&err_wrap.replace("{}", &sentinel));
+            input.push('\n');
+        }
         if let Err(e) = self
             .stdin
             .write_all(input.as_bytes())
@@ -512,10 +595,16 @@ impl ReplMachine {
             );
         }
 
+        let rejected = format!("{sentinel} !");
+        let mut failed = false;
         let mut lines = Vec::new();
         loop {
             match self.stdout.recv_timeout(REPL_TIMEOUT) {
                 Ok(line) if line.trim() == sentinel => break,
+                Ok(line) if line.trim() == rejected => {
+                    failed = true;
+                    break;
+                }
                 Ok(line) => lines.push(line),
                 Err(RecvTimeoutError::Timeout) => bail!(
                     "{} machine: {:?} did not answer within {REPL_TIMEOUT:?}",
@@ -540,11 +629,23 @@ impl ReplMachine {
                     .map(|line| Box::from(line.trim()))
             })
             .flatten();
+        let stderr = if self.spec.echo_err_wrap.is_some() {
+            self.stderr_until(&sentinel)?
+        } else {
+            self.drain_stderr()
+        };
+        if failed {
+            bail!(
+                "{} machine: {:?} rejected the fragment:\n{stderr}",
+                self.lang,
+                self.spec.program
+            );
+        }
         Ok(Answer {
             value,
             name: None,
             stdout: lines.join("\n").into(),
-            stderr: self.drain_stderr(),
+            stderr,
         })
     }
 }
@@ -608,17 +709,116 @@ impl Drop for ReplMachine {
 /// conformance battery drives the machine those return, and [`qspawn`] — what
 /// `lang⟨M⟩` expands to in a Rust ground program, which has no registry at
 /// all — reads it directly.
-pub const REGISTERED_SPECS: &[&str] = &["python", "py", "typescript", "ts", "sql", "bash", "zsh"];
+pub const REGISTERED_SPECS: &[&str] = &[
+    "python",
+    "py",
+    "typescript",
+    "ts",
+    "sql",
+    "bash",
+    "zsh",
+    "html",
+];
 
-/// Whether `lang` has a registered machine spec.
+/// Whether `lang` has a registered machine — native, persistent or replay.
 ///
 /// A host's `spawn_str` asks before it spells `lang⟨M⟩`, so a machine no
 /// provider backs is a diagnostic at expansion time — pointing at the glyph in
 /// the source — rather than a failure inside generated code.
 #[must_use]
 pub fn has_spec(lang: &str) -> bool {
-    repl_spec(lang).is_some() || script_spec(lang).is_some()
+    native_machine(lang).is_some() || repl_spec(lang).is_some() || script_spec(lang).is_some()
 }
+
+/// The in-process machine registered for `lang`, if any: no interpreter,
+/// state held as a term. HTML's is the [`HtmlMachine`] — a document whose
+/// definitions are its ids. Preferred over both subprocess providers by
+/// [`qspawn`] and [`spawn_machine`], since it is the only one that can
+/// answer with the same term it was fed.
+#[must_use]
+pub fn native_machine(lang: &str) -> Option<Box<dyn Machine>> {
+    match lang {
+        "html" => Some(Box::new(HtmlMachine::default())),
+        _ => None,
+    }
+}
+
+/// The Python kernel behind the persistent python machine: a stdin loop
+/// exec-ing each sentinel-framed chunk in one namespace. Framing is the
+/// [`ReplSpec`]'s: a chunk ends at the line `echo_wrap` spells, so the
+/// kernel matches that spelling (and `echo_err_wrap`'s) rather than parsing
+/// Python incrementally — which is what lets `def`/`if`/`else` blocks cross
+/// lines without the `...` continuation protocol a real REPL needs. The
+/// quilt runtime is pre-imported when it is built, the way quilt-python's
+/// `run()` pre-imports it into the namespace it returns.
+const PYTHON_KERNEL: &str = r#"
+import re, sys, traceback
+ns = {"__name__": "__quilt__"}
+try:
+    exec("from quilt import *", ns)
+except ImportError:
+    pass
+mark = re.compile(r'^print\("(__QUILT_REPL_DONE_\d+__)"(, file=sys\.stderr)?\)$')
+buf = []
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    m = mark.match(line)
+    if m is None:
+        buf.append(line)
+        continue
+    if m.group(2):
+        sys.stderr.write(m.group(1) + "\n")
+        sys.stderr.flush()
+        continue
+    src = "\n".join(buf) + "\n"
+    buf = []
+    failed = ""
+    try:
+        exec(compile(src, "<quilt>", "exec"), ns)
+    except Exception:
+        traceback.print_exc()
+        failed = " !"
+    sys.stdout.flush()
+    sys.stderr.flush()
+    print(m.group(1) + failed)
+    sys.stdout.flush()
+"#;
+
+/// The Node kernel behind the persistent typescript machine, the twin of
+/// [`PYTHON_KERNEL`]: one `vm` context kept for the life of the process, so
+/// a top-level `const` in one chunk is visible to the next (the REPL's
+/// semantics). Type annotations are stripped on a syntax error, as the Node
+/// runtime's `↓` does. The quilt-wasm runtime's builders are made globals of
+/// the context when the package is built (`bin/build-ts`), so an expanded
+/// `html↖…↗` in a chunk resolves without an `import` — which a `vm` script
+/// could not have.
+const TYPESCRIPT_KERNEL: &str = r#"
+const vm = require("node:vm"), rl = require("node:readline"), mod = require("node:module");
+const ctx = vm.createContext(Object.assign(Object.create(globalThis), { require, console, process }));
+try { Object.assign(ctx, require(process.env.QUILT_WASM_PKG)); } catch {}
+const mark = /^console\.(log|error)\("(__QUILT_REPL_DONE_\d+__)"\)$/;
+let buf = [];
+function run(src) {
+  try {
+    return vm.runInContext(src, ctx, { filename: "<quilt>" });
+  } catch (e) {
+    if (e?.name !== "SyntaxError" || typeof mod.stripTypeScriptTypes !== "function") throw e;
+    let stripped;
+    try { stripped = mod.stripTypeScriptTypes(src, { mode: "strip" }); } catch { throw e; }
+    return vm.runInContext(stripped, ctx, { filename: "<quilt>" });
+  }
+}
+rl.createInterface({ input: process.stdin, terminal: false }).on("line", (line) => {
+  const m = mark.exec(line);
+  if (!m) { buf.push(line); return; }
+  if (m[1] === "error") { console.error(m[2]); return; }
+  const src = buf.join("\n");
+  buf = [];
+  let failed = "";
+  try { run(src); } catch (e) { console.error(e && e.stack ? e.stack : String(e)); failed = " !"; }
+  console.log(m[2] + failed);
+});
+"#;
 
 /// The persistent-REPL spec registered for `lang`, if any. See
 /// [`REGISTERED_SPECS`]; the per-provider reasoning lives on the
@@ -626,7 +826,14 @@ pub fn has_spec(lang: &str) -> bool {
 /// delegates here.
 #[must_use]
 pub fn repl_spec(lang: &str) -> Option<ReplSpec> {
-    let (program, args, print_wrap, echo_wrap, type_wrap): (_, &[&str], _, _, _) = match lang {
+    let (program, args, print_wrap, echo_wrap, echo_err_wrap, type_wrap): (
+        _,
+        &[&str],
+        _,
+        _,
+        Option<&str>,
+        _,
+    ) = match lang {
         // `-batch` so sqlite3 reads stdin without its interactive banner, and
         // `-bail` so a failed statement is an error rather than silence.
         "sql" => (
@@ -634,21 +841,82 @@ pub fn repl_spec(lang: &str) -> Option<ReplSpec> {
             &["-batch", "-bail"],
             "SELECT {};",
             "SELECT '{}';",
+            None,
             Some("SELECT typeof({});"),
         ),
         // A shell query is an arithmetic expression, so that is what "print
-        // the value of this expression" means for both shells.
-        "bash" => ("bash", &[], "echo $(( {} ))", "echo {}", None),
-        "zsh" => ("zsh", &[], "echo $(( {} ))", "echo {}", None),
+        // the value of this expression" means for both shells. The echo
+        // reads `$?` first: a fragment whose last command failed is
+        // rejected, which is what a non-zero status means to a shell.
+        "bash" => (
+            "bash",
+            &[],
+            "echo $(( {} ))",
+            "[ $? -eq 0 ] && echo {} || echo '{} !'",
+            Some("echo {} >&2"),
+            None,
+        ),
+        "zsh" => (
+            "zsh",
+            &[],
+            "echo $(( {} ))",
+            "[ $? -eq 0 ] && echo {} || echo '{} !'",
+            Some("echo {} >&2"),
+            None,
+        ),
+        // `-u`: unbuffered, so a chunk's output precedes its sentinel. The
+        // echo spellings are the ones the kernel's regex matches.
+        "python" | "py" => (
+            "python3",
+            &["-u", "-c", PYTHON_KERNEL],
+            "print(repr({}))",
+            "print(\"{}\")",
+            Some("print(\"{}\", file=sys.stderr)"),
+            Some("print(type({}).__name__)"),
+        ),
+        // `--no-warnings`: stripping types is experimental in some Node
+        // versions, and the warning would land in the first feed's stderr.
+        "typescript" | "ts" => (
+            "node",
+            &["--no-warnings", "-e", TYPESCRIPT_KERNEL],
+            "console.log(JSON.stringify({}))",
+            "console.log(\"{}\")",
+            Some("console.error(\"{}\")"),
+            Some("console.log(typeof ({}))"),
+        ),
         _ => return None,
+    };
+    let env: Box<[(Box<str>, Box<str>)]> = match lang {
+        // The `PYTHONPATH` that makes `from quilt import *` resolve — the
+        // same path the script spec and `reduce_py` teach.
+        "python" | "py" => Box::new([(
+            "PYTHONPATH".into(),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../quilt-python").into(),
+        )]),
+        // Where the kernel finds the quilt-wasm runtime, when built; and no
+        // ANSI colour in `console.log` output, whatever the caller's
+        // terminal says (`FORCE_COLOR` outranks `NO_COLOR` in Node).
+        "typescript" | "ts" => Box::new([
+            (
+                "QUILT_WASM_PKG".into(),
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../quilt-wasm/pkg/quilt_wasm.js"
+                )
+                .into(),
+            ),
+            ("FORCE_COLOR".into(), "0".into()),
+        ]),
+        _ => Box::default(),
     };
     Some(ReplSpec {
         program: program.into(),
         args: args.iter().map(|a| Box::from(*a)).collect(),
         print_wrap: print_wrap.into(),
         echo_wrap: echo_wrap.into(),
-        env: Box::default(),
+        env,
         type_wrap: type_wrap.map(Box::from),
+        echo_err_wrap: echo_err_wrap.map(Box::from),
     })
 }
 
@@ -679,8 +947,9 @@ pub fn script_spec(lang: &str) -> Option<MachineSpec> {
     }
 }
 
-/// Spawn a machine for `lang` from the registered spec table, preferring the
-/// persistent provider — what `lang⟨M⟩` expands to in Rust (issue #273).
+/// Spawn a machine for `lang` from the registered table, preferring native,
+/// then persistent, then replay — what `lang⟨M⟩` expands to in Rust
+/// (issue #273).
 ///
 /// The registry-driven [`spawn_machine`] is the same choice made through a
 /// [`Language`](crate::lang::Language); this one needs no registry, so it is
@@ -688,6 +957,9 @@ pub fn script_spec(lang: &str) -> Option<MachineSpec> {
 /// (`default-features = false`), which is how expanded `.rs.quilt` files are
 /// built.
 pub fn qspawn(lang: &str) -> Result<Box<dyn Machine>> {
+    if let Some(machine) = native_machine(lang) {
+        return Ok(machine);
+    }
     if let Some(spec) = repl_spec(lang) {
         return Ok(Box::new(ReplMachine::spawn(lang, spec)?));
     }
@@ -702,8 +974,9 @@ pub fn qspawn(lang: &str) -> Result<Box<dyn Machine>> {
 
 /**************************************************************/
 
-/// Spawn the best machine a [`Language`](crate::lang::Language) declares: the
-/// persistent [`ReplMachine`] when the language has a
+/// Spawn the best machine a [`Language`](crate::lang::Language) declares: its
+/// [`native_machine`](crate::lang::Language::native_machine) when it has
+/// one, else the persistent [`ReplMachine`] when the language has a
 /// [`repl_spec`](crate::lang::Language::repl_spec), else the replay-based
 /// [`ScriptMachine`] from its
 /// [`machine_spec`](crate::lang::Language::machine_spec), else an error.
@@ -713,13 +986,16 @@ pub fn spawn_machine<L: crate::lang::Language + ?Sized>(
     lang_name: &str,
     lang: &L,
 ) -> Result<Box<dyn Machine>> {
+    if let Some(machine) = lang.native_machine() {
+        return Ok(machine);
+    }
     if let Some(spec) = lang.repl_spec() {
         return Ok(Box::new(ReplMachine::spawn(lang_name, spec)?));
     }
     if let Some(spec) = lang.machine_spec() {
         return Ok(Box::new(ScriptMachine::new(lang_name, spec)));
     }
-    bail!("language {lang_name:?} has no machine: no repl or script spec registered")
+    bail!("language {lang_name:?} has no machine: no native, repl or script provider registered")
 }
 
 /**************************************************************/
@@ -817,6 +1093,20 @@ mod tests {
         assert_eq!(ask.value.as_deref(), Some("7"));
     }
 
+    /// A query does not re-print what the history printed: the replayed
+    /// prefix is stripped, so stdout is this feed's own.
+    #[test]
+    fn replayed_output_is_not_reported_again() {
+        let mut m = sh_machine();
+        let fed = m.feed_str(InnerKind::Stmt, "echo hi").unwrap();
+        assert_eq!(&*fed.stdout, "hi\n");
+        let ask = m.feed_str(InnerKind::Expr, "1 + 1").unwrap();
+        assert_eq!(ask.value.as_deref(), Some("2"));
+        assert_eq!(&*ask.stdout, "2\n", "got: {:?}", ask.stdout);
+        let fed = m.feed_str(InnerKind::Stmt, "echo again").unwrap();
+        assert_eq!(&*fed.stdout, "again\n");
+    }
+
     /// POSIX sh as a *persistent* machine, for the [`ReplMachine`] tests.
     fn sh_repl() -> ReplMachine {
         ReplMachine::spawn(
@@ -828,9 +1118,93 @@ mod tests {
                 echo_wrap: "echo {}".into(),
                 env: Box::default(),
                 type_wrap: None,
+                echo_err_wrap: Some("echo {} >&2".into()),
             },
         )
         .unwrap()
+    }
+
+    /// With a stderr echo, what a feed said on stderr is exactly this feed's
+    /// — read up to the sentinel, not whatever had arrived.
+    #[test]
+    fn stderr_is_framed_per_feed() {
+        let mut m = sh_repl();
+        let a = m.feed_str(InnerKind::Stmt, "echo oops >&2").unwrap();
+        assert_eq!(&*a.stderr, "oops\n");
+        let b = m.feed_str(InnerKind::Expr, "1 + 1").unwrap();
+        assert_eq!(&*b.stderr, "", "the next feed starts clean");
+    }
+
+    /// The registered shells report a failed fragment as an error — the
+    /// sentinel's one extra bit — and stay usable afterwards.
+    #[test]
+    fn bash_rejects_a_failing_fragment() {
+        let mut m = ReplMachine::spawn("bash", repl_spec("bash").unwrap()).unwrap();
+        m.feed_str(InnerKind::Item, "x=5").unwrap();
+        let err = m.feed_str(InnerKind::Stmt, "false").unwrap_err();
+        assert!(err.to_string().contains("rejected"), "{err}");
+        let err = m
+            .feed_str(InnerKind::Stmt, "echo boom >&2; exit_code_of_nothing")
+            .unwrap_err();
+        assert!(err.to_string().contains("boom"), "carries stderr: {err}");
+        assert_eq!(
+            m.feed_str(InnerKind::Expr, "x + 1")
+                .unwrap()
+                .value
+                .as_deref(),
+            Some("6")
+        );
+    }
+
+    /// The python kernel: one process, definitions persist, blocks cross
+    /// lines, an exception is reported on stderr and leaves the kernel
+    /// usable, and effects run exactly once.
+    #[test]
+    fn python_kernel_is_a_persistent_machine() {
+        let mut m = ReplMachine::spawn("py", repl_spec("py").unwrap()).unwrap();
+        let fed = m.feed_str(InnerKind::Stmt, "print('once')").unwrap();
+        assert_eq!(&*fed.stdout, "once");
+        m.feed_str(
+            InnerKind::Item,
+            "def f(x):\n    if x > 1:\n        return x * 2\n    else:\n        return x",
+        )
+        .unwrap();
+        let ask = m.feed_str(InnerKind::Expr, "f(21)").unwrap();
+        assert_eq!(ask.value.as_deref(), Some("42"));
+        assert!(!ask.stdout.contains("once"), "no replay: {:?}", ask.stdout);
+        let bad = m.feed_str(InnerKind::Expr, "undefined_name").unwrap_err();
+        assert!(bad.to_string().contains("NameError"), "{bad}");
+        let ask = m.feed_str(InnerKind::Expr, "f(1)").unwrap();
+        assert_eq!(ask.value.as_deref(), Some("1"), "still alive");
+        assert_eq!(
+            m.type_of_str("f(21)").unwrap().value.as_deref(),
+            Some("int")
+        );
+    }
+
+    /// The node kernel, held to the same shape.
+    #[test]
+    fn typescript_kernel_is_a_persistent_machine() {
+        let mut m = ReplMachine::spawn("ts", repl_spec("ts").unwrap()).unwrap();
+        m.feed_str(InnerKind::Item, "const y: number = 40").unwrap();
+        let ask = m.feed_str(InnerKind::Expr, "y + 2").unwrap();
+        assert_eq!(ask.value.as_deref(), Some("42"));
+        let bad = m.feed_str(InnerKind::Expr, "nope").unwrap_err();
+        assert!(bad.to_string().contains("ReferenceError"), "{bad}");
+        let ask = m.feed_str(InnerKind::Expr, "[y, 'a']").unwrap();
+        assert_eq!(ask.value.as_deref(), Some("[40,\"a\"]"));
+        assert_eq!(m.type_of_str("y").unwrap().value.as_deref(), Some("number"));
+    }
+
+    /// The native provider wins the spawn order, and answers with the term
+    /// it was fed.
+    #[test]
+    fn html_is_native() {
+        let mut m = qspawn("html").unwrap();
+        assert_eq!(m.lang(), "html");
+        let ask = m.feed(InnerKind::Expr, &leaf("text", "hi")).unwrap();
+        assert_eq!(ask.value.as_deref(), Some("hi"));
+        assert!(has_spec("html"));
     }
 
     #[test]

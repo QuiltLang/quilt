@@ -168,8 +168,10 @@ rs = "reduce_rs()"
 wrapper = "x = @"
 lift = "↑(v)"
 
-# The `machine` axis probe (docs/design/machines.md): drives a ScriptMachine
-# built from `machine_spec` — python3 replaying history, answering via repr().
+# The `machine` axis probe (docs/design/machines.md): drives the persistent
+# ReplMachine from `repl_spec` — one long-lived python3 running a stdin kernel
+# that exec-s each sentinel-framed feed in one namespace, answering via
+# repr(). (The replay ScriptMachine from `machine_spec` is still registered.)
 [machine]
 define = "y = 40"
 query = "y + 2"

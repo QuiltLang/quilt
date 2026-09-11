@@ -77,3 +77,36 @@ def test_str_and_repr():
     e = leaf("integer", "9")
     assert str(e) == "9"
     assert repr(e) == 'QTerm("9")'
+
+
+def test_html_machine_is_native():
+    """`html⟨M⟩` spawns the in-process HTML machine: a document whose
+    definitions are its ids. Terms go in; the element's own markup comes back."""
+    from quilt import spawn
+
+    # The parser's shape for `<tag id="y">text</tag>` — what an `html↖…↗`
+    # quote expands to — is what the machine reads ids from.
+    def element(tag, id_, text):
+        attr = (
+            tb("attribute")
+            .c(leaf("attribute_name", "id"))
+            .c(sym("="))
+            .c(tb("quoted_attribute_value").c(sym('"')).c(leaf("attribute_value", id_)).c(sym('"')).b())
+            .b()
+        )
+        start = tb("start_tag").c(sym("<")).c(leaf("tag_name", tag)).w(" ").c(attr).c(sym(">")).b()
+        end = tb("end_tag").c(sym("</")).c(leaf("tag_name", tag)).c(sym(">")).b()
+        return tb("element").c(start).c(leaf("text", text)).c(end).b()
+
+    page = spawn("html")
+    assert page.lang == "html"
+    assert page.eval(element("p", "y", "40")) is None  # a definition answers nothing
+    assert page.eval(leaf("text", "#y")) == '<p id="y">40</p>'
+    assert page.type_of(leaf("text", "#y")) == "p"
+    # Redefining the id replaces the element; a fresh machine has none of it.
+    page.eval(element("b", "y", "41"))
+    assert page.eval(leaf("text", "#y")) == '<b id="y">41</b>'
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        spawn("html").eval(leaf("text", "#y"))

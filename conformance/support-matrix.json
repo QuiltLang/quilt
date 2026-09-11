@@ -200,9 +200,10 @@
       "display": "HTML",
       "aliases": [],
       "feature": "html",
-      "blurb": "A target-only language for code-generated pages, reports and templates. The Python and TypeScript hosts lift values into it through `qlift_html`, which entity-escapes so a lifted value is inert as text or as an attribute value.",
-      "meta_kind": "none",
+      "blurb": "A target language for code-generated pages, reports and templates — the Python and TypeScript hosts lift values into it through `qlift_html`, which entity-escapes so a lifted value is inert as text or as an attribute value — and the ground language of a *notebook*: an `.html.quilt` page whose quoted cells (`py↖…↗`, `sql↖…↗`, `bash↖…↗`) run on the machines of their languages, with the page itself as the HTML machine (`quilt notebook`).",
+      "meta_kind": "identity",
       "lang_src": "quilt/src/langs/html/lang.rs",
+      "meta_src": "quilt/src/langs/html/meta.rs",
       "cells": [
         {
           "axis": "quotable",
@@ -260,53 +261,61 @@
         },
         {
           "axis": "host",
-          "status": "unsupported",
-          "note": "target-only: no `MetaLanguage`, so the host's meta drives expansion",
+          "status": "supported",
+          "note": "an *identity* host (`HtmlMetaLanguage`, the same `HoldMetaLanguage` text uses): markup computes nothing, so an `.html.quilt` file expands to itself with its quoted cells held verbatim — which is what lets `quilt check` validate every cell of a notebook with that cell's own grammar without running one. The computation lives in the machine instead: `quilt notebook` runs the held cells on their languages' machines and feeds the results back into the page",
           "verified_by": "host/html",
           "detail": [
-            "meta_kind = none"
+            "meta_kind = identity"
           ]
         },
         {
           "axis": "lift-from",
           "status": "unsupported",
-          "note": "target-only: nothing to lift from",
+          "note": "an identity host has no values: a fragment of markup is already the text it stands for, so `↑` is refused with the real host to lift from",
           "verified_by": "lift-from/html"
         },
         {
           "axis": "reduce",
           "status": "unsupported",
-          "note": "target-only: no meta-language to reduce with",
+          "note": "an identity host has no runtime to evaluate with; a notebook cell is reduced by feeding it to its language's machine, which is what `quilt notebook` does for every cell",
           "verified_by": "reduce/html"
         },
         {
           "axis": "machine",
-          "status": "unsupported",
-          "note": "markup: nothing to execute, so nothing for a machine to hold",
-          "verified_by": "machine/html"
+          "status": "supported",
+          "note": "native and in-process (`HtmlMachine`): a document held as a term, whose *definitions* are its elements' ids — feeding `<p id=\"y\">40</p>` replaces the element with that id or appends, `#y` queries it back as its own markup, and the typing judgment answers the tag name. The page of a `quilt notebook` is one of these; `html⟨M⟩` spawns one from Python or Rust; `quilt repl html` talks to one",
+          "verified_by": "machine/html",
+          "detail": [
+            "native html: <p id=\"y\">40</p>; #y = <p id=\"y\">40</p>"
+          ]
         },
         {
           "axis": "emit",
           "status": "unsupported",
-          "note": "target-only: `←` is the *host's* operator, so this language has no emit of its own. What matters for a target is having variadic containers to receive emitted children, which is the Variadic axis",
-          "verified_by": "emit/html"
+          "note": "an identity host holds its output whole and has no `b_` accumulator; as a *target*, what matters is having variadic containers to receive emitted children, which is the Variadic axis",
+          "verified_by": "emit/html",
+          "detail": [
+            "← unsupported (fails with guidance)",
+            "type_str unsupported",
+            "name_str unsupported"
+          ]
         },
         {
           "axis": "pattern-match",
           "status": "unsupported",
-          "note": "target-only; HTML fragments can still be destructured by a Rust host",
+          "note": "no `pattern_tag`; HTML fragments can still be destructured by a Rust host",
           "verified_by": "pattern-match/html"
         },
         {
           "axis": "runnable",
           "status": "unsupported",
-          "note": "a document is rendered by a browser, not executed",
+          "note": "no shebang: a page is rendered by a browser, not executed. `quilt run` on an `.html.quilt` file renders the notebook instead (the page to stdout), as `quilt notebook --stdout` does",
           "verified_by": "runnable/html"
         },
         {
           "axis": "runtime-binding",
           "status": "unsupported",
-          "note": "target-only: no runtime library",
+          "note": "no runtime library: an identity host generates no builder calls",
           "verified_by": "runtime-binding/html"
         },
         {
@@ -329,7 +338,7 @@
         {
           "axis": "header-comment",
           "status": "unsupported",
-          "note": "target-only: never the ground language, so no generated-file header is produced",
+          "note": "delimited comments have no prefix spelling, so `Comments::HEADER` is `None`; a rendered notebook carries an HTML comment header written by `quilt notebook` itself",
           "verified_by": "header-comment/html"
         },
         {
@@ -805,7 +814,7 @@
           "status": "supported",
           "verified_by": "machine/python",
           "detail": [
-            "script python3: y = 40; y + 2 = 42"
+            "repl python3: y = 40; y + 2 = 42"
           ]
         },
         {
@@ -1492,10 +1501,10 @@
         {
           "axis": "machine",
           "status": "supported",
-          "note": "ScriptMachine via node; queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing",
+          "note": "a persistent `ReplMachine`: one long-lived `node` running a small `vm`-context kernel, so a top-level `const` is real process state for later feeds and effects run once; a thrown exception rejects the feed. Queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing. The replay `ScriptMachine` remains registered as `machine_spec`",
           "verified_by": "machine/typescript",
           "detail": [
-            "script node: const y = 40; y + 2 = 42"
+            "repl node: const y = 40; y + 2 = 42"
           ]
         },
         {

@@ -41,6 +41,7 @@ The five operators — quote `↖↗`, unquote `↙↘`, lift `↑`, reduce `↓
 | Page | What it covers |
 |------|----------------|
 | [Concepts](concepts.md) | The `.quilt` file format, operator glyphs, quasi-quoting, and staging |
+| [Notebooks](notebook.md) | `.html.quilt` pages whose cells run on machines — `quilt notebook`, `quilt repl html`, the HTML machine |
 
 ## Tooling
 

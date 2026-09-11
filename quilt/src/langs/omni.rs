@@ -7,7 +7,10 @@
 #[cfg(feature = "bash")]
 use super::bash::lang::{BashLanguage, DynBashLanguage};
 #[cfg(feature = "html")]
-use super::html::lang::{DynHtmlLanguage, HtmlLanguage};
+use super::html::{
+    lang::{DynHtmlLanguage, HtmlLanguage},
+    meta::HtmlMetaLanguage,
+};
 #[cfg(feature = "lean")]
 use super::lean::{
     lang::{DynLeanLanguage, LeanLanguage},
@@ -230,6 +233,17 @@ macro_rules! define_omni {
                     $(
                         #[cfg(feature = $feat)]
                         OmniLanguage::$variant(lang) => lang.repl_spec(),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
+            fn native_machine(&self) -> Option<Box<dyn crate::machine::Machine>> {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.native_machine(),
                     )*
                     #[allow(unreachable_patterns)]
                     _ => None,
@@ -606,6 +620,12 @@ mod tests {
             // text is target-only: the alias exists but has no meta entry
             assert!(dict.get_meta("txt").is_err());
         }
+        #[cfg(feature = "html")]
+        {
+            // html is a quotable target *and* an identity host (notebooks)
+            assert!(dict.get_lang("html").is_ok());
+            assert!(dict.get_meta("html").is_ok());
+        }
         #[cfg(feature = "lean")]
         {
             // Lean is both a target and a (string-based) host, under either
@@ -672,11 +692,13 @@ mod tests {
     }
 }
 
-// Languages absent from `metas` (text, wgsl, html, sql) are target languages only —
+// Languages absent from `metas` (text, wgsl, sql) are target languages only —
 // the host's MetaLanguage drives expansion. Nix, Lean and the two shells are
 // both: quotable targets *and* string-based hosts (their metas generate code as
 // strings, see `langs::nix::meta` / `langs::lean::meta` /
-// `langs::shell::meta`).
+// `langs::shell::meta`). HTML is a quotable target *and* an identity host: an
+// `.html.quilt` file expands to itself with its cells held, so `quilt check`
+// validates a notebook's cells without running them (`langs::html::meta`).
 define_omni! {
     languages {
         bash if "bash"   => Bash(BashLanguage, DynBashLanguage):       ["bash"];
@@ -693,6 +715,7 @@ define_omni! {
     }
     metas {
         bash if "bash"   => Bash(BashMetaLanguage):                    ["bash"];
+        html if "html"   => Html(HtmlMetaLanguage):                    ["html"];
         lean if "lean"   => Lean(LeanMetaLanguage):                    ["lean", "lean4"];
         nix  if "nix"    => Nix(NixMetaLanguage):                      ["nix"];
         py   if "python" => Python(PythonMetaLanguage):                ["python", "py"];

@@ -45,7 +45,7 @@ Columns:
 | Language | Host | Lift out | Reduce ↓ | Machine | Emit ← | Patterns | Runnable | Runtime |
 |---|---|---|---|---|---|---|---|---|
 | **Bash** | ✅ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ✅ | ⬜ |
-| **HTML** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+| **HTML** | ✅ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Lean 4** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/132) | [🔵](https://github.com/QuiltLang/quilt/issues/265) | [🔵](https://github.com/QuiltLang/quilt/issues/133) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/132) |
 | **Nix** | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/155) | [🔵](https://github.com/QuiltLang/quilt/issues/264) | [🟡](https://github.com/QuiltLang/quilt/issues/155) | ⬜ | ⬜ | [🔵](https://github.com/QuiltLang/quilt/issues/155) |
 | **Python** | ✅ | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |

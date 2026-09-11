@@ -212,7 +212,10 @@ pub struct Spec {
     pub aliases: Vec<String>,
     pub feature: String,
     pub blurb: String,
-    /// `runtime` | `string` | `none`
+    /// `runtime` | `string` | `identity` | `none` — how the host's meta
+    /// generates code: builder calls into a runtime, string literals, or not
+    /// at all (an identity host holds its quotes verbatim; HTML, whose
+    /// notebooks run the held cells on machines instead).
     pub meta_kind: String,
     pub lang_src: String,
     #[serde(default)]
@@ -383,9 +386,12 @@ impl Spec {
             }
         }
 
-        if !matches!(self.meta_kind.as_str(), "runtime" | "string" | "none") {
+        if !matches!(
+            self.meta_kind.as_str(),
+            "runtime" | "string" | "identity" | "none"
+        ) {
             bail!(
-                "{}: meta_kind must be `runtime`, `string` or `none`, got {:?}",
+                "{}: meta_kind must be `runtime`, `string`, `identity` or `none`, got {:?}",
                 self.name,
                 self.meta_kind
             );

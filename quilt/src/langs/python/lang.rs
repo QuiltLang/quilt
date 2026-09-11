@@ -47,6 +47,16 @@ impl TSProvider for PythonProvider {
         crate::machine::script_spec("python")
     }
 
+    /// Preferred over the replay spec: one long-lived `python3` running a
+    /// small stdin kernel (`machine::PYTHON_KERNEL`) that exec-s each
+    /// sentinel-framed feed in one namespace — so definitions are real
+    /// process state, effects run exactly once, and a cell's stdout is its
+    /// own rather than the whole history's. The replay machine remains what
+    /// `script_spec` describes, for callers that want a snapshot-exact one.
+    fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
+        crate::machine::repl_spec("python")
+    }
+
     /// Derived from the grammar's `REPEAT` rules by `bin/gen-arity`, not
     /// hand-curated — see `quilt/src/langs/arity.rs` (#202).
     fn arity(&self, tag: &str) -> Arity {

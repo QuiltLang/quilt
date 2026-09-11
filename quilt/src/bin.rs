@@ -40,8 +40,30 @@ enum Commands {
     /// Interactive machine session: each line is Quilt source, expanded and
     /// fed to the ground language's default machine
     Repl(ReplArgs),
+    /// Run a notebook: an .html.quilt page whose quoted cells run on the
+    /// machines of their languages, rendered back into the page
+    Notebook(NotebookArgs),
     /// Clear the expand cache
     Clean,
+}
+
+#[derive(Args, Debug)]
+struct NotebookArgs {
+    /// .html.quilt file to run
+    filename: String,
+    /// Where to write the rendered page (default: the input name without
+    /// `.quilt`)
+    #[clap(short, long)]
+    out: Option<String>,
+    /// Write the rendered page to stdout instead of a file
+    #[clap(long)]
+    stdout: bool,
+    /// Open the rendered page in the default browser
+    #[clap(long)]
+    open: bool,
+    /// Exit non-zero if any cell failed (the page is still written)
+    #[clap(long)]
+    strict: bool,
 }
 
 #[derive(Args, Debug)]
@@ -154,6 +176,7 @@ fn main() -> Result<()> {
         (Some(Commands::Run(args)), _) | (None, Some(args)) => run(args),
         (Some(Commands::Check(args)), _) => check(args),
         (Some(Commands::Repl(args)), _) => repl(args),
+        (Some(Commands::Notebook(args)), _) => notebook(args),
         (Some(Commands::Clean), _) => clean(),
         (None, None) => {
             use clap::CommandFactory;
@@ -198,6 +221,22 @@ fn expand(args: &ExpandArgs) -> Result<()> {
     let output_filename = input_filename
         .strip_suffix(".quilt")
         .ok_or_else(|| miette!("expected a .quilt file: {input_filename}"))?;
+
+    // An HTML-ground file is a notebook, and its expansion proper is the
+    // identity (`langs::html::meta`) — the cells held, nothing run. The
+    // artifact anyone wants from `expand` is the *rendered* notebook, so
+    // that is what is written; `check` is where the identity expansion
+    // does its job (validating every cell without running one). Never
+    // cached: a run is not a function of the source alone.
+    if matches!(args.multi, MultiOptions::Omni) && ground_is_html(output_filename) {
+        return notebook(&NotebookArgs {
+            filename: input_filename.clone(),
+            out: Some(output_filename.to_string()),
+            stdout: false,
+            open: false,
+            strict: false,
+        });
+    }
 
     let canonical = fs::canonicalize(input_filename).unwrap_or_else(|_| input_filename.into());
     let path_key = canonical.to_string_lossy().into_owned();
@@ -443,6 +482,9 @@ fn repl(args: &ReplArgs) -> Result<()> {
     let stem = format!("repl.{}", args.chain);
     let chain = lang_chain(&multi, &stem);
     let host = chain[0];
+    if host == "html" {
+        return repl_html(&mut multi);
+    }
     // Spawn eagerly, so "this language has no machine" is the first line out
     // rather than a surprise after the first input.
     multi.machine(host)?;
@@ -473,14 +515,215 @@ fn repl(args: &ReplArgs) -> Result<()> {
     Ok(())
 }
 
+/// `quilt repl html`: a notebook session, one fragment per line. Markup
+/// defines (by id) or appends to the page; a quote — `py↖x = 5↗`,
+/// `sql↖SELECT 1;↗` — is a cell, run on its language's machine, so this is
+/// the polyglot REPL: each line names its language, and every language's
+/// definitions persist. `#id` on its own reads an element back. The page
+/// is printed at the end of the session.
+#[cfg(feature = "html")]
+fn repl_html(multi: &mut Omni) -> Result<()> {
+    use std::io::{BufRead as _, IsTerminal as _, Write as _};
+
+    let mut nb = quilt::notebook::Notebook::new(multi);
+    let stdin = std::io::stdin();
+    let tty = stdin.is_terminal();
+    if tty {
+        eprintln!(
+            "quilt repl — the page is the machine: markup defines, `lang↖…↗` runs a cell, \
+             `#id` reads an element; ctrl-D prints the page"
+        );
+    }
+    let mut lines = stdin.lock().lines();
+    loop {
+        if tty {
+            eprint!("html> ");
+            let _ = std::io::stderr().flush();
+        }
+        let Some(line) = lines.next() else { break };
+        let line = line.into_diagnostic()?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(id) = trimmed.strip_prefix('#') {
+            match nb.page().find(id) {
+                Some(el) => println!("{}", el.coparse()),
+                None => eprintln!("no element with id {id:?}"),
+            }
+            continue;
+        }
+        match nb.feed_source(&line) {
+            Ok(ids) => {
+                for cell in nb.cells().iter().filter(|c| ids.contains(&c.id)) {
+                    if let Some(error) = &cell.error {
+                        eprintln!("{error}");
+                        continue;
+                    }
+                    let err = cell.stderr.trim();
+                    if !err.is_empty() {
+                        eprintln!("{err}");
+                    }
+                    let out = cell.stdout.trim();
+                    if !out.is_empty() {
+                        println!("{out}");
+                    }
+                    if let Some(value) = &cell.value {
+                        if out.lines().next_back() != Some(&**value)
+                            && !quilt::notebook::NO_VALUE.contains(&value.trim())
+                        {
+                            println!("{value}");
+                        }
+                    }
+                }
+            }
+            Err(e) => eprintln!("{e:?}"),
+        }
+    }
+    if tty {
+        eprintln!();
+    }
+    println!("{}", nb.render());
+    Ok(())
+}
+
+/// Whether a file stem's ground language is HTML — i.e. the file is a
+/// notebook. Asked before the expand cache is consulted, so it builds its
+/// own registry.
+#[cfg(feature = "html")]
+fn ground_is_html(stem: &str) -> bool {
+    let multi = Omni::default();
+    lang_chain(&multi, stem)[0] == "html"
+}
+
+/// `quilt notebook`: run an `.html.quilt` page's cells on their languages'
+/// machines and write the page back with the results in it — see
+/// `quilt::notebook`. `expand` and `run` on an HTML-ground file come here
+/// too; `check` does not, which is what makes it safe.
+#[cfg(feature = "html")]
+fn notebook(args: &NotebookArgs) -> Result<()> {
+    let (path, stem) = resolve_stem(&args.filename)?;
+    let input = fs::read_to_string(&path).into_diagnostic()?;
+    // Blank a shebang line rather than dropping it, as `check` does, so the
+    // spans in cell diagnostics stay exact.
+    let input = if input.starts_with("#!") {
+        let end = input.find('\n').unwrap_or(input.len());
+        format!("{}{}", " ".repeat(end), &input[end..])
+    } else {
+        input
+    };
+
+    let mut multi = Omni::default();
+    let chain = lang_chain(&multi, &stem);
+    if chain[0] != "html" {
+        return Err(miette!(
+            "a notebook is an .html.quilt file — its ground language is HTML — but {} has \
+             ground language {:?}",
+            args.filename,
+            chain[0]
+        ));
+    }
+    let with_src = |e: miette::Report| {
+        e.with_source_code(NamedSource::new(args.filename.clone(), input.clone()))
+    };
+    let rendered = quilt::notebook::run(&mut multi, &input).map_err(with_src)?;
+
+    let failures = rendered.failures();
+    for cell in &failures {
+        let first = cell
+            .error
+            .as_deref()
+            .unwrap_or("")
+            .lines()
+            .next()
+            .unwrap_or("");
+        eprintln!("cell {} [{}] failed: {first}", cell.id, cell.lang);
+    }
+    let cli_args = std::env::args().collect::<Vec<_>>()[1..].join(" ");
+    let html = format!(
+        "<!-- DO NOT EDIT. GENERATED BY `quilt {cli_args}`. -->\n{}\n",
+        rendered.html
+    );
+    if args.stdout {
+        print!("{html}");
+    } else {
+        let out = args.out.clone().unwrap_or_else(|| {
+            args.filename
+                .strip_suffix(".quilt")
+                .map_or_else(|| format!("{}.html", args.filename), str::to_string)
+        });
+        fs::write(&out, html).into_diagnostic()?;
+        eprintln!(
+            "wrote {out} ({} cell(s), {} failed)",
+            rendered.cells.len(),
+            failures.len()
+        );
+        if args.open {
+            open_in_browser(&out)?;
+        }
+    }
+    if args.strict && !failures.is_empty() {
+        return Err(miette!("{} cell(s) failed", failures.len()));
+    }
+    Ok(())
+}
+
+/// Hand a file to the platform's opener.
+#[cfg(feature = "html")]
+fn open_in_browser(path: &str) -> Result<()> {
+    let (program, args): (&str, &[&str]) = if cfg!(target_os = "macos") {
+        ("open", &[])
+    } else if cfg!(windows) {
+        ("cmd", &["/C", "start", ""])
+    } else {
+        ("xdg-open", &[])
+    };
+    std::process::Command::new(program)
+        .args(args)
+        .arg(path)
+        .spawn()
+        .into_diagnostic()
+        .map_err(|e| e.context(format!("opening {path} with {program}")))?;
+    Ok(())
+}
+
+// Without the `html` feature (the bootstrap build, for one) there is no
+// notebook: the subcommand stays listed and says so when invoked, and an
+// HTML-ground file is nothing `expand`/`run` recognise.
+#[cfg(not(feature = "html"))]
+fn without_html(what: &str) -> miette::Report {
+    miette!("{what} needs quilt built with the `html` feature")
+}
+
+#[cfg(not(feature = "html"))]
+fn repl_html(_multi: &mut Omni) -> Result<()> {
+    Err(without_html("`quilt repl html`"))
+}
+
+#[cfg(not(feature = "html"))]
+fn ground_is_html(_stem: &str) -> bool {
+    false
+}
+
+#[cfg(not(feature = "html"))]
+fn notebook(_args: &NotebookArgs) -> Result<()> {
+    Err(without_html("`quilt notebook`"))
+}
+
 /// One REPL turn: parse, expand, classify, feed. `Some` is the text to show —
 /// a query's answered literal, else whatever the feed printed.
 fn repl_line(multi: &mut Omni, chain: &[&str], line: &str) -> Result<Option<String>> {
     let host = chain[0];
     let term = multi.parse_chain(chain, line)?;
     let expanded = multi.expand_lang(host, &term)?;
-    let kind = classify_for_feed(multi.get_lang(host)?, &expanded);
+    let kind = multi.classify_for_feed(host, &expanded)?;
     let answer = multi.machine(host)?.feed(kind, &expanded)?;
+    // What the feed said on stderr is worth seeing even when it succeeded —
+    // a warning, say — and the persistent kernels frame it per feed.
+    let err = answer.stderr.trim();
+    if !err.is_empty() {
+        eprintln!("{err}");
+    }
     if let Some(value) = answer.value {
         return Ok(Some(value.into()));
     }
@@ -488,21 +731,28 @@ fn repl_line(multi: &mut Omni, chain: &[&str], line: &str) -> Result<Option<Stri
     Ok((!out.is_empty()).then(|| out.to_string()))
 }
 
-/// Classify a term for feeding a machine, seeing through the tagless root
-/// wrapper `parse_chain` builds around the parsed fragment (whose tag would
-/// otherwise classify by the language's default).
-fn classify_for_feed<L: Language + ?Sized>(lang: &L, term: &QTerm) -> quilt::lang::InnerKind {
-    match term {
-        QTerm::Tuple { tag, terms, .. } if tag.is_empty() && terms.len() == 1 => {
-            classify_for_feed(lang, &terms[0])
-        }
-        _ => lang.classify_term(term),
-    }
-}
-
 fn run(args: &RunArgs) -> Result<()> {
     let (input_path, base) = resolve_stem(&args.filename)?;
     let lang = base.split('.').next_back().unwrap();
+
+    // Running a notebook is rendering it: the page goes to stdout, the way a
+    // program's output would, so `./notes.html.quilt > notes.html` works
+    // under a `#!/usr/bin/env quilt` shebang.
+    if lang == "html" && matches!(args.multi, MultiOptions::Omni) {
+        if !args.args.is_empty() {
+            return Err(miette!(
+                "a notebook takes no arguments (got {:?})",
+                args.args
+            ));
+        }
+        return notebook(&NotebookArgs {
+            filename: args.filename.clone(),
+            out: None,
+            stdout: true,
+            open: false,
+            strict: false,
+        });
+    }
 
     let input = fs::read_to_string(&input_path).into_diagnostic()?;
 

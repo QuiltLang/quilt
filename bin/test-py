@@ -35,4 +35,21 @@ for ex in hello expr_compose pow_specialize staged_pow reduce upper_tri_mul; do
   echo "--- $ex.py.quilt"
   "$ROOT/bin/quilt" "examples/$ex.py.quilt" >/dev/null
 done
+
+# The notebook example's Python cells quote HTML, which is the runtime this
+# script builds — so this is where it runs for real. `--strict`: a failed cell
+# other than the one wgsl cell the tour deliberately includes is a regression.
+# Rendered to a scratch file so the committed tour.html stays the reviewed one.
+echo "==> run the notebook example"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+"$ROOT/bin/quilt" notebook examples/notebook/tour.html.quilt -o "$tmp/tour.html" 2>"$tmp/tour.err" \
+  || { cat "$tmp/tour.err" >&2; exit 1; }
+if ! grep -q '1 failed' "$tmp/tour.err"; then
+  echo "error: expected exactly the wgsl cell to fail:" >&2
+  cat "$tmp/tour.err" >&2
+  exit 1
+fi
+grep -q 'the dearest drink is <b>latte</b>' "$tmp/tour.html" \
+  || { echo "error: the tour's headline was not rewritten" >&2; exit 1; }
 echo "py runtime OK ✓"
