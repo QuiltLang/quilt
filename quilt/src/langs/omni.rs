@@ -572,6 +572,10 @@ impl MetaLanguage for OmniMetaLanguage {
     fn spawn_str(&self, lang: &str) -> Result<String> {
         self.inner().spawn_str(lang)
     }
+
+    fn prelude(&self, targets: &[&str]) -> Option<crate::meta::Prelude> {
+        self.inner().prelude(targets)
+    }
 }
 
 pub type Omni = Multi<OmniLanguages, OmniMetaLanguages>;

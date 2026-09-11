@@ -18,7 +18,6 @@
 //! Composition works at two levels: a whole statement is a fragment, and so is
 //! a bare predicate -- `sql↖a = 1↗` parses even though SQL's own grammar has no
 //! place for an expression on its own.
-use quilt::prelude::*;
 
 /// One filter the report can apply, as a Rust value.
 enum Filter {

@@ -2,6 +2,7 @@ use crate::lang::Arity;
 use crate::prelude::*;
 use crate::qterm::QTerm;
 use crate::term::CmdOrHole;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -33,6 +34,48 @@ pub fn spawn_spelling(
         );
     }
     Ok(spell(lang))
+}
+
+/// The runtime import an expanded file must open with — `use quilt::prelude::*;`
+/// for Rust, `from quilt import *` for Python — together with how to tell that
+/// the author already wrote it by hand.
+///
+/// It exists because expanded code *calls a runtime*: `tb(..)`, `qlift(..)`,
+/// `name(..)` are names that have to be in scope, and until now every author of
+/// a `.quilt` file typed the import that brings them there. See
+/// [`MetaLanguage::prelude`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Prelude {
+    /// The text to inject, with no trailing newline. May be several lines.
+    pub text: Cow<'static, str>,
+    /// Substrings whose presence in the *source* means the runtime is already
+    /// imported by hand; any one match suppresses injection. A doubled glob
+    /// import is harmless in Rust and Python, but a doubled *named* import is a
+    /// hard error in TypeScript, so this is not merely tidiness.
+    ///
+    /// They are matched against the source rather than the expansion because a
+    /// ground-stage import is copied through verbatim, and the source is in
+    /// hand before anything is written.
+    pub markers: Vec<Cow<'static, str>>,
+}
+
+impl Prelude {
+    pub fn new(
+        text: impl Into<Cow<'static, str>>,
+        markers: impl IntoIterator<Item = &'static str>,
+    ) -> Self {
+        Prelude {
+            text: text.into(),
+            markers: markers.into_iter().map(Cow::Borrowed).collect(),
+        }
+    }
+
+    /// Whether `src` already imports this runtime, so injecting would duplicate
+    /// it.
+    #[must_use]
+    pub fn present_in(&self, src: &str) -> bool {
+        self.markers.iter().any(|m| src.contains(&**m))
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -221,6 +264,33 @@ pub trait MetaLanguage {
              the `quilt machine serve` daemon (issue #268)"
         )
     }
+
+    /// What must be in scope for the code this meta generates: the runtime
+    /// import an expanded file opens with (issue #274). `None` — the default —
+    /// means this host needs none.
+    ///
+    /// It belongs here rather than on [`Language`](crate::lang::Language)
+    /// because the import exists to satisfy the *expander's output*, and the
+    /// output vocabulary is the meta's business: `ops.rs` is what decides a
+    /// quote becomes `tb("block").c(…)`. A quotable-only target (wgsl, html,
+    /// sql, the shells) has no meta and needs no prelude, and a string-based
+    /// meta (nix, lean, text) calls no runtime at all, so both get the right
+    /// answer from this default.
+    ///
+    /// `targets` are the object languages the file may lift into — the file's
+    /// language chain plus every annotation its quotes name. Rust and Python
+    /// ignore them and return one glob import; TypeScript, whose lift spelling
+    /// is target-directed (see [`Self::lift_str`]), builds its named import
+    /// list from them, which is the half of this that a human gets wrong.
+    ///
+    /// The injection itself is the CLI's, not the expander's: a prelude is a
+    /// property of the *file written*, not of the term, so `quilt check` stays
+    /// a pure parse-and-expand and the expander snapshots do not carry it.
+    #[inline]
+    fn prelude(&self, targets: &[&str]) -> Option<Prelude> {
+        let _ = targets;
+        None
+    }
 }
 
 /**************************************************************/
@@ -316,5 +386,9 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn spawn_str(&self, lang: &str) -> Result<String> {
         (**self).spawn_str(lang)
+    }
+
+    fn prelude(&self, targets: &[&str]) -> Option<Prelude> {
+        (**self).prelude(targets)
     }
 }

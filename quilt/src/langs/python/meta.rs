@@ -4,7 +4,7 @@ use super::ops::{build_quote_code, build_tuple_code, build_unquote_code, build_v
 use crate::lang::Arity;
 use crate::prelude::{Index, *};
 use crate::{
-    meta::{spawn_spelling, MetaLanguage},
+    meta::{spawn_spelling, MetaLanguage, Prelude},
     qterm::QTerm,
     term::CmdOrHole,
 };
@@ -147,5 +147,17 @@ impl MetaLanguage for PythonMetaLanguage {
              to emit into — build the sequence with your own `tb(..)` builder in ground code and \
              splice the finished term with `↙…↘`"
         )
+    }
+
+    /// `from quilt import *` — the `quilt` package whose `__init__.py`
+    /// re-exports the native `quilt._quilt` module (issue #274). One glob, so
+    /// the targets do not matter: `qlift`/`qlift_html` come along with
+    /// everything else.
+    ///
+    /// The marker is the import *statement* rather than the whole line, so a
+    /// hand-written selective import (`from quilt import tb, name`) counts as
+    /// already-imported and is left alone.
+    fn prelude(&self, _targets: &[&str]) -> Option<Prelude> {
+        Some(Prelude::new("from quilt import *", ["from quilt import"]))
     }
 }

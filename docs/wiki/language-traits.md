@@ -149,6 +149,10 @@ pub trait MetaLanguage {
     fn emit_str(&self)   -> &'static str { EMIT   }
     fn type_str(&self)   -> &'static str { TYPE   }
     fn name_str(&self)   -> &'static str { NAME   }
+
+    // What must be in scope for the code above: the runtime import an expanded
+    // file opens with.
+    fn prelude(&self, targets: &[&str]) -> Option<Prelude> { None }
 }
 ```
 
@@ -213,6 +217,37 @@ runtimes expose no `emit` method on a term. Both therefore fail on `←` too
 (issue #152). The rule is the same in every case: spell the glyph where the host
 has a meaning for it, fail with actionable guidance where it does not, and never
 let the placeholder reach the output.
+
+### `prelude` — the runtime import
+
+The operator spellings say *how* this host writes a call into the runtime;
+`prelude` says what has to be in scope for those calls to resolve — the import
+`quilt expand` and `quilt run` open a generated file with (issue #274):
+
+```rust
+pub struct Prelude {
+    pub text: Cow<'static, str>,        // "use quilt::prelude::*;"
+    pub markers: Vec<Cow<'static, str>>, // "already imported by hand" if the source contains one
+}
+```
+
+It sits on `MetaLanguage` rather than on `Language` because the import exists to
+satisfy the *expander's output*, and the output vocabulary is the meta's
+business: `ops.rs` is what decides a quote becomes `tb("block").c(…)`. A
+quotable-only target (wgsl, html, sql, the shells) has no meta and needs no
+prelude, and a string-based meta (nix, lean, text) calls no runtime at all — so
+both get the right answer from the `None` default.
+
+`targets` are the object languages the file may lift into: its language chain
+plus every annotation its quotes name. Rust and Python ignore them and return
+one glob import; TypeScript, whose `lift_str` is target-directed, builds its
+named import list from them — which is the half of this that a human writing the
+import by hand gets wrong, and finds out about at run time.
+
+The `markers` are matched against the *source*, not the expansion, because a
+ground-stage import is copied through verbatim and the source is in hand before
+anything is written. See [CLI](cli.md#the-runtime-import-issue-274) for the
+rules the injection follows and the `--prelude` / `--no-prelude` escape hatch.
 
 ---
 

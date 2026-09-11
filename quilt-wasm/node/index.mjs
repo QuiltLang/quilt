@@ -119,7 +119,12 @@ export function expand(src, chain = stageChain()) {
     const stem = `frag.${[...chain].reverse().join(".")}`;
     writeFileSync(join(dir, `${stem}.quilt`), src);
     try {
-      execFileSync(bin, ["expand", join(dir, `${stem}.quilt`)], {
+      // `--no-prelude`: `quilt expand` opens a generated file with the
+      // `import { … } from "quilt"` the expansion calls into (issue #274), but
+      // a stage reduced here is evaluated as a *script* in a `node:vm` sandbox
+      // that already holds the runtime — and an ESM `import` in a script is a
+      // syntax error, not a resolution failure.
+      execFileSync(bin, ["expand", "--no-prelude", join(dir, `${stem}.quilt`)], {
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (cause) {

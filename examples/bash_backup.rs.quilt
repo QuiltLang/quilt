@@ -15,7 +15,6 @@
 //!
 //! This is the bash twin of `zsh_backup.rs.quilt`; the only change is the
 //! `bash` quote tag (and so the `#!/usr/bin/env bash` shebang on output).
-use quilt::prelude::*;
 
 fn main() -> Result<()> {
     // The backup jobs, fixed at generation time: (label, source directory).

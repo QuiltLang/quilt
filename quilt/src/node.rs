@@ -1,5 +1,5 @@
 mod parse;
-pub use parse::{scan, ParseError, Token, TokenKind};
+pub use parse::{constructs, scan, Constructs, ParseError, Token, TokenKind};
 
 use crate::strcmd::PrefixWriter;
 use crate::term::Term;

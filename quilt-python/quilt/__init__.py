@@ -58,7 +58,12 @@ def expand(src, lang="py"):
         inp = os.path.join(d, f"frag.{lang}.quilt")
         with open(inp, "w") as f:
             f.write(src)
-        subprocess.run([qbin, "expand", inp], check=True, capture_output=True)
+        # `--no-prelude`: `quilt expand` opens a generated file with the
+        # `from quilt import *` the expansion calls into (issue #274), but the
+        # namespaces this feeds (`run()` below, and whatever the caller execs
+        # it into) already hold the runtime, and the caller asked for an
+        # expansion, not for a module.
+        subprocess.run([qbin, "expand", "--no-prelude", inp], check=True, capture_output=True)
         with open(inp[: -len(".quilt")]) as f:  # quilt expand strips `.quilt`
             out = f.read()
     # Drop the leading `//! DO NOT EDIT…` header line(s) quilt expand prepends.

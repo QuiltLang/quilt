@@ -30,7 +30,6 @@
 //! container, which a bare-hole quote does not currently produce -- see issue
 //! #133. Building the list in Rust and joining is the idiomatic alternative,
 //! and is what the Nix host does too.
-use quilt::prelude::*;
 
 /// A Lean identifier term, for splicing into name position.
 fn ident(s: &str) -> Arc<QTerm> {

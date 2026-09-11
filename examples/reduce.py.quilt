@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-from quilt import *
 
 # ↓ (reduce) eval-s a QTerm's source back to a live Python value.
 # Write `expr.↓` to call .reduce() on any QTerm.

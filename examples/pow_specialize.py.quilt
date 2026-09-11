@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-from quilt import *
 
 # Partial evaluation of pow(b, p) by exponentiation by squaring.
 # The loop runs at *generation* time; the emitted lambda has no loop or

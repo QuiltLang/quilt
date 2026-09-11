@@ -70,7 +70,17 @@ pub fn project(
     // Scaffolding the placeholders need in order to typecheck, emitted as one
     // synthetic span so every real byte still maps exactly (shifted by its
     // length, which `LineIndex` accounts for).
-    let prologue = meta.ground_prologue();
+    //
+    // Only for a file that *has* constructs. A construct-free `.rs.quilt` is
+    // ordinary source with a longer extension: it projects to itself byte for
+    // byte (`pure_rust_is_identity`), needs no placeholder declared, and — the
+    // same rule `quilt expand` applies to the prelude it injects (issue #274) —
+    // must not be handed a runtime import it does not use.
+    let prologue = if tokens.iter().any(|t| t.kind.is_construct()) {
+        meta.ground_prologue()
+    } else {
+        ""
+    };
     b.synth(prologue);
     let prologue_len = prologue.len();
 
@@ -582,6 +592,21 @@ mod tests {
         proj_chain(src, &["rs"])
     }
 
+    /// The ground half of a projection: everything after the synthetic
+    /// prologue. Rust declares one now that it carries the runtime import the
+    /// expander injects (issue #274), so a test about *ground* text has to say
+    /// so rather than reading from byte zero.
+    fn ground(p: &Projection) -> &str {
+        &p.text[p.prologue_len..]
+    }
+
+    /// The virtual line a quilt line lands on, once the prologue has pushed it
+    /// down. Computed rather than written out, so a change to the prologue is
+    /// not a change to every test that mentions a line number.
+    fn vline(p: &Projection, line: u32) -> u32 {
+        line + u32::try_from(p.text[..p.prologue_len].lines().count()).unwrap()
+    }
+
     fn proj_chain(src: &str, chain: &[&str]) -> Projection {
         project(
             src,
@@ -611,7 +636,11 @@ mod tests {
         let src = "let x = ↖1 + 2↗;\n";
         let p = proj(src);
         // A quote with no `↙…↘` becomes an empty splice block in ground...
-        assert!(p.text.starts_with("let x = { };\n"), "ground: {:?}", p.text);
+        assert!(
+            ground(&p).starts_with("let x = { };\n"),
+            "ground: {:?}",
+            p.text
+        );
         // ...and the quote body is appended in a wrapper fragment for tokenizing.
         assert!(p.text.contains("fn _quilt_q0()"), "fragment: {:?}", p.text);
         assert!(p.text.contains("1 + 2"));
@@ -659,7 +688,7 @@ mod tests {
         assert_eq!(
             foo_v,
             Position {
-                line: 1,
+                line: vline(&p, 1),
                 character: 0
             }
         );
@@ -724,7 +753,11 @@ mod tests {
         // Explicit `wgsl↖…↗` in a plain `.rs.quilt` file: same skip.
         let src = "let x = wgsl↖1u + 2u↗;\n";
         let p = proj(src);
-        assert!(p.text.starts_with("let x = { };\n"), "ground: {:?}", p.text);
+        assert!(
+            ground(&p).starts_with("let x = { };\n"),
+            "ground: {:?}",
+            p.text
+        );
         assert!(p.fragment_ranges.is_empty());
     }
 
@@ -734,13 +767,14 @@ mod tests {
         let p = proj(src);
         let qi = LineIndex::new(src);
         let enc = Encoding::Utf16;
-        // `after` is on quilt line 4; it must remain on virtual line 4.
+        // `after` is on quilt line 4; the multi-line quote must not move it —
+        // only the prologue does, and it moves every line by the same amount.
         let after_q = Position {
             line: 4,
             character: 0,
         };
         let after_v = p.to_virtual(src, &qi, enc, after_q).unwrap();
-        assert_eq!(after_v.line, 4);
+        assert_eq!(after_v.line, vline(&p, 4));
     }
 
     #[test]
@@ -882,7 +916,9 @@ mod tests {
     fn prologue_diagnostics_are_identified() {
         let meta = meta_adapter("py").unwrap();
         let lang = language_adapter("py").unwrap();
-        let p = project("x = 1\n", meta, lang, &["py"]);
+        // A construct is what pulls the prologue in at all, so the fixture has
+        // to have one.
+        let p = project("x = ↖1↗\n", meta, lang, &["py"]);
         let enc = Encoding::Utf16;
 
         let at = |line, character| Position { line, character };
@@ -903,13 +939,34 @@ mod tests {
         assert!(!p.is_in_prologue(enc, user));
     }
 
-    /// Rust declares no prologue, so its projection is untouched — the identity
-    /// property `pure_rust_is_identity` relies on.
+    /// A construct-free file gets no prologue whatever its host declares — the
+    /// identity property `pure_rust_is_identity` relies on, and the same rule
+    /// `quilt expand` applies to the prelude (issue #274).
     #[test]
     #[cfg(feature = "rust")]
-    fn rust_has_no_prologue() {
-        assert_eq!(meta_adapter("rs").unwrap().ground_prologue(), "");
+    fn a_construct_free_file_has_no_prologue() {
+        assert!(!meta_adapter("rs").unwrap().ground_prologue().is_empty());
         assert_eq!(proj("fn main() {}\n").prologue_len, 0);
+        // A Quilt *comment* is not a construct: it is deleted, not translated
+        // into a runtime call, so it does not pull the prologue in either.
+        assert_eq!(proj("⟨//⟩ note\nfn main() {}\n").prologue_len, 0);
+    }
+
+    /// The Rust prologue carries the runtime import the expander injects, so a
+    /// source that no longer writes `use quilt::prelude::*;` by hand still
+    /// resolves `tb`/`qlift` in the editor (issue #274).
+    #[test]
+    #[cfg(feature = "rust")]
+    fn rust_prologue_carries_the_runtime_import() {
+        let p = proj("let x = ↖1 + 2↗;\n");
+        assert!(p.prologue_len > 0);
+        assert!(
+            p.text[..p.prologue_len].contains("use quilt::prelude::*;"),
+            "prologue: {:?}",
+            &p.text[..p.prologue_len]
+        );
+        // …and the source still begins immediately after it, unmodified.
+        assert!(p.text[p.prologue_len..].starts_with("let x = { };"));
     }
 
     #[test]
@@ -1017,14 +1074,21 @@ mod tests {
             }
         }
 
-        let src = "#!/usr/bin/env quilt\nfn main() {}\n";
+        // A construct, because that is what pulls the prologue in at all — the
+        // rewrite this test is about only has a prologue to account for when
+        // the file has one.
+        let src = "#!/usr/bin/env quilt\nfn main() { ↖1↗; }\n";
         let p = project(src, &Stub, &Stub, &["rs"]);
         // The prologue survives intact...
         assert!(p.text.starts_with("// prologue\n"), "text: {:?}", p.text);
-        // ...and the shebang after it became a comment, byte length preserved.
+        // ...and the shebang after it became a comment, byte length preserved
+        // (`#!` → `//`, so the line reads `///usr/bin/…`).
         assert_eq!(&p.text[p.prologue_len..p.prologue_len + 2], "//");
-        assert_eq!(&p.text[p.prologue_len + 2..], &src[2..]);
-        assert_eq!(p.text.len(), p.prologue_len + src.len());
+        assert!(
+            ground(&p).starts_with("///usr/bin/env quilt\n"),
+            "ground: {:?}",
+            ground(&p)
+        );
     }
 
     #[test]

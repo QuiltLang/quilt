@@ -52,6 +52,45 @@ struct ExpandArgs {
     /// multi-language to use
     #[clap(short, long, default_value_t, value_enum)]
     multi: MultiOptions,
+    /// Open the generated file with this line instead of the host's runtime
+    /// import (e.g. `--prelude 'use crate::prelude::*;'`)
+    #[clap(long, value_name = "LINE", conflicts_with = "no_prelude")]
+    prelude: Option<String>,
+    /// Generate no runtime import, even where the host has one
+    #[clap(long)]
+    no_prelude: bool,
+}
+
+/// How the generated file's runtime import is chosen (issue #274). The default
+/// — neither flag — asks the host's meta-language, which is right whenever the
+/// runtime is the published one.
+///
+/// The escape hatch exists because the import path is not universal. Code
+/// generated *inside this repo* wants `use crate::prelude::*`, and a runtime
+/// that re-invokes the expander on a generated stage (quilt-python's `expand`,
+/// quilt-wasm's) wants no import at all — it evaluates the result in a scope
+/// that already holds the runtime, and in TypeScript's case in a `node:vm`
+/// script, where an ESM `import` is a syntax error.
+///
+/// The flags are repeated on `expand` and `run` rather than shared through one
+/// flattened `Args`: `RunArgs` is itself flattened into `Cli` (as an `Option`,
+/// which is what makes `run` the default subcommand and the
+/// `#!/usr/bin/env quilt` shebang work), and clap cannot see a *nested* flatten
+/// through that — `quilt <script>` stopped meaning `quilt run <script>` and
+/// printed help instead.
+#[derive(Clone, Copy, Default)]
+struct PreludeOpts<'a> {
+    text: Option<&'a str>,
+    off: bool,
+}
+
+impl<'a> PreludeOpts<'a> {
+    fn new(text: Option<&'a String>, off: bool) -> Self {
+        PreludeOpts {
+            text: text.map(String::as_str),
+            off,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, ValueEnum)]
@@ -88,6 +127,13 @@ struct RunArgs {
     /// multi-language to use
     #[clap(short, long, default_value_t, value_enum)]
     multi: MultiOptions,
+    /// Open the generated file with this line instead of the host's runtime
+    /// import (e.g. `--prelude 'use crate::prelude::*;'`)
+    #[clap(long, value_name = "LINE", conflicts_with = "no_prelude")]
+    prelude: Option<String>,
+    /// Generate no runtime import, even where the host has one
+    #[clap(long)]
+    no_prelude: bool,
     /// Arguments to pass to the script
     #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<String>,
@@ -166,32 +212,100 @@ fn expand(args: &ExpandArgs) -> Result<()> {
         MultiOptions::Bootstrap => "bootstrap",
     };
 
-    if let Some(cached) = cache_load(&path_key, mtime_secs, mtime_nanos, multi_key) {
-        return generate(output_filename, &cached);
-    }
+    let cached = cache_load(&path_key, mtime_secs, mtime_nanos, multi_key);
+    let hit = cached.is_some();
 
+    // Read even on a cache hit: the *term* is what expansion is expensive for,
+    // and the prelude is decided from the source (does it use any construct?
+    // does it already import the runtime? which languages does it quote?), so
+    // the file is needed either way. The read is a rounding error next to the
+    // parse the cache exists to skip.
     let input = fs::read_to_string(input_filename).expect("Should have been able to read the file");
     // attach the source so span-carrying errors render the offending snippet
     let with_src =
         |e: miette::Report| e.with_source_code(NamedSource::new(input_filename, input.clone()));
-    let expanded = match args.multi {
+    let opts = PreludeOpts::new(args.prelude.as_ref(), args.no_prelude);
+    let (expanded, prelude) = match args.multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
             let chain = lang_chain(&multi, output_filename);
-            let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
-            multi.expand_lang(chain[0], &sterm).map_err(with_src)?
+            let expanded = if let Some(cached) = cached {
+                cached
+            } else {
+                let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
+                multi.expand_lang(chain[0], &sterm).map_err(with_src)?
+            };
+            let prelude = prelude_for(&multi, &chain, &input, opts);
+            (expanded, prelude)
         }
         #[cfg(feature = "bootstrap")]
         MultiOptions::Bootstrap => {
             let mut multi = Bootstrap::default();
             let chain = lang_chain(&multi, output_filename);
-            let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
-            multi.expand_lang(chain[0], &sterm).map_err(with_src)?
+            let expanded = if let Some(cached) = cached {
+                cached
+            } else {
+                let sterm = multi.parse_chain(&chain, &input).map_err(with_src)?;
+                multi.expand_lang(chain[0], &sterm).map_err(with_src)?
+            };
+            let prelude = prelude_for(&multi, &chain, &input, opts);
+            (expanded, prelude)
         }
     };
 
-    cache_store(&path_key, mtime_secs, mtime_nanos, multi_key, &expanded);
-    generate(output_filename, &expanded)
+    if !hit {
+        cache_store(&path_key, mtime_secs, mtime_nanos, multi_key, &expanded);
+    }
+    generate(output_filename, &expanded, prelude.as_deref())
+}
+
+/// The runtime import the file expanded from `input` should open with, or
+/// `None` (issue #274).
+///
+/// `None` in four cases: `--no-prelude`; a host whose meta needs none (nix,
+/// lean and text generate no runtime calls at all); and the two rules that keep
+/// the injection from becoming a footgun:
+///
+/// * **The source uses no Quilt construct.** `examples/hello.rs.quilt` expands
+///   to itself and must stay import-free: Rust tolerates an unused glob
+///   silently, but a Python or TypeScript linter will not.
+/// * **The author already imported the runtime.** Two identical globs are
+///   harmless in Rust and Python, but a doubled *named* import is a hard error
+///   in TypeScript — so this is checked rather than assumed. See
+///   [`Prelude::present_in`](quilt::meta::Prelude::present_in).
+///
+/// `targets` — which only a target-directed host like TypeScript reads — is the
+/// language chain plus every annotation the source's quotes name, so that a
+/// `sql↖…↗` inside a `.rs.quilt` counts even though the chain never mentions
+/// SQL. It over-approximates: a language listed but never lifted into costs an
+/// unused name, one missing costs a name that is not in scope.
+fn prelude_for<LS: Languages, MS: MetaLanguages>(
+    multi: &Multi<LS, MS>,
+    chain: &[&str],
+    input: &str,
+    opts: PreludeOpts<'_>,
+) -> Option<String> {
+    if opts.off {
+        return None;
+    }
+    let used = quilt::node::constructs(input);
+    if !used.any {
+        return None;
+    }
+    if let Some(text) = opts.text {
+        return (!input.contains(text.trim())).then(|| text.to_owned());
+    }
+    let mut targets: Vec<&str> = chain.to_vec();
+    for anno in &used.annos {
+        if !targets.contains(&&**anno) {
+            targets.push(anno);
+        }
+    }
+    // A language with no meta is not an error here — the expansion that just
+    // succeeded proves the host is fine — so a failed lookup is simply "no
+    // prelude".
+    let prelude = multi.prelude(chain[0], &targets).ok().flatten()?;
+    (!prelude.present_in(input)).then(|| prelude.text.into_owned())
 }
 
 /// Validate each file like `expand` would (parse + expansion), but discard the
@@ -408,12 +522,13 @@ fn run(args: &RunArgs) -> Result<()> {
     // The chain travels with the run (as `$QUILT_CHAIN`, ground first) so a
     // runtime that re-invokes the expander on a *generated* stage — `↓` — can
     // expand it under the same defaults for un-annotated quotes.
+    let opts = PreludeOpts::new(args.prelude.as_ref(), args.no_prelude);
     let (hashbang, chain_key) = match &args.multi {
         MultiOptions::Omni => {
             let mut multi = Omni::default();
             let chain = lang_chain(&multi, &base);
             (
-                expand_to(&mut multi, &chain, &input, &path)?,
+                expand_to(&mut multi, &chain, &input, &path, opts)?,
                 chain.join("."),
             )
         }
@@ -422,7 +537,7 @@ fn run(args: &RunArgs) -> Result<()> {
             let mut multi = Bootstrap::default();
             let chain = lang_chain(&multi, &base);
             (
-                expand_to(&mut multi, &chain, &input, &path)?,
+                expand_to(&mut multi, &chain, &input, &path, opts)?,
                 chain.join("."),
             )
         }
@@ -585,16 +700,26 @@ fn expand_to<LS: Languages, MS: MetaLanguages>(
     chain: &[&str],
     input: &str,
     path: &str,
+    opts: PreludeOpts<'_>,
 ) -> Result<Option<&'static str>> {
     let host = chain[0];
     let hashbang = multi.get_lang(host)?.hashbang();
     // attach the source so span-carrying errors render the offending snippet
     let with_src = |e: miette::Report| e.with_source_code(input.to_string());
     let sterm = multi.parse_chain(chain, input).map_err(with_src)?;
-    multi
-        .expand_lang(host, &sterm)
-        .map_err(with_src)?
-        .dump(path)?;
+    let body = multi.expand_lang(host, &sterm).map_err(with_src)?.coparse();
+    // This is the injection that matters most: the temp file is handed straight
+    // to an interpreter, so a missing runtime import is a failed *run*, not a
+    // stale artifact someone notices later.
+    //
+    // No `strip_shebang` here: `run` takes the shebang off the *input* before
+    // expanding, since the runner comes from the language rather than from what
+    // the script's own `#!` line names.
+    let body = match prelude_for(multi, chain, input, opts) {
+        Some(prelude) => with_prelude(&body, &prelude, line_comment(host)),
+        None => body,
+    };
+    fs::write(path, body).into_diagnostic()?;
     Ok(hashbang)
 }
 
@@ -619,13 +744,143 @@ fn header_comment(filename: &str) -> &'static str {
         .unwrap_or("//!")
 }
 
-fn generate(filename: &str, x: &Arc<QTerm>) -> Result<()> {
+/// Write the expanded term to `filename`, behind the `DO NOT EDIT` header and
+/// — when the host has one and the source did not write it — the runtime import
+/// the generated code calls into (issue #274).
+///
+/// The prelude is written *here*, into the file, rather than built into the
+/// term: it is a property of the artifact, not of the expansion. Keeping it out
+/// of the term is what leaves `quilt check` a pure parse-and-expand and the
+/// expander snapshots (issue #157) unchanged by this feature. The shebang the
+/// source carried is dropped for the mirror-image reason — see
+/// [`strip_shebang`].
+fn generate(filename: &str, x: &Arc<QTerm>, prelude: Option<&str>) -> Result<()> {
     let args = std::env::args().collect::<Vec<_>>()[1..].join(" ");
     let header = format!(
         "{} DO NOT EDIT. GENERATED BY `quilt {args}`.",
         header_comment(filename)
     );
-    x.dump_with_cmds(filename, &[write(&header), NL, NL], &[])
+    let lang = std::path::Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    let body = x.coparse();
+    let body = strip_shebang(&body);
+    let body = match prelude {
+        Some(prelude) => with_prelude(body, prelude, line_comment(lang)),
+        None => body.to_owned(),
+    };
+    fs::write(filename, format!("{header}\n\n{body}")).into_diagnostic()
+}
+
+/// `body` with the shebang the `.quilt` source carried taken off.
+///
+/// A `#!` line in a `.quilt` file says how to run *that file*: it is what makes
+/// `./examples/countdown.rs.quilt` and the extension-less `bin/issues` work.
+/// It says nothing about the artifact, and `run` already ignores it — the
+/// interpreter comes from [`Language::hashbang`](quilt::lang::Language::hashbang),
+/// the *language's* answer, not from whatever the script's own line names — so
+/// `run` strips it before expanding and `check` blanks it. Only `expand` kept
+/// it, where it was never a shebang in the first place: the `DO NOT EDIT`
+/// header goes on line 1, so the copied `#!` landed on line 3 and meant
+/// nothing. In Rust it was worse than nothing — `#!` there is inner-attribute
+/// syntax, so every generated file that came from an executable script failed
+/// to parse (`error[E0753]`).
+///
+/// The blank line that separated the shebang from the code goes with it. An
+/// inner attribute is *not* a shebang, by exactly the rule rustc uses: `#!` is
+/// a shebang only when the next character is not `[`.
+fn strip_shebang(body: &str) -> &str {
+    let Some(rest) = body.strip_prefix("#!") else {
+        return body;
+    };
+    if rest.starts_with('[') {
+        return body;
+    }
+    let rest = rest.find('\n').map_or("", |i| &rest[i + 1..]);
+    rest.strip_prefix('\n').unwrap_or(rest)
+}
+
+/// The line-comment introducer for `lang`, asked of the registry the same way
+/// [`header_comment`] asks for the header's. Used to recognise the leading
+/// comment header an inserted prelude has to go *after*; `//` for anything the
+/// registry does not know, matching [`header_comment`]'s fallback.
+fn line_comment(lang: &str) -> &'static str {
+    quilt::langs::line_comment(lang).unwrap_or("//")
+}
+
+/// `body` opened with `prelude`, placed after whatever has to stay at the top
+/// (see [`prelude_offset`]).
+fn with_prelude(body: &str, prelude: &str, line_comment: &str) -> String {
+    let at = prelude_offset(body, line_comment);
+    let (before, after) = body.split_at(at);
+    if after.is_empty() {
+        format!("{before}{prelude}\n")
+    } else {
+        format!("{before}{prelude}\n\n{after}")
+    }
+}
+
+/// The byte offset in `body` at which a runtime import can be inserted: after
+/// the leading header — blank lines, whole-line comments, a shebang and Rust's
+/// inner attributes — and before the first item.
+///
+/// Not cosmetic. Rust's `//!` doc comments and `#![…]` attributes are *inner*,
+/// and inner means "before any item", so an import written above a file's `//!`
+/// header turns the header itself into a syntax error (`expected outer doc
+/// comment`) — which is what nine of this repo's own examples do. Python and
+/// TypeScript are laxer, but a header is what a reader expects first there too,
+/// and a `#!` shebang is only a shebang on line 1.
+///
+/// A line comment is recognised by `line_comment`, the ground language's own
+/// introducer, so `//!` and `//` both count for Rust and `#`-anything for
+/// Python (its shebang included).
+fn prelude_offset(body: &str, line_comment: &str) -> usize {
+    let mut at = 0;
+    let mut rest = body;
+    while !rest.is_empty() {
+        let line_end = rest.find('\n').map_or(rest.len(), |i| i + 1);
+        let line = rest[..line_end].trim_end();
+        let take = if line.is_empty() || line.starts_with(line_comment) {
+            line_end
+        } else if line.starts_with("#![") {
+            // An inner attribute, which may wrap across lines: take it whole,
+            // by balancing its brackets. Splitting one is worse than placing
+            // the import above it.
+            match attribute_end(rest) {
+                Some(end) => end,
+                None => break,
+            }
+        } else if at == 0 && line.starts_with("#!") {
+            line_end // a shebang, which is only one on the first line
+        } else {
+            break;
+        };
+        at += take;
+        rest = &rest[take..];
+    }
+    at
+}
+
+/// The byte length of the `#![…]` inner attribute `s` starts with, counting to
+/// the `]` that balances its `[` (so a nested `[..]` inside does not end it) and
+/// through the newline after it. `None` if the brackets never balance.
+fn attribute_end(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let after = i + c.len_utf8();
+                    return Some(s[after..].find('\n').map_or(s.len(), |j| after + j + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 // --- Expand cache -----------------------------------------------------------
@@ -707,6 +962,57 @@ mod tests {
             repl_line(&mut multi, &["py"], "x + 2").unwrap().as_deref(),
             Some("7")
         );
+    }
+
+    /// The injected runtime import goes *after* the file's header, because
+    /// Rust's `//!` and `#![…]` are inner and inner means "before any item" —
+    /// an import above them is a syntax error, not a style choice.
+    #[test]
+    fn a_prelude_goes_after_the_header() {
+        // Each case names where the first *item* starts, so the expected
+        // offset is read off the fixture rather than counted by hand.
+        let at = |body: &str, comment: &str, item: &str| {
+            assert_eq!(
+                prelude_offset(body, comment),
+                body.find(item).unwrap(),
+                "{body:?}"
+            );
+        };
+        // Nothing to skip.
+        at("fn main() {}\n", "//", "fn");
+        // A doc header, its trailing blank line included.
+        at("//! docs\n//! more\n\nfn main() {}\n", "//", "fn");
+        // A shebang, and only on the first line.
+        at("#!/usr/bin/env quilt\nfn main() {}\n", "//", "fn");
+        at("fn main() {}\n#!/usr/bin/env quilt\n", "//", "fn");
+        // An inner attribute is taken whole, brackets balanced across lines.
+        at("#![allow(dead_code)]\nfn f() {}\n", "//", "fn");
+        at("#![allow(\n    dead_code\n)]\nfn f() {}\n", "//", "fn");
+        // An unbalanced one stops the scan rather than splitting it.
+        at("#![allow(\nfn f() {}\n", "//", "#![");
+        // Python's introducer covers its shebang and its comments alike.
+        at("#!/usr/bin/env quilt\n# hi\nx = 1\n", "#", "x =");
+    }
+
+    /// The `.quilt` script's own shebang does not travel into the artifact,
+    /// where it would not be on line 1 and so would not be a shebang — but an
+    /// inner attribute, which is spelled the same way up to one character, does.
+    #[test]
+    fn a_shebang_is_dropped_and_an_attribute_is_not() {
+        assert_eq!(
+            strip_shebang("#!/usr/bin/env quilt\n\nfn main() {}\n"),
+            "fn main() {}\n"
+        );
+        // Without the blank line, and with nothing after it at all.
+        assert_eq!(strip_shebang("#!/usr/bin/env quilt\nx = 1\n"), "x = 1\n");
+        assert_eq!(strip_shebang("#!/usr/bin/env quilt\n"), "");
+        assert_eq!(strip_shebang("#!/usr/bin/env quilt"), "");
+        // `#!` is a shebang only when the next character is not `[`.
+        let attr = "#![allow(dead_code)]\nfn f() {}\n";
+        assert_eq!(strip_shebang(attr), attr);
+        // …and a file that never had one is untouched.
+        let plain = "fn main() {}\n#!/usr/bin/env quilt\n";
+        assert_eq!(strip_shebang(plain), plain);
     }
 
     /// A bad line reports and leaves the session usable.

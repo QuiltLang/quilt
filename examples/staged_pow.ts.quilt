@@ -1,8 +1,4 @@
 #!/usr/bin/env quilt
-import {
-  tb, leaf, sym, quote, unquote, cmd, write, push,
-  name, qlift, qlift_html, NL, POP, HOLE,
-} from "quilt";
 
 // Three-stage code generation in TypeScript — the same program as
 // examples/staged_pow.py.quilt, on the other runtime. A program that writes a

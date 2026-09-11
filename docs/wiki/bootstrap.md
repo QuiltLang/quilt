@@ -11,7 +11,7 @@ Quilt is self-hosting: the Rust `MetaLanguage` implementation (`langs/rust/meta.
 ## The two stages
 
 Both stages run the same generator program via `quilt`, `mk_meta.rs.quilt`. The program:
-1. Uses the Quilt library (`use quilt::prelude::*;`) to build `RustMetaLanguage`'s implementation as a `QTerm`.
+1. Uses the Quilt library — `quilt::prelude`, which `quilt run` imports for it (issue #274) — to build `RustMetaLanguage`'s implementation as a `QTerm`.
 2. Uses `⟨T⟩` (expanded to `Arc<QTerm>`) to avoid hard-coding the type.
 3. Writes `quilt/src/langs/rust/meta.rs` and runs `cargo fmt` on it.
 
@@ -47,7 +47,6 @@ The structure is roughly:
 
 ```rust
 #!/usr/bin/env rust-script
-use quilt::prelude::*;
 use quilt::term::STerm;
 
 fn main() -> Result<()> {

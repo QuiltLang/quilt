@@ -8,7 +8,6 @@
 //!
 //! Run with `quilt run examples/db_menu.py.rs.quilt` (needs sqlite3 on PATH).
 use quilt::lang::InnerKind;
-use quilt::prelude::*;
 
 fn main() -> Result<()> {
     // The SQL machine: a live sqlite3 process; its temp tables are its

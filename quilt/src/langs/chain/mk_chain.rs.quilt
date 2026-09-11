@@ -22,7 +22,6 @@
 ⟨//⟩ *runtime* rather than the syntax — `NL` and `NL()` both parse as
 ⟨//⟩ TypeScript — so that one stays a declared divergence, but a declared one
 ⟨//⟩ written down once (#167).
-use quilt::prelude::*;
 use std::process::Command;
 
 /**************************************************************/

@@ -128,6 +128,32 @@ pub enum TokenKind {
     Error,
 }
 
+impl TokenKind {
+    /// Whether this token is a Quilt *construct* — a quote, unquote or operator
+    /// glyph — rather than bytes that pass through: content, newlines, the
+    /// comments (Quilt's own and the object language's), and whatever failed to
+    /// scan.
+    ///
+    /// It answers "does expanding this source produce anything other than the
+    /// source?", which is why both ends of the toolchain key off it: `quilt
+    /// expand` injects a runtime import only into a file that has one (issue
+    /// #274), and `quilt-lsp` emits its ground prologue only for a file that
+    /// has one — so a construct-free `.rs.quilt` still projects to itself byte
+    /// for byte.
+    #[must_use]
+    pub fn is_construct(self) -> bool {
+        !matches!(
+            self,
+            TokenKind::Content
+                | TokenKind::NewLine
+                | TokenKind::PlainLineComment
+                | TokenKind::PlainBlockComment
+                | TokenKind::Comment
+                | TokenKind::Error
+        )
+    }
+}
+
 /// A diagnostic from [`scan`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
@@ -201,6 +227,54 @@ pub fn scan(src: &str) -> (Vec<Token>, Vec<ParseError>) {
     }
     errors.sort_by_key(|e| (e.span.start, e.span.end));
     (tokens, errors)
+}
+
+/// What a scan says about the Quilt *constructs* a source uses: whether it has
+/// any at all, and which languages its quotes name (issue #274).
+///
+/// Both answers are needed before a line of the expansion exists — they decide
+/// whether the generated file needs a runtime import and, for a host whose lift
+/// spelling is target-directed, which names that import has to carry. A scan is
+/// enough for it, and a scan is cheap and never fails.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Constructs {
+    /// Whether any quote, unquote or operator glyph occurs — i.e. whether the
+    /// expansion is anything other than the source itself.
+    ///
+    /// A Quilt *comment* does not count. `⟨//⟩` is deleted by the expander, not
+    /// translated into a call, so a file whose only construct is one expands to
+    /// plain source and needs nothing in scope.
+    pub any: bool,
+    /// Every language annotation a quote names, in first-seen order (`sql↖…↗` →
+    /// `sql`). Un-annotated quotes contribute nothing: their language comes
+    /// from the file's chain, which the caller already has.
+    ///
+    /// Deliberately an over-approximation of what an expansion lifts into — a
+    /// language listed but never lifted into costs an unused import, while one
+    /// missing costs a name that is not in scope.
+    pub annos: Vec<Box<str>>,
+}
+
+/// Scan `src` for the constructs it uses. See [`Constructs`].
+#[must_use]
+pub fn constructs(src: &str) -> Constructs {
+    let (tokens, _) = scan(src);
+    let mut out = Constructs::default();
+    for t in &tokens {
+        if !t.kind.is_construct() {
+            continue;
+        }
+        out.any = true;
+        if t.kind == TokenKind::OpenQuote {
+            // The span is `anno↖`, annotation included.
+            let text = &src[t.span.clone()];
+            let anno = text.strip_suffix('↖').unwrap_or(text);
+            if !anno.is_empty() && !out.annos.iter().any(|a| &**a == anno) {
+                out.annos.push(anno.into());
+            }
+        }
+    }
+    out
 }
 
 /// The [`TokenKind`] for a node the scanner just produced.
@@ -890,5 +964,41 @@ mod tests {
         // the `⟨` that starts the real terminator just the same.
         assert!(Node::parse("⟨/*⟩⟨*/⟨*/⟩").is_err());
         assert_eq!(&*Node::parse("⟨/*⟩⟨*/⟨⟨*/⟩").expect("closed"), &[]);
+    }
+
+    /// [`constructs`] answers "does expanding this do anything?", which is what
+    /// decides whether the generated file needs a runtime import (issue #274).
+    /// Text, newlines and *comments* — Quilt's own included, since one is
+    /// deleted rather than translated into a call — are not constructs.
+    #[test]
+    fn constructs_sees_only_the_constructs() {
+        assert!(!constructs("fn main() {}\n").any);
+        assert!(!constructs("⟨//⟩ note\nfn main() {}\n").any);
+        assert!(!constructs("⟨/*⟩ note ⟨*/⟩\n").any);
+        assert!(!constructs("// ordinary ↖ in a comment is content\n").any);
+        for src in ["↖1↗", "x.↑", "x.↓", "x.←", "⟨T⟩", "⟨N⟩", "py⟨M⟩"] {
+            assert!(constructs(src).any, "{src:?} is a construct");
+        }
+    }
+
+    /// The annotations a source names are what a target-directed host builds
+    /// its import list from, so they are collected in first-seen order, with
+    /// duplicates and the un-annotated case (whose language comes from the
+    /// file's chain instead) left out.
+    #[test]
+    fn constructs_collects_quote_annotations() {
+        let annos = |src| {
+            constructs(src)
+                .annos
+                .iter()
+                .map(|a| a.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(annos("let x = ↖1↗;"), Vec::<String>::new());
+        assert_eq!(annos("let x = sql↖SELECT 1↗;"), vec!["sql"]);
+        assert_eq!(
+            annos("let a = html↖<p/>↗; let b = wgsl↖1u↗; let c = html↖<i/>↗;"),
+            vec!["html", "wgsl"]
+        );
     }
 }

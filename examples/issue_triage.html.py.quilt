@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-from quilt import *
 
 import json
 import subprocess

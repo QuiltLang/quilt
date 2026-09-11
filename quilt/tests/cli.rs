@@ -293,6 +293,205 @@ fn expand_reports_errors_with_a_snippet() {
     assert!(e.contains("let x = ↙1 + 2↘;"), "stderr:\n{e}");
 }
 
+/* ── expand: the injected runtime import (issue #274) ──────────────────── */
+
+/// Expanded code *calls a runtime* — `tb(..)`, `qlift(..)`, `name(..)` — and
+/// until #274 every author typed the import that brought those names into
+/// scope. Each host now supplies it, so the source does not have to.
+#[test]
+fn expand_injects_the_hosts_runtime_import() {
+    for (name, src, want) in [
+        ("i.rs.quilt", "let x = ↖1 + 2↗;\n", "use quilt::prelude::*;"),
+        ("i.py.quilt", "x = ↖1 + 2↗\n", "from quilt import *"),
+        (
+            "i.ts.quilt",
+            "const x = ↖1 + 2↗;\n",
+            "import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, NL, POP, \
+             HOLE } from \"quilt\";",
+        ),
+    ] {
+        let d = Dir::new(&format!("prelude-{}", name.replace('.', "-")));
+        let f = d.write(name, src);
+        let o = run(&[Path::new("expand"), &f]);
+        assert!(o.status.success(), "{name}: stderr:\n{}", stderr(&o));
+        let body = std::fs::read_to_string(d.0.join(name.strip_suffix(".quilt").unwrap())).unwrap();
+        // Directly after the `DO NOT EDIT` header: nothing in the generated
+        // file can precede the names it uses.
+        let second = body.lines().nth(2).unwrap_or_default();
+        assert_eq!(second, want, "{name}: body:\n{body}");
+    }
+}
+
+/// A file that uses no construct expands to itself, so it must not be handed an
+/// import it does not use. Rust tolerates an unused glob silently; a Python or
+/// TypeScript linter does not.
+#[test]
+fn expand_leaves_a_construct_free_file_import_free() {
+    let d = Dir::new("prelude-none");
+    let f = d.write("plain.rs.quilt", "fn main() {\n    println!(\"hi\");\n}\n");
+    let o = run(&[Path::new("expand"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let body = std::fs::read_to_string(d.0.join("plain.rs")).unwrap();
+    assert!(!body.contains("use quilt::prelude"), "body:\n{body}");
+    // A Quilt *comment* is not a construct either: it is deleted, not
+    // translated into a runtime call.
+    let f = d.write("cmt.rs.quilt", "⟨//⟩ note\nfn main() {}\n");
+    assert!(run(&[Path::new("expand"), &f]).status.success());
+    let body = std::fs::read_to_string(d.0.join("cmt.rs")).unwrap();
+    assert!(!body.contains("use quilt::prelude"), "body:\n{body}");
+}
+
+/// Never twice. The import is skipped when the source already brings the
+/// runtime in — two globs are harmless in Rust and Python, but a doubled
+/// *named* import is a hard `Duplicate identifier` error in TypeScript, so the
+/// rule has to hold for the host where it is not merely tidiness.
+#[test]
+fn expand_does_not_double_a_hand_written_import() {
+    for (name, src, needle) in [
+        (
+            "d.rs.quilt",
+            "use quilt::prelude::*;\nlet x = ↖1↗;\n",
+            "quilt::prelude",
+        ),
+        (
+            "d.py.quilt",
+            "from quilt import *\nx = ↖1↗\n",
+            "from quilt import",
+        ),
+        (
+            "d.ts.quilt",
+            "import { tb, leaf, qlift } from \"quilt\";\nconst x = ↖1↗;\n",
+            "from \"quilt\"",
+        ),
+    ] {
+        let d = Dir::new(&format!("dedupe-{}", name.replace('.', "-")));
+        let f = d.write(name, src);
+        let o = run(&[Path::new("expand"), &f]);
+        assert!(o.status.success(), "{name}: stderr:\n{}", stderr(&o));
+        let body = std::fs::read_to_string(d.0.join(name.strip_suffix(".quilt").unwrap())).unwrap();
+        assert_eq!(
+            body.matches(needle).count(),
+            1,
+            "{name}: the import should appear once, body:\n{body}"
+        );
+    }
+}
+
+/// TypeScript has no glob import, so its list names every runtime function the
+/// expansion calls — and the lift spelling is target-directed, so *which*
+/// languages the file quotes decides what is in it. This is the boilerplate a
+/// human gets wrong: the list has to grow the day the file starts quoting HTML.
+#[test]
+fn expand_typescript_import_follows_the_quoted_targets() {
+    let d = Dir::new("prelude-ts-targets");
+
+    // Plain `.ts`: only the homogeneous `qlift`.
+    let f = d.write("a.ts.quilt", "const x = ↖1 + 2↗;\n");
+    assert!(run(&[Path::new("expand"), &f]).status.success());
+    let body = std::fs::read_to_string(d.0.join("a.ts")).unwrap();
+    assert!(body.contains(" qlift,"), "body:\n{body}");
+    assert!(!body.contains("qlift_html"), "body:\n{body}");
+
+    // The chain says HTML, so `qlift_html` — the spelling `↑` expands to
+    // there — comes along.
+    let f = d.write("b.html.ts.quilt", "const x = ↖<p>↙↑(\"hi\")↘</p>↗;\n");
+    assert!(run(&[Path::new("expand"), &f]).status.success());
+    let body = std::fs::read_to_string(d.0.join("b.html.ts")).unwrap();
+    assert!(body.contains("qlift_html"), "body:\n{body}");
+
+    // …and so does an *annotated* quote, which the chain never mentions.
+    let f = d.write("c.ts.quilt", "const x = html↖<p>↙↑(\"hi\")↘</p>↗;\n");
+    assert!(run(&[Path::new("expand"), &f]).status.success());
+    let body = std::fs::read_to_string(d.0.join("c.ts")).unwrap();
+    assert!(body.contains("qlift_html"), "body:\n{body}");
+}
+
+/// The escape hatch. The import path is not universal — code generated inside
+/// the quilt repo wants `use crate::prelude::*`, and a runtime re-expanding a
+/// generated stage wants nothing at all.
+#[test]
+fn expand_prelude_flags_override_the_host() {
+    let d = Dir::new("prelude-flags");
+    let f = d.write("o.rs.quilt", "let x = ↖1↗;\n");
+
+    let o = quilt()
+        .args(["expand", "--no-prelude"])
+        .arg(&f)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let body = std::fs::read_to_string(d.0.join("o.rs")).unwrap();
+    assert!(!body.contains("use quilt::prelude"), "body:\n{body}");
+
+    let o = quilt()
+        .args(["expand", "--prelude", "use crate::prelude::*;"])
+        .arg(&f)
+        .output()
+        .unwrap();
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let body = std::fs::read_to_string(d.0.join("o.rs")).unwrap();
+    assert!(body.contains("use crate::prelude::*;"), "body:\n{body}");
+    assert!(!body.contains("use quilt::prelude"), "body:\n{body}");
+
+    // They are alternatives, not a pair.
+    let o = quilt()
+        .args(["expand", "--no-prelude", "--prelude", "x"])
+        .arg(&f)
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2), "stderr:\n{}", stderr(&o));
+}
+
+/* ── expand: the script's shebang ──────────────────────────────────────── */
+
+/// A `#!` line in a `.quilt` file says how to run *that file* — it is what
+/// makes `./examples/countdown.rs.quilt` and `bin/issues` work — and it says
+/// nothing about the artifact. `run` strips it before expanding and `check`
+/// blanks it; `expand` used to copy it through, where the `DO NOT EDIT` header
+/// had already taken line 1, so it was not a shebang at all. In Rust it was
+/// worse than noise: `#!` there is inner-attribute syntax, so every generated
+/// file that came from an executable script failed to parse (`error[E0753]`).
+#[test]
+fn expand_drops_the_scripts_shebang() {
+    for (name, src) in [
+        (
+            "s.rs.quilt",
+            "#!/usr/bin/env quilt\n\n//! A doc header, which is an *inner* comment.\n\
+             fn main() { let _x = ↖1↗; }\n",
+        ),
+        ("s.py.quilt", "#!/usr/bin/env quilt\nx = ↖1↗\n"),
+        ("s.ts.quilt", "#!/usr/bin/env quilt\nconst x = ↖1↗;\n"),
+    ] {
+        let d = Dir::new(&format!("shebang-{}", name.replace('.', "-")));
+        let f = d.write(name, src);
+        let o = run(&[Path::new("expand"), &f]);
+        assert!(o.status.success(), "{name}: stderr:\n{}", stderr(&o));
+        let body = std::fs::read_to_string(d.0.join(name.strip_suffix(".quilt").unwrap())).unwrap();
+        assert!(!body.contains("#!"), "{name}: body:\n{body}");
+    }
+}
+
+/// …but an inner attribute is not a shebang. `#!` is one only when the next
+/// character is not `[`, exactly the rule rustc reads it by — and dropping an
+/// `#![allow(..)]` would change what the generated file means.
+#[test]
+fn expand_keeps_an_inner_attribute() {
+    let d = Dir::new("shebang-attr");
+    let f = d.write(
+        "a.rs.quilt",
+        "#![allow(dead_code)]\nfn main() { let _x = ↖1↗; }\n",
+    );
+    let o = run(&[Path::new("expand"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    let body = std::fs::read_to_string(d.0.join("a.rs")).unwrap();
+    assert!(body.contains("#![allow(dead_code)]"), "body:\n{body}");
+    // …and the runtime import lands *after* it, since an inner attribute may
+    // only appear before items.
+    let attr = body.find("#![allow").unwrap();
+    let import = body.find("use quilt::prelude::*;").unwrap();
+    assert!(attr < import, "body:\n{body}");
+}
+
 /* ── -m: choosing the multi ────────────────────────────────────────────── */
 
 /// A file that reaches the two engines' one visible difference: `↑` spells
@@ -511,6 +710,26 @@ fn run_rust_script_executes_the_program() {
         "hello.rs.quilt",
         "#!/usr/bin/env quilt\n\
          use quilt::prelude::*;\n\
+         fn main() {\n\
+         \x20   let frag = ↖1 + 2↗;\n\
+         \x20   println!(\"{}\", frag.coparse());\n\
+         }\n",
+    );
+    let o = run(&[Path::new("run"), &f]);
+    assert!(o.status.success(), "stderr:\n{}", stderr(&o));
+    assert_eq!(stdout(&o).trim(), "1 + 2");
+}
+
+/// The same program with no hand-written import (issue #274). This is the
+/// injection that matters most: `run` hands its temp file straight to
+/// `rust-script`, so a missing runtime import is a failed run rather than a
+/// stale artifact someone notices later.
+#[test]
+fn run_rust_script_needs_no_hand_written_import() {
+    let d = Dir::new("run-rs-prelude");
+    let f = d.write(
+        "hello.rs.quilt",
+        "#!/usr/bin/env quilt\n\
          fn main() {\n\
          \x20   let frag = ↖1 + 2↗;\n\
          \x20   println!(\"{}\", frag.coparse());\n\

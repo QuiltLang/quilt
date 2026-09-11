@@ -1,8 +1,3 @@
-import {
-  tb, leaf, sym, quote, unquote, cmd, write, push,
-  name, qlift, qlift_html, NL, POP, HOLE,
-} from "quilt";
-
 // The schema (which metrics) and opts (interval, title) are supplied by the
 // panel above the dashboard; edit them there to regenerate this stage.
 

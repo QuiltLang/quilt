@@ -18,7 +18,6 @@
 #
 # Run with `quilt run examples/sql_session.sql.py.quilt`
 # (needs the quilt_python module: bin/build-py; sqlite3 on PATH).
-from quilt import *
 
 # Create the machine and feed it definitions, authored as terms.
 db = ⟨M⟩

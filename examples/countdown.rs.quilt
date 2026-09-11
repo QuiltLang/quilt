@@ -1,5 +1,4 @@
 #!/usr/bin/env quilt
-use quilt::prelude::*;
 
 fn main() -> Result<()>{
     // Countdown start: the first CLI argument, or 10 by default.

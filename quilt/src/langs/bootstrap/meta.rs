@@ -1,7 +1,7 @@
 use super::lang::BootstrapLanguage;
 use super::strlift::StrLift;
 use crate::lang::{one_liner, Arity, FlatNode, Language};
-use crate::meta::OuterKind;
+use crate::meta::{OuterKind, Prelude};
 use crate::prelude::*;
 use crate::qterm::tb;
 use crate::term::STerm;
@@ -246,6 +246,18 @@ impl MetaLanguage for BootstrapMetaLanguage {
     fn emit_str(&self) -> Result<&'static str> {
         // "b_.emit"
         Ok("emit(&mut b_)")
+    }
+
+    /// The same `use quilt::prelude::*;` the Omni Rust meta injects (issue
+    /// #274): the bootstrap engine emits the *same* runtime calls under
+    /// different names (`bs_lift` where Omni writes `qlift`), and
+    /// `quilt::prelude` re-exports both.
+    ///
+    /// Sharing the spelling is what keeps `quilt expand` and
+    /// `quilt expand -m bootstrap` differing only in that one call, which is
+    /// the property `expand_bootstrap_selects_the_other_engine` pins.
+    fn prelude(&self, _targets: &[&str]) -> Option<Prelude> {
+        Some(crate::langs::rust::ops::prelude_spelling())
     }
 }
 
