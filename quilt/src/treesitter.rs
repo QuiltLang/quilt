@@ -178,12 +178,8 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             // does only when it stands alone; inside a multi-line string or
             // comment the token swallows it (issue #221), which is why the rows
             // below go through [`write_run`] rather than `builder.write`.
-            let all_anonymous = (0..node.child_count()).all(|i| {
-                u32::try_from(i)
-                    .ok()
-                    .and_then(|i| node.child(i))
-                    .is_some_and(|c| !c.is_named())
-            });
+            let all_anonymous =
+                (0..node.child_count()).all(|i| node.child(i).is_some_and(|c| !c.is_named()));
             if all_anonymous && start.row != end.row {
                 let mut builder = tb(node.kind());
                 let first = &lines[start.row][start.column..];
@@ -347,7 +343,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             let mut depth: i32 = 0;
             let mut point = start;
             for i in 0..node.child_count() {
-                let child = node.child(u32::try_from(i).unwrap()).unwrap();
+                let child = node.child(i).unwrap();
                 let crange = child.range();
                 process(
                     provider,

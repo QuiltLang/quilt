@@ -275,7 +275,7 @@ impl Highlighter {
         let mut cursor = tree_sitter::QueryCursor::new();
         let mut matches = cursor.matches(&self.query, tree.root_node(), text.as_bytes());
         while let Some(m) = matches.next() {
-            for cap in m.captures {
+            for cap in m.captures() {
                 let Some(ty) = self.capture_types[cap.index as usize] else {
                     continue;
                 };

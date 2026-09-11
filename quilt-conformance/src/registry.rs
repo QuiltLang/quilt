@@ -90,7 +90,7 @@ pub fn grammar(name: &str) -> Option<tree_sitter::Language> {
 /// that a grammar bump renamed — is detectable instead of silently falling
 /// through to `Arity::Unknown`.
 #[must_use]
-pub fn node_kinds(lang: &tree_sitter::Language) -> std::collections::BTreeSet<&'static str> {
+pub fn node_kinds(lang: &tree_sitter::Language) -> std::collections::BTreeSet<&str> {
     (0..lang.node_kind_count())
         .filter_map(|id| u16::try_from(id).ok())
         .filter_map(|id| lang.node_kind_for_id(id))
