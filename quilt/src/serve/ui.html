@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>quilt notebook</title>
+    <link rel="stylesheet" href="/ui.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1>quilt notebook</h1>
+      <div class="grow"></div>
+      <span id="engine" class="chip" title="where TypeScript cells run"></span>
+      <span id="status" class="chip">connecting…</span>
+      <button id="run-all" title="run every cell, in page order">Run all</button>
+      <a id="export" href="/export" download="notebook.html">Export</a>
+      <button id="stop" class="quiet" title="end the session; nothing persists">End session</button>
+    </header>
+
+    <main>
+      <section id="editor">
+        <div id="cells"></div>
+        <div class="add">
+          <select id="add-lang" aria-label="language of the new cell">
+            <option value="py">py</option>
+            <option value="ts">ts</option>
+            <option value="sql">sql</option>
+            <option value="bash">bash</option>
+            <option value="zsh">zsh</option>
+            <option value="html">html</option>
+          </select>
+          <button id="add">Add cell</button>
+          <span class="hint">⌘1 then a direction for a glyph (⌘1 ↑ is ↑); ⌘2 then two for a
+            bracket (⌘2 ↑ ←  is ↖). ⌘⏎ runs the cell.</span>
+        </div>
+      </section>
+
+      <section id="view">
+        <nav class="tabs">
+          <button data-tab="page" class="on">Page</button>
+          <button data-tab="site">Site</button>
+          <span class="grow"></span>
+          <span id="note" class="hint"></span>
+        </nav>
+        <!-- The page, live. This frame's realm is the machine TypeScript
+             cells run on, so it is never reloaded while the session lasts. -->
+        <iframe id="page" src="/view" title="the page"></iframe>
+        <!-- The same page without the cell chrome: the site being built. -->
+        <iframe id="site" title="the site" hidden></iframe>
+      </section>
+    </main>
+
+    <template id="cell">
+      <article class="cell">
+        <div class="head">
+          <span class="id"></span>
+          <select class="lang" aria-label="cell language">
+            <option value="py">py</option>
+            <option value="ts">ts</option>
+            <option value="sql">sql</option>
+            <option value="bash">bash</option>
+            <option value="zsh">zsh</option>
+            <option value="html">html</option>
+          </select>
+          <span class="badges"></span>
+          <span class="grow"></span>
+          <button class="run" title="run this cell (⌘⏎)">Run</button>
+          <button class="expand quiet" title="the program this cell becomes">Expand</button>
+          <button class="after quiet" title="add a cell after this one">+</button>
+          <button class="remove quiet" title="remove this cell">×</button>
+        </div>
+        <textarea class="src" spellcheck="false" rows="3"></textarea>
+        <pre class="program" hidden></pre>
+        <div class="out" hidden></div>
+      </article>
+    </template>
+
+    <script type="module" src="/ui.js"></script>
+  </body>
+</html>

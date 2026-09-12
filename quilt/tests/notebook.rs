@@ -391,7 +391,7 @@ fn python_cells_create_python_cells() {
 fn a_session_grows_the_page_a_fragment_at_a_time() {
     let mut multi = Omni::default();
     let mut nb = Notebook::new(&mut multi);
-    assert_eq!(nb.feed_source("<p id=\"x\">5</p>").unwrap(), []);
+    assert!(nb.feed_source("<p id=\"x\">5</p>").unwrap().is_empty());
     assert_eq!(nb.feed_source("py↖int(↙#x↘) * 2↗").unwrap(), [1]);
     assert_eq!(nb.cells()[0].value.as_deref(), Some("10"));
     nb.feed_source("<p id=\"x\">6</p>").unwrap();
