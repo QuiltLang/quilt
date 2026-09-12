@@ -127,6 +127,12 @@ The VS Code extension (syntax highlighting, glyph keybindings, LSP client) is on
    quilt repl html                                           # the same, a line at a time
    ```
 
+   Or hold the session **open**, with an editor and the live page in front of it — TypeScript cells running in the page's own realm, Python cells serving `/app/…` routes off a session `sqlite3` the SQL cells write, and `/site` the page with the cell chrome taken away:
+
+   ```sh
+   quilt notebook --serve examples/notebook/cafe.html.quilt --open
+   ```
+
    See [Notebooks](docs/wiki/notebook.md); the Python cells that quote HTML need `bin/build-py`.
 
 For more, browse the [`examples/`](examples/) directory and the [Documentation Wiki](docs/wiki/index.md).

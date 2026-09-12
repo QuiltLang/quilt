@@ -87,6 +87,17 @@ quilt notebook path/to/notes.html.quilt            # writes notes.html beside it
 quilt notebook path/to/notes.html.quilt --open     # …and opens it (--stdout, -o, --strict)
 quilt repl html                                    # the polyglot REPL: a notebook, a line at a time
 
+# The same notebook session held open behind a socket (quilt/src/serve.rs):
+# an editor + the live page on 127.0.0.1, cells run on demand. TypeScript cells
+# run in the *page's own realm* (the browser is the machine); Python cells
+# register `/app/…` routes served off a session sqlite3 the SQL cells write;
+# `/site` is the page with the cell chrome gone — a small website, built from
+# inside the notebook. Nothing persists; `/export` is the way out.
+quilt notebook --serve                             # a live session on an empty page
+quilt notebook --serve path/to/notes.html.quilt --run --open
+quilt notebook --serve --ts server                 # TypeScript on the node kernel instead
+quilt notebook --serve --port 0                    # any free port (it prints which)
+
 # Machines (docs/design/machines.md): a REPL on the ground language's park
 # machine — persistent kernels for python and typescript, a live sqlite3 for
 # sql, a long-lived shell for bash/zsh, the in-process HTML machine for html.
@@ -286,9 +297,13 @@ Two trait families:
 
 A `Machine` is a stateful evaluator of one language — fed terms over time (`InnerKind` is the message sort: Item defines, Stmt runs, Expr answers a literal), it remembers. Providers, in the order `spawn_machine`/`qspawn` prefer them: **native** (`Language::native_machine`; HTML's `HtmlMachine`, in-process), **persistent** (`ReplMachine` from `repl_spec`: sentinel-framed feeds to a long-lived process — `sqlite3` for sql, the shells, and stdin *kernels* for python and typescript that exec each feed in one namespace, so a cell's definitions are real process state and effects run once), **replay** (`ScriptMachine` from `machine_spec`: history re-run per feed). The REPL protocol frames stderr per feed too when the spec has an `echo_err_wrap`, and a feed the interpreter reports as failed (`sentinel !` — an exception, a non-zero `$?`) is an `Err`. `Multi` parks one default machine per language (`Multi::machine`), which is what `quilt repl` and notebook cells share.
 
+### Live notebooks (`quilt/src/serve.rs`, `docs/wiki/notebook.md`)
+
+`quilt notebook --serve` holds a `Notebook` session open behind a hand-written HTTP/SSE server (`quilt/src/serve/http.rs`; the editor is `serve/ui.{html,css,js}` + `serve/runtime.js`, `include_str!`d). Nothing new happens to a cell — `Notebook::run_cell` is what the file path calls — what is new is who asks. Four decisions carry it. **The page is the truth and the DOM is a view**: every page edit is journalled as a `notebook::Change` and pushed to viewers, which patch by id (`PUT /page/{id}` is the way an edit made in the browser comes home). **The browser is a machine**: a TypeScript cell is expanded here and evaluated in the page frame's realm, so its `document` *is* the page and its state outlives the cell; the answer comes back over `POST /cells/{id}/result` and is landed by `Notebook::land_cell`, which cannot tell where it was produced (`--ts server` uses the node kernel instead). **Python cells can serve**: the session feeds the kernel a prelude with `route` and `db`, and an `/app/…` request becomes a *feed* (`__quilt_dispatch(…)` on stdin, the response read back off stdout) — no second port, no thread in the kernel, every request serialized with cell execution. **One database**: the session parks `sqlite3` on a temp file and hands its path to the Python kernel as `QUILT_DB`, so a route sees what the SQL cells built. `GET /site` is the page with the cell chrome gone, which is the website the session exists to build; `GET /export` is the page `quilt notebook` would have written. See `examples/notebook/cafe.html.quilt`.
+
 ### Feature flags
 
-Each language is gated behind a Cargo feature (see `quilt/Cargo.toml`); all are on by default. The `parse` feature gates tree-sitter (the Quilt-source parser, the `Language` providers, `omni`, and `Multi`'s parse path). The runtime that expanded code targets (the `QTerm` builders, `qlift`, `coparse`) is tree-sitter-free, so consumers like `nanobots-codegen` depend on quilt with `default-features = false, features = ["rust"]` and build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
+Each language is gated behind a Cargo feature (see `quilt/Cargo.toml`); all are on by default. The `parse` feature gates tree-sitter (the Quilt-source parser, the `Language` providers, `omni`, and `Multi`'s parse path). The `serve` feature gates the live-notebook server (`quilt/src/serve.rs`), whose one third-party dependency is `serde_json` for the wire — the HTTP/SSE server itself is hand-written on `std::net`, since it binds `127.0.0.1`, serves one notebook to one person, and holds a mutex over a `Notebook` while subprocesses run; an async runtime and a framework would be a dependency tree the published `quiltlang` carries for one subcommand. On by default, off for an embedder who wants no server in the library. The runtime that expanded code targets (the `QTerm` builders, `qlift`, `coparse`) is tree-sitter-free, so consumers like `nanobots-codegen` depend on quilt with `default-features = false, features = ["rust"]` and build for `wasm32-unknown-unknown` without the tree-sitter C runtime.
 
 ### Bootstrap (`quilt/src/langs/bootstrap/`)
 

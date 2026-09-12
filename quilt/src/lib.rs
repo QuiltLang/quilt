@@ -21,6 +21,12 @@ pub mod prelude;
 pub mod qmatch;
 pub mod qsnap;
 pub mod qterm;
+// A notebook session behind a socket: the editor, the live page, and the
+// `/app` routes its Python cells serve (`quilt notebook --serve`). Adds one
+// dependency (JSON, for the wire) over what a notebook already needs, so it
+// is its own feature — on by default, off for anyone embedding the library.
+#[cfg(feature = "serve")]
+pub mod serve;
 pub mod strcmd;
 pub mod term;
 #[cfg(feature = "parse")]
