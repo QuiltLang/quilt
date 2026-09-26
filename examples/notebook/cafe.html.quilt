@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Café — a site built from inside a notebook</title>
+    <style id="site">
+      body { margin: 0 auto; max-width: 44rem; padding: 2rem 1rem 4rem;
+        font: 16px/1.6 system-ui, -apple-system, sans-serif; color: #1f2328; background: #fff; }
+      h1 { margin-bottom: 0; } h2 { margin-top: 2.5rem; font-size: 1.05rem; color: #57606a; }
+      .lede { color: #57606a; margin-top: .25rem; }
+      #app { border: 1px solid #d0d7de; border-radius: 8px; padding: 1rem 1.25rem; }
+      #app ul { list-style: none; margin: 0; padding: 0; }
+      #app li { display: flex; justify-content: space-between; padding: .35rem 0;
+        border-bottom: 1px dotted #d0d7de; }
+      #app li:last-child { border-bottom: 0; }
+      #app .price { font-variant-numeric: tabular-nums; color: #57606a; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #0d1117; color: #e6edf3; }
+        h2, .lede, #app .price { color: #9198a1; }
+        #app { border-color: #3d444d; } #app li { border-bottom-color: #3d444d; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">Café</h1>
+    <p class="lede" id="lede">
+      A website built from inside a notebook. Open it with
+      <code>quilt notebook --serve examples/notebook/cafe.html.quilt</code>, run the cells
+      top to bottom, and <code>/site</code> is what is left when the cells are taken away.
+    </p>
+
+    <h2>1. The database — a SQL cell</h2>
+    <p>
+      The SQL machine is a live <code>sqlite3</code> on the session's own file, and the
+      Python kernel is told where that file is. One database, two machines.
+    </p>
+    sql↖
+      CREATE TABLE IF NOT EXISTS menu(item TEXT, price INTEGER);
+      DELETE FROM menu;
+      INSERT INTO menu VALUES ('flat white', 350), ('cortado', 320), ('cake', 450);
+    ↗
+    sql↖SELECT count(*) FROM menu;↗
+
+    <h2>2. The backend — Python cells</h2>
+    <p>
+      <code>route</code> registers a handler in the kernel; the server proxies
+      <code>/app/…</code> to it as a feed. Returning a list answers JSON.
+    </p>
+    py↖
+      @route("/menu")
+      def menu():
+          rows = db().execute("SELECT item, price FROM menu ORDER BY price DESC").fetchall()
+          return [{"item": row["item"], "price": row["price"]} for row in rows]
+    ↗
+    py↖
+      @route("/order", methods=("POST",))
+      def order(req):
+          if not req["body"]:
+              return 400, {"error": "what would you like?"}
+          with db() as con:
+              con.execute("CREATE TABLE IF NOT EXISTS orders(item TEXT)")
+              con.execute("INSERT INTO orders VALUES (?)", (req["body"],))
+              placed = con.execute("SELECT count(*) FROM orders").fetchone()[0]
+          return {"ordered": req["body"], "placed": placed}
+    ↗
+
+    <h2>3. The view — TypeScript cells</h2>
+    <p>
+      These run in <em>this page's</em> realm: their <code>document</code> is this
+      document, their handlers outlive the cell, and they reach the Python backend with
+      <code>fetch</code>. They are evaluated as JavaScript, so no type annotations here.
+    </p>
+    <div id="app">the view this cell builds</div>
+    <p>
+      The first cell <em>prints</em> its view rather than assigning it. What a cell
+      prints is fed to the page, and markup carrying an id the page already has
+      redefines that element — so the page the server holds has the menu in it, and
+      <code>/site</code> does too. (Assigning to <code>innerHTML</code> would change
+      what this frame shows and nothing else: the page is the server's.)
+    </p>
+    ts↖
+      const pounds = (pence) => "£" + (pence / 100).toFixed(2);
+      const view = (rows) =>
+        `<div id="app"><ul>` + rows.map((r) =>
+          `<li><span data-item="${r.item}">${r.item}</span>` +
+          `<span class="price">${pounds(r.price)}</span></li>`
+        ).join("") + `</ul></div>`;
+      fetch("/app/menu")
+        .then((r) => r.json())
+        .then((rows) => { console.log(view(rows)); return `${rows.length} on the menu`; })
+    ↗
+    <p>
+      The second adds behaviour. The handler goes on <code>document</code>, not on the
+      list: the page is a live document that cells keep redefining, and a listener bound
+      to an element it replaced would go with it.
+    </p>
+    ts↖
+      document.addEventListener("click", (ev) => {
+        const item = ev.target.dataset && ev.target.dataset.item;
+        if (!item) return;
+        fetch("/app/order", { method: "POST", body: item })
+          .then((r) => r.json())
+          .then((o) => { document.getElementById("orders").textContent =
+            `${o.placed} order(s), last: ${o.ordered}`; });
+      });
+      "click an item to order it"
+    ↗
+    <p id="orders">no orders yet</p>
+
+    <h2>4. The page is the bus</h2>
+    <p>
+      Machines share nothing with each other; what they share is the page. A cell's
+      output that carries an id the page already has redefines that element — so this
+      Python cell writes the headline, wherever the headline happens to be.
+    </p>
+    py↖
+      count = db().execute("SELECT count(*) FROM menu").fetchone()[0]
+      print(f'<h1 id="title">Café — {count} things</h1>')
+    ↗
+    <p>
+      …and an unquote that reaches the page reads it back, in the reading cell's own
+      language: <code>\↙#title\↘</code> is a Python string here.
+    </p>
+    py↖↙#title↘.split("—")[-1].strip()↗
+  </body>
+</html>

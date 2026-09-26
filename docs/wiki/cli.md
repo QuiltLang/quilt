@@ -205,6 +205,27 @@ quilt notebook notes.html.quilt --open     # …and open it in the browser
 quilt notebook notes.html.quilt --strict   # exit non-zero if any cell failed
 ```
 
+### `quilt notebook --serve [file.html.quilt]`
+
+The same session, held open behind a socket instead of written out once: an
+editor, the live page beside it, and the site the cells build. See
+[Live notebooks](notebook.md#live-notebooks).
+
+```sh
+quilt notebook --serve                       # an empty page, a polyglot scratchpad
+quilt notebook --serve notes.html.quilt      # a page, its cells pending
+quilt notebook --serve notes.html.quilt --run --open   # …run them, and open it
+quilt notebook --serve --port 0              # any free port (it prints which)
+quilt notebook --serve --ts server           # TypeScript on the node kernel,
+                                             #   not in the page's own realm
+```
+
+It prints a URL with the session token in it and listens on `127.0.0.1` only.
+Cells are written, expanded and run on demand; TypeScript cells run in the
+page's realm; Python cells can register `/app/…` routes, served from a session
+`sqlite3` the SQL cells write. Nothing persists — `GET /export` (the **Export**
+button) writes the page `quilt notebook` would have.
+
 Two of the other subcommands follow suit on an HTML-ground file, because the
 identity expansion of a notebook is nothing anyone wants written: `quilt
 expand notes.html.quilt` renders it (never cached — a run is not a function of

@@ -24,6 +24,10 @@ miette = {workspace = true, features = ["fancy"]}
 postcard = {workspace = true, features = ["alloc", "use-std"]}
 regex = {workspace = true}
 serde = {workspace = true, features = ["derive", "rc"]}
+# The live notebook's wire format (the `serve` feature). Nothing else in the
+# crate speaks JSON: the expand cache is postcard, and the machines' wire is
+# each interpreter's own printing.
+serde_json = {workspace = true, optional = true}
 tempfile = {workspace = true}
 tracing = {workspace = true}
 tracing-subscriber = {workspace = true, features = ["env-filter"]}
@@ -58,7 +62,12 @@ workspace = true
 
 [features]
 bootstrap = ["parse"]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix", "lean", "sql"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "typescript", "nix", "lean", "sql", "serve"]
+# `quilt notebook --serve`: a notebook session behind a socket (`src/serve`).
+# The server is hand-written on `std::net` — the one dependency it adds is
+# JSON for the wire — but it is still a *server* in a library crate, so an
+# embedder can turn it off. Implies what a notebook needs.
+serve = ["html", "parse", "dep:serde_json"]
 # `parse` enables tree-sitter: the `Language` providers, `omni`, and `Multi`'s
 # parse path. Not the *Quilt* parser — `node` is hand-written and needs no
 # grammar (issue #254), so it is in the runtime-only build too. Off by default for

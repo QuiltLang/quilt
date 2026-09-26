@@ -129,6 +129,71 @@ impl HtmlMachine {
         self.append_baked(&bake_layout(node));
     }
 
+    /// Insert a node directly after the element with `anchor_id`, as its
+    /// next sibling. `false` (and no change) when the document has no such
+    /// element — the caller's cue to [`append`](Self::append) instead.
+    ///
+    /// [`define`](Self::define) can only replace or append, which is all a
+    /// machine's definitions need; a *live* page also has to put a new cell
+    /// where the author is looking, and "after that element" is the only
+    /// position an editor can name with the ids it already has.
+    pub fn insert_after(&mut self, anchor_id: &str, node: &Arc<QTerm>) -> bool {
+        let node = bake_layout(node);
+        let found = map_parent(
+            &self.doc,
+            &|t| element_id(t).as_deref() == Some(anchor_id),
+            &|parent, index| insert_child_after(parent, index, &node),
+        );
+        match found {
+            Some(doc) => {
+                self.doc = doc;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Remove the element with this id, leaving its place empty. `false`
+    /// when the document has no such element.
+    ///
+    /// The element becomes an empty text node rather than being spliced out:
+    /// a parent's layout commands interleave its children by position, so
+    /// blanking one keeps every other child rendering exactly where it was.
+    pub fn remove(&mut self, id: &str) -> bool {
+        let found = map_first(
+            &self.doc,
+            &|t| element_id(t).as_deref() == Some(id),
+            &|_| leaf("text", ""),
+        );
+        match found {
+            Some(doc) => {
+                self.doc = doc;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The document with every element whose id satisfies `pred` blanked —
+    /// the page as a *page*, when the ids named are its cell chrome. See
+    /// [`remove`](Self::remove) for why blanking rather than splicing.
+    #[must_use]
+    pub fn document_without(&self, pred: &dyn Fn(&str) -> bool) -> Arc<QTerm> {
+        fn go(term: &Arc<QTerm>, pred: &dyn Fn(&str) -> bool) -> Arc<QTerm> {
+            if element_id(term).is_some_and(|id| pred(&id)) {
+                return leaf("text", "");
+            }
+            match &**term {
+                QTerm::Tuple { tag, terms, cmds } => {
+                    let terms: Vec<_> = terms.iter().map(|t| go(t, pred)).collect();
+                    tuple(tag, &terms, cmds)
+                }
+                _ => term.clone(),
+            }
+        }
+        go(&self.doc, pred)
+    }
+
     fn append_baked(&mut self, node: &Arc<QTerm>) {
         let into_body = map_first(
             &self.doc,
@@ -532,6 +597,55 @@ fn map_first(
     let mut terms = terms.to_vec();
     terms[i] = new;
     Some(tuple(tag, &terms, cmds))
+}
+
+/// Rebuild the tree with the first tuple that has a *direct child*
+/// satisfying `pred` replaced by `f(parent, index_of_that_child)`; `None`
+/// if nothing matched. The sibling-position counterpart of [`map_first`].
+fn map_parent(
+    term: &Arc<QTerm>,
+    pred: &dyn Fn(&QTerm) -> bool,
+    f: &dyn Fn(&Arc<QTerm>, usize) -> Arc<QTerm>,
+) -> Option<Arc<QTerm>> {
+    let QTerm::Tuple { tag, terms, cmds } = &**term else {
+        return None;
+    };
+    if let Some(index) = terms.iter().position(|c| pred(c)) {
+        return Some(f(term, index));
+    }
+    let (i, new) = terms
+        .iter()
+        .enumerate()
+        .find_map(|(i, c)| map_parent(c, pred, f).map(|n| (i, n)))?;
+    let mut terms = terms.to_vec();
+    terms[i] = new;
+    Some(tuple(tag, &terms, cmds))
+}
+
+/// `container` with `child` inserted after the child at `index`, on its own
+/// line. Children are interleaved with the layout by *hole position*, so the
+/// new hole goes directly after the `index`-th one and the new term directly
+/// after the `index`-th term.
+fn insert_child_after(container: &Arc<QTerm>, index: usize, child: &Arc<QTerm>) -> Arc<QTerm> {
+    let QTerm::Tuple { tag, terms, cmds } = &**container else {
+        return container.clone();
+    };
+    let mut seen = 0;
+    let mut at = cmds.len();
+    for (i, c) in cmds.iter().enumerate() {
+        if matches!(c, CmdOrHole::Hole) {
+            if seen == index {
+                at = i + 1;
+                break;
+            }
+            seen += 1;
+        }
+    }
+    let mut cmds: Vec<CmdOrHole> = cmds.to_vec();
+    cmds.splice(at..at, [CmdOrHole::Cmd(StrCmd::NewLine), CmdOrHole::Hole]);
+    let mut terms = terms.to_vec();
+    terms.insert(index + 1, child.clone());
+    tuple(tag, &terms, &cmds)
 }
 
 /// `container` with `child` appended: before the end tag of an element,

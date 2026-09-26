@@ -696,6 +696,23 @@ Each step useful alone:
    values. Output is read as Quilt-in-HTML, so cells create cells (capped
    by generation). The python and typescript kernels above were built for
    it, and `quilt repl html` is the same session a line at a time.
+7. **(implemented)** The notebook, *live* (`quilt/src/serve.rs`,
+   `quilt notebook --serve`): the same session behind a socket, with an
+   editor and the page in front of it. Two items from the lists above land
+   here. **"The browser as a JavaScript machine"** — a TypeScript cell is
+   expanded on the server and evaluated in the *page's own realm*, so its
+   `document` is the page it is editing and its definitions outlive the
+   cell; its answer crosses back as an ordinary `Answer`, which is what
+   makes *where* a cell ran invisible to the notebook. And the **`quilt
+   machine serve` daemon**, in the shape this artifact needs: the page is
+   one of the machines, an `/app/…` request is dispatched to the Python
+   machine *as a feed* (no second port, no thread in the kernel, every
+   request serialized with cell execution), and the SQL machine is parked on
+   a session file whose path the Python kernel is given — so SQL cells, a
+   Python backend and a TypeScript view build one small website inside one
+   session (`examples/notebook/cafe.html.quilt`). Still to come:
+   `MachineRef`, so a cell can hold a handle to another machine
+   (`/machines/sql/eval`) instead of going through the page.
 
 ## Open questions
 

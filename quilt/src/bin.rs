@@ -47,10 +47,14 @@ enum Commands {
     Clean,
 }
 
-#[derive(Args, Debug)]
+// A CLI's flags are bools; there is no struct to split out here that a user
+// would recognise from the command line.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Args, Debug, Default)]
 struct NotebookArgs {
-    /// .html.quilt file to run
-    filename: String,
+    /// .html.quilt file to run (optional with --serve: the session starts
+    /// from an empty page)
+    filename: Option<String>,
     /// Where to write the rendered page (default: the input name without
     /// `.quilt`)
     #[clap(short, long)]
@@ -58,12 +62,38 @@ struct NotebookArgs {
     /// Write the rendered page to stdout instead of a file
     #[clap(long)]
     stdout: bool,
-    /// Open the rendered page in the default browser
+    /// Open the page in the default browser (the rendered file, or the live
+    /// session with --serve)
     #[clap(long)]
     open: bool,
     /// Exit non-zero if any cell failed (the page is still written)
     #[clap(long)]
     strict: bool,
+    /// Hold the notebook open as a session: an editor and the live page at
+    /// http://127.0.0.1:PORT, cells run on demand. Nothing persists.
+    #[clap(long)]
+    serve: bool,
+    /// The port --serve listens on; 0 picks a free one
+    // The literal rather than `quilt::serve::DEFAULT_PORT`: the args are
+    // parsed in builds without the `serve` feature too (the subcommand stays
+    // listed and says so when invoked). A test pins the two together.
+    #[clap(long, default_value_t = 8788)]
+    port: u16,
+    /// Where a --serve session runs TypeScript cells: in the page's own
+    /// realm (the default) or on the node kernel with the other languages
+    #[clap(long, default_value = "browser", value_name = "WHERE")]
+    ts: TsEngine,
+    /// Run the cells the page came with as --serve starts, instead of
+    /// leaving them pending
+    #[clap(long)]
+    run: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+enum TsEngine {
+    #[default]
+    Browser,
+    Server,
 }
 
 #[derive(Args, Debug)]
@@ -230,11 +260,9 @@ fn expand(args: &ExpandArgs) -> Result<()> {
     // cached: a run is not a function of the source alone.
     if matches!(args.multi, MultiOptions::Omni) && ground_is_html(output_filename) {
         return notebook(&NotebookArgs {
-            filename: input_filename.clone(),
+            filename: Some(input_filename.clone()),
             out: Some(output_filename.to_string()),
-            stdout: false,
-            open: false,
-            strict: false,
+            ..NotebookArgs::default()
         });
     }
 
@@ -596,13 +624,67 @@ fn ground_is_html(stem: &str) -> bool {
     lang_chain(&multi, stem)[0] == "html"
 }
 
+/// `quilt notebook --serve`: the same session, held open behind a socket —
+/// an editor, the live page, and the `/app` routes its Python cells serve.
+/// See `quilt::serve`. A file is optional: without one the session starts
+/// from an empty page, which is the polyglot scratchpad `quilt repl html`
+/// is in a terminal.
+#[cfg(feature = "serve")]
+fn serve_notebook(args: &NotebookArgs) -> Result<()> {
+    let source = match &args.filename {
+        Some(filename) => {
+            let (path, stem) = resolve_stem(filename)?;
+            let multi = Omni::default();
+            if lang_chain(&multi, &stem)[0] != "html" {
+                return Err(miette!(
+                    "a notebook is an .html.quilt file — its ground language is HTML — but \
+                     {filename} is not"
+                ));
+            }
+            Some(fs::read_to_string(&path).into_diagnostic()?)
+        }
+        None => None,
+    };
+    let config = quilt::serve::Config {
+        port: args.port,
+        open: args.open,
+        run: args.run,
+        typescript: match args.ts {
+            TsEngine::Browser => quilt::serve::Engine::Browser,
+            TsEngine::Server => quilt::serve::Engine::Server,
+        },
+    };
+    let mut multi = Omni::default();
+    let with_src = |e: miette::Report| match (&args.filename, &source) {
+        (Some(name), Some(src)) => e.with_source_code(NamedSource::new(name.clone(), src.clone())),
+        _ => e,
+    };
+    quilt::serve::serve(&mut multi, source.as_deref(), &config).map_err(with_src)
+}
+
+/// Without the `serve` feature the flag is still parsed, and says so.
+#[cfg(all(feature = "html", not(feature = "serve")))]
+fn serve_notebook(_args: &NotebookArgs) -> Result<()> {
+    Err(miette!(
+        "this quilt was built without the `serve` feature, so `quilt notebook --serve` has no \
+         server; rebuild with it (it is on by default)"
+    ))
+}
+
 /// `quilt notebook`: run an `.html.quilt` page's cells on their languages'
 /// machines and write the page back with the results in it — see
 /// `quilt::notebook`. `expand` and `run` on an HTML-ground file come here
 /// too; `check` does not, which is what makes it safe.
 #[cfg(feature = "html")]
 fn notebook(args: &NotebookArgs) -> Result<()> {
-    let (path, stem) = resolve_stem(&args.filename)?;
+    if args.serve {
+        return serve_notebook(args);
+    }
+    let filename = args
+        .filename
+        .clone()
+        .ok_or_else(|| miette!("`quilt notebook` wants a file (or `--serve` for an empty page)"))?;
+    let (path, stem) = resolve_stem(&filename)?;
     let input = fs::read_to_string(&path).into_diagnostic()?;
     // Blank a shebang line rather than dropping it, as `check` does, so the
     // spans in cell diagnostics stay exact.
@@ -617,15 +699,13 @@ fn notebook(args: &NotebookArgs) -> Result<()> {
     let chain = lang_chain(&multi, &stem);
     if chain[0] != "html" {
         return Err(miette!(
-            "a notebook is an .html.quilt file — its ground language is HTML — but {} has \
+            "a notebook is an .html.quilt file — its ground language is HTML — but {filename} has \
              ground language {:?}",
-            args.filename,
             chain[0]
         ));
     }
-    let with_src = |e: miette::Report| {
-        e.with_source_code(NamedSource::new(args.filename.clone(), input.clone()))
-    };
+    let with_src =
+        |e: miette::Report| e.with_source_code(NamedSource::new(filename.clone(), input.clone()));
     let rendered = quilt::notebook::run(&mut multi, &input).map_err(with_src)?;
 
     let failures = rendered.failures();
@@ -648,9 +728,9 @@ fn notebook(args: &NotebookArgs) -> Result<()> {
         print!("{html}");
     } else {
         let out = args.out.clone().unwrap_or_else(|| {
-            args.filename
+            filename
                 .strip_suffix(".quilt")
-                .map_or_else(|| format!("{}.html", args.filename), str::to_string)
+                .map_or_else(|| format!("{filename}.html"), str::to_string)
         });
         fs::write(&out, html).into_diagnostic()?;
         eprintln!(
@@ -746,11 +826,9 @@ fn run(args: &RunArgs) -> Result<()> {
             ));
         }
         return notebook(&NotebookArgs {
-            filename: args.filename.clone(),
-            out: None,
+            filename: Some(args.filename.clone()),
             stdout: true,
-            open: false,
-            strict: false,
+            ..NotebookArgs::default()
         });
     }
 

@@ -55,15 +55,15 @@
 //! notebook goes on, as a REPL would. Nothing is retried and nothing is
 //! cached: the notebook is a run, and its rendering is the record of it.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Write as _;
 
 use miette::bail;
 
 use crate::glyphs::GLYPHS;
-use crate::lang::{flat_nodes, Language as _};
+use crate::lang::{flat_nodes, InnerKind, Language as _};
 use crate::lift::escape_html;
-use crate::machine::html::{element_id, top_level};
+use crate::machine::html::{element_id, selector, top_level, Defined};
 use crate::machine::{Answer, HtmlMachine, Machine as _};
 use crate::multi::{Languages, MetaLanguages, Multi};
 use crate::prelude::*;
@@ -132,6 +132,9 @@ pub struct Cell {
     pub generation: usize,
     /// The cell's source as shown: dedented, references unresolved.
     pub src: String,
+    /// Whether the cell has run. A cell in a file has run by the time the
+    /// page is rendered; one added in a live session waits to be told to.
+    pub ran: bool,
     /// The answered literal, for a cell that was a query.
     pub value: Option<Box<str>>,
     pub stdout: Box<str>,
@@ -145,6 +148,24 @@ pub struct Cell {
 }
 
 impl Cell {
+    /// A cell that has a place and a source and has not run.
+    #[must_use]
+    pub fn pending(id: usize, lang: &str, src: &str, generation: usize) -> Cell {
+        Cell {
+            id,
+            lang: lang.into(),
+            generation,
+            src: src.to_string(),
+            ran: false,
+            value: None,
+            stdout: Box::default(),
+            stderr: Box::default(),
+            error: None,
+            edits: Vec::new(),
+            spawned: Vec::new(),
+        }
+    }
+
     #[must_use]
     pub fn failed(&self) -> bool {
         self.error.is_some()
@@ -157,8 +178,30 @@ impl Cell {
     }
 }
 
-fn cell_element_id(id: usize) -> String {
-    format!("quilt-cell-{id}")
+/// The prefix that makes an element a cell's figure. An id is the page's
+/// namespace, so the cells' corner of it is spelled once, here.
+const CELL_ID_PREFIX: &str = "quilt-cell-";
+
+/// The id of cell `id`'s element in the page.
+#[must_use]
+pub fn cell_element_id(id: usize) -> String {
+    format!("{CELL_ID_PREFIX}{id}")
+}
+
+/// The cell an element id belongs to, if it is a cell's figure.
+#[must_use]
+pub fn cell_id(element_id: &str) -> Option<usize> {
+    element_id.strip_prefix(CELL_ID_PREFIX)?.parse().ok()
+}
+
+/// The first quote in a term, pre-order — how a cell's source becomes a
+/// cell's body.
+fn first_quote(term: &Arc<QTerm>) -> Option<Arc<QTerm>> {
+    match &**term {
+        QTerm::Quote { term, .. } => Some(term.clone()),
+        QTerm::Tuple { terms, .. } => terms.iter().find_map(first_quote),
+        QTerm::Unquote { .. } => None,
+    }
 }
 
 /// A cell that has been given a place in the page and not yet run.
@@ -167,6 +210,55 @@ struct Planted {
     lang: Box<str>,
     body: Arc<QTerm>,
     generation: usize,
+}
+
+/// A cell as the session holds it *between* runs: its place in the page and
+/// the source an editor shows. [`Cell`] is the record of a run; this is the
+/// record of a cell, and a live session edits and re-runs it from here.
+#[derive(Debug, Clone)]
+pub struct CellDef {
+    pub id: usize,
+    /// The language the cell is quoted in, as written (`py`, `sql`, …).
+    pub lang: Box<str>,
+    /// The cell's source, references unresolved — what the editor holds.
+    pub src: String,
+    /// 0 for a cell the author wrote; `n + 1` for one a generation-`n`
+    /// cell's output created.
+    pub generation: usize,
+}
+
+/// A cell as its machine will see it: what the expander made of it.
+#[derive(Debug, Clone)]
+pub struct Program {
+    /// Which message sort the machine is being sent.
+    pub kind: InnerKind,
+    /// The cell's source with its page references (`↙#id↘`) resolved — what
+    /// the expander was given.
+    pub resolved: String,
+    /// The expanded program: the text of [`term`](Self::term), and what a
+    /// reader means by "the program this cell becomes".
+    pub program: String,
+    /// The term that is fed. Machines traffic in terms; the two strings
+    /// above are this one, read.
+    pub term: Arc<QTerm>,
+}
+
+/// What the page just did, for a viewer to patch rather than reload.
+///
+/// A live notebook's page lives in two places — the [`HtmlMachine`] the
+/// cells feed and the DOM someone is looking at — and the second is a view
+/// of the first (see `crate::serve`). These are the edits that keep it one
+/// page: everything a session does to the document, in the order it did it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Change {
+    /// The element with this id is now this markup.
+    Define { id: String, html: String },
+    /// This markup is now the next sibling of the element with this id.
+    Insert { after: String, html: String },
+    /// This markup was appended to the page.
+    Append { html: String },
+    /// The element with this id is gone.
+    Remove { id: String },
 }
 
 /// A notebook run: the page with its cells rendered, and the cells.
@@ -204,10 +296,15 @@ pub struct Notebook<'m, LS: Languages, MS: MetaLanguages> {
     multi: &'m mut Multi<LS, MS>,
     page: HtmlMachine,
     cells: Vec<Cell>,
+    /// Every cell the page holds, by id: what a live session edits and
+    /// re-runs. Planted cells enter here before they run.
+    defs: BTreeMap<usize, CellDef>,
     queue: VecDeque<Planted>,
     /// Cells planted while a fragment was being read; moved to the queue
     /// once the fragment is placed.
     spawned: Vec<Planted>,
+    /// What the page has done since a viewer last asked; see [`Change`].
+    changes: Vec<Change>,
     next_id: usize,
 }
 
@@ -218,8 +315,10 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
             multi,
             page: HtmlMachine::default(),
             cells: Vec::new(),
+            defs: BTreeMap::new(),
             queue: VecDeque::new(),
             spawned: Vec::new(),
+            changes: Vec::new(),
             next_id: 1,
         }
     }
@@ -243,7 +342,7 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
         let frag = self.multi.parse_chain(&["html"], src)?;
         let planted = self.plant(&frag, 0);
         for node in top_level(&planted) {
-            self.page.define(&node);
+            self.define(&node);
         }
         self.queue.extend(self.spawned.drain(..));
         let first = self.cells.len();
@@ -254,7 +353,7 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
     /// Run every planted cell, in page order — and every cell those create.
     pub fn run_pending(&mut self) {
         while let Some(planted) = self.queue.pop_front() {
-            self.run_cell(planted);
+            self.run_planted(&planted);
         }
     }
 
@@ -285,6 +384,284 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
         }
     }
 
+    /* ── the live session ─────────────────────────────────────────────── */
+
+    /// Every cell the page holds, in *page* order — which is the order an
+    /// editor lists them in, and not the order they ran in ([`cells`] is
+    /// that). A cell created by a cell's output sits where its creator's
+    /// output put it, so page order is the only order a reader sees.
+    ///
+    /// [`cells`]: Self::cells
+    #[must_use]
+    pub fn cell_defs(&self) -> Vec<&CellDef> {
+        let mut placed: Vec<&CellDef> = self
+            .page
+            .ids()
+            .iter()
+            .filter_map(|id| cell_id(id))
+            .filter_map(|id| self.defs.get(&id))
+            .collect();
+        // A cell whose figure is not (yet) in the page still belongs to the
+        // session; keep it, after the placed ones.
+        let loose: Vec<&CellDef> = self
+            .defs
+            .values()
+            .filter(|d| !placed.iter().any(|p| p.id == d.id))
+            .collect();
+        placed.extend(loose);
+        placed
+    }
+
+    /// One cell's source and place, if the page has it.
+    #[must_use]
+    pub fn cell_def(&self, id: usize) -> Option<&CellDef> {
+        self.defs.get(&id)
+    }
+
+    /// One cell's last run, if it has run.
+    #[must_use]
+    pub fn cell(&self, id: usize) -> Option<&Cell> {
+        self.cells.iter().find(|c| c.id == id)
+    }
+
+    /// The cell's `<figure>` as the page now holds it — what a viewer shows
+    /// in its place.
+    #[must_use]
+    pub fn cell_figure(&self, id: usize) -> Option<String> {
+        self.page.find(&cell_element_id(id)).map(|el| el.coparse())
+    }
+
+    /// Everything the page has done since this was last called, and clear
+    /// the journal. A viewer patches these in and is looking at the page
+    /// the cells are feeding.
+    pub fn take_changes(&mut self) -> Vec<Change> {
+        std::mem::take(&mut self.changes)
+    }
+
+    /// Add a cell to the page: after the element `after` names, else at the
+    /// end. Answers the new cell's id. Nothing runs — [`run_cell`] does.
+    ///
+    /// The source is not parsed here: a half-written cell is still a cell,
+    /// and the place to hear about a syntax error is the cell's own output,
+    /// where [`run_cell`] puts it.
+    ///
+    /// [`run_cell`]: Self::run_cell
+    pub fn add_cell(&mut self, lang: &str, src: &str, after: Option<&str>) -> Result<usize> {
+        let id = self.next_id;
+        self.next_id += 1;
+        let cell = Cell::pending(id, lang, src, 0);
+        let figure = self.figure_term(&cell, "")?;
+        match after {
+            Some(anchor) if self.page.insert_after(anchor, &figure) => {
+                let html = self.cell_figure(id).unwrap_or_else(|| figure.coparse());
+                self.changes.push(Change::Insert {
+                    after: anchor.to_string(),
+                    html,
+                });
+            }
+            _ => {
+                self.define(&figure);
+            }
+        }
+        self.defs.insert(
+            id,
+            CellDef {
+                id,
+                lang: lang.into(),
+                src: src.to_string(),
+                generation: 0,
+            },
+        );
+        Ok(id)
+    }
+
+    /// Edit a cell: a new source, and optionally a new language. The cell
+    /// goes back to pending — its old output belonged to its old source —
+    /// and nothing runs.
+    pub fn set_cell(&mut self, id: usize, lang: Option<&str>, src: &str) -> Result<()> {
+        let def = self
+            .defs
+            .get_mut(&id)
+            .ok_or_else(|| miette!("this page has no cell {id}"))?;
+        if let Some(lang) = lang {
+            def.lang = lang.into();
+        }
+        def.src = src.to_string();
+        let (lang, generation) = (def.lang.clone(), def.generation);
+        self.cells.retain(|c| c.id != id);
+        let cell = Cell::pending(id, &lang, src, generation);
+        let figure = self.figure_term(&cell, "")?;
+        self.define(&figure);
+        Ok(())
+    }
+
+    /// Remove a cell: its figure leaves the page and its source leaves the
+    /// session. Its machine keeps whatever the cell defined — a session is
+    /// a run, and a run cannot be unrun.
+    pub fn remove_cell(&mut self, id: usize) -> Result<()> {
+        if self.defs.remove(&id).is_none() {
+            bail!("this page has no cell {id}");
+        }
+        self.cells.retain(|c| c.id != id);
+        let element = cell_element_id(id);
+        if self.page.remove(&element) {
+            self.changes.push(Change::Remove { id: element });
+        }
+        Ok(())
+    }
+
+    /// Run a cell that the page holds, and every cell its output creates.
+    ///
+    /// A cell that cannot be read at all — an unbalanced bracket, say —
+    /// fails the way a cell that throws fails: in its own output, with the
+    /// session going on. That is the REPL's contract, and an editor needs it
+    /// more than a file does.
+    pub fn run_cell(&mut self, id: usize) -> Result<()> {
+        match self.planted(id)? {
+            Ok(planted) => self.run_planted(&planted),
+            Err((planted, e)) => self.land(&planted, Err(e)),
+        }
+        self.run_pending();
+        Ok(())
+    }
+
+    /// What a cell becomes: its references resolved and its program
+    /// expanded, without running anything. This is "Expand" in an editor,
+    /// and the program a cell whose machine is elsewhere is sent.
+    pub fn expand_cell(&mut self, id: usize) -> Result<Program> {
+        let def = self.def(id)?;
+        let body = self.parse_cell_body(&def.lang, &def.src)?;
+        self.program(&def.lang, &body, def.generation)
+    }
+
+    /// [`expand_cell`](Self::expand_cell) for source that is not (yet) a
+    /// cell: what this text *would* become, page references and all. An
+    /// editor expands as it is typed; the page it reads is this one.
+    pub fn expand_source(&mut self, lang: &str, src: &str) -> Result<Program> {
+        let body = self.parse_cell_body(lang, src)?;
+        self.program(lang, &body, 0)
+    }
+
+    /// Define a fragment of finished HTML into the page, as an `html` cell's
+    /// output would be — the door for an edit made *in* a viewer's DOM,
+    /// which has to reach the page the other cells read. Answers the id it
+    /// defined, when the fragment carried one.
+    pub fn define_html(&mut self, html: &str) -> Result<Option<String>> {
+        let frag = self.parse_html(html)?;
+        let mut defined = None;
+        for node in top_level(&frag) {
+            self.define(&node);
+            defined = defined.or_else(|| element_id(&node));
+        }
+        Ok(defined)
+    }
+
+    /// Land an [`Answer`] produced elsewhere as cell `id`'s outcome — the
+    /// door for a machine that is not in this process. Everything after the
+    /// feed is the same: output read back into the page, cells created by
+    /// it run, the figure rendered.
+    pub fn land_cell(&mut self, id: usize, outcome: Result<Answer>) -> Result<()> {
+        let planted = match self.planted(id)? {
+            Ok(planted) | Err((planted, _)) => planted,
+        };
+        self.land(&planted, outcome);
+        self.run_pending();
+        Ok(())
+    }
+
+    /// Feed source straight to a language's machine — as a cell is fed, but
+    /// without being a cell: no place in the page, no figure, no output read
+    /// back. The session's own line to a machine, for what belongs to the
+    /// session rather than to the page: a live server feeds its Python
+    /// prelude and dispatches its `/app` requests this way.
+    pub fn feed_lang(&mut self, lang: &str, kind: InnerKind, src: &str) -> Result<Answer> {
+        self.multi.feed_on(lang, kind, src)
+    }
+
+    /// Park a machine as the default for `lang`, replacing any already
+    /// parked — the door for a machine the *session* configured rather than
+    /// the language's own spec. A live session parks a `sqlite3` on a file
+    /// its Python kernel can also open, which is what lets SQL cells and a
+    /// Python route see one database.
+    ///
+    /// Park before the first cell of that language runs: the park spawns on
+    /// first use, and a machine already spawned has state to lose.
+    pub fn park_machine(&mut self, lang: &str, machine: Box<dyn crate::machine::Machine>) {
+        let key = self.multi.langs.canonical(lang).to_string();
+        self.multi.machines.insert(&key, machine);
+    }
+
+    /// Whether a machine for `lang` has been spawned (or parked) already.
+    #[must_use]
+    pub fn has_machine(&self, lang: &str) -> bool {
+        self.multi
+            .machines
+            .contains(self.multi.langs.canonical(lang))
+    }
+
+    /// The page as a *page*: the cell chrome gone, everything the cells
+    /// built still in place. This is what the notebook made, as opposed to
+    /// the record of making it — `GET /site` in a live session.
+    #[must_use]
+    pub fn site_html(&self) -> String {
+        self.page
+            .document_without(&|id| cell_id(id).is_some() || id == STYLE_ID)
+            .coparse()
+    }
+
+    /// One cell, ready to run: its stored source parsed as the body of a
+    /// `lang↖…↗` quote, so an editor's text and a file's text take one path.
+    /// `Err` *inside* the `Ok` is a cell that cannot be read — still a cell,
+    /// with somewhere to render the error.
+    #[allow(clippy::type_complexity)]
+    fn planted(
+        &mut self,
+        id: usize,
+    ) -> Result<std::result::Result<Planted, (Planted, miette::Report)>> {
+        let def = self.def(id)?;
+        let CellDef {
+            lang,
+            src,
+            generation,
+            ..
+        } = def;
+        Ok(match self.parse_cell_body(&lang, &src) {
+            Ok(body) => Ok(Planted {
+                id,
+                lang,
+                body,
+                generation,
+            }),
+            Err(e) => Err((
+                Planted {
+                    id,
+                    lang,
+                    body: leaf("text", &src),
+                    generation,
+                },
+                e,
+            )),
+        })
+    }
+
+    fn def(&self, id: usize) -> Result<CellDef> {
+        self.defs
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| miette!("this page has no cell {id}"))
+    }
+
+    /// Parse a cell's source as a cell: the body of a `lang↖…↗` quote in the
+    /// page, which is what the same text in the file would have been.
+    fn parse_cell_body(&mut self, lang: &str, src: &str) -> Result<Arc<QTerm>> {
+        let wrapped = format!("{lang}↖{src}↗");
+        let doc = self
+            .multi
+            .parse_chain(&["html"], &wrapped)
+            .map_err(|e| e.with_source_code(wrapped.clone()))?;
+        first_quote(&doc).ok_or_else(|| miette!("a cell of {lang} must be readable as `{lang}↖…↗`"))
+    }
+
     /// Add the default cell chrome unless the page defines its own.
     fn ensure_style(&mut self) {
         if self.page.find(STYLE_ID).is_some() {
@@ -292,8 +669,28 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
         }
         let style = format!("<style id=\"{STYLE_ID}\">{DEFAULT_STYLE}</style>");
         if let Ok(style) = self.parse_html(&style) {
-            self.page.define(&style);
+            self.define(&style);
         }
+    }
+
+    /// Define a node into the page and journal what that did, so a viewer
+    /// can patch. Every page edit a notebook makes goes through here.
+    ///
+    /// The journalled markup is read back *out of the page* rather than
+    /// taken from the node, so what a viewer patches in is exactly what the
+    /// page now holds — layout baked, entities as stored.
+    fn define(&mut self, node: &Arc<QTerm>) -> Defined {
+        let defined = self.page.define(node);
+        let id = element_id(node);
+        let html = id
+            .as_deref()
+            .and_then(|id| self.page.find(id))
+            .map_or_else(|| node.coparse(), |el| el.coparse());
+        self.changes.push(match (id, defined) {
+            (Some(id), Defined::Replaced) => Change::Define { id, html },
+            _ => Change::Append { html },
+        });
+        defined
     }
 
     /// Parse a fragment of finished HTML (no Quilt in it) with the HTML
@@ -313,6 +710,15 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
             } => {
                 let id = self.next_id;
                 self.next_id += 1;
+                self.defs.insert(
+                    id,
+                    CellDef {
+                        id,
+                        lang: lang.clone(),
+                        src: cell_source(lang, body),
+                        generation,
+                    },
+                );
                 self.spawned.push(Planted {
                     id,
                     lang: lang.clone(),
@@ -340,18 +746,33 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
     }
 
     /// Run one planted cell and render it into its place.
-    fn run_cell(&mut self, planted: Planted) {
+    fn run_planted(&mut self, planted: &Planted) {
+        let outcome = self.execute(&planted.lang, &planted.body, planted.generation);
+        self.land(planted, outcome);
+    }
+
+    /// Land a cell's outcome: read what it said back into the page, take the
+    /// cells its output created, and render its figure where it stands.
+    ///
+    /// Separate from [`run_planted`](Self::run_planted) because a cell's machine is
+    /// not always in this process — a TypeScript cell in a live session runs
+    /// in the viewer's browser (`crate::serve`), and its answer comes back
+    /// over the wire. Where the [`Answer`] was produced makes no difference
+    /// from here on: it is read exactly as a park machine's would be.
+    fn land(&mut self, planted: &Planted, outcome: Result<Answer>) {
         let Planted {
             id,
             lang,
             body,
             generation,
         } = planted;
+        let (id, generation) = (*id, *generation);
         let mut cell = Cell {
             id,
             lang: lang.clone(),
             generation,
-            src: cell_source(&lang, &body),
+            src: cell_source(lang, body),
+            ran: true,
             value: None,
             stdout: Box::default(),
             stderr: Box::default(),
@@ -361,7 +782,7 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
         };
         // The nodes that stay in the cell's own output slot.
         let mut slot: Vec<Arc<QTerm>> = Vec::new();
-        match self.execute(&lang, &body, generation) {
+        match outcome {
             Ok(answer) => {
                 // A query's answer is its last stdout line: it is the value,
                 // and not output as well.
@@ -383,7 +804,7 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
                     // redefinition: it goes where that id is, not here.
                     match element_id(&node) {
                         Some(id) if self.page.find(&id).is_some() => {
-                            self.page.define(&node);
+                            self.define(&node);
                             cell.edits.push(id);
                         }
                         _ => slot.push(node),
@@ -399,13 +820,27 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
             self.queue.push_front(planted);
         }
         self.place(&cell, &slot);
-        self.cells.push(cell);
+        // A cell re-run in a live session replaces its record; in a one-shot
+        // run every id is new, so this is a push.
+        match self.cells.iter_mut().find(|c| c.id == id) {
+            Some(slot) => *slot = cell,
+            None => self.cells.push(cell),
+        }
+    }
+
+    /// Prepare and feed a cell: [`program`](Self::program), then
+    /// [`feed`](Self::feed).
+    fn execute(&mut self, lang: &str, body: &Arc<QTerm>, generation: usize) -> Result<Answer> {
+        let program = self.program(lang, body, generation)?;
+        self.feed(lang, &program)
     }
 
     /// Resolve the cell's page references, re-parse it as a program of its
-    /// own language, expand it with that language's meta, and feed it to
-    /// the language's park machine.
-    fn execute(&mut self, lang: &str, body: &Arc<QTerm>, generation: usize) -> Result<Answer> {
+    /// own language and expand it with that language's meta — everything
+    /// that happens to a cell before its machine sees it. Split out because
+    /// a live session shows this ("Expand") and, for a cell whose machine is
+    /// the viewer's browser, sends it.
+    fn program(&mut self, lang: &str, body: &Arc<QTerm>, generation: usize) -> Result<Program> {
         if generation > MAX_GENERATION {
             bail!(
                 "cell generation {generation} is past the limit of {MAX_GENERATION}: cells kept \
@@ -424,11 +859,39 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
             term
         };
         let kind = self.multi.classify_for_feed(lang, &term)?;
+        Ok(Program {
+            kind,
+            resolved: src,
+            program: term.coparse(),
+            term,
+        })
+    }
+
+    /// Feed a cell's program to its machine: the language's park machine,
+    /// or — for an `html` cell — the page itself.
+    fn feed(&mut self, lang: &str, program: &Program) -> Result<Answer> {
         if lang == "html" {
-            // An HTML cell's machine is the page itself.
-            return self.page.feed(kind, &term);
+            return self.feed_page(program.kind, &program.term);
         }
-        self.multi.machine(lang)?.feed(kind, &term)
+        self.multi.machine(lang)?.feed(program.kind, &program.term)
+    }
+
+    /// Feed the page, journalling what it defined. `HtmlMachine::feed` would
+    /// do the defining itself; the notebook does it so that every page edit
+    /// goes through [`define`](Self::define) and reaches a viewer. The one
+    /// distinction mirrored here is the machine's own: a query changes
+    /// nothing.
+    fn feed_page(&mut self, kind: InnerKind, term: &Arc<QTerm>) -> Result<Answer> {
+        let nodes = top_level(term);
+        let query =
+            kind == InnerKind::Expr || matches!(nodes.as_slice(), [one] if selector(one).is_some());
+        if query {
+            return self.page.feed(kind, term);
+        }
+        for node in &nodes {
+            self.define(node);
+        }
+        Ok(Answer::default())
     }
 
     /// Replace every unquote that reaches the page (`depth` quote levels up
@@ -534,20 +997,22 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
             .map(|n| n.coparse())
             .collect::<Vec<_>>()
             .join("\n");
-        let figure = self
-            .parse_html(&figure_html(cell, &slot_html))
-            .or_else(|_| {
-                // The output did not survive as markup inside a figure (an
-                // unbalanced tag, say): show it as the text it was.
-                let escaped = format!(
-                    "<pre class=\"quilt-stdout\">{}</pre>",
-                    escape_html(&slot_html)
-                );
-                self.parse_html(&figure_html(cell, &escaped))
-            });
-        if let Ok(figure) = figure {
-            self.page.define(&figure);
+        if let Ok(figure) = self.figure_term(cell, &slot_html) {
+            self.define(&figure);
         }
+    }
+
+    /// The cell's `<figure>`, parsed. Falls back to showing the output as
+    /// the text it was when it does not survive as markup inside a figure
+    /// (an unbalanced tag, say).
+    fn figure_term(&mut self, cell: &Cell, slot_html: &str) -> Result<Arc<QTerm>> {
+        self.parse_html(&figure_html(cell, slot_html)).or_else(|_| {
+            let escaped = format!(
+                "<pre class=\"quilt-stdout\">{}</pre>",
+                escape_html(slot_html)
+            );
+            self.parse_html(&figure_html(cell, &escaped))
+        })
     }
 }
 
@@ -562,6 +1027,9 @@ fn figure_html(cell: &Cell, slot_html: &str) -> String {
     }
     if cell.failed() {
         classes.push_str(" quilt-failed");
+    }
+    if !cell.ran {
+        classes.push_str(" quilt-pending");
     }
     let mut h = String::new();
     let _ = writeln!(

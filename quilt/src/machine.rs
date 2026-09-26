@@ -796,6 +796,14 @@ const TYPESCRIPT_KERNEL: &str = r#"
 const vm = require("node:vm"), rl = require("node:readline"), mod = require("node:module");
 const ctx = vm.createContext(Object.assign(Object.create(globalThis), { require, console, process }));
 try { Object.assign(ctx, require(process.env.QUILT_WASM_PKG)); } catch {}
+// A chunk's top-level errors are caught by `run` below, but a *rejected*
+// promise it returns (an unawaited `fetch`, say) surfaces later, off this
+// process's default handler — which is fatal (Node 15+) and would take the
+// whole kernel, and every cell still to come in this session, down with it.
+// Logging it where a synchronous throw already goes keeps one bad promise
+// from being worse than a bug a `try`/`catch` would have caught.
+process.on("uncaughtException", (e) => console.error(e && e.stack ? e.stack : String(e)));
+process.on("unhandledRejection", (e) => console.error(e && e.stack ? e.stack : String(e)));
 const mark = /^console\.(log|error)\("(__QUILT_REPL_DONE_\d+__)"\)$/;
 let buf = [];
 function run(src) {
