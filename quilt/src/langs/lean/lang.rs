@@ -414,7 +414,7 @@ impl Language for LeanLanguage {
     }
 
     fn machine_spec(&self) -> Option<crate::machine::MachineSpec> {
-        self.0.machine_spec()
+        crate::machine::script_spec("lean")
     }
 
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {

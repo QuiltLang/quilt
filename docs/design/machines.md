@@ -158,7 +158,16 @@ pub trait MeteredMachine: Machine {           // nanobots' StateMachine shape
 pub trait IntrospectMachine: Machine {        // what's defined — for the LSP
     fn defs(&self) -> Result<Vec<Def>>;       // to project machine state
 }
+pub trait ForkMachine: Machine {              // a live sibling: both timelines stay
+    fn fork(&self) -> Result<Box<dyn ForkMachine>>;
+}
 ```
+
+`SnapshotMachine` and `ForkMachine` differ in how many timelines stay alive. A
+restore replaces a machine's state, so one handle explores one branch at a time. A
+fork leaves both alive, which suits several contexts explored from one expensive
+start: load once, then fork for each hypothesis. `ScriptMachine` implements
+`ForkMachine` by copying its history.
 
 `ScriptMachine` implements `SnapshotMachine` exactly and for free — its
 whole state *is* its history, the replay model's one honest advantage over a
@@ -263,10 +272,11 @@ it — and the design accommodates it without a new `InnerKind`:
   spellings on `MetaLanguage`. `⟨T⟩` foreshadowed this: quilt already knows
   types are language-relative spellings.
 
-A Lean `ScriptMachine` needs nothing beyond a spec (`lean` on a replayed
-file of commands; effects-free by nature, so the replay model is *exact*
-for it, not degenerate) — it is unimplemented only because the toolchain is
-not in the dev shell yet.
+**(implemented)** A Lean `ScriptMachine` needs nothing beyond a spec: `lean` on a
+replayed file of commands, effects-free by nature, so the replay model is *exact*
+for it, not degenerate. A rejected proof's diagnostics arrive on stdout, so a failed
+run reports both streams. Replay reloads Lean's prelude on every feed, which a
+persistent provider would avoid.
 
 ## Providers: adapters, not interpreters
 

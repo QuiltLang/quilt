@@ -451,10 +451,11 @@
         },
         {
           "axis": "machine",
-          "status": "planned",
-          "note": "a `lean` script machine: feeding a theorem checks it, `#eval` answers values, `#check` is the typing judgment (docs/design/machines.md); blocked on the toolchain joining the dev shell",
-          "issue": 265,
-          "verified_by": "machine/lean"
+          "status": "supported",
+          "verified_by": "machine/lean",
+          "detail": [
+            "script lean: def y := 40; y + 2 = 42"
+          ]
         },
         {
           "axis": "emit",
