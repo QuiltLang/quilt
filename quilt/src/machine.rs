@@ -184,6 +184,20 @@ pub trait SnapshotMachine: Machine {
     fn restore(&mut self, snapshot: &Snapshot) -> Result<()>;
 }
 
+/// Machines that can be forked into a live sibling: the fork starts from this
+/// machine's environment, and the two diverge from there, sharing nothing the
+/// [isolation law](Machine) would notice.
+///
+/// This is not [`SnapshotMachine`] spelled differently. Restoring replaces a
+/// machine's state, so one handle lives one timeline at a time; a fork leaves
+/// both alive, which is what exploring several contexts from one expensive
+/// start wants. A process that took seconds to load is forked once for each
+/// hypothesis, not reloaded for each. A solver's `push`/`pop` is a snapshot and
+/// not a fork; an immutable environment, such as Lean's, is both for free.
+pub trait ForkMachine: Machine {
+    fn fork(&self) -> Result<Box<dyn ForkMachine>>;
+}
+
 /// What a bounded run of a [`MeteredMachine`] came back with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunResult {
@@ -294,8 +308,10 @@ impl ScriptMachine {
         let stdout: Box<str> = String::from_utf8_lossy(&output.stdout).into();
         let stderr: Box<str> = String::from_utf8_lossy(&output.stderr).into();
         if !output.status.success() {
+            // A checker's rejection is its output, not a crash: Lean reports
+            // errors on stdout and leaves stderr empty.
             bail!(
-                "{} machine: {:?} failed with {}:\n{stderr}",
+                "{} machine: {:?} failed with {}:\n{stdout}{stderr}",
                 self.lang,
                 self.spec.program,
                 output.status
@@ -375,6 +391,18 @@ impl Machine for ScriptMachine {
 
 /// A [`ScriptMachine`]'s whole state is its history, so snapshots are exact
 /// and free: the replay model's one honest advantage over a live process.
+impl ForkMachine for ScriptMachine {
+    /// State is history, so a fork is a copy of it.
+    fn fork(&self) -> Result<Box<dyn ForkMachine>> {
+        Ok(Box::new(ScriptMachine {
+            lang: self.lang.clone(),
+            spec: self.spec.clone(),
+            history: self.history.clone(),
+            replayed: self.replayed.clone(),
+        }))
+    }
+}
+
 impl SnapshotMachine for ScriptMachine {
     fn snapshot(&self) -> Result<Snapshot> {
         Ok(Snapshot(
@@ -710,6 +738,8 @@ impl Drop for ReplMachine {
 /// `lang⟨M⟩` expands to in a Rust ground program, which has no registry at
 /// all — reads it directly.
 pub const REGISTERED_SPECS: &[&str] = &[
+    "lean",
+    "lean4",
     "python",
     "py",
     "typescript",
@@ -951,6 +981,18 @@ pub fn script_spec(lang: &str) -> Option<MachineSpec> {
             "console.log(JSON.stringify({}))",
             ".ts",
         ),
+        // A proof language: feeding a `theorem` checks it, and a rejected proof
+        // is a failed feed that stays out of the history. Lean is effect-free,
+        // so replay is exact here rather than the degenerate case it is for an
+        // interpreter, and `#check` is the typing judgment.
+        "lean" | "lean4" => Some(MachineSpec {
+            program: "lean".into(),
+            args: Box::default(),
+            print_wrap: "#eval {}".into(),
+            suffix: ".lean".into(),
+            env: Box::default(),
+            type_wrap: Some("#check {}".into()),
+        }),
         _ => None,
     }
 }
@@ -1067,6 +1109,46 @@ mod tests {
         // The environment survives the query: ask again.
         let ask = m.feed_str(InnerKind::Expr, "x * x").unwrap();
         assert_eq!(ask.value.as_deref(), Some("25"));
+    }
+
+    #[test]
+    fn forks_start_equal_and_diverge() {
+        let mut a = sh_machine();
+        a.feed_str(InnerKind::Item, "x=5").unwrap();
+        let mut b = a.fork().unwrap();
+        // Neither sees what the other does next, and both stay alive.
+        a.feed_str(InnerKind::Item, "x=6").unwrap();
+        b.feed(InnerKind::Item, &crate::qterm::qleaf("code", "y=7"))
+            .unwrap();
+        assert_eq!(
+            &*a.feed_str(InnerKind::Expr, "x").unwrap().value.unwrap(),
+            "6"
+        );
+        let x = b.feed(InnerKind::Expr, &crate::qterm::qleaf("code", "x"));
+        assert_eq!(x.unwrap().value.as_deref(), Some("5"));
+    }
+
+    #[test]
+    fn lean_judges_what_it_is_fed() {
+        let has_lean = Command::new("lean").arg("--version").output().is_ok();
+        if !has_lean {
+            return;
+        }
+        let mut m = ScriptMachine::new("lean", script_spec("lean").unwrap());
+        m.feed_str(InnerKind::Item, "def twice (n : Nat) := n + n")
+            .unwrap();
+        m.feed_str(InnerKind::Item, "theorem t : twice 2 = 4 := rfl")
+            .unwrap();
+        let v = m.feed_str(InnerKind::Expr, "twice 21").unwrap();
+        assert_eq!(v.value.as_deref(), Some("42"));
+        let ty = m.type_of_str("twice").unwrap();
+        assert_eq!(ty.value.as_deref(), Some("twice (n : Nat) : Nat"));
+
+        // A false theorem is rejected, says why, and stays out of the history.
+        let no = m.feed_str(InnerKind::Item, "theorem no : 1 = 2 := rfl");
+        assert!(no.unwrap_err().to_string().contains("failed"));
+        let v = m.feed_str(InnerKind::Expr, "twice 1").unwrap();
+        assert_eq!(v.value.as_deref(), Some("2"));
     }
 
     #[test]

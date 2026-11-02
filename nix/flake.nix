@@ -55,6 +55,9 @@
             # push regardless of what the push contained.
             pkgs.sqlite
             pkgs.zsh
+            # The Lean machine, on the same argument: the matrix records what
+            # the battery ran, not what a given machine happened to have.
+            pkgs.lean4
             pkgs.tree-sitter
             # wasm-pack builds the quilt-wasm runtime (`bin/build-ts`), which
             # `quilt run` needs to run a .ts.quilt file at all.
