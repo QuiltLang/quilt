@@ -104,7 +104,7 @@ let py↖def f(↙args↘): pass↗ = py↖def f(x: int): pass↗;
 The statement expands to a destructuring of `qmatch_n` (see `qmatch.rs`):
 
 ```rust
-let [args] = qmatch_n(&/* pattern with mvar("args") markers */, &/* value */);
+let [args] = qmatch_n(&*/* pattern with mvar("args") markers */, &/* value */);
 ```
 
 Matching is *syntactic*: both sides are compared as the source text they coparse to, anchored at both ends and whitespace-sensitive. Each metavariable binds the text between the surrounding literals (leftmost-shortest when ambiguous; two adjacent metavariables are rejected) as a leaf term that splices back verbatim. A failed match panics at generation time — the expanded `let` is irrefutable.
