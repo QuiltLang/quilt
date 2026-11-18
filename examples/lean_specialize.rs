@@ -63,7 +63,9 @@ fn main() -> Result<()> {
             let mut b_ = tb("def");
             sym("def").emit(&mut b_);
             b_.write(" ");
+            b_.push("    ");
             name.emit(&mut b_);
+            b_.pop();
             b_.write(" ");
             tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b().emit(&mut b_);
             b_.write(" ");
@@ -81,7 +83,9 @@ fn main() -> Result<()> {
                 let mut b_ = tb("theorem");
                 sym("theorem").emit(&mut b_);
                 b_.write(" ");
+                b_.push("                ");
                 lemma.emit(&mut b_);
+                b_.pop();
                 b_.write(" ");
                 tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b().emit(&mut b_);
                 b_.write(" ");
@@ -94,7 +98,9 @@ fn main() -> Result<()> {
                 tb("by").c(&sym("by")).p("  ").n().c(&tb("app").c(&leaf("identifier", "simp")).w(" ").c(&{
                     let mut b_ = tb("list_lit");
                     sym("[").emit(&mut b_);
+                    b_.push("      ");
                     name.emit(&mut b_);
+                    b_.pop();
                     sym(",").emit(&mut b_);
                     b_.write(" ");
                     leaf("identifier", "Nat.pow_succ").emit(&mut b_);
@@ -123,7 +129,7 @@ fn main() -> Result<()> {
         {
             for n in exponents {
                 let name = ident(&format!("pow{n}"));
-                tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("app").c(&name).w(" ").c(&leaf("num_lit", "5")).b()).c(&sym(")")).b()).b().emit(&mut b_);
+                tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("app").p("            ").c(&name).x().w(" ").c(&leaf("num_lit", "5")).b()).c(&sym(")")).b()).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
         };

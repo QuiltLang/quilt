@@ -39,6 +39,22 @@ fn drop_last(s: &str) -> &str {
 
 /**************************************************************/
 
+/// Where a hole's placeholder sits in the flattened code: one row, a byte
+/// range of it, and whether the hole is a [`FlatNode::Splice`].
+#[derive(Debug, Clone, Copy)]
+struct HolePoint {
+    row: usize,
+    start: usize,
+    end: usize,
+    splice: bool,
+}
+
+impl HolePoint {
+    fn at(&self) -> (usize, usize, usize) {
+        (self.row, self.start, self.end)
+    }
+}
+
 /// Language provider used by `TSLanguage`
 pub trait TSProvider {
     /// A tree-sitter parser
@@ -51,6 +67,18 @@ pub trait TSProvider {
     }
     fn arity(&self, _tag: &str) -> Arity {
         Default::default()
+    }
+    /// Whether a term spliced into a hole mid-line has its continuation lines
+    /// aligned to the hole's *column*, not just to the line's indentation.
+    ///
+    /// Off by default: in most languages a multi-line splice reads fine at the
+    /// line's indent, and aligning to the column would push every spliced
+    /// block far to the right. A language whose grammar is column-sensitive
+    /// turns it on — in Lean, `def x : S := ↙s↘` with `s` a two-line structure
+    /// instance put the second field left of the first, which is a parse error
+    /// (Lean's `checkColGe`).
+    fn align_splices(&self) -> bool {
+        false
     }
     /// The `InnerKind` a node with this tag denotes (used to derive
     /// [`Hole::ikind`] from the hole's position).
@@ -129,7 +157,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             provider: &P,
             node: tree_sitter::Node,
             lines: &[&str],
-            hole_points: &mut Peekable<IntoIter<(usize, usize, usize)>>,
+            hole_points: &mut Peekable<IntoIter<HolePoint>>,
             holes: &mut Vec<Hole>,
             prefix: &mut Vec<Box<str>>,
             root: bool,
@@ -150,7 +178,9 @@ impl<P: TSProvider> Language for TSLanguage<P> {
 
             // check if this is a hole
             if start.row == end.row
-                && hole_points.peek() == Some(&(start.row, start.column, end.column))
+                && hole_points
+                    .peek()
+                    .is_some_and(|h| h.at() == (start.row, start.column, end.column))
             {
                 hole_points.next();
                 holes.push(Hole {
@@ -260,7 +290,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 node: tree_sitter::Node,
                 builder: &mut QTermBuilder,
                 lines: &[&str],
-                hole_points: &mut Peekable<IntoIter<(usize, usize, usize)>>,
+                hole_points: &mut Peekable<IntoIter<HolePoint>>,
                 holes: &mut Vec<Hole>,
                 prefix: &[Box<str>],
                 row: usize,
@@ -268,7 +298,13 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 c1: usize,
             ) {
                 let mut col = c0;
-                while let Some(&(r, s, e)) = hole_points.peek() {
+                while let Some(&HolePoint {
+                    row: r,
+                    start: s,
+                    end: e,
+                    ..
+                }) = hole_points.peek()
+                {
                     if r != row || s < col || e > c1 {
                         break;
                     }
@@ -289,6 +325,40 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 builder.write(&lines[row][col..c1]);
             }
 
+            // The padding that aligns a splice at `node` to its column (see
+            // [`TSProvider::align_splices`]): the text between the line's
+            // prefix and the hole, every character but a tab turned into a
+            // space. `None` when `node` is not a splice (a one-line unquote's
+            // hole, [`FlatNode::Splice`]), when nothing precedes it on its
+            // line, or when another hole does — that hole's splice has a width
+            // only known when the term is built.
+            fn splice_pad<P: TSProvider>(
+                provider: &P,
+                node: tree_sitter::Node,
+                lines: &[&str],
+                hole_points: &mut Peekable<IntoIter<HolePoint>>,
+                prefix: &[Box<str>],
+            ) -> Option<String> {
+                let (start, end) = (node.start_position(), node.end_position());
+                let at = (start.row, start.column, end.column);
+                if start.row != end.row
+                    || !hole_points.peek().is_some_and(|h| h.splice && h.at() == at)
+                {
+                    return None;
+                }
+                let before = &lines[start.row][..start.column];
+                let before = before.strip_prefix(&*prefix.concat()).unwrap_or(before);
+                if before.is_empty() || before.contains(provider.hole_str()) {
+                    return None;
+                }
+                Some(
+                    before
+                        .chars()
+                        .map(|c| if c == '\t' { '\t' } else { ' ' })
+                        .collect(),
+                )
+            }
+
             // otherwise, recurse into children
             #[allow(clippy::too_many_arguments)]
             fn process<'a, P: TSProvider>(
@@ -297,7 +367,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 builder: &'a mut QTermBuilder, // TODO: use TupleBuilder
                 depth: &mut i32,
                 lines: &[&str],
-                hole_points: &mut Peekable<IntoIter<(usize, usize, usize)>>,
+                hole_points: &mut Peekable<IntoIter<HolePoint>>,
                 holes: &mut Vec<Hole>,
                 prefix: &mut Vec<Box<str>>,
                 p0: Point,
@@ -363,6 +433,15 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                     crange.start_point,
                 );
                 point = crange.end_point;
+                // A hole that follows text on its line is padded out to its
+                // column for the length of the splice, if the language asks.
+                let pad = provider
+                    .align_splices()
+                    .then(|| splice_pad(provider, child, lines, hole_points, prefix))
+                    .flatten();
+                if let Some(pad) = &pad {
+                    builder.push(pad);
+                }
                 builder.child(&arc(f(
                     provider,
                     child,
@@ -372,6 +451,9 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                     prefix,
                     false,
                 )));
+                if pad.is_some() {
+                    builder.pop();
+                }
             }
             process(
                 provider,
@@ -399,10 +481,15 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         let mut lines = vec![String::new()];
         for c in code {
             match c {
-                FlatNode::Hole => {
+                FlatNode::Hole | FlatNode::Splice => {
                     lines.last_mut().unwrap().push_str(self.provider.hole_str());
                     let new_col = lines.last().unwrap().len();
-                    hole_points.push((row, col, new_col));
+                    hole_points.push(HolePoint {
+                        row,
+                        start: col,
+                        end: new_col,
+                        splice: *c == FlatNode::Splice,
+                    });
                     col = new_col;
                 }
                 FlatNode::Str(s) => {

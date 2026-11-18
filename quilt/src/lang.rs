@@ -105,8 +105,27 @@ pub struct Hole {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FlatNode<'a> {
     Hole,
+    /// A hole a one-line `↙…↘` splices its value into. It is a [`Hole`] in
+    /// every respect but one: a column-sensitive language may align the
+    /// splice to the hole's column (see
+    /// [`TSProvider::align_splices`](crate::treesitter::TSProvider::align_splices)).
+    /// A quote's hole is not one — at ground level its expansion is builder
+    /// code (in a Lean host, a string literal, which padding would change) —
+    /// and neither is a multi-line unquote's, whose own source lines the
+    /// padding would shift when the term is written back as `.quilt`.
+    ///
+    /// [`Hole`]: FlatNode::Hole
+    Splice,
     Str(&'a str),
     NewLine,
+}
+
+impl FlatNode<'_> {
+    /// Whether this is a hole of either kind.
+    #[must_use]
+    pub fn is_hole(&self) -> bool {
+        matches!(self, Self::Hole | Self::Splice)
+    }
 }
 
 /// Whether `tag` is a node kind the target language uses for a comment.

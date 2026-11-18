@@ -97,6 +97,14 @@ impl TSProvider for LeanProvider {
         "__QUILT_HOLE__"
     }
 
+    /// Lean's layout is column-sensitive: the fields of a structure instance,
+    /// the steps of a tactic block and the elements of a `do` must start at or
+    /// right of the first one's column. A multi-line term spliced mid-line has
+    /// to keep its own lines right of where it starts.
+    fn align_splices(&self) -> bool {
+        true
+    }
+
     fn hashbang(&self) -> Option<&'static str> {
         // Lean has no interpreter shebang: a file is run via `lean file.lean`
         // (or `lake env lean`), and `#!` is not comment syntax in Lean 4.
@@ -250,7 +258,7 @@ fn line_hole_ordinals(code: &[FlatNode]) -> Vec<usize> {
     let mut out = Vec::new();
     let mut ordinal = 0usize;
     for (i, node) in code.iter().enumerate() {
-        if !matches!(node, FlatNode::Hole) {
+        if !node.is_hole() {
             continue;
         }
         // Only whitespace may separate the hole from the line break on each
@@ -278,11 +286,16 @@ fn wrap_line_holes<'a>(code: &[FlatNode<'a>], targets: &[usize]) -> Vec<FlatNode
     let mut out = Vec::with_capacity(code.len() + targets.len());
     let mut ordinal = 0usize;
     for node in code {
-        if matches!(node, FlatNode::Hole) {
-            if targets.contains(&ordinal) {
-                out.push(FlatNode::Str(CHECK_PREFIX));
-            }
+        if node.is_hole() {
+            let wrapped = targets.contains(&ordinal);
             ordinal += 1;
+            if wrapped {
+                // The hole stands alone on its line, so the wrapper is all
+                // that precedes it: as a plain hole it is not aligned past it.
+                out.push(FlatNode::Str(CHECK_PREFIX));
+                out.push(FlatNode::Hole);
+                continue;
+            }
         }
         out.push(node.clone());
     }
@@ -351,8 +364,13 @@ impl Language for LeanLanguage {
             Err(e) => e,
         };
 
-        let mut wrapped = Vec::with_capacity(code.len() + 1);
-        wrapped.push(FlatNode::Str(CHECK_PREFIX));
+        // The wrapper takes a line of its own, so the fragment keeps its
+        // columns: a splice is aligned to the column it sits at (see
+        // `TSProvider::align_splices`), which `#check ` on the same line would
+        // push seven to the right.
+        let mut wrapped = Vec::with_capacity(code.len() + 2);
+        wrapped.push(FlatNode::Str(CHECK_PREFIX.trim_end()));
+        wrapped.push(FlatNode::NewLine);
         wrapped.extend_from_slice(code);
 
         // Report the *original* error whenever the retry doesn't yield a clean

@@ -76,7 +76,9 @@ fn main() -> Result<()> {
             let mut b_ = tb("def");
             sym("def").emit(&mut b_);
             b_.write(" ");
+            b_.push("    ");
             f.emit(&mut b_);
+            b_.pop();
             b_.write(" ");
             tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b().emit(&mut b_);
             b_.write(" ");
@@ -101,7 +103,7 @@ fn main() -> Result<()> {
     // definition, in the order they must be peeled, then `omega` to finish.
     // Building it twice (once per theorem) keeps each `by` block's children
     // distinct -- a term is emitted into exactly one parent.
-    let value_thm = tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "bump_chain")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&chain).w(" ").c(&sym("=")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("+")).w(" ").c(&total.qlift_to::<Lean>()).b()).b()).w(" ").c(&sym(":=")).w(" ").c(&{
+    let value_thm = tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "bump_chain")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").p("                               ").c(&chain).x().w(" ").c(&sym("=")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("+")).w(" ").c(&total.qlift_to::<Lean>()).b()).b()).w(" ").c(&sym(":=")).w(" ").c(&{
         let mut b_ = tb("by");
         sym("by").emit(&mut b_);
         b_.push("    ");
@@ -109,7 +111,7 @@ fn main() -> Result<()> {
         {
             for name in &names {
                 let f = ident(name);
-                tb("app").c(&leaf("identifier", "unfold")).w(" ").c(&f).b().emit(&mut b_);
+                tb("app").c(&leaf("identifier", "unfold")).w(" ").p("       ").c(&f).x().b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
             leaf("identifier", "omega").emit(&mut b_);
@@ -121,7 +123,7 @@ fn main() -> Result<()> {
     
     // The same emitted script proving a different statement -- the chain is
     // increasing. Same tactics, so the generator reuses the shape verbatim.
-    let bound_thm = tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "bump_chain_ge")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("≤")).w(" ").c(&chain).b()).w(" ").c(&sym(":=")).w(" ").c(&{
+    let bound_thm = tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "bump_chain_ge")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "x")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Nat")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "x")).w(" ").c(&sym("≤")).w(" ").p("                                      ").c(&chain).x().b()).w(" ").c(&sym(":=")).w(" ").c(&{
         let mut b_ = tb("by");
         sym("by").emit(&mut b_);
         b_.push("    ");
@@ -129,7 +131,7 @@ fn main() -> Result<()> {
         {
             for name in &names {
                 let f = ident(name);
-                tb("app").c(&leaf("identifier", "unfold")).w(" ").c(&f).b().emit(&mut b_);
+                tb("app").c(&leaf("identifier", "unfold")).w(" ").p("       ").c(&f).x().b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
             leaf("identifier", "omega").emit(&mut b_);
@@ -159,7 +161,9 @@ fn main() -> Result<()> {
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w("chain 0 = ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
                 let mut b_ = tb("paren");
                 sym("(").emit(&mut b_);
+                b_.push("                                      ");
                 applied.emit(&mut b_);
+                b_.pop();
                 sym(")").emit(&mut b_);
                 b_.b()
             }).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);
