@@ -248,6 +248,28 @@ fn pattern_let_runtime() -> Result<()> {
     Ok(())
 }
 
+/// A pattern whose root is a variadic node — a list, a block, a Lean
+/// `inductive` — must compile too.
+///
+/// A variadic node with an unquote among its children expands to an
+/// accumulator block, `{ let mut b_ = tb(..); ..; b_.b() }`, and the pattern
+/// was passed as `qmatch_n(&{ .. }, ..)`. The `&QTerm` that `qmatch_n` expects
+/// flows *into* the block, so its tail `b_.b()`, an `Arc<QTerm>`, is a type
+/// error there, and no deref coercion applies. Expansion succeeded and the
+/// generated program did not compile.
+#[test]
+fn pattern_let_variadic_pattern_runtime() -> Result<()> {
+    let mut omni = Omni::default();
+    let code = indoc! {r#"{
+        let ↖[↙a↘, ↙b↘]↗ = ↖[1, 2]↗;
+        format!("{} | {}", a.coparse(), b.coparse())
+    }"#};
+    let qterm = omni.parse(code)?;
+    let out: String = omni.expand(&qterm)?.reduce()?;
+    assert_eq!(out, "1 | 2");
+    Ok(())
+}
+
 #[test]
 fn reduce() -> Result<()> {
     let mut omni = Omni::default();
