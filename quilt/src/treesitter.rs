@@ -212,8 +212,21 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                     // prefix, so the run starts after it — and a hole's column
                     // is an index into the *whole* line, which is why this is a
                     // column rather than a `strip_prefix` on the slice.
-                    let c0 = usize::from(line[..c1].starts_with(&pre)) * pre.len();
-                    builder.nl();
+                    //
+                    // A line that does *not* carry the prefix — a string
+                    // literal's second line written flush left, say — is
+                    // content the prefix is not part of, so it must not gain
+                    // one on the way out: its newline is written raw, which
+                    // the prefix writer leaves alone. `nl` would re-indent it
+                    // to the code around the token and change the program's
+                    // string.
+                    let indented = line[..c1].starts_with(&pre);
+                    let c0 = usize::from(indented) * pre.len();
+                    if indented {
+                        builder.nl();
+                    } else {
+                        builder.write("\n");
+                    }
                     write_run(
                         provider,
                         node,
