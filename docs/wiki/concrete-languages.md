@@ -236,14 +236,13 @@ let pred = sql↖org = ↙name.↑↘↗;                   // tag: `binary_expr
 let q = sql↖SELECT id FROM members WHERE ↙pred↘↗;
 ```
 
-#### Gotcha: a statement quote in Rust tail position is emitted, not returned
+#### A statement quote in statement position is emitted only inside an unquote
 
-The expander reads a *statement*-kinded quote sitting in host statement position as "emit me into the enclosing builder" (the `is_stmt_like` heuristic in `multi.rs`). That is what you want inside an emit loop and not what you want from a function that returns a fragment, so bind it first:
+The expander reads a *statement*-kinded quote sitting in host statement position as "emit me into the enclosing builder" (the `is_stmt_like` heuristic in `multi.rs`). It does so only where there *is* an enclosing builder: ground code inside an unquote that fills a variadic quoted node, whose expansion binds `b_`. Everywhere else — a plain function body — the quote is an ordinary value, so a fragment can be a function's tail expression:
 
 ```rust
 fn q() -> Arc<QTerm> {
-    let query = sql↖SELECT 1↗;   // `sql↖SELECT 1↗` alone here would emit
-    query
+    sql↖SELECT 1↗   // the function's value, not an emit
 }
 ```
 

@@ -77,7 +77,7 @@ fn wgsl_classify_term_expr() -> Result<()> {
 // 2. Cross-language emit
 // ══════════════════════════════════════════════════════════════════════════════
 
-/// A WGSL statement quote in a Rust function body (statement position) should
+/// A WGSL statement quote in statement position of Rust ground code should
 /// fire `OuterKind::Emit`, just like a Rust statement quote does: the term the
 /// quote builds is emitted into the enclosing Rust builder instead of being
 /// built and silently dropped.
@@ -96,17 +96,34 @@ fn wgsl_classify_term_expr() -> Result<()> {
 /// `}.emit(&mut b_);` instead. Both spellings mean the same thing, so the check
 /// accepts either — what it must not accept is the term being built and
 /// silently discarded.
+///
+/// The quote sits in ground code inside an unquote, where the enclosing Rust
+/// block's builder binds `b_`. Outside every unquote there is no builder to
+/// emit into, and the same quote as a function's tail expression is the
+/// function's value: the second half pins that.
 #[test]
 fn wgsl_stmt_quote_emits_in_rust_block() -> Result<()> {
     let out = expand(indoc! {r#"
-        fn shader(val: &Arc<QTerm>) -> Arc<QTerm> {
-            wgsl↖agents[idx].reg[0] = ↙val↘;↗
-        }
+        let p = ↖{
+            ↙{
+                wgsl↖agents[idx].reg[0] = ↙val↘;↗
+            }↘
+        }↗;
     "#})?;
     println!("{out}");
     assert!(
         out.contains(".b().emit(&mut b_);") || out.contains("}.emit(&mut b_);"),
         "WGSL stmt quote should emit the built term into the Rust block builder, got:\n{out}"
+    );
+
+    let out = expand(indoc! {r#"
+        fn shader(val: &Arc<QTerm>) -> Arc<QTerm> {
+            wgsl↖agents[idx].reg[0] = ↙val↘;↗
+        }
+    "#})?;
+    assert!(
+        !out.contains("emit(&mut b_)"),
+        "with no enclosing builder, the quote is the function's value, got:\n{out}"
     );
     Ok(())
 }
