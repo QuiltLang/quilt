@@ -214,3 +214,35 @@ fn variadic_chain_survives_emit_rejection() -> Result<()> {
     );
     Ok(())
 }
+
+/// A backslash in quoted code is lifted into a Python string literal, where it
+/// has to be escaped: `"\\"` in the emitted builder is *one* backslash, so the
+/// quoted `"a\\b"` used to come back as `"a\b"`, a different string.
+#[test]
+fn a_backslash_in_a_quote_survives_the_lift() -> Result<()> {
+    let out = expand_py(r#"q = ↖x = "a\\b"↗"#)?;
+    assert!(
+        out.contains(r#"leaf("escape_sequence", "\\\\")"#),
+        "the escape sequence should be lifted as two backslashes; got:\n{out}"
+    );
+    Ok(())
+}
+
+/// A quoted multi-line string whose continuation line is flush left keeps that
+/// line's newline raw (it must not be re-indented when the term is written),
+/// and the raw newline is lifted as `\n` — a bare one inside `"…"` is a Python
+/// syntax error.
+#[test]
+fn a_flush_left_string_line_is_lifted_as_an_escaped_newline() -> Result<()> {
+    let out = expand_py(indoc! {r#"
+        q = ↖def f():
+            return """a
+        b"""
+        ↗
+    "#})?;
+    assert!(
+        out.contains(r#".w("a").w("\n").w("b")"#),
+        "the flush-left line should follow an escaped raw newline; got:\n{out}"
+    );
+    Ok(())
+}

@@ -24,9 +24,33 @@ use crate::term::CmdOrHole;
 
 /**************************************************************/
 
-/// Render a Python string literal, escaping `"` (mirrors `rust::ops::str_lit`).
+/// Render a Python double-quoted string literal, escaping `\` and `"` and the
+/// control characters a one-line literal cannot hold.
+///
+/// Escaping only `"` used to be enough by accident: no literal it was handed
+/// held a newline. A multi-line token whose continuation line sits outside the
+/// prefix is now written as a raw `"\n"` (so it is not re-indented), which in
+/// an unescaped `"…"` is a syntax error. And an unescaped `\` was always wrong:
+/// `"a\\nb"` in a quoted string came out as `"a\nb"`, a different string.
 fn str_lit(s: &str) -> String {
-    format!("\"{}\"", s.replace('"', "\\\""))
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => write!(out, "\\u{:04x}", c as u32).unwrap(),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// The shared builder-call fold, spelled for Python.

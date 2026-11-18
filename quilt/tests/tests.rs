@@ -300,6 +300,71 @@ fn indented_multiline_plain_block_comment_round_trips() -> Result<()> {
     "#})
 }
 
+/// A multi-line string whose continuation lines sit *left* of the code around
+/// it. Those lines are content, not indentation: the prefix the enclosing block
+/// carries is not part of them, so writing them back must not add it. They used
+/// to be re-indented to the block, which changed the program's string — in the
+/// host code of every expanded file, not only inside quotes.
+#[test]
+fn flush_left_string_continuation_is_not_reindented() -> Result<()> {
+    roundtrip_lang(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let s = "one
+            two
+              three";
+                }
+            }
+        "#},
+    )?;
+    roundtrip_lang(
+        "py",
+        indoc! {r#"
+            def f():
+                s = """one
+              two
+            three"""
+                return s
+        "#},
+    )?;
+    roundtrip_lang(
+        "ts",
+        indoc! {r#"
+            function f() {
+              const s = `one
+            two
+                three`;
+              return s;
+            }
+        "#},
+    )
+}
+
+/// The same string in the host code of a file that also quotes: expansion
+/// rewrites the quote and must leave the string exactly as written.
+#[test]
+fn expand_keeps_a_host_strings_contents() -> Result<()> {
+    let out = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let s = "one
+            two";
+                    let q = rs↖1↗;
+                }
+            }
+        "#},
+    )?;
+    assert!(
+        out.contains("let s = \"one\ntwo\";"),
+        "the host string should be untouched, got:\n{out}"
+    );
+    Ok(())
+}
+
 /* --------------------- escaped glyphs round-trip (#223) ------------------- */
 
 /// Every glyph, escaped, at ground level: a `.quilt` file that spells a glyph
