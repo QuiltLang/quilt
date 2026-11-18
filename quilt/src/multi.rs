@@ -637,6 +637,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             meta,
             lang,
             pattern_vars: None,
+            in_builder: false,
         }
         .expand(&Default::default(), qterm)
     }
@@ -693,6 +694,12 @@ pub struct Expander<'a, LS: Languages, M: MetaLanguage + ?Sized> {
     /// `Some` while expanding the pattern quote of a pattern-let: ground
     /// unquotes become metavariables, collected here in source order.
     pattern_vars: Option<Vec<Box<str>>>,
+    /// Whether the ground code being expanded runs inside an accumulator — an
+    /// unquote that is a direct child of a variadic quoted node, whose
+    /// expansion binds `b_`. Only there can a quote in statement position be
+    /// emitted; outside every unquote (a function body, say) there is no `b_`,
+    /// and a statement-shaped quote in tail position is the block's value.
+    in_builder: bool,
 }
 
 impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
@@ -743,7 +750,12 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                             // wrappers like WGSL's `source_file(stmt, ;)`. This
                             // closes the feedback loop from issue #25 and makes
                             // the decision work across language boundaries.
-                            if arity == Arity::Variadic {
+                            //
+                            // And only inside an accumulator: at plain ground
+                            // there is no `b_`, so `fn f() -> Arc<QTerm> {
+                            // ↖fn g() {}↗ }` returns the quote rather than
+                            // emitting it into a builder that does not exist.
+                            if self.in_builder && arity == Arity::Variadic {
                                 if let QTerm::Quote {
                                     tag: qtag,
                                     lang: lang2,
@@ -830,8 +842,14 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     let expanded = terms
                         .iter()
                         .map(|term| {
-                            // expand each child
-                            let expanded = self.expand(depth, term)?;
+                            // expand each child. A ground unquote under an
+                            // accumulator runs where `b_` is bound; under a
+                            // fluent node it does not.
+                            let outer =
+                                std::mem::replace(&mut self.in_builder, arity == Arity::Variadic);
+                            let expanded = self.expand(depth, term);
+                            self.in_builder = outer;
+                            let expanded = expanded?;
                             // then wrap the result
                             let mut okind = Default::default();
                             if arity == Arity::Variadic {

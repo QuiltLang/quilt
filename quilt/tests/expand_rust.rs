@@ -120,6 +120,25 @@ fn ground_tail_quote_stays_value() -> Result<()> {
 }
 
 #[test]
+fn ground_tail_stmt_quote_stays_value() -> Result<()> {
+    // The same tail position, but the quoted body is an item or a block —
+    // statement-shaped, so the emit inference used to fire and write
+    // `….emit(&mut b_);` into a function that has no `b_`. Outside every
+    // unquote there is no enclosing builder to emit into, so the quote is the
+    // function's value whatever its body.
+    for code in [
+        "fn f() -> Arc<QTerm> {\n    ↖fn g() {}↗\n}",
+        "fn f() -> Arc<QTerm> {\n    ↖{ 1 }↗\n}",
+        "fn f(x: Arc<QTerm>) -> Arc<QTerm> {\n    ↖{ let y = ↙x↘; }↗\n}",
+    ] {
+        let out = expand_both(code)?;
+        assert!(!out.contains("emit(&mut b_)"), "{code}\n=>\n{out}");
+    }
+    insta::assert_snapshot!(expand_both("fn f() -> Arc<QTerm> {\n    ↖fn g() {}↗\n}")?);
+    Ok(())
+}
+
+#[test]
 fn ground_unit_unquote_spliced() -> Result<()> {
     // An unquote whose ground body is a statement-shaped block (imperative
     // emits, unit value) is spliced as a plain statement instead of the
