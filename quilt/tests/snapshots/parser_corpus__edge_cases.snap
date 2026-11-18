@@ -16,6 +16,26 @@ expression: rendered
     [Quote { anno: "", nodes: [Content(" "), PlainLineComment("// x"), NewLine, Content(" y ")], span: 0..15 }]
 --- "// comment ↗ arrow"
     [PlainLineComment("// comment ↗ arrow")]
+--- "rs↖// a ↙x↘ b↗"
+    [Quote { anno: "rs", nodes: [PlainLineComment("// a "), Unquote { anno: "", nodes: [Content("x")], span: 10..17 }, PlainLineComment(" b")], span: 0..22 }]
+--- "↖// a ↙x↘ ↑ b\n↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// a "), Unquote { anno: "", nodes: [Content("x")], span: 8..15 }, PlainLineComment(" ↑ b"), NewLine], span: 0..25 }]
+--- "↖// a rs↖b↗ c\n↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// a "), Quote { anno: "rs", nodes: [Content("b")], span: 8..17 }, PlainLineComment(" c"), NewLine], span: 0..23 }]
+--- "↖// a ↙x↘↙y↘ b\n↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// a "), Unquote { anno: "", nodes: [Content("x")], span: 8..15 }, Unquote { anno: "", nodes: [Content("y")], span: 15..22 }, PlainLineComment(" b"), NewLine], span: 0..28 }]
+--- "↖// 42↙x↘ b\n↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// 42"), Unquote { anno: "", nodes: [Content("x")], span: 8..15 }, PlainLineComment(" b"), NewLine], span: 0..21 }]
+--- "↖/* a ↙x↘ b */ c↗"
+    [Quote { anno: "", nodes: [PlainBlockComment("/* a "), Unquote { anno: "", nodes: [Content("x")], span: 8..15 }, PlainBlockComment(" b */"), Content(" c")], span: 0..25 }]
+--- "↖/* a ↙x↘\n b */↗"
+    [Quote { anno: "", nodes: [PlainBlockComment("/* a "), Unquote { anno: "", nodes: [Content("x")], span: 8..15 }, PlainBlockComment("\n b */")], span: 0..24 }]
+--- "↖// a \\↗ b\n↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// a "), Content("↗"), PlainLineComment(" b"), NewLine], span: 0..18 }]
+--- "↖// a \\↑ b\n↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// a \\↑ b"), NewLine], span: 0..18 }]
+--- "↖// a\n↙x↘↗"
+    [Quote { anno: "", nodes: [PlainLineComment("// a"), NewLine, Unquote { anno: "", nodes: [Content("x")], span: 8..15 }], span: 0..18 }]
 --- "⟨//⟩ hi"
     []
 --- "x\n  ⟨//⟩ hi\ny"

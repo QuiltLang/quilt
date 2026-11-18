@@ -80,7 +80,7 @@ impl Node {
     pub fn coparse(nodes: &[Self]) -> Box<str> {
         let mut buf = std::io::BufWriter::new(Vec::new());
         let mut writer = PrefixWriter::new(&mut buf);
-        Self::write_seq(nodes, &mut writer);
+        Self::write_seq(nodes, false, &mut writer);
         let bytes = buf.into_inner().unwrap();
         String::from_utf8(bytes).unwrap().into()
     }
@@ -98,7 +98,11 @@ impl Node {
     ///   into it. A tree can hold that shape without being malformed —
     ///   `//c⟨/*⟩x⟨*/⟩↖q↗` parses fine, and the Quilt comment takes the newline
     ///   with it — and the printed form then had a `↗` with no opener. Only a
-    ///   newline ends a line comment, so that is what goes in.
+    ///   newline ends a line comment, so that is what goes in. Inside a
+    ///   bracket (`bracketed`) an opener or an escaped arrow interrupts the
+    ///   comment instead, so one may follow it on the line: that is how a
+    ///   quoted `// built from ↙x↘` is written, and a newline there would move
+    ///   the hole out of the comment.
     /// * A `/` ending one node and a `/` or `*` starting the next spell a
     ///   comment introducer that neither node contains. The gap between them
     ///   was a Quilt comment the parser dropped (`a/⟨/*⟩z⟨*/⟩/b` is two content
@@ -109,6 +113,7 @@ impl Node {
     /// sequence this writes the same way again.
     fn write_seq<N: Borrow<Self>, W: std::io::Write>(
         nodes: &[N],
+        bracketed: bool,
         writer: &mut PrefixWriter<'_, W>,
     ) {
         // What the text written so far ends in, as the lexer will read it back:
@@ -137,7 +142,7 @@ impl Node {
             let Some(first) = n.first_byte() else {
                 continue;
             };
-            if in_line_comment && first != b'\n' {
+            if in_line_comment && first != b'\n' && !(bracketed && n.interrupts_comment()) {
                 writer.newline();
             } else if bare_slash && matches!(first, b'/' | b'*') {
                 writer.write(Q_BLOCK_EMPTY);
@@ -171,6 +176,17 @@ impl Node {
                     in_line_comment = false;
                 }
             }
+        }
+    }
+
+    /// Whether this node, written right after a `// …` comment inside a
+    /// bracket, interrupts the comment rather than being swallowed by it: an
+    /// opener, or an escaped arrow (see `parse::Parser::comment`).
+    fn interrupts_comment(&self) -> bool {
+        match self {
+            Node::Quote { .. } | Node::Unquote { .. } => true,
+            Node::Content(s) => s.starts_with(['↖', '↗', '↙', '↘']),
+            _ => false,
         }
     }
 
@@ -270,13 +286,13 @@ impl STerm for Node {
             Node::Quote { anno, nodes, .. } => {
                 writer.write(anno);
                 writer.write("↖");
-                Node::write_seq(nodes, writer);
+                Node::write_seq(nodes, true, writer);
                 writer.write("↗");
             }
             Node::Unquote { anno, nodes, .. } => {
                 writer.write(anno);
                 writer.write("↙");
-                Node::write_seq(nodes, writer);
+                Node::write_seq(nodes, true, writer);
                 writer.write("↘");
             }
             Node::Lift => writer.write("↑"),

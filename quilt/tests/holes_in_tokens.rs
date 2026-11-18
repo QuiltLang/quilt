@@ -144,3 +144,41 @@ fn an_exact_hole_still_binds_to_its_own_node() -> Result<()> {
     assert!(out.contains(".c(&x)"), "{out}");
     Ok(())
 }
+
+/// A `//` or `/* */` comment inside a quote takes a hole like a `#` one does.
+///
+/// Quilt lexes `//` and `/* */` itself (so `↑`, `↓` and `←` in a comment stay
+/// prose, and `https://` is not cut short), and the comment token used to run
+/// over a `↙` and stop only at the `↘`, which then closed the *quote* — the
+/// whole file failed as "malformed Quilt syntax". A `#` comment never had the
+/// problem, because `#` is not a Quilt token.
+#[test]
+fn a_hole_inside_a_slash_comment_works() -> Result<()> {
+    for code in [
+        "const X: T = ↖\n    // built from ↙x↘ today\n    fn f() {}\n↗;\n",
+        "const X: T = ↖fn f() { /* built from ↙x↘ today */ }↗;\n",
+        "const X: T = ts↖\n    // built from ↙x↘ today\n    const a = 1;\n↗;\n",
+        "const X: T = ts↖const a = 1; /* built from ↙x↘ today */↗;\n",
+    ] {
+        let out = expand(code).map_err(|e| e.wrap_err(format!("expanding {code:?}")))?;
+        assert!(out.contains("built from "), "{code:?}:\n{out}");
+        assert!(
+            out.contains(".c(&x)") || out.contains("x.emit(&mut b_)"),
+            "{code:?}:\n{out}"
+        );
+        assert!(out.contains(" today"), "{code:?}:\n{out}");
+    }
+    Ok(())
+}
+
+/// The comment picks up again after the hole: glyphs later on the line are
+/// still prose, and the source still round-trips.
+#[test]
+fn a_slash_comment_resumes_after_its_hole() -> Result<()> {
+    let code = "const X: T = ↖\n    // ↙x↘ ← is emit, ↑ is lift\n    fn f() {}\n↗;\n";
+    let out = expand(code)?;
+    assert!(out.contains("← is emit, ↑ is lift"), "{out}");
+    let mut omni = Omni::default();
+    assert_eq!(code, omni.parse(code)?.coparse());
+    Ok(())
+}
