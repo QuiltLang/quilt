@@ -935,7 +935,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
     /// expanded with its ground unquotes replaced by `mvar` markers (their
     /// names collected via `pattern_vars`), and the statement is rewritten to
     /// destructure the result of matching the pattern against the value:
-    /// `let [a, b] = qmatch_n(&<pattern>, &<value>);` (see `crate::qmatch`).
+    /// `let [a, b] = qmatch_n(&*<pattern>, &<value>);` (see `crate::qmatch`).
     /// `pat` and `val` are the child indices the meta-language reported via
     /// [`MetaLanguage::pattern_binding`]; the expander no longer knows the
     /// separator token or where the pattern sits.
