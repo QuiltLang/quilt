@@ -57,6 +57,11 @@ impl TSProvider for TypeScriptProvider {
         Arity::from_table(crate::langs::arity::TYPESCRIPT, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::TYPESCRIPT_COMMA_SEPARATED, tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         if tag == "program" {
             InnerKind::File

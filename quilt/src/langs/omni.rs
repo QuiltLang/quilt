@@ -274,6 +274,18 @@ macro_rules! define_omni {
             }
 
             #[allow(unused_variables)]
+            fn separator(&self, tag: &str) -> Option<&'static str> {
+                match self {
+                    $(
+                        #[cfg(feature = $feat)]
+                        OmniLanguage::$variant(lang) => lang.separator(tag),
+                    )*
+                    #[allow(unreachable_patterns)]
+                    _ => None,
+                }
+            }
+
+            #[allow(unused_variables)]
             fn typ(&self, tag: &str) -> InnerKind {
                 match self {
                     $(
@@ -532,6 +544,10 @@ impl MetaLanguage for OmniMetaLanguage {
 
     fn wrap_child(&self, qterm: Arc<QTerm>, okind: OuterKind) -> Result<Arc<QTerm>> {
         self.inner().wrap_child(qterm, okind)
+    }
+
+    fn wrap_separated(&self, qterm: Arc<QTerm>, sep: &str) -> Result<Arc<QTerm>> {
+        self.inner().wrap_separated(qterm, sep)
     }
 
     fn pattern_tag(&self) -> Option<&'static str> {

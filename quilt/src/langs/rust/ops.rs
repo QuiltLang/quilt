@@ -121,6 +121,18 @@ pub fn wrap_emit(child: &Arc<QTerm>) -> Arc<QTerm> {
     b.b()
 }
 
+/// Wrap an emitted or spliced child of a comma-separated list in a separated
+/// region (#293): `b_.sep(","); <child> b_.end_sep();`, each on its line.
+pub fn wrap_separated(child: &Arc<QTerm>, sep: &str) -> Arc<QTerm> {
+    let mut b = tb("_");
+    b.write(&format!("b_.sep({});", str_lit(sep)))
+        .nl()
+        .child(child)
+        .nl()
+        .write("b_.end_sep();");
+    b.b()
+}
+
 /// Wrap an expanded child spliced as a statement: `<child>;`.
 pub fn wrap_splice(child: &Arc<QTerm>) -> Arc<QTerm> {
     let mut b = tb("_");

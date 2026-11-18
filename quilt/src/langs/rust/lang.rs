@@ -68,6 +68,11 @@ impl TSProvider for RustProvider {
         Arity::from_table(crate::langs::arity::RUST, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::RUST_COMMA_SEPARATED, tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         match tag {
             "source_file" => InnerKind::File,

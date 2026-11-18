@@ -121,6 +121,17 @@ pub trait MetaLanguage {
         Ok(qterm)
     }
 
+    /// Wrap an already-[wrapped](Self::wrap_child) splice into a
+    /// comma-separated list (`[↙xs↘]`, `f(↙xs↘)`) so that the elements it
+    /// contributes are separated by `sep` (#293): the builder's
+    /// `sep(..)`/`end_sep()` region around the child.
+    ///
+    /// The default leaves the child alone, for a meta whose builder has no
+    /// such region.
+    fn wrap_separated(&self, qterm: Arc<QTerm>, _sep: &str) -> Result<Arc<QTerm>> {
+        Ok(qterm)
+    }
+
     /// The ground-tuple tag that introduces a pattern-let (e.g. Rust's
     /// `let_declaration`), or `None` if this meta-language has no pattern
     /// matching. A ground tuple with this tag whose binding position holds a
@@ -333,6 +344,10 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn wrap_child(&self, qterm: Arc<QTerm>, okind: OuterKind) -> Result<Arc<QTerm>> {
         (**self).wrap_child(qterm, okind)
+    }
+
+    fn wrap_separated(&self, qterm: Arc<QTerm>, sep: &str) -> Result<Arc<QTerm>> {
+        (**self).wrap_separated(qterm, sep)
     }
 
     fn pattern_tag(&self) -> Option<&'static str> {

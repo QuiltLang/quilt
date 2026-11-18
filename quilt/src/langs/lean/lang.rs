@@ -117,6 +117,11 @@ impl TSProvider for LeanProvider {
         Arity::from_table(crate::langs::arity::LEAN, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::LEAN_COMMA_SEPARATED, tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         match tag {
             "module" => InnerKind::File,
@@ -419,6 +424,10 @@ impl Language for LeanLanguage {
         self.0.arity(tag)
     }
 
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.0.separator(tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         self.0.typ(tag)
     }
@@ -457,6 +466,10 @@ impl Language for DynLeanLanguage {
 
     fn arity(&self, tag: &str) -> Arity {
         self.0.arity(tag)
+    }
+
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.0.separator(tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {

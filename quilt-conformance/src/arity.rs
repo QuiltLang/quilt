@@ -44,6 +44,17 @@
 //!   python's `function_definition` is *not* variadic even though a repeat is
 //!   reachable through its `body` field.
 //!
+//! # Which containers are comma-separated
+//!
+//! A second table (#293) names the variadic kinds whose repeated children are
+//! separated by `,` — what tree-sitter's `commaSep1(x)` spells as
+//! `seq(x, repeat(seq(",", x)))`. The marker is a `REPEAT` whose body is a
+//! `SEQ` that *opens* with the string `","`; the walk is the one above. A kind
+//! qualifies when every such separator-led repeat it holds is led by `,`, so
+//! Lean's `by`, whose tactics `;` separates, and Python's `dotted_name` (`.`)
+//! stay out: the builder writes the separator followed by a space, which is
+//! right for a comma and wrong for most else.
+//!
 //! Finally the result is intersected with the grammar's real node kinds. A rule
 //! that is always aliased away never appears as a tag, so it cannot be looked
 //! up: html's `script_start_tag` is spelled `start_tag` in every tree, and rust's
@@ -142,6 +153,80 @@ impl Grammar {
         tags
     }
 
+    /// Every variadic node kind whose repeated children are separated by `,`,
+    /// sorted. See the module docs.
+    #[must_use]
+    pub fn comma_separated_tags(&self, kinds: &BTreeSet<&str>) -> Vec<String> {
+        self.variadic_tags(kinds)
+            .into_iter()
+            .filter(|name| {
+                let mut seps = BTreeSet::new();
+                self.separators(
+                    &self.rules[name.as_str()],
+                    &mut vec![name.as_str()],
+                    &mut seps,
+                );
+                seps.len() == 1 && seps.contains(",")
+            })
+            .collect()
+    }
+
+    /// Collect the tokens that lead a separator repeat (`repeat(seq(",", x))`)
+    /// among the direct children of the node `rule` belongs to. Walks the rule
+    /// the way [`Self::has_repeat`] does.
+    fn separators<'a>(
+        &'a self,
+        rule: &'a Value,
+        seen: &mut Vec<&'a str>,
+        out: &mut BTreeSet<String>,
+    ) {
+        let Some(kind) = rule.get("type").and_then(Value::as_str) else {
+            return;
+        };
+        match kind {
+            "REPEAT" | "REPEAT1" => {
+                let body = strip(content(rule));
+                let lead = (body.get("type").and_then(Value::as_str) == Some("SEQ"))
+                    .then(|| members(body).next().map(strip))
+                    .flatten()
+                    .filter(|m| m.get("type").and_then(Value::as_str) == Some("STRING"))
+                    .and_then(|m| m.get("value").and_then(Value::as_str));
+                match lead {
+                    // The repeat's own body is one element and its separator;
+                    // whatever repeats inside the element is not this list's.
+                    Some(token) => {
+                        out.insert(token.to_string());
+                    }
+                    None => self.separators(content(rule), seen, out),
+                }
+            }
+            "SEQ" | "CHOICE" => {
+                for m in members(rule) {
+                    self.separators(m, seen, out);
+                }
+            }
+            _ if TRANSPARENT.contains(&kind) => self.separators(content(rule), seen, out),
+            "SYMBOL" => {
+                let Some(target) = rule.get("name").and_then(Value::as_str) else {
+                    return;
+                };
+                if !target.starts_with('_') || seen.contains(&target) {
+                    return;
+                }
+                let Some(body) = self.rules.get(target) else {
+                    return;
+                };
+                if is_category(body) {
+                    return;
+                }
+                seen.push(target);
+                self.separators(body, seen, out);
+                seen.pop();
+            }
+            _ => {}
+        }
+    }
+
     /// Does `rule` give the node it belongs to a variable number of *direct*
     /// children? See the module docs for why each case is what it is.
     fn has_repeat<'a>(&'a self, rule: &'a Value, seen: &mut Vec<&'a str>) -> bool {
@@ -223,9 +308,29 @@ fn content(rule: &Value) -> &Value {
     rule.get("content").unwrap_or(&Value::Null)
 }
 
-/// The derived table for every registered language, in [`registry::LANGUAGES`]
-/// order. Languages without a grammar are absent.
-pub fn derive_all() -> Result<Vec<(&'static str, Vec<String>)>> {
+/// `rule` with its [`TRANSPARENT`] wrappers peeled off.
+fn strip(mut rule: &Value) -> &Value {
+    while rule
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|k| TRANSPARENT.contains(&k))
+    {
+        rule = content(rule);
+    }
+    rule
+}
+
+/// One language's derived tables.
+pub struct Tables {
+    /// The variadic node kinds ([`Grammar::variadic_tags`]).
+    pub variadic: Vec<String>,
+    /// The comma-separated ones among them ([`Grammar::comma_separated_tags`]).
+    pub comma_separated: Vec<String>,
+}
+
+/// The derived tables for every registered language, in
+/// [`registry::LANGUAGES`] order. Languages without a grammar are absent.
+pub fn derive_all() -> Result<Vec<(&'static str, Tables)>> {
     let mut out = Vec::new();
     for &name in registry::LANGUAGES {
         let Some(grammar) = Grammar::load(name)? else {
@@ -235,7 +340,13 @@ pub fn derive_all() -> Result<Vec<(&'static str, Vec<String>)>> {
             continue;
         };
         let kinds = registry::node_kinds(&compiled);
-        out.push((name, grammar.variadic_tags(&kinds)));
+        out.push((
+            name,
+            Tables {
+                variadic: grammar.variadic_tags(&kinds),
+                comma_separated: grammar.comma_separated_tags(&kinds),
+            },
+        ));
     }
     Ok(out)
 }
