@@ -147,6 +147,18 @@ const EDGE_CASES: &[&str] = &[
     "↖a//b↗c",
     "↖ // x\n y ↗",
     "// comment ↗ arrow",
+    // …and inside a bracket an opener interrupts it, the comment resuming
+    // once the bracket closes: a quoted comment takes a hole
+    "rs↖// a ↙x↘ b↗",
+    "↖// a ↙x↘ ↑ b\n↗",
+    "↖// a rs↖b↗ c\n↗",
+    "↖// a ↙x↘↙y↘ b\n↗",
+    "↖// 42↙x↘ b\n↗",
+    "↖/* a ↙x↘ b */ c↗",
+    "↖/* a ↙x↘\n b */↗",
+    "↖// a \\↗ b\n↗",
+    "↖// a \\↑ b\n↗",
+    "↖// a\n↙x↘↗",
     // Quilt's own comments vanish, newline and indentation included
     "⟨//⟩ hi",
     "x\n  ⟨//⟩ hi\ny",

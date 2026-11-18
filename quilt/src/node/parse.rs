@@ -367,6 +367,26 @@ struct Parser<'a> {
     no_block_close_from: usize,
     /// The same, for `⟨*/⟩`.
     no_q_block_close_from: usize,
+    /// How many brackets are open: [`Step::Open`] and [`Step::Close`] keep it.
+    depth: usize,
+    /// Comments interrupted by a bracket, innermost last: the depth the
+    /// bracket opened at, and the kind of comment to pick up again once it
+    /// closes. See [`Parser::comment`].
+    paused: Vec<(usize, Plain)>,
+    /// A comment to continue at the next token: its bracket (or escape) just
+    /// ended.
+    resume: Option<Plain>,
+    /// A comment an escaped arrow interrupted, to continue after the escape.
+    escaped: Option<Plain>,
+}
+
+/// The two object-language comment forms Quilt lexes itself.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Plain {
+    /// `// …`
+    Line,
+    /// `/* … */`
+    Block,
 }
 
 impl<'a> Parser<'a> {
@@ -377,6 +397,10 @@ impl<'a> Parser<'a> {
             probe_failed_until: 0,
             no_block_close_from: usize::MAX,
             no_q_block_close_from: usize::MAX,
+            depth: 0,
+            paused: Vec::new(),
+            resume: None,
+            escaped: None,
         }
     }
 
@@ -430,7 +454,37 @@ impl<'a> Parser<'a> {
     /// level — it decides both whether a closer is expected and how far a line
     /// comment may run (issue #226).
     fn step(&mut self, open: Option<bool>) -> Step {
+        let step = self.token(open);
+        match step {
+            Step::Open { .. } => self.depth += 1,
+            Step::Close { .. } => {
+                self.depth -= 1;
+                if self.paused.last().is_some_and(|&(d, _)| d == self.depth) {
+                    self.resume = self.paused.pop().map(|(_, kind)| kind);
+                }
+            }
+            _ => {}
+        }
+        step
+    }
+
+    /// [`Self::step`]'s scanner, without the bracket bookkeeping.
+    fn token(&mut self, open: Option<bool>) -> Step {
         let start = self.pos;
+        // The rest of a comment a bracket or an escape interrupted (see
+        // [`Self::comment`]). A line comment that has reached its newline is
+        // over; anything else picks up where it left off.
+        if let Some(kind) = self.resume.take() {
+            let more = match kind {
+                Plain::Line => !matches!(self.peek(), None | Some('\n')),
+                Plain::Block => self.peek().is_some(),
+            };
+            if more {
+                if let Some(node) = self.comment(kind, start, open.is_some()) {
+                    return Step::Node(node);
+                }
+            }
+        }
         let Some(c) = self.peek() else {
             return Step::Done;
         };
@@ -499,6 +553,8 @@ impl<'a> Parser<'a> {
             '\\' => match self.char_at(start + ESCAPE_LEN) {
                 Some(g) if GLYPHS.contains(&g) => {
                     self.pos = start + ESCAPE_LEN + g.len_utf8();
+                    // An escape that cut a comment short hands it back.
+                    self.resume = self.escaped.take();
                     Step::Node(Node::Content(self.src[start + ESCAPE_LEN..self.pos].into()))
                 }
                 Some(_) => Step::Node(self.content()),
@@ -509,14 +565,14 @@ impl<'a> Parser<'a> {
             },
             '/' if self.at(start, "//") => {
                 self.pos = start + 2;
-                let end = self.line_end(open.is_some());
-                self.pos = end;
-                Step::Node(Node::PlainLineComment(self.src[start..end].into()))
+                let node = self.comment(Plain::Line, start, open.is_some());
+                Step::Node(node.expect("a comment holds at least its `//`"))
             }
             '/' if self.at(start, "/*") => match self.block_close(start + 2) {
-                Some(end) => {
-                    self.pos = end;
-                    Step::Node(Node::PlainBlockComment(self.src[start..end].into()))
+                Some(_) => {
+                    self.pos = start + 2;
+                    let node = self.comment(Plain::Block, start, open.is_some());
+                    Step::Node(node.expect("a comment holds at least its `/*`"))
                 }
                 // An unterminated `/*` is not a comment token at all, so it is
                 // plain content — matching the grammar, where the token simply
@@ -665,6 +721,71 @@ impl<'a> Parser<'a> {
         }
         self.probe_failed_until = p;
         false
+    }
+
+    /// An object-language comment, `//` or `/* … */`, from `start` (its
+    /// delimiter, or where an interruption left it) and scanning on from
+    /// [`Self::pos`]. `None` if it would be empty, which only a continuation
+    /// can be.
+    ///
+    /// At ground level a comment is prose: it runs to its end, and every glyph
+    /// in it is text. Inside a bracket, the bracket's closer ends it (issue
+    /// #226), and an opener — `↙` or `↖`, annotation and all — interrupts it:
+    /// the comment stops in front, the bracket is parsed as usual, and the
+    /// comment resumes once that bracket closes. So a quoted `// built from
+    /// ↙x↘ today` takes a hole the way a `#` comment always has, while `↑`,
+    /// `↓` and `←` stay prose. `\↖`, `\↗`, `\↙` and `\↘` interrupt it the same way,
+    /// so an escaped arrow is still an escape.
+    fn comment(&mut self, kind: Plain, start: usize, bracketed: bool) -> Option<Node> {
+        let end = self.comment_end(kind, bracketed);
+        self.pos = end;
+        (end > start).then(|| {
+            let text = self.src[start..end].into();
+            match kind {
+                Plain::Line => Node::PlainLineComment(text),
+                Plain::Block => Node::PlainBlockComment(text),
+            }
+        })
+    }
+
+    /// Where the comment [`Self::comment`] is scanning ends, recording an
+    /// interruption for [`Self::step`] to resume after.
+    fn comment_end(&mut self, kind: Plain, bracketed: bool) -> usize {
+        const ARROWS: [char; 4] = ['↖', '↗', '↙', '↘'];
+        let mut p = self.pos;
+        while let Some(c) = self.char_at(p) {
+            match c {
+                '\n' if kind == Plain::Line => return p,
+                '*' if kind == Plain::Block && self.at(p, "*/") => return p + 2,
+                _ if !bracketed => {}
+                '↗' | '↘' => return p,
+                '↖' | '↙' => {
+                    self.paused.push((self.depth, kind));
+                    return p;
+                }
+                '\\' if self
+                    .char_at(p + ESCAPE_LEN)
+                    .is_some_and(|g| ARROWS.contains(&g)) =>
+                {
+                    self.escaped = Some(kind);
+                    return p;
+                }
+                // A run of `[a-z0-9]` may end in an annotated opener, which
+                // begins at the run's first letter (see [`Self::content`]).
+                _ if c.is_ascii_lowercase() || c.is_ascii_digit() => {
+                    let run = self.ident_run_end(p);
+                    if let Some(Annotated::Glyph('↖' | '↙')) = self.annotation_target(run) {
+                        self.paused.push((self.depth, kind));
+                        return self.first_lowercase(p, run).unwrap_or(run);
+                    }
+                    p = run;
+                    continue;
+                }
+                _ => {}
+            }
+            p += c.len_utf8();
+        }
+        p
     }
 
     /// Where a line comment that started at [`Self::pos`] ends: the next

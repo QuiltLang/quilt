@@ -31,6 +31,17 @@ All Quilt operators are Unicode characters. The VS Code extension provides chord
 
 Quilt-level line comments are written `⟨//⟩ ...` and block comments `⟨/*⟩ ... ⟨*/⟩`. They are stripped during parsing and never appear in the output.
 
+The target's own `// …` and `/* … */` comments pass through, and Quilt reads their text as prose: `↑`, `↓` and `←` inside one are just characters. At ground level that holds for everything up to the comment's end. Inside a quote, the brackets still work — the quote's closer ends the comment, and an unquote or a nested quote interrupts it, the comment resuming after — so a generated comment can take a hole, the way a `#` comment always could:
+
+```rust
+let header = rs↖
+    // generated from ↙name.↑↘, do not edit
+    fn f() {}
+↗;
+```
+
+A literal arrow in a quoted comment needs its `\` escape, like anywhere else in a quote.
+
 ### Escaping a glyph
 
 Prefixing any operator glyph with `\` makes it literal text rather than a Quilt
