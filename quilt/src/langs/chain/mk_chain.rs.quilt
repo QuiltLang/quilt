@@ -81,6 +81,7 @@ struct Sh {
     x: Vec<String>,
     c: Vec<String>,
     e: Vec<String>,
+    t: Option<Vec<String>>,
     b: Vec<String>,
     sym: Vec<String>,
     leaf: Vec<String>,
@@ -126,6 +127,15 @@ fn val(ps: &[String]) -> ⟨T⟩ {
     }
 }
 
+/// An optional field: `Some(..)` around [`val`], or `None` for a language
+/// that has no such call.
+fn opt(ps: &Option<Vec<String>>) -> ⟨T⟩ {
+    match ps {
+        Some(ps) => ↖Some(↙val(ps)↘)↗,
+        None => ↖None↗,
+    }
+}
+
 /// One `pub const NAME: Shapes = Shapes { .. };`.
 ///
 /// A hole does not parse in const-name position (`pub const {}: Shapes` is not
@@ -143,6 +153,7 @@ fn shapes_const(ident: &str, s: &Sh) -> ⟨T⟩ {
             x: ↙val(&s.x)↘,
             c: ↙val(&s.c)↘,
             e: ↙val(&s.e)↘,
+            t: ↙opt(&s.t)↘,
             b: ↙val(&s.b)↘,
             sym: ↙val(&s.sym)↘,
             leaf: ↙val(&s.leaf)↘,
@@ -182,6 +193,9 @@ fn main() -> Result<()> {
         ⟨//⟩ chain, so nothing in `langs::rust::ops` reaches for this one. It is
         ⟨//⟩ a real `QTermBuilder` method and the table stays uniform.
         e: tail(&rs↖ACC.e(&CHILD)↗, &["ACC", "CHILD"]),
+        ⟨//⟩ Rust frees a temporary the moment the statement ends; there is
+        ⟨//⟩ nothing for a taking splice to win.
+        t: None,
         b: tail(&rs↖ACC.b()↗, &["ACC"]),
         sym: pieces(&rs↖sym(LIT)↗, &["LIT"]),
         leaf: pieces(&rs↖leaf(TAG, CODE)↗, &["TAG", "CODE"]),
@@ -212,6 +226,8 @@ fn main() -> Result<()> {
         x: tail(&py↖ACC.x()↗, &["ACC"]),
         c: tail(&py↖ACC.c(CHILD)↗, &["ACC", "CHILD"]),
         e: tail(&py↖ACC.e(CHILD)↗, &["ACC", "CHILD"]),
+        ⟨//⟩ Reference counting frees Python's temporaries as promptly.
+        t: None,
         b: tail(&py↖ACC.b()↗, &["ACC"]),
         sym: pieces(&py↖sym(LIT)↗, &["LIT"]),
         leaf: pieces(&py↖leaf(TAG, CODE)↗, &["TAG", "CODE"]),
@@ -246,6 +262,12 @@ fn main() -> Result<()> {
         x: tail(&ts↖ACC.x()↗, &["ACC"]),
         c: tail(&ts↖ACC.c(CHILD)↗, &["ACC", "CHILD"]),
         e: tail(&ts↖ACC.e(CHILD)↗, &["ACC", "CHILD"]),
+        ⟨//⟩ The one runtime that needs it. A `quilt-wasm` term is a JS wrapper
+        ⟨//⟩ around a Rust `Arc`, released only when the garbage collector runs
+        ⟨//⟩ its finalizer, so every borrowed temporary pins its subtree in wasm
+        ⟨//⟩ memory until then. `.t(..)` *moves* a freshly built child into the
+        ⟨//⟩ builder instead, freeing its wrapper on the spot.
+        t: Some(tail(&ts↖ACC.t(CHILD)↗, &["ACC", "CHILD"])),
         b: tail(&ts↖ACC.b()↗, &["ACC"]),
         sym: pieces(&ts↖sym(LIT)↗, &["LIT"]),
         leaf: pieces(&ts↖leaf(TAG, CODE)↗, &["TAG", "CODE"]),

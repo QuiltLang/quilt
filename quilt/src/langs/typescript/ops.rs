@@ -54,7 +54,11 @@ fn str_lit(s: &str) -> String {
 }
 
 /// The shared builder-call fold, spelled for TypeScript.
-const CHAIN: Chain = Chain::new(&TYPESCRIPT, Lit::Flat(str_lit));
+///
+/// The lifts are named as fresh: `qlift`/`qlift_html` return a new term on
+/// every call, so `↙↑(x)↘` can hand its result to the builder outright.
+const CHAIN: Chain =
+    Chain::new(&TYPESCRIPT, Lit::Flat(str_lit)).fresh_calls(&["qlift", "qlift_html"]);
 
 /**************************************************************/
 

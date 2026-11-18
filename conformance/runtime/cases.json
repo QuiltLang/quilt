@@ -441,10 +441,9 @@
       "coparse": "tb(\"b\").c(&leaf(\"integer\", \"1\")).b()"
     },
     {
-      "name": "qlift_on_term_builder_chain_by_value",
+      "name": "qlift_on_term_builder_chain_python",
       "runtimes": [
-        "python",
-        "wasm"
+        "python"
       ],
       "why": "Same law; the builder chain differs only in Rust's `.c(&child)` — its builder takes `&Arc<QTerm>` where the Python and wasm runtimes take the term by value. That divergence is documented and deliberate.",
       "term": {
@@ -465,6 +464,31 @@
         }
       },
       "coparse": "tb(\"b\").c(leaf(\"integer\", \"1\")).b()"
+    },
+    {
+      "name": "qlift_on_term_builder_chain_wasm",
+      "runtimes": [
+        "wasm"
+      ],
+      "why": "Same law. The wasm chain *takes* the child (`.t(..)`) where Python borrows it (`.c(..)`): a borrowed temporary would pin its subtree in wasm memory until the garbage collector ran its finalizer. Python frees temporaries by reference counting, so it has no `.t`.",
+      "term": {
+        "qlift": {
+          "tb": {
+            "tag": "b",
+            "steps": [
+              {
+                "c": {
+                  "leaf": {
+                    "tag": "integer",
+                    "text": "1"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "coparse": "tb(\"b\").t(leaf(\"integer\", \"1\")).b()"
     },
     {
       "name": "qlift_html_int",
