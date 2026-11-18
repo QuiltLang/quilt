@@ -299,7 +299,7 @@ fn statement_hole_ordinals(code: &[FlatNode]) -> Vec<usize> {
             match node {
                 FlatNode::NewLine => break,
                 FlatNode::Str(s) => out.push_str(s),
-                FlatNode::Hole => return None,
+                FlatNode::Hole | FlatNode::Splice => return None,
             }
         }
         Some(out)
@@ -307,13 +307,10 @@ fn statement_hole_ordinals(code: &[FlatNode]) -> Vec<usize> {
 
     let mut out = Vec::new();
     for (i, node) in code.iter().enumerate() {
-        if !matches!(node, FlatNode::Hole) {
+        if !node.is_hole() {
             continue;
         }
-        let ordinal = code[..i]
-            .iter()
-            .filter(|n| matches!(n, FlatNode::Hole))
-            .count();
+        let ordinal = code[..i].iter().filter(|n| n.is_hole()).count();
         let before = text_run(code[..i].iter().rev());
         let after = text_run(code[i + 1..].iter());
         let alone = matches!(before, Some(ref b) if b.trim().is_empty())
@@ -331,7 +328,7 @@ fn wrap_statement_holes<'a>(code: &[FlatNode<'a>], targets: &[usize]) -> Vec<Fla
     let mut out = Vec::with_capacity(code.len() + targets.len());
     let mut ordinal = 0usize;
     for node in code {
-        if matches!(node, FlatNode::Hole) {
+        if node.is_hole() {
             if targets.contains(&ordinal) {
                 out.push(FlatNode::Str(SELECT_PREFIX));
             }

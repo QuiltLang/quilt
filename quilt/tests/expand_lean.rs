@@ -437,3 +437,79 @@ fn lean4_reduce_annotation_reaches_the_meta() {
         .to_string();
     assert!(msg.contains("lean can\'t reduce `lean4↓`"), "{msg}");
 }
+
+/* ----------------------- splices keep Lean's columns ---------------------- */
+
+/// Lean's layout is column-sensitive: a structure instance's fields, a tactic
+/// block's steps and a `do`'s elements must start at or right of the first
+/// one's column. A multi-line term spliced *mid-line* used to have its later
+/// lines indented only to the line's indent, so
+///
+/// ```text
+/// let s = lean↖{ a := 1,
+///   b := 2 }↗;
+/// let d = lean↖def x : S := ↙s↘↗;
+/// ```
+///
+/// rendered `b` at column 2, left of `a` at column 15 — a parse error in Lean.
+/// The splice is now padded out to the hole's column for its length.
+#[test]
+fn a_mid_line_splice_is_aligned_to_its_column() -> Result<()> {
+    let out = expand("let d = lean↖def x : S := ↙s↘↗;")?;
+    let pad = " ".repeat("def x : S := ".len());
+    assert!(
+        out.contains(&format!(
+            "b_.push(\"{pad}\");\n    s.emit(&mut b_);\n    b_.pop();"
+        )),
+        "the splice should be padded to its column; got:\n{out}"
+    );
+    Ok(())
+}
+
+/// A hole at the start of its line is already at the line's indent, and needs
+/// no padding.
+#[test]
+fn a_splice_on_its_own_line_is_not_padded() -> Result<()> {
+    let out = expand(indoc! {r#"
+        let d = lean↖def x : S :=
+          ↙s↘↗;"#})?;
+    assert!(
+        !out.contains("b_.push(\"   "),
+        "a line-initial splice needs only the line's indent; got:\n{out}"
+    );
+    Ok(())
+}
+
+/// A multi-line unquote body mid-line still round-trips: the padding is
+/// around the spliced *value*, and leaves the source text alone.
+#[test]
+fn a_mid_line_multiline_unquote_round_trips() -> Result<()> {
+    roundtrip(indoc! {r#"
+        let d = lean↖def x : S := ↙mk(
+            1)↘↗;"#})
+}
+
+/// A splice in command position is wrapped in `#check` to parse (see
+/// `expand_command_unquote`); the wrapper is not text before the hole, and
+/// does not pad it.
+#[test]
+fn a_command_position_splice_is_not_padded() -> Result<()> {
+    let out = expand(indoc! {r#"
+        let m = lean↖namespace Demo
+        ↙decl↘
+        end Demo↗;"#})?;
+    assert!(!out.contains("b_.push(\"       \")"), "{out}");
+    assert!(!out.contains(".p(\"       \")"), "{out}");
+    Ok(())
+}
+
+/// With Lean as the host, a quote at ground level expands to a string literal:
+/// padding it to its column would change the string.
+#[test]
+fn a_ground_quote_in_a_lean_host_is_not_padded() -> Result<()> {
+    let out = host_expand(indoc! {r##"
+        def thm := lean↖theorem t (n : Nat) : n = n := by
+          rfl↗"##})?;
+    assert!(out.contains("by\n  rfl"), "{out}");
+    Ok(())
+}

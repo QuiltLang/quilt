@@ -30,7 +30,7 @@ fn build(code: &[FlatNode]) -> (Vec<CmdOrHole>, usize) {
         match node {
             FlatNode::Str(s) => cmds.push(cmd(write(s))),
             FlatNode::NewLine => cmds.push(cmd(NL)),
-            FlatNode::Hole => {
+            FlatNode::Hole | FlatNode::Splice => {
                 cmds.push(HOLE);
                 holes += 1;
             }

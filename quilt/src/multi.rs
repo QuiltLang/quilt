@@ -430,6 +430,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             match &**n {
                 Node::Content(s) => code.push(FlatNode::Str(s)),
                 Node::NewLine => code.push(FlatNode::NewLine),
+                Node::Unquote { nodes, .. } if !nodes.iter().any(|n| **n == Node::NewLine) => {
+                    code.push(FlatNode::Splice);
+                }
                 Node::Quote { .. } | Node::Unquote { .. } => code.push(FlatNode::Hole),
                 // An operator (↑ lift, ↓ reduce, ← emit) inside an as-yet-
                 // unresolved quote (sky depth > 0) belongs to a later stage:
