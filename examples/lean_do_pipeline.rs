@@ -63,11 +63,11 @@ fn main() -> Result<()> {
             // One monadic bind per stage. `<-`, not `←` -- see the note above.
             for (name, cost) in stages {
                 let var = ident(name);
-                tb("let").c(&sym("let")).w(" ").c(&var).w(" ").c(&sym("<-")).w(" ").c(&tb("app").c(&tb("app").c(&leaf("identifier", "stage")).w(" ").c(&name.qlift_to::<Lean>()).b()).w(" ").c(&cost.qlift_to::<Lean>()).b()).b().emit(&mut b_);
+                tb("let").c(&sym("let")).w(" ").p("    ").c(&var).x().w(" ").c(&sym("<-")).w(" ").c(&tb("app").c(&tb("app").c(&leaf("identifier", "stage")).w(" ").c(&name.qlift_to::<Lean>()).b()).w(" ").c(&cost.qlift_to::<Lean>()).b()).b().emit(&mut b_);
                 NL.emit(&mut b_);
             }
             // A *pure* let, bound to the generation-time fold.
-            tb("let").c(&sym("let")).w(" ").c(&leaf("identifier", "total")).w(" ").c(&sym(":=")).w(" ").c(&total).b().emit(&mut b_);
+            tb("let").c(&sym("let")).w(" ").c(&leaf("identifier", "total")).w(" ").c(&sym(":=")).w(" ").p("             ").c(&total).x().b().emit(&mut b_);
             NL.emit(&mut b_);
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("interpolated_str").c(&sym("s!\"")).w("total: ").c(&tb("interpolation").c(&sym("{")).c(&leaf("identifier", "total")).c(&sym("}")).b()).w("ms").c(&sym("\"")).b()).b().emit(&mut b_);
             NL.emit(&mut b_);
@@ -75,7 +75,7 @@ fn main() -> Result<()> {
             // indented relative to the *enclosing* quote, so a multi-line
             // emit into an already-indented block needs care. A single-line
             // `if … then … else …` sidesteps it and is idiomatic Lean anyway.
-            tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "total")).w(" ").c(&sym(">")).w(" ").c(&budget.qlift_to::<Lean>()).b()).w(" ").c(&sym("then")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("over budget").c(&sym("\"")).b()).b()).w(" ").c(&sym("else")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("within budget").c(&sym("\"")).b()).b()).b().emit(&mut b_);
+            tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "total")).w(" ").c(&sym(">")).w(" ").p("           ").c(&budget.qlift_to::<Lean>()).x().b()).w(" ").c(&sym("then")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("over budget").c(&sym("\"")).b()).b()).w(" ").c(&sym("else")).w(" ").c(&tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("str_lit").c(&sym("\"")).w("within budget").c(&sym("\"")).b()).b()).b().emit(&mut b_);
         };
         b_.pop();
         b_.b()

@@ -302,6 +302,23 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // when there is no enclosing prefix — so a quote whose body is just
         // written indented (e.g. a top-level `py↖\n    …\n↗`) is dedented too,
         // not only one spliced into already-indented code.
+        //
+        // The enclosing prefix is only stripped as far as every line actually
+        // carries it. A body written *left* of the code around the quote —
+        //
+        //         let g = rs↖
+        // fn g() {}
+        // ↗;
+        //
+        // — has nothing of the prefix to give up, and used to fail the whole
+        // expansion with a bare "Failed to strip prefix". Stripping each line
+        // by as much of the prefix as it happens to have would not do either:
+        // it would flatten the body's own relative indentation. So the prefix
+        // is cut back to what every line shares, the lines lose exactly that,
+        // and the common-indent pass below takes care of the rest. Blank lines
+        // say nothing about indentation, so they do not cut the prefix back.
+        let full_prefix = hole.prefix.concat();
+        let prefix = shared_prefix(&full_prefix, nodes);
         let mut nodes_new = Vec::with_capacity(nodes.len());
         let mut indent = None;
         let mut on_nl = false;
@@ -314,15 +331,17 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         if let Some(Node::Content(s)) = nodes.first().map(|n| &**n) {
             indent = Some(RE_WS_PREFIX.find(s).unwrap().as_str());
         }
-        for n in nodes {
+        for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 Node::Content(s) if on_nl => {
-                    let mut s = &**s;
-                    for p in &hole.prefix {
-                        s = s
-                            .strip_prefix(&**p)
-                            .ok_or_else(|| miette!("Failed to strip prefix"))?;
-                    }
+                    // A blank line — the closing `↗`'s own indentation among
+                    // them — gives up as much of the *full* prefix as it has,
+                    // so a closer at the host's indent leaves nothing behind.
+                    let s = if is_blank(nodes, i) {
+                        &s[common_prefix_len(&full_prefix, s)..]
+                    } else {
+                        &s[prefix.len()..]
+                    };
                     if !s.is_empty() {
                         nodes_new.push(arc(Node::Content(s.into())));
                         indent = match indent {
@@ -411,6 +430,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             match &**n {
                 Node::Content(s) => code.push(FlatNode::Str(s)),
                 Node::NewLine => code.push(FlatNode::NewLine),
+                Node::Unquote { nodes, .. } if !nodes.iter().any(|n| **n == Node::NewLine) => {
+                    code.push(FlatNode::Splice);
+                }
                 Node::Quote { .. } | Node::Unquote { .. } => code.push(FlatNode::Hole),
                 // An operator (↑ lift, ↓ reduce, ← emit) inside an as-yet-
                 // unresolved quote (sky depth > 0) belongs to a later stage:
@@ -637,6 +659,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             meta,
             lang,
             pattern_vars: None,
+            in_builder: false,
         }
         .expand(&Default::default(), qterm)
     }
@@ -693,6 +716,12 @@ pub struct Expander<'a, LS: Languages, M: MetaLanguage + ?Sized> {
     /// `Some` while expanding the pattern quote of a pattern-let: ground
     /// unquotes become metavariables, collected here in source order.
     pattern_vars: Option<Vec<Box<str>>>,
+    /// Whether the ground code being expanded runs inside an accumulator — an
+    /// unquote that is a direct child of a variadic quoted node, whose
+    /// expansion binds `b_`. Only there can a quote in statement position be
+    /// emitted; outside every unquote (a function body, say) there is no `b_`,
+    /// and a statement-shaped quote in tail position is the block's value.
+    in_builder: bool,
 }
 
 impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
@@ -743,7 +772,12 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                             // wrappers like WGSL's `source_file(stmt, ;)`. This
                             // closes the feedback loop from issue #25 and makes
                             // the decision work across language boundaries.
-                            if arity == Arity::Variadic {
+                            //
+                            // And only inside an accumulator: at plain ground
+                            // there is no `b_`, so `fn f() -> Arc<QTerm> {
+                            // ↖fn g() {}↗ }` returns the quote rather than
+                            // emitting it into a builder that does not exist.
+                            if self.in_builder && arity == Arity::Variadic {
                                 if let QTerm::Quote {
                                     tag: qtag,
                                     lang: lang2,
@@ -830,8 +864,14 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     let expanded = terms
                         .iter()
                         .map(|term| {
-                            // expand each child
-                            let expanded = self.expand(depth, term)?;
+                            // expand each child. A ground unquote under an
+                            // accumulator runs where `b_` is bound; under a
+                            // fluent node it does not.
+                            let outer =
+                                std::mem::replace(&mut self.in_builder, arity == Arity::Variadic);
+                            let expanded = self.expand(depth, term);
+                            self.in_builder = outer;
+                            let expanded = expanded?;
                             // then wrap the result
                             let mut okind = Default::default();
                             if arity == Arity::Variadic {
@@ -895,7 +935,7 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
     /// expanded with its ground unquotes replaced by `mvar` markers (their
     /// names collected via `pattern_vars`), and the statement is rewritten to
     /// destructure the result of matching the pattern against the value:
-    /// `let [a, b] = qmatch_n(&<pattern>, &<value>);` (see `crate::qmatch`).
+    /// `let [a, b] = qmatch_n(&*<pattern>, &<value>);` (see `crate::qmatch`).
     /// `pat` and `val` are the child indices the meta-language reported via
     /// [`MetaLanguage::pattern_binding`]; the expander no longer knows the
     /// separator token or where the pattern sits.
@@ -1083,3 +1123,40 @@ impl<M: MetaLanguage> MetaLanguages for Singleton<M> {
 }
 
 pub type Single<M, L> = Multi<Singleton<M>, Singleton<L>>;
+
+/// Byte length of the longest common prefix of `a` and `b`, on a char boundary.
+#[cfg(feature = "parse")]
+fn common_prefix_len(a: &str, b: &str) -> usize {
+    a.char_indices()
+        .zip(b.chars())
+        .find(|((_, x), y)| x != y)
+        .map_or_else(|| a.len().min(b.len()), |((i, _), _)| i)
+}
+
+/// The part of `prefix` (an enclosing quote's indent) that every non-blank line
+/// of `nodes` starts with — the most of it that can be stripped without
+/// cutting into a line's own text. A blank line (see [`is_blank`]) does not
+/// count; whitespace followed by a quote, an unquote or an operator is that
+/// construct's indentation, and does.
+#[cfg(feature = "parse")]
+fn shared_prefix<'a>(prefix: &'a str, nodes: &[Arc<Node>]) -> &'a str {
+    let mut shared = prefix;
+    let mut on_nl = false;
+    for (i, n) in nodes.iter().enumerate() {
+        if let Node::Content(s) = &**n {
+            if on_nl && !is_blank(nodes, i) {
+                shared = &shared[..common_prefix_len(shared, s)];
+            }
+        }
+        on_nl = **n == Node::NewLine;
+    }
+    shared
+}
+
+/// Whether `nodes[i]` is a blank line's content: only whitespace, and nothing
+/// after it on the line.
+#[cfg(feature = "parse")]
+fn is_blank(nodes: &[Arc<Node>], i: usize) -> bool {
+    matches!(&*nodes[i], Node::Content(s) if s.trim().is_empty())
+        && nodes.get(i + 1).is_none_or(|next| **next == Node::NewLine)
+}

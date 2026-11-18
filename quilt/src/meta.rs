@@ -160,7 +160,7 @@ pub trait MetaLanguage {
 
     /// The two terms a pattern-let rewrites to: the destructuring binder that
     /// replaces the pattern quote (e.g. `[a, b]`) and the matching call that
-    /// replaces the initializer (e.g. `qmatch_n(&<pattern>, &<value>)`).
+    /// replaces the initializer (e.g. `qmatch_n(&*<pattern>, &<value>)`).
     fn pattern_let(
         &self,
         names: &[Box<str>],

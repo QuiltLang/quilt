@@ -81,7 +81,7 @@ fn main() -> Result<()> {
     for (i, ch) in channels.iter().enumerate().rev().skip(1) {
         let ctor = ident(&format!("Color.{ch}"));
         let idx = u32::try_from(i).unwrap();
-        code = tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c")).w(" ").c(&sym("=")).w(" ").c(&ctor).b()).w(" ").c(&sym("then")).w(" ").c(&idx.qlift_to::<Lean>()).w(" ").c(&sym("else")).w(" ").c(&code).b();
+        code = tb("if_then_else").c(&sym("if")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c")).w(" ").c(&sym("=")).w(" ").p("       ").c(&ctor).x().b()).w(" ").c(&sym("then")).w(" ").c(&idx.qlift_to::<Lean>()).w(" ").c(&sym("else")).w(" ").c(&code).b();
     }
     decls.push({
         let mut b_ = tb("def");
@@ -97,14 +97,16 @@ fn main() -> Result<()> {
         b_.write(" ");
         sym(":=").emit(&mut b_);
         b_.write(" ");
+        b_.push("                                    ");
         code.emit(&mut b_);
+        b_.pop();
         b_.b()
     }.coparse());
     
     // The bound is the channel count, lifted out of the Rust list. `decide`
     // closes each case, so a wrong bound would be a compile error downstream.
     decls.push(
-        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Color.code_lt")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "c")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Color")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c.code")).w(" ").c(&sym("<")).w(" ").c(&n.qlift_to::<Lean>()).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).p("  ").n().c(&tb("binary_op").c(&tb("induction").c(&sym("cases")).w(" ").c(&leaf("identifier", "c")).b()).w(" ").c(&sym("<;>")).w(" ").c(&leaf("identifier", "decide")).b()).x().b()).b()
+        tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Color.code_lt")).w(" ").c(&tb("binders").c(&tb("explicit_binder").c(&sym("(")).c(&leaf("identifier", "c")).w(" ").c(&sym(":")).w(" ").c(&leaf("identifier", "Color")).c(&sym(")")).b()).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&leaf("identifier", "c.code")).w(" ").c(&sym("<")).w(" ").p("                                             ").c(&n.qlift_to::<Lean>()).x().b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).p("  ").n().c(&tb("binary_op").c(&tb("induction").c(&sym("cases")).w(" ").c(&leaf("identifier", "c")).b()).w(" ").c(&sym("<;>")).w(" ").c(&leaf("identifier", "decide")).b()).x().b()).b()
         .coparse(),
     );
     
@@ -130,7 +132,9 @@ fn main() -> Result<()> {
         b_.write(" ");
         sym(":=").emit(&mut b_);
         b_.write(" ");
+        b_.push("                                         ");
         total.emit(&mut b_);
+        b_.pop();
         b_.b()
     }.coparse());
     
@@ -160,7 +164,9 @@ fn main() -> Result<()> {
         tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Palette.total_mk")).w(" ").c(&tb("binders").c(&{
             let mut b_ = tb("explicit_binder");
             sym("(").emit(&mut b_);
+            b_.push("                          ");
             binder_group.emit(&mut b_);
+            b_.pop();
             b_.write(" ");
             sym(":").emit(&mut b_);
             b_.write(" ");
@@ -195,7 +201,7 @@ fn main() -> Result<()> {
         {
             for ch in channels {
                 let ctor = ident(&format!("Color.{ch}"));
-                tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&ch.qlift_to::<Lean>()).w(" ").c(&sym("++")).w(" ").c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w(" -> ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("proj").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
+                tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").p("            ").c(&ch.qlift_to::<Lean>()).x().w(" ").c(&sym("++")).w(" ").c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w(" -> ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("proj").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
                     let mut b_ = tb("paren");
                     sym("(").emit(&mut b_);
                     ctor.emit(&mut b_);

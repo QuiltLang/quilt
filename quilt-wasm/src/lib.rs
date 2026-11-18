@@ -108,6 +108,23 @@ impl WasmBuilder {
         WasmBuilder(self.0.x())
     }
 
+    /// Splice a child term, **taking** it: the child's JS handle is consumed
+    /// (nulled), and its Rust side moves into the builder.
+    ///
+    /// This is what expanded code uses for every child it has just built
+    /// itself — `tb("x").t(sym("<"))`, `.t(tb("y")..b())` — while a spliced
+    /// host value (`↙x↘`, which the program may still hold) keeps the
+    /// borrowing [`c`](Self::c)/[`e`](Self::e). The difference is memory, not
+    /// meaning: a borrowed temporary's wrapper keeps its subtree alive in wasm
+    /// memory until the garbage collector gets round to its finalizer, which a
+    /// synchronous loop never lets it do, so every expansion used to pin a
+    /// full copy of its tree. Taken children are freed with their parent, and
+    /// a caller that frees the root (`t.free()`, or `using`) gets the whole
+    /// tree back at once.
+    pub fn t(self, child: WasmQTerm) -> WasmBuilder {
+        WasmBuilder(self.0.c(&child.0))
+    }
+
     /// Emit a child term (for an `Arc<QTerm>` this is the same as [`c`]).
     pub fn e(self, child: &WasmQTerm) -> WasmBuilder {
         WasmBuilder(self.0.e(&child.0))
@@ -225,6 +242,21 @@ pub fn POP() -> WasmStrCmd {
 #[allow(non_snake_case)]
 pub fn HOLE() -> WasmCmdOrHole {
     WasmCmdOrHole(CmdOrHole::Hole)
+}
+
+/// The size of this module's linear memory, in bytes — for tests and
+/// benchmarks that check a workload runs in bounded memory (wasm memory only
+/// ever grows, so a leak shows up here as growth). Not API.
+#[wasm_bindgen(js_name = __memoryBytes)]
+pub fn memory_bytes() -> f64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        (core::arch::wasm32::memory_size::<0>() * 65536) as f64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        0.0
+    }
 }
 
 /// An identifier term (the `⟨N⟩` operator).

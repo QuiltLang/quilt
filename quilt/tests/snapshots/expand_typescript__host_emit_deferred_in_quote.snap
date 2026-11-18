@@ -2,4 +2,4 @@
 source: quilt/tests/expand_typescript.rs
 expression: "expand(&[\"ts\"], \"const x = ts↖const y = ts↖const z = ←↗↗;\\n\")?"
 ---
-const x = tb("lexical_declaration").c(sym("const")).w(" ").c(tb("variable_declarator").c(leaf("identifier", "y")).w(" ").c(sym("=")).w(" ").c(quote("quilt_hole", 1, "ts", tb("lexical_declaration").c(sym("const")).w(" ").c(tb("variable_declarator").c(leaf("identifier", "z")).w(" ").c(sym("=")).w(" ").c(leaf("identifier", "←")).b()).b(), [cmd(write("ts")), cmd(write("↖")), HOLE(), cmd(write("↗"))])).b()).b();
+const x = tb("lexical_declaration").t(sym("const")).w(" ").t(tb("variable_declarator").t(leaf("identifier", "y")).w(" ").t(sym("=")).w(" ").t(quote("quilt_hole", 1, "ts", tb("lexical_declaration").t(sym("const")).w(" ").t(tb("variable_declarator").t(leaf("identifier", "z")).w(" ").t(sym("=")).w(" ").t(leaf("identifier", "←")).b()).b(), [cmd(write("ts")), cmd(write("↖")), HOLE(), cmd(write("↗"))])).b()).b();

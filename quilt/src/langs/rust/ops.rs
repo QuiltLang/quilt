@@ -148,7 +148,14 @@ pub fn pattern_var_code(name: &str) -> Arc<QTerm> {
 
 /// The two terms a pattern-let rewrites to: the destructuring binder
 /// `[a, b]` that replaces the pattern quote, and the matching call
-/// `qmatch_n(&<pattern>, &<value>)` that replaces the initializer.
+/// `qmatch_n(&*<pattern>, &<value>)` that replaces the initializer.
+///
+/// The pattern is dereferenced explicitly (`&*`) because it is not always a
+/// method chain. A variadic pattern node that holds a metavariable expands to
+/// an accumulator block, `{ let mut b_ = ..; ..; b_.b() }`, and in
+/// `&{ .. }` the `&QTerm` that `qmatch_n` expects flows into the block, which
+/// makes its `Arc<QTerm>` tail a type error that no deref coercion repairs.
+/// `&*` derefs the `Arc` the block evaluates to, whatever form it takes.
 pub fn pattern_let_code(
     names: &[Box<str>],
     pattern: &Arc<QTerm>,
@@ -156,7 +163,7 @@ pub fn pattern_let_code(
 ) -> (Arc<QTerm>, Arc<QTerm>) {
     let binder = leaf("_", &format!("[{}]", names.join(", ")));
     let call = tb("_")
-        .w("qmatch_n(&")
+        .w("qmatch_n(&*")
         .c(pattern)
         .w(", &")
         .c(value)
