@@ -443,3 +443,20 @@ fn a_hash_or_dash_comment_is_not_raw_and_keeps_its_escapes() -> Result<()> {
     roundtrip_lang("nix", "{ }  # nix comment \\↑")?;
     roundtrip_lang("bash", "# shell comment \\↓\necho hi")
 }
+
+/// The prelude's `Result` is `miette::Result`, so its error type has to be
+/// nameable from the prelude too. A generator that stores an error, converts
+/// one (`Report::msg`) or writes a signature with an explicit error type should
+/// not need its own `miette` dependency just to spell `Report`.
+#[test]
+fn prelude_names_the_error_type_of_its_result() {
+    fn fails() -> Result<()> {
+        Err(Report::msg("boom"))
+    }
+    fn explicit() -> std::result::Result<(), Report> {
+        Err(miette!("also {}", "boom"))
+    }
+    let err: Report = fails().unwrap_err();
+    assert_eq!(err.to_string(), "boom");
+    assert_eq!(explicit().unwrap_err().to_string(), "also boom");
+}
