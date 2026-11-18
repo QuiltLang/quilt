@@ -300,129 +300,6 @@ fn indented_multiline_plain_block_comment_round_trips() -> Result<()> {
     "#})
 }
 
-/* ------------------- a quote body left of its host code ------------------- */
-
-/// A multi-line quote whose body sits *left* of the code around it builds the
-/// same term as the same quote written at the host's indentation. The body has
-/// none of the enclosing indent to strip, which used to fail the whole
-/// expansion with a bare "Failed to strip prefix" and no location.
-#[test]
-fn a_block_quote_left_of_its_host_expands_as_if_indented() -> Result<()> {
-    let flush = expand(
-        "rs",
-        indoc! {r#"
-            fn f() {
-                if true {
-                    let g = rs↖
-            fn g() -> u32 {
-                1
-            }
-            ↗;
-                }
-            }
-        "#},
-    )?;
-    let indented = expand(
-        "rs",
-        indoc! {r#"
-            fn f() {
-                if true {
-                    let g = rs↖
-                        fn g() -> u32 {
-                            1
-                        }
-                    ↗;
-                }
-            }
-        "#},
-    )?;
-    assert_eq!(flush, indented);
-    Ok(())
-}
-
-/// The same with the body only *partly* left of the host: what every line
-/// shares is stripped, and the body keeps its own relative indentation.
-#[test]
-fn a_quote_body_partly_left_of_its_host_keeps_its_shape() -> Result<()> {
-    let partly = expand(
-        "rs",
-        indoc! {r#"
-            fn f() {
-                if true {
-                    let g = rs↖
-                  fn g() -> u32 {
-                      1
-                  }
-                    ↗;
-                }
-            }
-        "#},
-    )?;
-    let indented = expand(
-        "rs",
-        indoc! {r#"
-            fn f() {
-                if true {
-                    let g = rs↖
-                        fn g() -> u32 {
-                            1
-                        }
-                    ↗;
-                }
-            }
-        "#},
-    )?;
-    assert_eq!(partly, indented);
-    Ok(())
-}
-
-/// An inline-opened quote (`↖fn g…`) whose continuation lines are flush left:
-/// the opener line bounds the common indent, so the body is read as written.
-#[test]
-fn an_inline_quote_left_of_its_host_expands() -> Result<()> {
-    let flush = expand(
-        "rs",
-        indoc! {r#"
-            fn f() {
-                if true {
-                    let g = rs↖fn g() -> u32 {
-                1
-            }↗;
-                }
-            }
-        "#},
-    )?;
-    let indented = expand(
-        "rs",
-        indoc! {r#"
-            fn f() {
-                if true {
-                    let g = rs↖fn g() -> u32 {
-                        1
-                    }↗;
-                }
-            }
-        "#},
-    )?;
-    assert_eq!(flush, indented);
-    Ok(())
-}
-
-/// A whitespace-only line shorter than the host's indent says nothing about the
-/// body's indentation: it neither fails nor holds back the dedent.
-#[test]
-fn a_short_blank_line_in_a_quote_does_not_hold_back_the_dedent() -> Result<()> {
-    let blank = "        fn a() {}\n  \n        fn b() {}";
-    let src = format!("fn f() {{\n    let g = rs↖\n{blank}\n    ↗;\n}}");
-    let out = expand("rs", &src)?;
-    let clean = expand(
-        "rs",
-        "fn f() {\n    let g = rs↖\n        fn a() {}\n\n        fn b() {}\n    ↗;\n}",
-    )?;
-    assert_eq!(out, clean);
-    Ok(())
-}
-
 /* --------------------- escaped glyphs round-trip (#223) ------------------- */
 
 /// Every glyph, escaped, at ground level: a `.quilt` file that spells a glyph
@@ -565,4 +442,127 @@ fn a_hash_or_dash_comment_is_not_raw_and_keeps_its_escapes() -> Result<()> {
     roundtrip_lang("py", "# python comment with \\↙…\\↘ and \\↑\nx = 1")?;
     roundtrip_lang("nix", "{ }  # nix comment \\↑")?;
     roundtrip_lang("bash", "# shell comment \\↓\necho hi")
+}
+
+/* ------------------- a quote body left of its host code ------------------- */
+
+/// A multi-line quote whose body sits *left* of the code around it builds the
+/// same term as the same quote written at the host's indentation. The body has
+/// none of the enclosing indent to strip, which used to fail the whole
+/// expansion with a bare "Failed to strip prefix" and no location.
+#[test]
+fn a_block_quote_left_of_its_host_expands_as_if_indented() -> Result<()> {
+    let flush = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let g = rs↖
+            fn g() -> u32 {
+                1
+            }
+            ↗;
+                }
+            }
+        "#},
+    )?;
+    let indented = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let g = rs↖
+                        fn g() -> u32 {
+                            1
+                        }
+                    ↗;
+                }
+            }
+        "#},
+    )?;
+    assert_eq!(flush, indented);
+    Ok(())
+}
+
+/// The same with the body only *partly* left of the host: what every line
+/// shares is stripped, and the body keeps its own relative indentation.
+#[test]
+fn a_quote_body_partly_left_of_its_host_keeps_its_shape() -> Result<()> {
+    let partly = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let g = rs↖
+                  fn g() -> u32 {
+                      1
+                  }
+                    ↗;
+                }
+            }
+        "#},
+    )?;
+    let indented = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let g = rs↖
+                        fn g() -> u32 {
+                            1
+                        }
+                    ↗;
+                }
+            }
+        "#},
+    )?;
+    assert_eq!(partly, indented);
+    Ok(())
+}
+
+/// An inline-opened quote (`↖fn g…`) whose continuation lines are flush left:
+/// the opener line bounds the common indent, so the body is read as written.
+#[test]
+fn an_inline_quote_left_of_its_host_expands() -> Result<()> {
+    let flush = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let g = rs↖fn g() -> u32 {
+                1
+            }↗;
+                }
+            }
+        "#},
+    )?;
+    let indented = expand(
+        "rs",
+        indoc! {r#"
+            fn f() {
+                if true {
+                    let g = rs↖fn g() -> u32 {
+                        1
+                    }↗;
+                }
+            }
+        "#},
+    )?;
+    assert_eq!(flush, indented);
+    Ok(())
+}
+
+/// A whitespace-only line shorter than the host's indent says nothing about the
+/// body's indentation: it neither fails nor holds back the dedent.
+#[test]
+fn a_short_blank_line_in_a_quote_does_not_hold_back_the_dedent() -> Result<()> {
+    let blank = "        fn a() {}\n  \n        fn b() {}";
+    let src = format!("fn f() {{\n    let g = rs↖\n{blank}\n    ↗;\n}}");
+    let out = expand("rs", &src)?;
+    let clean = expand(
+        "rs",
+        "fn f() {\n    let g = rs↖\n        fn a() {}\n\n        fn b() {}\n    ↗;\n}",
+    )?;
+    assert_eq!(out, clean);
+    Ok(())
 }
