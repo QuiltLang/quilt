@@ -302,6 +302,23 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // when there is no enclosing prefix — so a quote whose body is just
         // written indented (e.g. a top-level `py↖\n    …\n↗`) is dedented too,
         // not only one spliced into already-indented code.
+        //
+        // The enclosing prefix is only stripped as far as every line actually
+        // carries it. A body written *left* of the code around the quote —
+        //
+        //         let g = rs↖
+        // fn g() {}
+        // ↗;
+        //
+        // — has nothing of the prefix to give up, and used to fail the whole
+        // expansion with a bare "Failed to strip prefix". Stripping each line
+        // by as much of the prefix as it happens to have would not do either:
+        // it would flatten the body's own relative indentation. So the prefix
+        // is cut back to what every line shares, the lines lose exactly that,
+        // and the common-indent pass below takes care of the rest. Blank lines
+        // say nothing about indentation, so they do not cut the prefix back.
+        let full_prefix = hole.prefix.concat();
+        let prefix = shared_prefix(&full_prefix, nodes);
         let mut nodes_new = Vec::with_capacity(nodes.len());
         let mut indent = None;
         let mut on_nl = false;
@@ -314,15 +331,17 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         if let Some(Node::Content(s)) = nodes.first().map(|n| &**n) {
             indent = Some(RE_WS_PREFIX.find(s).unwrap().as_str());
         }
-        for n in nodes {
+        for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 Node::Content(s) if on_nl => {
-                    let mut s = &**s;
-                    for p in &hole.prefix {
-                        s = s
-                            .strip_prefix(&**p)
-                            .ok_or_else(|| miette!("Failed to strip prefix"))?;
-                    }
+                    // A blank line — the closing `↗`'s own indentation among
+                    // them — gives up as much of the *full* prefix as it has,
+                    // so a closer at the host's indent leaves nothing behind.
+                    let s = if is_blank(nodes, i) {
+                        &s[common_prefix_len(&full_prefix, s)..]
+                    } else {
+                        &s[prefix.len()..]
+                    };
                     if !s.is_empty() {
                         nodes_new.push(arc(Node::Content(s.into())));
                         indent = match indent {
@@ -1083,3 +1102,40 @@ impl<M: MetaLanguage> MetaLanguages for Singleton<M> {
 }
 
 pub type Single<M, L> = Multi<Singleton<M>, Singleton<L>>;
+
+/// Byte length of the longest common prefix of `a` and `b`, on a char boundary.
+#[cfg(feature = "parse")]
+fn common_prefix_len(a: &str, b: &str) -> usize {
+    a.char_indices()
+        .zip(b.chars())
+        .find(|((_, x), y)| x != y)
+        .map_or_else(|| a.len().min(b.len()), |((i, _), _)| i)
+}
+
+/// The part of `prefix` (an enclosing quote's indent) that every non-blank line
+/// of `nodes` starts with — the most of it that can be stripped without
+/// cutting into a line's own text. A blank line (see [`is_blank`]) does not
+/// count; whitespace followed by a quote, an unquote or an operator is that
+/// construct's indentation, and does.
+#[cfg(feature = "parse")]
+fn shared_prefix<'a>(prefix: &'a str, nodes: &[Arc<Node>]) -> &'a str {
+    let mut shared = prefix;
+    let mut on_nl = false;
+    for (i, n) in nodes.iter().enumerate() {
+        if let Node::Content(s) = &**n {
+            if on_nl && !is_blank(nodes, i) {
+                shared = &shared[..common_prefix_len(shared, s)];
+            }
+        }
+        on_nl = **n == Node::NewLine;
+    }
+    shared
+}
+
+/// Whether `nodes[i]` is a blank line's content: only whitespace, and nothing
+/// after it on the line.
+#[cfg(feature = "parse")]
+fn is_blank(nodes: &[Arc<Node>], i: usize) -> bool {
+    matches!(&*nodes[i], Node::Content(s) if s.trim().is_empty())
+        && nodes.get(i + 1).is_none_or(|next| **next == Node::NewLine)
+}
