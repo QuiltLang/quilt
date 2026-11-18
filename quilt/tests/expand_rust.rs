@@ -376,3 +376,50 @@ fn holes_in_pattern_and_type_position_still_parse() -> Result<()> {
     expand_both("let v: Vec<⟨T⟩> = Vec::new();")?;
     Ok(())
 }
+
+/* ------------------ a sequence spliced into a list (#293) ----------------- */
+
+/// Several terms spliced into a comma-separated container — an array, an
+/// argument list — are separated with `, `. They used to be written back to
+/// back: `[12]`, `f(12)`.
+#[test]
+fn a_vec_spliced_into_a_list_is_comma_separated() -> Result<()> {
+    let mut omni = Omni::default();
+    let code = indoc! {r#"{
+        let xs: Vec<Arc<QTerm>> = vec![1.qlift(), 2.qlift()];
+        let ys: Vec<i64> = vec![1, 2, 3];
+        let a = ↖[↙xs↘]↗;
+        let f = ↖f(↙xs↘)↗;
+        let c = ↖const A: [i64; 3] = [↙{ for y in &ys { y.↑.←; } }↘];↗;
+        format!("{} | {} | {}", a.coparse(), f.coparse(), c.coparse())
+    }"#};
+    let qterm = omni.parse(code)?;
+    let out: String = omni.expand(&qterm)?.reduce()?;
+    assert_eq!(out, "[1, 2] | f(1, 2) | const A: [i64; 3] = [1, 2, 3];");
+    Ok(())
+}
+
+/// Separators the author already placed are kept, not doubled: a literal
+/// element before the splice, and the workaround of emitting `,` by hand.
+#[test]
+fn hand_placed_list_separators_are_kept() -> Result<()> {
+    let mut omni = Omni::default();
+    let code = indoc! {r#"{
+        let xs: Vec<Arc<QTerm>> = vec![1.qlift(), 2.qlift()];
+        let a = ↖[0, ↙xs↘, 3]↗;
+        let b = ↖[↙{
+            for (i, x) in xs.iter().enumerate() {
+                if i > 0 {
+                    sym(",").←;
+                    " ".←;
+                }
+                x.←;
+            }
+        }↘]↗;
+        format!("{} | {}", a.coparse(), b.coparse())
+    }"#};
+    let qterm = omni.parse(code)?;
+    let out: String = omni.expand(&qterm)?.reduce()?;
+    assert_eq!(out, "[0, 1, 2, 3] | [1, 2]");
+    Ok(())
+}
