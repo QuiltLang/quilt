@@ -166,3 +166,32 @@ fn host_emit_deferred_in_quote() -> Result<()> {
     )?);
     Ok(())
 }
+
+/// Every child the expansion builds itself, and every lift, is spliced with the
+/// runtime's taking `.t(..)`, so a tree built by one quote is owned by its root
+/// and freed with it; a spliced host value — which the program may still hold —
+/// keeps the borrowing `.c(..)`/`.e(..)`. Borrowing a temporary pinned its subtree in
+/// wasm memory until the garbage collector ran its finalizer, so repeated
+/// expansions grew without bound in a synchronous loop.
+#[test]
+fn fresh_children_are_taken_host_values_borrowed() -> Result<()> {
+    let out = expand(
+        &["ts", "html"],
+        "const x = html↖<p>↙title↘ <b>↙f(x)↘</b> ↙↑(y)↘</p>↗;\n",
+    )?;
+    // Literal structure: taken.
+    assert!(out.contains(r#".t(sym("<"))"#), "{out}");
+    assert!(out.contains(r#".t(tb("start_tag")"#), "{out}");
+    assert!(out.contains(r#".t(tb("element")"#), "{out}");
+    // A lift returns a new term on every call.
+    assert!(out.contains(".t(qlift_html(y))"), "{out}");
+    // Host values, including a call that may return a term it keeps: borrowed.
+    for v in ["title", "f(x)"] {
+        assert!(!out.contains(&format!(".t({v})")), "{v} was taken: {out}");
+        assert!(
+            out.contains(&format!(".e({v})")) || out.contains(&format!(".c({v})")),
+            "{v} not spliced: {out}"
+        );
+    }
+    Ok(())
+}

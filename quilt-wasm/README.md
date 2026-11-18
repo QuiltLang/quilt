@@ -70,6 +70,7 @@ no-op, not a failure.
 ```sh
 wasm-pack build quilt-wasm --target nodejs   # or: bin/build-ts
 node quilt-wasm/test/smoke.cjs               # the builder API
+node quilt-wasm/test/memory.cjs              # repeated expansion in flat memory (bin/test-ts)
 node quilt-wasm/test/corpus.mjs              # the shared runtime corpus (bin/test-runtimes)
 cargo test -p quilt-wasm --lib               # in-crate units (none today; see quilt::lift for escape_html)
 QUILT=bin/quilt node quilt-wasm/test/reduce.mjs   # `↓`, in node/ (bin/test-ts)
@@ -82,6 +83,7 @@ Mirrors the Python runtime one-for-one where the ABIs allow:
 | Python runtime        | quilt-wasm                                  |
 | --------------------- | ------------------------------------------- |
 | `tb(tag)` + `.c/.w/.n/.p/.x/.e/.b` | same fluent `WasmBuilder`      |
+| (none: refcounting frees temporaries) | `.t(child)`: splice and **take** a fresh child (see Memory) |
 | `leaf/sym/quote/unquote/name`      | same free functions            |
 | `cmd/write/push`                   | same free functions            |
 | `NL`, `POP`, `HOLE` (constants)    | `NL()`, `POP()`, `HOLE()` (**functions** — see below) |
@@ -93,6 +95,32 @@ Mirrors the Python runtime one-for-one where the ABIs allow:
 Builder and term methods that take `self`/a child by value **consume** the JS
 object (wasm-bindgen move semantics), so chain in one expression and don't reuse
 a spliced term.
+
+## Memory
+
+A term here is a JS wrapper around a Rust `Arc`, and wasm-bindgen releases it
+when the garbage collector runs the wrapper's finalizer, not when the last
+reference goes away. Until then the wrapper keeps its whole subtree alive in
+wasm memory. V8 cannot see that memory, so it is in no hurry to collect, and
+a synchronous loop never lets finalizers run at all.
+
+Expanded code therefore splices every child it has just built itself with
+`.t(child)`, which **takes** the child: its handle is consumed, and its
+`Arc` moves into the parent. Spliced host values (`↙x↘`, `↙f(x)↘`,
+`↙↑(x)↘`) still go through the borrowing `.c`/`.e`, because the program may
+hold on to them. So a term built entirely by one quote is owned by its root,
+and freeing the root gives it all back at once:
+
+```js
+const t = render();
+const html = t.coparse();
+t.free();            // or: using t = render();
+```
+
+Terms the program keeps in variables or returns from helpers are still
+released by the garbage collector. Free them yourself (`free()`/`using`) if
+you build large trees in a loop. `test/memory.cjs` checks that a repeated
+expansion runs in flat memory.
 
 ## Divergences from the Python runtime
 

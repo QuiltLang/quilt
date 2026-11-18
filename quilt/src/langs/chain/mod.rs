@@ -84,6 +84,13 @@ pub struct Shapes {
     pub c: [&'static str; 2],
     /// `.e(CHILD)` — emit into a variadic container (Python and TypeScript).
     pub e: [&'static str; 2],
+    /// `.t(CHILD)` — splice a child the chain has just built, letting the
+    /// builder take ownership of it rather than borrow it. Used in place of
+    /// `c`/`e` for every child that is itself a builder call (never for a
+    /// spliced host value, which the program may still hold). `None` where a
+    /// borrowed temporary costs nothing — Rust and Python free it at once; only
+    /// `quilt-wasm`'s wrappers wait on the garbage collector.
+    pub t: Option<[&'static str; 2]>,
     /// `.b()` — closes a builder chain.
     pub b: &'static str,
     /// `sym(LIT)` — shorthand for a childless node whose text is its own tag.
@@ -127,18 +134,61 @@ pub enum Lit {
     Term(fn(&str) -> Arc<QTerm>),
 }
 
+/// Whether `child` is an expression that evaluates to a term nothing else
+/// refers to, so the builder may take it (see [`Shapes::t`]).
+///
+/// Two kinds qualify:
+///
+/// * a builder call this fold emitted. Everything the fold builds is tagged
+///   `"_"` (flat, dump-only layout), and nothing else is: a spliced host value
+///   (the body of a ground unquote, `↙x↘`) keeps the tag its own parser gave
+///   it (`identifier`, `call_expression`, ...);
+/// * a call to one of `fresh_calls`, the runtime functions that always return
+///   a new term, like `qlift_html(x)`, which is what `↙↑(x)↘` spells.
+///
+/// Anything else is borrowed, exactly as before, which is the safe direction.
+fn is_fresh(child: &Arc<QTerm>, fresh_calls: &[&str]) -> bool {
+    let QTerm::Tuple { tag, terms, .. } = &**child else {
+        return false;
+    };
+    match &**tag {
+        "_" => true,
+        "call_expression" => terms.first().is_some_and(|f| {
+            matches!(&**f, QTerm::Tuple { tag, .. } if &**tag == "identifier")
+                && fresh_calls.contains(&f.coparse().trim())
+        }),
+        _ => false,
+    }
+}
+
 /// A [`Shapes`] table paired with a way to render string literals: everything
 /// the fold needs to emit one language's builder calls.
 #[derive(Clone, Copy)]
 pub struct Chain {
     shapes: &'static Shapes,
     lit: Lit,
+    fresh_calls: &'static [&'static str],
 }
 
 impl Chain {
     #[must_use]
     pub const fn new(shapes: &'static Shapes, lit: Lit) -> Self {
-        Self { shapes, lit }
+        Self {
+            shapes,
+            lit,
+            fresh_calls: &[],
+        }
+    }
+
+    /// Name the runtime functions whose every call returns a new term, so a
+    /// child that calls one is taken rather than borrowed (see
+    /// [`Shapes::t`]). Only meaningful where the shapes have a `t`.
+    #[must_use]
+    pub const fn fresh_calls(self, fresh_calls: &'static [&'static str]) -> Self {
+        Self {
+            fresh_calls,
+            ..self
+        }
     }
 
     /// Append a string literal in whichever form this chain was built for.
@@ -221,7 +271,11 @@ impl Chain {
                     let child = it
                         .next()
                         .unwrap_or_else(|| panic!("{who}: not enough children"));
-                    Self::splice(&mut b, hole, child);
+                    let f = match s.t {
+                        Some(t) if is_fresh(child, self.fresh_calls) => t,
+                        _ => hole,
+                    };
+                    Self::splice(&mut b, f, child);
                 }
             }
         }
