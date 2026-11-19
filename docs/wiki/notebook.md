@@ -180,8 +180,8 @@ outlive the cell, its `const`s are there for the next TS cell, and it can
 landed by `Notebook::land_cell`, which cannot tell where it was produced — a
 value that is a quilt term answers with its markup, so a TS cell that builds
 HTML lands in the page like any other cell's output. A cell that *quotes* needs
-the runtime in the page: `wasm-pack build quilt-wasm --target web --out-dir
-pkg-web` (the editor says so if it is missing). `--ts server` runs them on the
+the runtime in the page: `bin/build-wasm web pkg-web` (the editor says so if
+it is missing). `--ts server` runs them on the
 node kernel with everything else instead.
 
 **Python cells can serve.** The session feeds the Python machine a prelude with

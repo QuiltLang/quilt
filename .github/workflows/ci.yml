@@ -434,7 +434,7 @@ jobs:
   # ⚠️ One-time setup: trusted publishing is configured on the package at
   # npmjs.com, which requires the package to already exist (npm has no
   # PyPI-style "pending publisher"). So the FIRST release must be published
-  # another way — `wasm-pack build quilt-wasm --target web && npm publish` from
+  # another way — `bin/build-wasm web pkg && npm publish` from
   # quilt-wasm/pkg with `npm login`, or a one-off token. After that, add the
   # trusted publisher (GitHub Actions → repo QuiltLang/quilt, workflow ci.yml)
   # and this job handles every release with no secret. An already-published
@@ -468,12 +468,13 @@ jobs:
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
           version: 'latest'
-      # `--target web`: a default-export `init()` + the named runtime functions,
-      # the API expanded `.ts.quilt` modules import. Lands in quilt-wasm/pkg/
-      # with a generated package.json (name/version/license/description/
-      # repository/keywords all from quilt-wasm/Cargo.toml).
-      - name: wasm-pack build
-        run: wasm-pack build quilt-wasm --target web
+      # `web`: a default-export `init()` + the named runtime functions, the API
+      # expanded `.ts.quilt` modules import. bin/build-wasm runs wasm-pack, then
+      # puts the JavaScript runtime around it (issue #306). Lands in
+      # quilt-wasm/pkg/ with a generated package.json (name/version/license/
+      # description/repository/keywords all from quilt-wasm/Cargo.toml).
+      - name: build the package
+        run: bin/build-wasm web pkg
       # No token / NODE_AUTH_TOKEN: with a trusted publisher configured, npm
       # detects the GitHub OIDC environment and authenticates automatically
       # (provenance included). Until that one-time setup is done (see header),

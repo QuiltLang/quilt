@@ -302,7 +302,7 @@ The TypeScript counterpart: build the `quilt-wasm` runtime for Node. Required be
 build-ts
 ```
 
-Runs `wasm-pack build quilt-wasm --target nodejs --out-dir pkg` — CommonJS with the wasm instantiated on `require`, so a CLI run needs no `fetch`/`init` dance. (The npm package and the browser demos use `--target web`, which `examples/web/build.mjs` puts in `pkg-web/`; the API surface is the same.) `quilt run` layers `quilt-wasm/node` on top, which is what adds `↓`.
+Runs `bin/build-wasm nodejs pkg`: `wasm-pack build quilt-wasm --target nodejs`, then the JavaScript runtime around it (`quilt-wasm/js/`) — CommonJS with the wasm instantiated on `require`, so a CLI run needs no `fetch`/`init` dance. (The npm package and the browser demos use `bin/build-wasm web`, which `examples/web/build.mjs` puts in `pkg-web/`; the API surface is the same.) `quilt run` layers `quilt-wasm/node` on top, which is what adds `↓`.
 
 ### `test-py` / `test-ts`
 

@@ -90,7 +90,7 @@ const TOKEN_COOKIE: &str = "quilt_token";
 const RESPONSE_MARK: &str = "__QUILT_RESP__";
 
 /// Where the browser-side runtime is looked for, relative to this crate —
-/// `wasm-pack build quilt-wasm --target web --out-dir pkg-web` (what
+/// `bin/build-wasm web pkg-web` (what
 /// `examples/web/build.mjs` runs) puts it there. Absent, TypeScript cells
 /// still run; only the ones that *quote* need the builders.
 const WASM_PKG: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../quilt-wasm/pkg-web");
@@ -932,8 +932,7 @@ fn wasm_asset(file: &str) -> Response {
         Ok(bytes) => Response::new(200, content_type, bytes),
         Err(_) => Response::status(
             404,
-            "the browser runtime is not built: `wasm-pack build quilt-wasm --target web \
-             --out-dir pkg-web`",
+            "the browser runtime is not built: `bin/build-wasm web pkg-web`",
         ),
     }
 }

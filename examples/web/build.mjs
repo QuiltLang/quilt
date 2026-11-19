@@ -24,7 +24,7 @@ rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 // 1. The quilt-wasm runtime for the browser (ESM + .wasm), shared by both demos.
-execSync("wasm-pack build quilt-wasm --target web --out-dir pkg-web", {
+execSync("bin/build-wasm web pkg-web", {
   cwd: repo,
   stdio: "inherit",
 });

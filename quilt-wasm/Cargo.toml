@@ -11,16 +11,18 @@ authors.workspace = true
 publish = false
 # Copied verbatim into the wasm-pack-generated `pkg/package.json`. `repository`
 # also lets `npm publish --provenance` (in ci.yml) link the package to this repo.
-description = "WebAssembly runtime for Quilt's core IR — the browser/Node target of expanded `.ts.quilt` programs (QTerm builder, qlift/qlift_html, coparse) via wasm-bindgen."
+description = "Quilt's core IR for JavaScript, with WebAssembly at the edges — the browser/Node target of expanded `.ts.quilt` programs (QTerm builder, qlift/qlift_html, coparse)."
 repository.workspace = true
 keywords = ["quilt", "metaprogramming", "wasm", "webassembly", "typescript"]
 
 # The runtime that expanded `.ts.quilt` programs target in the browser — the
-# JS/WASM analog of the `quilt` Python module (`quilt-python/`). Exposes the
-# `QTerm` builder, `qlift`/`qlift_html`, and `coparse` to JavaScript via
-# wasm-bindgen. Like `nanobots-codegen`, it depends on `quilt` with
-# `default-features = false, features = ["rust"]`, so the tree-sitter-free
-# runtime path builds for `wasm32-unknown-unknown` with no C runtime.
+# JS/WASM analog of the `quilt` Python module (`quilt-python/`). The `QTerm`
+# builder, `qlift`/`qlift_html`, and `coparse` are JavaScript (`js/`); this
+# crate is the edges that need Rust, and `bin/build-wasm` assembles the two
+# into the package (issue #306). Like `nanobots-codegen`, it depends on
+# `quilt` with `default-features = false, features = ["rust"]`, so the
+# tree-sitter-free runtime path builds for `wasm32-unknown-unknown` with no C
+# runtime.
 
 [lib]
 # `cdylib` for the wasm artifact (wasm-pack); `rlib` so host `cargo test` works.
@@ -33,6 +35,5 @@ crate-type = ["cdylib", "rlib"]
 # implies `parse`, so this stays tree-sitter-free on wasm32.
 quilt = {workspace = true, features = ["rust", "typescript"]}
 wasm-bindgen = "0.2"
-# For `Reflect`/`Function`: the lift functions dispatch on "is this JsValue one
-# of our terms?" without consuming it. See `as_term` in src/lib.rs.
+# For `Array`/`Uint32Array`: `lift` hands a term back as `[ops, strings]`.
 js-sys = "0.3"
