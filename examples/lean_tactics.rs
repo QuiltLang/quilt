@@ -76,7 +76,7 @@ fn main() -> Result<()> {
             let mut b_ = tb("def");
             sym("def").emit(&mut b_);
             b_.write(" ");
-            b_.push("    ");
+            b_.align("    ");
             f.emit(&mut b_);
             b_.pop();
             b_.write(" ");
@@ -161,7 +161,7 @@ fn main() -> Result<()> {
             tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w("chain 0 = ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
                 let mut b_ = tb("paren");
                 sym("(").emit(&mut b_);
-                b_.push("                                      ");
+                b_.align("                                      ");
                 applied.emit(&mut b_);
                 b_.pop();
                 sym(")").emit(&mut b_);

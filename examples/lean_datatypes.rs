@@ -97,7 +97,7 @@ fn main() -> Result<()> {
         b_.write(" ");
         sym(":=").emit(&mut b_);
         b_.write(" ");
-        b_.push("                                    ");
+        b_.align("                                    ");
         code.emit(&mut b_);
         b_.pop();
         b_.b()
@@ -132,7 +132,7 @@ fn main() -> Result<()> {
         b_.write(" ");
         sym(":=").emit(&mut b_);
         b_.write(" ");
-        b_.push("                                         ");
+        b_.align("                                         ");
         total.emit(&mut b_);
         b_.pop();
         b_.b()
@@ -164,7 +164,7 @@ fn main() -> Result<()> {
         tb("theorem").c(&sym("theorem")).w(" ").c(&leaf("identifier", "Palette.total_mk")).w(" ").c(&tb("binders").c(&{
             let mut b_ = tb("explicit_binder");
             sym("(").emit(&mut b_);
-            b_.push("                          ");
+            b_.align("                          ");
             binder_group.emit(&mut b_);
             b_.pop();
             b_.write(" ");
