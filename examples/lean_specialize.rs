@@ -99,7 +99,9 @@ fn main() -> Result<()> {
                     let mut b_ = tb("list_lit");
                     sym("[").emit(&mut b_);
                     b_.align("      ");
+                    b_.sep(",");
                     name.emit(&mut b_);
+                    b_.end_sep();
                     b_.pop();
                     sym(",").emit(&mut b_);
                     b_.write(" ");

@@ -207,6 +207,10 @@ impl MetaLanguage for BootstrapMetaLanguage {
         }
     }
 
+    fn wrap_separated(&self, sterm: Arc<QTerm>, sep: &str) -> Result<Arc<QTerm>> {
+        Ok(crate::langs::rust::ops::wrap_separated(&sterm, sep))
+    }
+
     fn pattern_tag(&self) -> Option<&'static str> {
         Some("let_declaration")
     }

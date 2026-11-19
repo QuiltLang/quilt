@@ -522,9 +522,35 @@ pub struct QTermBuilder {
     cmds: Vec<CmdOrHole>,
     /// Source span for the built Quote/Unquote (ignored for Tuple).
     span: Option<Span>,
+    /// The open separated region, if any (see [`QTermBuilder::sep`]).
+    sep: Option<Separated>,
     /// Inside an [`align`](QTermBuilder::align): text is laid out at the
     /// hole's column.
     aligned: bool,
+}
+
+/// A run of children that must be separated by `token` — the elements a
+/// splice contributes to a comma-separated list (#293).
+struct Separated {
+    token: Box<str>,
+    /// Where in `cmds` the hole of the region's last element is, once there is
+    /// one. A separator token the author placed resets it: what follows that
+    /// token is already separated.
+    last: Option<usize>,
+}
+
+impl Separated {
+    /// Whether `child` is the separator itself, as `sym(token)` builds it.
+    fn is_token(&self, child: &QTerm) -> bool {
+        match child {
+            QTerm::Tuple { tag, terms, cmds } => {
+                **tag == *self.token
+                    && terms.is_empty()
+                    && matches!(&**cmds, [CmdOrHole::Cmd(StrCmd::Write(s))] if **s == *self.token)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl QTermBuilder {
@@ -534,6 +560,7 @@ impl QTermBuilder {
             children: Vec::new(),
             cmds: Vec::new(),
             span: None,
+            sep: None,
             aligned: false,
         }
     }
@@ -544,8 +571,57 @@ impl QTermBuilder {
     }
 
     pub fn child(&mut self, child: &Arc<QTerm>) -> &mut Self {
+        if let Some(sep) = &mut self.sep {
+            if sep.is_token(child) {
+                sep.last = None;
+            } else {
+                if let Some(at) = sep.last {
+                    let between = &self.cmds[at + 1..];
+                    let placed = between.iter().any(
+                        |c| matches!(c, CmdOrHole::Cmd(StrCmd::Write(s)) if s.contains(&*sep.token)),
+                    );
+                    if !placed {
+                        // Right after the previous element, so a newline the
+                        // author put between the two lands after the
+                        // separator; a space only if nothing else is there.
+                        // No hole follows `at` (it is the region's last), so
+                        // the separator's child goes last too.
+                        let adjacent = between.is_empty();
+                        self.cmds.insert(at + 1, CmdOrHole::Hole);
+                        self.children.push(sym(&sep.token));
+                        if adjacent {
+                            self.cmds.push(CmdOrHole::Cmd(StrCmd::Write(" ".into())));
+                        }
+                    }
+                }
+                sep.last = Some(self.cmds.len());
+            }
+        }
         self.cmds.push(CmdOrHole::Hole);
         self.children.push(child.clone());
+        self
+    }
+
+    /// Open a separated region: until [`end_sep`](Self::end_sep), two
+    /// children added one after the other get `token` and a space between
+    /// them (#293).
+    ///
+    /// Expanded code opens one around a splice into a comma-separated list —
+    /// `[↙xs↘]`, `f(↙xs↘)` — so the elements a `Vec` or a loop of `←`
+    /// contributes come out `[1, 2]` instead of `[12]`. A separator the author
+    /// placed is kept rather than doubled: emitting `sym(token)` (or writing
+    /// text containing it) between two elements leaves them alone.
+    pub fn sep(&mut self, token: &str) -> &mut Self {
+        self.sep = Some(Separated {
+            token: token.into(),
+            last: None,
+        });
+        self
+    }
+
+    /// Close the region [`sep`](Self::sep) opened.
+    pub fn end_sep(&mut self) -> &mut Self {
+        self.sep = None;
         self
     }
 
@@ -917,6 +993,54 @@ mod tests {
             panic!("expected an unquote");
         };
         assert_eq!(*span, Some(7..12), "the nested unquote's span was lost");
+    }
+
+    /// A separated region puts `, ` between the elements added in it, keeps a
+    /// separator the author placed, and leaves the rest of the node alone.
+    #[test]
+    fn sep_separates_the_elements_of_a_region() {
+        let elems = vec![sym("a"), sym("b"), sym("c")];
+        let mut b_ = tb("array_expression");
+        sym("[").emit(&mut b_);
+        b_.sep(",");
+        elems.emit(&mut b_);
+        b_.end_sep();
+        sym("]").emit(&mut b_);
+        let built = b_.b();
+        assert_eq!(built.coparse(), "[a, b, c]");
+        // The separator is a child, as the parser would have made it.
+        let QTerm::Tuple { terms, .. } = &*built else {
+            panic!("expected a tuple");
+        };
+        assert_eq!(terms.len(), 7);
+        assert_eq!(terms[2], sym(","));
+
+        // A newline between two elements lands after the separator.
+        let mut b_ = tb("arguments");
+        b_.sep(",");
+        sym("a").emit(&mut b_);
+        b_.nl();
+        sym("b").emit(&mut b_);
+        assert_eq!(b_.b().coparse(), "a,\nb");
+
+        // Separators already there are not doubled.
+        let mut b_ = tb("arguments");
+        b_.sep(",");
+        sym("a").emit(&mut b_);
+        sym(",").emit(&mut b_);
+        b_.write(" ");
+        sym("b").emit(&mut b_);
+        b_.write(", ");
+        sym("c").emit(&mut b_);
+        assert_eq!(b_.b().coparse(), "a, b, c");
+
+        // Outside a region, nothing is inserted.
+        let mut b_ = tb("arguments");
+        b_.sep(",");
+        sym("a").emit(&mut b_);
+        b_.end_sep();
+        sym("b").emit(&mut b_);
+        assert_eq!(b_.b().coparse(), "ab");
     }
 
     /// Text emitted inside an `align` is laid out at the hole's column: each

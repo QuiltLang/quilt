@@ -98,6 +98,11 @@ impl TSProvider for SqlProvider {
         Arity::from_table(crate::langs::arity::SQL, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::SQL_COMMA_SEPARATED, tag)
+    }
+
     /// SQL is layered `program` → statement → clause → expression, so the tag
     /// alone answers this: the three things `program`'s repeat holds are
     /// statement-like, everything else is a value or a part of one.
@@ -515,6 +520,10 @@ impl Language for SqlLanguage {
         self.0.arity(tag)
     }
 
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.0.separator(tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         self.0.typ(tag)
     }
@@ -549,6 +558,10 @@ impl Language for DynSqlLanguage {
 
     fn arity(&self, tag: &str) -> Arity {
         self.0.arity(tag)
+    }
+
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.0.separator(tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {

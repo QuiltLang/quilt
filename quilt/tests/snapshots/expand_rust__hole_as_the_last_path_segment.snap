@@ -1,0 +1,7 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖f(Site::↙a↘, a::b::↙a↘)↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("call_expression").c(&leaf("identifier", "f")).c(&tb("arguments").c(&sym("(")).c(&tb("scoped_identifier").c(&leaf("identifier", "Site")).c(&sym("::")).c(&a).b()).c(&sym(",")).w(" ").c(&tb("scoped_identifier").c(&tb("scoped_identifier").c(&leaf("identifier", "a")).c(&sym("::")).c(&leaf("identifier", "b")).b()).c(&sym("::")).c(&a).b()).c(&sym(")")).b()).b()
+}

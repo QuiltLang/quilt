@@ -71,6 +71,11 @@ impl TSProvider for WgslProvider {
         Arity::from_table(crate::langs::arity::WGSL, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::WGSL_COMMA_SEPARATED, tag)
+    }
+
     /// Classify a fully-parsed WGSL term as expression / statement / file.
     ///
     /// This is what closes the feedback loop for the emit heuristic (issue

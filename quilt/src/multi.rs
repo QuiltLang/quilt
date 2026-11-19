@@ -377,45 +377,32 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let full_prefix = hole.prefix.concat();
         let prefix = shared_prefix(&full_prefix, nodes);
         let mut nodes_new = Vec::with_capacity(nodes.len());
-        let mut indent = None;
         let mut on_nl = false;
         let mut num_nl = 0;
-        // Inline opener content (`↖foo…`) sits flush with the opener, so its own
-        // leading whitespace bounds the common indent. This keeps a quote whose
-        // body carries meaningful indentation — e.g. `↖def f():\n    body` —
-        // from being dedented; only a block-opened quote (`↖\n    body\n↗`),
-        // whose first line is a newline, has its body's common indent stripped.
-        if let Some(Node::Content(s)) = nodes.first().map(|n| &**n) {
-            indent = Some(RE_WS_PREFIX.find(s).unwrap().as_str());
-        }
+        // The common leading indent of the continuation lines (every line after
+        // a newline), measured after the enclosing prefix is stripped. Blank
+        // lines — the closing `↗`'s own indentation among them — say nothing
+        // about the body's indentation, so they do not bound it: a closer left
+        // of the body (`↖\n        body\n      ↗`) leaves no indent behind.
+        let mut cont: Option<&str> = None;
+        // Where the last line (the one the `↗` is on) starts in `nodes_new`.
+        let mut last_line = None;
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 Node::Content(s) if on_nl => {
-                    // A blank line — the closing `↗`'s own indentation among
-                    // them — gives up as much of the *full* prefix as it has,
-                    // so a closer at the host's indent leaves nothing behind.
-                    let s = if is_blank(nodes, i) {
+                    // A blank line gives up as much of the *full* prefix as it
+                    // has, so a closer at the host's indent leaves nothing behind.
+                    let blank = is_blank(nodes, i);
+                    let s = if blank {
                         &s[common_prefix_len(&full_prefix, s)..]
                     } else {
                         &s[prefix.len()..]
                     };
                     if !s.is_empty() {
                         nodes_new.push(arc(Node::Content(s.into())));
-                        indent = match indent {
-                            None => {
-                                // extract prefix
-                                let m = RE_WS_PREFIX.find(s).unwrap();
-                                Some(m.as_str())
-                            }
-                            Some(pre) => {
-                                // find common prefix
-                                let c = pre
-                                    .chars()
-                                    .zip(s.chars())
-                                    .take_while(|(x, y)| x == y)
-                                    .count();
-                                Some(&pre[..c])
-                            }
+                        if !blank {
+                            let ws = RE_WS_PREFIX.find(s).unwrap().as_str();
+                            cont = Some(cont.map_or(ws, |pre| &pre[..common_prefix_len(pre, ws)]));
                         }
                     }
                 }
@@ -423,7 +410,39 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             }
             on_nl = **n == Node::NewLine;
             num_nl += usize::from(on_nl);
+            if on_nl {
+                last_line = Some(nodes_new.len());
+            }
         }
+        // Inline opener content (`↖foo…`) sits flush with the opener, so its own
+        // leading whitespace bounds the common indent. This keeps a quote whose
+        // body carries meaningful indentation — e.g. `↖def f():\n    body` —
+        // from being dedented; a block-opened quote (`↖\n    body\n↗`), whose
+        // first line is a newline, has its body's common indent stripped.
+        //
+        // The exception is an inline quote whose last line *closes* what the
+        // opener line opened — it starts with `}`, `)` or `]`, as in
+        //
+        //     prog.push(↖F[1] = {
+        //         a: 1,
+        //       };↗);
+        //
+        // There the closer marks the column the body is written relative to,
+        // whatever the host line's indent, so the continuation lines' common
+        // indent is stripped as in a block quote: `F[1] = {\n  a: 1,\n};`.
+        let opener = match nodes.first().map(|n| &**n) {
+            Some(Node::Content(s)) => Some(RE_WS_PREFIX.find(s).unwrap().as_str()),
+            _ => None,
+        };
+        let closes = last_line.is_some_and(|k| {
+            matches!(nodes_new.get(k).map(|n| &**n), Some(Node::Content(s))
+                if s.trim_start().starts_with(['}', ')', ']']))
+        });
+        let indent = match (opener, cont) {
+            (Some(_), Some(cont)) if closes => Some(cont),
+            (Some(op), Some(cont)) => Some(&op[..common_prefix_len(op, cont)]),
+            (op, cont) => op.or(cont),
+        };
         let mut nodes = nodes_new;
         let indent = indent.unwrap_or_default();
 
@@ -439,7 +458,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             for n in nodes {
                 match &*n {
                     Node::Content(s) if on_nl => {
-                        let s = s.strip_prefix(indent).unwrap();
+                        // A blank line did not bound `indent`, so it may have
+                        // less of it than the others: it loses what it has.
+                        let s = &s[common_prefix_len(indent, s)..];
                         if !s.is_empty() {
                             nodes_new.push(arc(Node::Content(s.into())));
                         }
@@ -468,18 +489,22 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // (issue #273) — so the spellings are built here, up front, and the
         // `FlatNode::Str`s below borrow from this vector. Deferred `⟨M⟩`s
         // (sky depth > 0) belong to a later stage and get no spelling at all.
-        let spawns: Vec<String> = if sky_depth > 0 {
-            Vec::new()
-        } else {
-            nodes
-                .iter()
-                .filter_map(|n| match &**n {
-                    Node::Machine { anno } => Some(anno),
-                    _ => None,
-                })
-                .map(|anno| self.spawn_str(lang, &machine_lang(zipper, lang, anno)))
-                .collect::<Result<_>>()?
-        };
+        // A bare `⟨M⟩` resolves as a bare quote in its place would, so it
+        // reads the last annotated quote before it at this level too.
+        let mut spawns = Vec::new();
+        if sky_depth == 0 {
+            let mut sibling = "";
+            for n in nodes {
+                match &**n {
+                    Node::Quote { anno, .. } if !anno.is_empty() => sibling = anno,
+                    Node::Machine { anno } => {
+                        let anno = if anno.is_empty() { sibling } else { anno };
+                        spawns.push(self.spawn_str(lang, &machine_lang(zipper, lang, anno))?);
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut spawns = spawns.iter();
 
         let mut code = Vec::with_capacity(nodes.len());
@@ -583,6 +608,12 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // parse children using hole types
         let mut plugs = Vec::new();
         let nodes_here = nodes;
+        // The annotation of the last annotated quote at this level: a bare
+        // `↖…↗` after `py↖…↗` is Python too, the way a bare quote *inside*
+        // one already is. Only siblings count — a quote nested in an unquote
+        // starts its own level — so the rule reads in source order, quote by
+        // quote, and an annotation is what changes it.
+        let mut sibling: Option<&str> = None;
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 // Deferred operators (see the code-building pass): consume the
@@ -631,20 +662,25 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         .ok_or_else(|| miette!("Ran out of holes for quote: {n:?}"))?;
                     // .unwrap_or_else(|| miette!("Ran out of holes for quote: {n:?}"))?;
                     // Descend into the quote's embedded language. An annotation
-                    // selects it explicitly; an un-annotated `↖…↗` resolves the
+                    // selects it explicitly, and is inherited by the bare
+                    // quotes after it at this level. An un-annotated `↖…↗`
+                    // with no annotated sibling before it resolves the
                     // default embedded language via `.back()`, which walks the
                     // file's extension chain (e.g. `wgsl` for `*.wgsl.rs.quilt`)
-                    // or a previously-used lang, falling back to the host when
-                    // none is set. The quote's lang is then the head of the
-                    // resolved zipper — the expander uses it to pick the arity
-                    // for the body's tags (e.g. `wgsl`'s `case_compound_statement`).
-                    let zipper = if anno.is_empty() {
-                        zipper
+                    // or the enclosing quote's lang (from inside its unquote),
+                    // falling back to the host when none is set. The quote's
+                    // lang is then the head of the resolved zipper — the
+                    // expander uses it to pick the arity for the body's tags
+                    // (e.g. `wgsl`'s `case_compound_statement`).
+                    if !anno.is_empty() {
+                        sibling = Some(&**anno);
+                    }
+                    let zipper = match sibling {
+                        Some(anno) => zipper.clone().cons(anno.into()),
+                        None => zipper
                             .clone()
                             .back()
-                            .unwrap_or_else(|| zipper.clone().cons(lang.clone()))
-                    } else {
-                        zipper.clone().cons(anno.clone())
+                            .unwrap_or_else(|| zipper.clone().cons(lang.clone())),
                     };
                     let quote_lang = zipper.head().unwrap();
                     let mut builder = qb(&hole.otag, 1, quote_lang);
@@ -765,9 +801,10 @@ fn text_splice_target(lang: &str, nodes: &[Arc<Node>], i: usize) -> Option<&'sta
     (opens && after.starts_with('"')).then_some(crate::lift::TEXT_IN_QUOTES)
 }
 
-/// The language a `⟨M⟩` names. An annotation says it outright; the bare form
-/// resolves exactly as a bare `↖…↗` does — the chain's next default language
-/// via the zipper's `.back()`, falling back to the host — so `⟨M⟩` in a
+/// The language a `⟨M⟩` names. An annotation says it outright (the caller
+/// passes an inherited sibling annotation as `anno`); the bare form resolves
+/// exactly as a bare `↖…↗` does — the chain's next default language via the
+/// zipper's `.back()`, falling back to the host — so `⟨M⟩` in a
 /// `.sql.py.quilt` file is a SQL machine and in a plain `.py.quilt` file a
 /// Python one (issue #273).
 #[cfg(feature = "parse")]
@@ -961,9 +998,39 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     {
                         arity = Arity::Unknown;
                     }
+                    // A ground splice into a comma-separated list gets its
+                    // elements separated (#293) — but only where the splice is
+                    // in element position, which the grammar's tables cannot
+                    // say: Lean's `def` holds a comma-separated list
+                    // somewhere, and its other holes are not in it. So the
+                    // splice must also sit between the list's brackets or
+                    // separators (`[↙xs↘]`, `f(a, ↙xs↘)`), never next to a
+                    // keyword or another element.
+                    let sep = if arity == Arity::Variadic {
+                        self.langs.get(lang1)?.separator(tag)
+                    } else {
+                        None
+                    };
+                    let separated = |i: usize| -> Option<&'static str> {
+                        let sep = sep?;
+                        let QTerm::Unquote { index, .. } = &*terms[i] else {
+                            return None;
+                        };
+                        let opens =
+                            |t: &str| t == sep || t.ends_with(['(', '[', '{', '<', '|', '⟨']);
+                        let closes =
+                            |t: &str| t == sep || t.starts_with([')', ']', '}', '>', '|', '⟩']);
+                        let before = i.checked_sub(1).map(|j| &terms[j]);
+                        let after = terms.get(i + 1);
+                        (*index == *d
+                            && before.is_none_or(|t| token_text(t).is_some_and(opens))
+                            && after.is_none_or(|t| token_text(t).is_some_and(closes)))
+                        .then_some(sep)
+                    };
                     let expanded = terms
                         .iter()
-                        .map(|term| {
+                        .enumerate()
+                        .map(|(i, term)| {
                             // expand each child. A ground unquote under an
                             // accumulator runs where `b_` is bound; under a
                             // fluent node it does not.
@@ -1021,7 +1088,11 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                                     }
                                 }
                             }
-                            self.meta.wrap_child(expanded, okind)
+                            let wrapped = self.meta.wrap_child(expanded, okind)?;
+                            match separated(i) {
+                                Some(sep) => self.meta.wrap_separated(wrapped, sep),
+                                None => Ok(wrapped),
+                            }
                         })
                         .collect::<Result<Vec<_>>>()?;
                     self.meta.expand_tuple(lang1, tag, &expanded, cmds, arity)
@@ -1259,4 +1330,17 @@ fn shared_prefix<'a>(prefix: &'a str, nodes: &[Arc<Node>]) -> &'a str {
 fn is_blank(nodes: &[Arc<Node>], i: usize) -> bool {
     matches!(&*nodes[i], Node::Content(s) if s.trim().is_empty())
         && nodes.get(i + 1).is_none_or(|next| **next == Node::NewLine)
+}
+
+/// The text of an anonymous token — a childless leaf whose tag is its own
+/// text, as `sym` builds it and the parser makes `[`, `,` or `)` — or `None`
+/// for anything else.
+fn token_text(term: &QTerm) -> Option<&str> {
+    match term {
+        QTerm::Tuple { tag, terms, cmds } if terms.is_empty() => match &**cmds {
+            [CmdOrHole::Cmd(StrCmd::Write(s))] if s == tag => Some(tag),
+            _ => None,
+        },
+        _ => None,
+    }
 }

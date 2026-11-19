@@ -1,0 +1,7 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖↙a↘::↙a↘↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("scoped_identifier").c(&a).c(&sym("::")).c(&a).b()
+}

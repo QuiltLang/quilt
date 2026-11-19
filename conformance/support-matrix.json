@@ -374,7 +374,10 @@
           "detail": [
             "term → Tuple binary_op ⟨·, \" \", ·, \" \", ·⟩",
             "def → Tuple def ⟨·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·⟩",
-            "theorem_by_tactic → Tuple theorem ⟨·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·⟩"
+            "theorem_by_tactic → Tuple theorem ⟨·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·, \" \", ·⟩",
+            "constructor → Tuple ctor_alt ⟨·, ⏎, ·, \" \", ·, \" \", ·⟩",
+            "match_alternative → Tuple match_alt ⟨·, \" \", ·, ·, \" \", ·, \" \", ·, \" \", ·⟩",
+            "implicit_binder → Tuple implicit_binder ⟨·, ·, \" \", ·, \" \", ·, ·⟩"
           ]
         },
         {
@@ -915,7 +918,12 @@
             "fn_item → Tuple function_item ⟨·, \" \", ·, ·, \" \", ·⟩",
             "source_file → Tuple source_file ⟨·, ⏎, ·⟩",
             "auto_expr → Tuple binary_expression ⟨·, \" \", ·, \" \", ·⟩",
-            "string_with_escapes → Tuple string_literal ⟨·, ·, ·, ·, ·, ·, ·⟩"
+            "string_with_escapes → Tuple string_literal ⟨·, ·, ·, ·, ·, ·, ·⟩",
+            "match_arm → Tuple match_arm ⟨·, \" \", ·, \" \", ·, ·⟩",
+            "enum_variant_with_doc → Tuple enum_variant ⟨·, ·, ⏎, ·, ·⟩",
+            "struct_field → Tuple field_declaration ⟨·, \" \", ·, ·, \" \", ·⟩",
+            "parameter → Tuple parameter ⟨·, \" \", ·, ·, \" \", ·⟩",
+            "field_pattern → Tuple field_pattern ⟨·, \" \", ·, \" \", ·⟩"
           ]
         },
         {

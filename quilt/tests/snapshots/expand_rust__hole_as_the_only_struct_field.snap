@@ -7,7 +7,9 @@ fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
         let mut b_ = tb("field_declaration_list");
         sym("{").emit(&mut b_);
         b_.write(" ");
+        b_.sep(",");
         a.emit(&mut b_);
+        b_.end_sep();
         b_.write(" ");
         sym("}").emit(&mut b_);
         b_.b()

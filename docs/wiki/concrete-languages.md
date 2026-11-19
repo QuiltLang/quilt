@@ -27,6 +27,20 @@ A hole can stand anywhere `{}` parses as an empty block (expression and statemen
 
 A hole at the start of a match arm is the arm's *pattern* when `=>`, `|` or `if` follows it, and a run of whole arms otherwise. Each arm carries its own `,`, so a sequence of arms splices without separators. Enum variants and struct fields need `,` between them, which emitting a sequence into those lists does not add yet (issue [#293](https://github.com/QuiltLang/quilt/issues/293)). The holes were added in issue [#302](https://github.com/QuiltLang/quilt/issues/302).
 
+### Fragments
+
+What fills those holes can be quoted on its own. A match arm, an enum variant, a struct field, a function parameter or a field pattern is valid only *inside* its construct, and the grammar's root is a whole file, so such a quote is first a parse error. `TSLanguage::parse_pre` then retries it inside each of `RustProvider::fragment_wrappers` in turn (`match q { … }`, `enum Q { … }`, `struct Q { … }`, `fn q(…) {}`, `let Q { … } = q;`), takes the one fragment node back out, and keeps it only if it writes back as the quoted text byte for byte. It is the technique of Lean's `#check` and SQL's `SELECT` wrappers, with the wrapper on lines of its own so the fragment keeps its columns.
+
+| fragment | example | tag |
+| --- | --- | --- |
+| match arm | `rs↖Foo::A(a) => f(a),↗` | `match_arm` |
+| enum variant | `rs↖#[allow(unused)] A(u64)↗` | `enum_variant` |
+| struct field | `rs↖pub a: u64↗` | `field_declaration` |
+| parameter | `rs↖mut a: u64↗` | `parameter` |
+| field pattern | `rs↖ref mut a↗` | `field_pattern` |
+
+Comments and `#[attr]`s before a variant, field or parameter belong to it. A fragment that already parses keeps its plain reading: `rs↖A(u64)↗` and `rs↖B { x: u64 }↗` are expressions, `rs↖a: u64↗` is a struct field rather than a parameter, and all of them write back the same wherever they are spliced. A list is not a fragment: `rs↖A(u64),↗` and `rs↖a: u64, b: u64↗` are still errors, since the `,` belongs to the list. Splice a `Vec` of fragments instead, which separates them (`enum E { ↙variants↘ }`, `fn f(↙params↘)`).
+
 ### Variadic nodes
 
 `"block"` and `"source_file"` have `Arity::Variadic`. Inside a block quote, each child is emitted with `.emit(&mut b_);` into an imperative `QTermBuilder` block:
@@ -421,7 +435,7 @@ Lean's layout is column-sensitive: a structure instance's fields, a tactic block
 
 What remains unavailable is emit (`←`) into a top-level **sequence** of commands, which needs a variadic `module` container that a bare-hole quote does not produce. Emit works into `by` / `do` bodies, which are the `Variadic` containers; for declaration sequences, build the list in the host and join it (as `examples/lean_specialize.rs.quilt` does). Issue #133 covers the grammar change that would make both direct.
 
-The same limit applies within a declaration: an `inductive`'s constructor list and a `structure`'s field list are variable-length but are not `Variadic` containers, and neither `lean↖| Color.red => 0↗` nor `lean↖red : Nat↗` parses standalone — a bare arm or binder is neither a command nor a term. Those lines are assembled host-side too. Variable-length **terms** have no such problem: fold them, as `examples/lean_datatypes.rs.quilt` does for its `if`/`else` chain and its `+` chain.
+The same limit applies within a declaration: an `inductive`'s constructor list and a `structure`'s field list are variable-length but are not `Variadic` containers, and have no hole position. Their pieces do quote on their own, though. A constructor (`lean↖| won (p : PlayerId)↗`, doc comment and all), a structure field (`lean↖red : Nat↗`), a match or `def` alternative (`lean↖| .c a, .c b => Nat.beq a b↗`) and a binder (`lean↖{α : Type}↗`) is neither a command nor a term, so after the two retries above `LeanLanguage` tries the provider's `fragment_wrappers` (`inductive Q where`, `structure Q where`, `def q : Q`, `def q … : Q := q`) the way Rust does (see [Rust fragments](#fragments)). They are last, so `lean↖(n : Nat)↗`, a term, stays one. A binder splices into a declaration's binders (`def f ↙b↘ : α := …`), one hole per binder for now; the constructor and alternative lines are assembled host-side, as before. Variable-length **terms** have no such problem: fold them, as `examples/lean_datatypes.rs.quilt` does for its `if`/`else` chain and its `+` chain.
 
 ### Examples
 
