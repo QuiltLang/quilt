@@ -17,7 +17,7 @@
 // One card as a quoted HTML fragment. `↑(x)` lifts a plain string into inert,
 // entity-escaped HTML text; the surrounding unquote splices that text into the
 // hole. Try editing a title or body and re-running.
-import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qlift, qlift_html, NL, POP, HOLE } from "quilt";
+import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qlift, qlift_html, NL, POP, HOLE } from "quilt";
 
 function card(title, body) {
   return tb("element").t(tb("start_tag").t(sym("<")).t(leaf("tag_name", "article")).w(" ").t(tb("attribute").t(leaf("attribute_name", "class")).t(sym("=")).t(tb("quoted_attribute_value").t(sym("\"")).t(leaf("attribute_value", "card")).t(sym("\"")).b()).b()).t(sym(">")).b()).p("  ").n().t(tb("element").t(tb("start_tag").t(sym("<")).t(leaf("tag_name", "h2")).t(sym(">")).b()).t(qlift_html(title)).t(tb("end_tag").t(sym("</")).t(leaf("tag_name", "h2")).t(sym(">")).b()).b()).n().t(tb("element").t(tb("start_tag").t(sym("<")).t(leaf("tag_name", "p")).t(sym(">")).b()).t(qlift_html(body)).t(tb("end_tag").t(sym("</")).t(leaf("tag_name", "p")).t(sym(">")).b()).b()).x().n().t(tb("end_tag").t(sym("</")).t(leaf("tag_name", "article")).t(sym(">")).b()).b();

@@ -51,4 +51,20 @@ const quoted = q.quote("element", 0, "html", q.leaf("text", "x"), [
 const out = quoted.coparse();
 assert.ok(typeof out === "string" && out.includes("x"), `quote coparse: ${out}`);
 
+// 7. A primitive spliced into a builder writes its text: a string as a `&str`
+//    does in Rust (`// ↙id↘` in a quoted comment), a number as `${n}` would.
+assert.strictEqual(q.tb("comment").w("// ").c("r1").b().coparse(), "// r1");
+assert.strictEqual(q.tb("x").w("F[").c(7).w("] = ").c(true).b().coparse(), "F[7] = true");
+
+// 8. `←(items)` is `qseq(items)`: the items in order, a newline between each
+//    that takes the prefix in force, so a sequence spliced into an indented
+//    block stays indented; `←(items, sep)` writes `sep` between them instead.
+const stmts = ["a();", q.tb("x").w("b();").b()];
+const block = q.tb("statement_block").w("{").p("  ").n().e(q.qseq(stmts)).x().n().w("}").b();
+assert.strictEqual(block.coparse(), "{\n  a();\n  b();\n}");
+assert.strictEqual(q.qseq(["x", "y"], ", ").coparse(), "x, y");
+assert.strictEqual(q.qseq([]).coparse(), "");
+assert.strictEqual(q.qseq(new Set(["only"])).coparse(), "only");
+assert.throws(() => q.qseq([{}]), /expected a WasmQTerm or a primitive/);
+
 console.log("quilt-wasm smoke test: all assertions passed");

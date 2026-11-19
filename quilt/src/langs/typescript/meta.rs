@@ -87,32 +87,25 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         Ok("QTerm")
     }
 
-    /// No spelling: `←` needs a named `b_` accumulator in scope, and this host
-    /// has none (issue #152). Same shape as Python's — see
-    /// [`PythonMetaLanguage::emit_str`](crate::langs::python::meta::PythonMetaLanguage::emit_str)
-    /// for the full reasoning.
-    ///
-    /// TypeScript *could* host an accumulator, since an IIFE gives it
-    /// statements in expression position — but `WasmBuilder::e` consumes and
-    /// returns the builder rather than mutating it, and `WasmQTerm` exposes no
-    /// `emit` method, so the runtime half does not exist either. Until it does,
-    /// a ground `←` fails here rather than expanding to generated TypeScript
-    /// that references an undefined `b_`.
-    ///
-    /// The working alternative is the same: build the sequence with your own
-    /// builder in ground code and splice the finished term with `↙…↘`.
+    /// `←` is *functional* here, as in Nix: written prefix with its argument
+    /// in parentheses, `←(items)` or `←(items, sep)`, it spells the runtime's
+    /// `qseq`, which turns a whole iterable of fragments into one term that
+    /// splices them in order — a newline between each by default, so a
+    /// sequence of statements spliced into a block stays one per line at the
+    /// block's indent:
     ///
     /// ```ts
-    /// let b = tb("statement_block");
-    /// for (const n of names) b = b.e(ts↖console.log(↙name(n)↘)↗);
-    /// const body = b.b();
+    /// const body = ts↖{
+    ///   ↙←(names.map((n) => ts↖console.log(↙↑(n)↘);↗))↘
+    /// }↗;
     /// ```
+    ///
+    /// Rust's imperative reading (append to a `b_` accumulator once around a
+    /// loop, issue #152) would need statements in expression position and a
+    /// mutable builder; the functional one needs neither, and is what
+    /// TypeScript code builds lists with anyway.
     fn emit_str(&self) -> Result<&'static str> {
-        miette::bail!(
-            "typescript can't emit `←`: the fluent `.e(child)` chain has no named `b_` \
-             accumulator to emit into — build the sequence with your own `tb(..)` builder in \
-             ground code and splice the finished term with `↙…↘`"
-        )
+        Ok("qseq")
     }
 
     /// The `import { … } from "quilt"` an expanded file opens with (issue
@@ -134,8 +127,8 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         // The builder vocabulary every expansion uses, in the order the
         // hand-written imports have always listed it, with the lift spellings
         // slotted in where `qlift` sat.
-        const HEAD: [&str; 9] = [
-            "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push", "name",
+        const HEAD: [&str; 10] = [
+            "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push", "name", "qseq",
         ];
         const TAIL: [&str; 3] = ["NL", "POP", "HOLE"];
         let mut names: Vec<&str> = HEAD.to_vec();

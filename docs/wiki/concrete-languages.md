@@ -129,13 +129,20 @@ TypeScript uses the forked `tree-sitter-typescript` (hole placeholder `__HOLE__`
 |--------|------------------------------------------------------------|
 | `↑(x)` | `qlift(x)` into TypeScript; `qlift_html(x)` into HTML; `qlift_text(x)` into text (`qlift_text_in_quotes(x)` between `"…"`) |
 | `↓`    | `reduce()` (postfix: `term.↓` → `term.reduce()`)           |
-| `←`    | *no spelling* — ground emit is an error                    |
+| `←(xs)` | `qseq(xs)` — the whole sequence, one per line (`←(xs, sep)` for another separator) |
 | `⟨T⟩`  | `QTerm`                                                    |
 | `⟨N⟩`  | `name("ident")`                                            |
 
 TypeScript is also a target with a `LiftTo` marker (`TypeScript`), so a Rust host can lift into `ts↖…↗`: numbers, booleans, strings and slices/`Vec`s. Its shapes are generated from the grammar like every other target's — one `number` node for integers and floats, a negative as a `unary_expression` over the magnitude — and the Python runtime's `qlift_ts` builds the same terms.
 
-Lift is written *prefix* (`↙↑(x)↘`), like Python's and for the same reason. Emit has Python's limitation too — a fluent chain with no named accumulator — so a ground `←` is the same hard error, pointing at the same alternative ([#152](https://github.com/QuiltLang/quilt/issues/152)). TypeScript could host an accumulator where Python cannot, since an IIFE gives it statements in expression position; the blocker is the runtime half, where `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` exposes no `emit` method.
+Lift is written *prefix* (`↙↑(x)↘`), like Python's and for the same reason. Emit is *functional*, as in Nix ([#152](https://github.com/QuiltLang/quilt/issues/152)): there is no named accumulator for Rust's imperative `x.←` to append to, so `←` takes the whole sequence instead, written as a call — `↙←(items)↘` spells the runtime's `qseq(items)`, a term that splices the items in order with a newline between each (the prefix in force applies, so a sequence of statements spliced into an indented block stays indented), and `←(items, sep)` writes `sep` between them instead (`g(↙←(args, ", ")↘)`). Items may be terms or primitives. A `←` that does not open a call is an error naming this spelling, since `qseq` on its own would be a function reference. A primitive spliced with a plain `↙x↘` writes its text — a string as a `&str` does in Rust, which is what a hole in a quoted comment wants, and a number, boolean or bigint as `String(x)` — while `↙↑(x)↘` still makes it a TypeScript literal:
+
+```ts
+const program = ts↖
+  // ↙title↘, ↙↑(items.length)↘ of them
+  ↙←(items.map((it) => ts↖register(↙↑(it.id)↘);↗))↘
+↗;
+```
 
 ### Reduce on the CLI
 

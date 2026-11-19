@@ -52,7 +52,7 @@ Columns:
 | **Rust** | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/267) | ✅ | ✅ | ✅ | ✅ |
 | **SQL** | ⬜ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Plain text** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
-| **TypeScript** | ✅ | ✅ | ✅ | ✅ | [⬜](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
+| **TypeScript** | ✅ | ✅ | ✅ | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/152) | ⬜ | ✅ | ✅ |
 | **WGSL** | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | **Zsh** | ✅ | ⬜ | ⬜ | ✅ | ⬜ | ⬜ | ✅ | ⬜ |
 

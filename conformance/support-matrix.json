@@ -1548,12 +1548,12 @@
         },
         {
           "axis": "emit",
-          "status": "unsupported",
-          "note": "same fluent-chain shape as Python: `build_variadic_block` emits `tb(..).e(child).b()` with no named accumulator, so a ground `←` is a hard error naming the alternative (build the sequence with your own `tb(..)` builder and splice the finished term with `↙…↘`). An IIFE would give TypeScript statements in expression position, unlike Python — but `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` has no `emit` method, so the runtime half is missing too. Automatic emission into a variadic container (`wrap_child`) is unaffected",
+          "status": "partial",
+          "note": "the *functional* reading of emit, as in Nix: `←(items)` (or `←(items, sep)`) spells the runtime's `qseq`, which splices a whole iterable of fragments into the surrounding container, a newline (respecting the prefix) between each unless `sep` is given. Rust's imperative reading — append to a `b_` accumulator once around a ground loop — is not offered: the fluent `.e(child)` chain has no named accumulator",
           "issue": 152,
           "verified_by": "emit/typescript",
           "detail": [
-            "← unsupported (fails with guidance)",
+            "← → qseq",
             "type_str → QTerm",
             "name_str → name"
           ]

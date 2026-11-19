@@ -161,7 +161,7 @@ let program = ↖{
 
 The unquote `↙{…}↘` runs a Rust loop at generation time; each iteration emits one `println!` statement into the outer block.
 
-That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)):
+That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)), and TypeScript reads it the same way, written as a call — `↙←(items)↘` (see [TypeScript operators](concrete-languages.md#typescript-operators)):
 
 ```nix
 nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗

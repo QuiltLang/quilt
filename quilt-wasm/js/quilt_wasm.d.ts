@@ -26,11 +26,11 @@ export class WasmQTerm {
 export class WasmBuilder {
   private constructor();
   /** Splice a child term. */
-  c(child: WasmQTerm): WasmBuilder;
+  c(child: WasmQTerm | string | number | boolean | bigint): WasmBuilder;
   /** Splice a child term (the same as `c`; what expanded code spells). */
-  t(child: WasmQTerm): WasmBuilder;
+  t(child: WasmQTerm | string | number | boolean | bigint): WasmBuilder;
   /** Emit a child term. */
-  e(child: WasmQTerm): WasmBuilder;
+  e(child: WasmQTerm | string | number | boolean | bigint): WasmBuilder;
   /** Write literal source text. */
   w(s: string): WasmBuilder;
   /** Emit a newline (respecting the current prefix). */
@@ -44,6 +44,12 @@ export class WasmBuilder {
   free(): void;
   [Symbol.dispose](): void;
 }
+
+/**
+ * A sequence of terms, for `←(items)`: the items in order, with a newline
+ * between them, or `sep` when given. Strings splice as their text.
+ */
+export function qseq(items: Iterable<WasmQTerm | string | number | boolean | bigint>, sep?: string): WasmQTerm;
 
 /** Start building a tuple node with the given tag. */
 export function tb(tag: string): WasmBuilder;

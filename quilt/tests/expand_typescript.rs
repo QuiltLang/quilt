@@ -129,17 +129,34 @@ fn expand_backslashes() -> Result<()> {
     Ok(())
 }
 
-/// A TypeScript host has no `b_` accumulator to emit into — the same
-/// fluent-chain shape as Python (issue #152). A *ground* `←` therefore fails
-/// loudly instead of expanding to TypeScript referencing an undefined `b_`,
-/// and the message points at the alternative that does work.
+/// `←` is functional in a TypeScript host (issue #152): `←(items)` spells the
+/// runtime's `qseq`, which splices the whole sequence into the container the
+/// unquote sits in — here a function body — and `←(items, sep)` passes the
+/// separator through.
 #[test]
-fn host_emit_unsupported() {
-    for code in [
-        // Inside a host unquote, in a variadic block.
+fn host_emit_spells_qseq() -> Result<()> {
+    insta::assert_snapshot!(expand(
+        &["ts"],
         indoc! {r#"
             const out = ts↖function f() {
-                console.log("start");
+              console.log("start");
+              ↙←(names.map((n) => ts↖console.log(↙name(n)↘);↗))↘
+            }↗;
+            const call = ts↖g(↙←(args, ", ")↘)↗;
+        "#}
+    )?);
+    Ok(())
+}
+
+/// The sequence is `←`'s argument, so the glyph must open a call. Rust's
+/// postfix habit (`ts↖…↗.←` in a ground loop) and a bare `←` would expand to a
+/// reference to `qseq` and fail far from the source; they fail here instead,
+/// with the spelling that works.
+#[test]
+fn host_emit_needs_a_call() {
+    for code in [
+        indoc! {r#"
+            const out = ts↖function f() {
                 ↙
                 for (const n of names) {
                     ts↖console.log(↙name(n)↘)↗.←
@@ -147,12 +164,11 @@ fn host_emit_unsupported() {
                 ↘
             }↗;
         "#},
-        // …and at plain ground position.
         "const x = ←;\n",
+        "const x = ← (xs);\n",
     ] {
         let msg = expand(&["ts"], code).unwrap_err().to_string();
-        assert!(msg.contains("typescript can't emit"), "{msg}");
-        assert!(msg.contains("your own `tb(..)` builder"), "{msg}");
+        assert!(msg.contains("write `←(items)`"), "{msg}");
     }
 }
 

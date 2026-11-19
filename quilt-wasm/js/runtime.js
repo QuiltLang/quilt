@@ -133,9 +133,12 @@ class WasmBuilder {
     this.seq = [];
   }
 
-  /** Splice a child term. */
+  /**
+   * Splice a child term. A primitive splices as its text (see `asChild`):
+   * `↙name↘` inside a quoted comment writes the name, `↙n↘` the number.
+   */
   c(child) {
-    this.seq.push(asTerm(child));
+    this.seq.push(asChild(child));
     return this;
   }
 
@@ -145,13 +148,13 @@ class WasmBuilder {
    * spells a child it has just built this way.
    */
   t(child) {
-    this.seq.push(asTerm(child));
+    this.seq.push(asChild(child));
     return this;
   }
 
   /** Emit a child term (for a single term, the same as `c`). */
   e(child) {
-    this.seq.push(asTerm(child));
+    this.seq.push(asChild(child));
     return this;
   }
 
@@ -194,6 +197,26 @@ function asTerm(x) {
   throw new TypeError(`expected a WasmQTerm, got ${describe(x)}`);
 }
 
+/**
+ * A child a builder splices: a term, or a primitive written as its text — a
+ * string as itself, as a `&str` splices in Rust, and a number, boolean or
+ * bigint as `String(x)` does, as a template literal's `${x}` would. `↑(x)` is
+ * still how a value becomes a TypeScript *literal* (a string with its quotes).
+ */
+function asChild(x) {
+  if (x instanceof WasmQTerm) return x;
+  switch (typeof x) {
+    case "string":
+      return x;
+    case "number":
+    case "boolean":
+    case "bigint":
+      return String(x);
+    default:
+      throw new TypeError(`expected a WasmQTerm or a primitive, got ${describe(x)}`);
+  }
+}
+
 function describe(x) {
   if (x === null) return "null";
   if (typeof x === "object") return x.constructor?.name ?? "object";
@@ -221,6 +244,25 @@ function sym(s) {
 /** An identifier term (the `⟨N⟩` operator). */
 function name(s) {
   return new WasmQTerm(TUPLE, "identifier", [s], 0, "", null);
+}
+
+/**
+ * A sequence of terms, for `←(items)`: each item spliced in order, with a
+ * newline between them (respecting the current prefix, so a sequence spliced
+ * into an indented block stays indented), or `sep` written between them when
+ * given — `←(args, ", ")`. Items may be terms or strings, and any iterable
+ * works. The term has no tag of its own, so it splices into whatever holds it
+ * as its items would one after another.
+ */
+function qseq(items, sep) {
+  const seq = [];
+  let first = true;
+  for (const item of items) {
+    if (!first) seq.push(sep === undefined ? NL_CMD : String(sep));
+    first = false;
+    seq.push(asChild(item));
+  }
+  return new WasmQTerm(TUPLE, "", seq, 0, "", null);
 }
 
 /** A quoted fragment. */
@@ -586,6 +628,7 @@ export {
   qlift_html,
   qlift_text,
   qlift_text_in_quotes,
+  qseq,
   quote,
   sym,
   tb,

@@ -524,7 +524,22 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     code.push(FlatNode::Str(spelling));
                 }
                 Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
-                Node::Emit => code.push(FlatNode::Str(self.emit_str(lang)?)),
+                Node::Emit => {
+                    let spelling = self.emit_str(lang)?;
+                    // A host whose `←` is a bare function name (TypeScript's
+                    // `qseq`) is functional: it takes the whole sequence as an
+                    // argument, so the glyph must open a call. Anything else —
+                    // Rust's postfix `x.←` habit, say — would expand to a
+                    // reference to the function and fail far from here.
+                    let bare = spelling.chars().all(|c| c.is_alphanumeric() || c == '_');
+                    if bare && !method_position(nodes, i) {
+                        miette::bail!(
+                            "{lang}'s `←` is a function of the whole sequence: write `←(items)` \
+                             (or `←(items, sep)`), which expands to `{spelling}(items)`"
+                        );
+                    }
+                    code.push(FlatNode::Str(spelling));
+                }
                 // `⟨T⟩` flush against an argument list — `db.⟨T⟩(term)` — is
                 // the *typing* judgment on a machine, the companion of
                 // `db.↓(term)`'s value judgment (#273). In operand position it
