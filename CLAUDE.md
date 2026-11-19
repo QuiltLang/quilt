@@ -224,7 +224,7 @@ check-downstream DIR        # use DIR (cloned if empty, reused if not)
 install_tools
 ```
 
-The file stem determines the **language chain**: reading the extensions right-to-left, the rightmost is the ground language and the rest are the default languages for nested un-annotated quotes — `shaders.wgsl.rs.quilt` → ground `rs`, un-annotated quotes default to `wgsl` (see `lang_chain` in `quilt/src/bin.rs`).
+The file stem determines the **language chain**: reading the extensions right-to-left, the rightmost is the ground language and the rest are the default languages for nested un-annotated quotes — `shaders.wgsl.rs.quilt` → ground `rs`, un-annotated quotes default to `wgsl` (see `lang_chain` in `quilt/src/bin.rs`). A bare quote after an annotated one at the same level inherits that annotation first (`sibling` in `Multi::build_nodes`, `LangZipper::next_quote` in `quilt-lsp`).
 
 ## Workspace layout
 

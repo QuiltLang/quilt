@@ -69,7 +69,7 @@ This stage recursively descends through the `Node` list and dispatches each lang
 
 ### Language chain and zipper
 
-The file name's inner extensions form a *chain*. `shaders.wgsl.rs.quilt` → chain `["rs", "wgsl"]` meaning: Rust is the ground language and bare `↖…↗` inside Rust defaults to WGSL. A plain `foo.rs.quilt` → chain `["rs"]`.
+The file name's inner extensions form a *chain*. `shaders.wgsl.rs.quilt` → chain `["rs", "wgsl"]` meaning: Rust is the ground language and bare `↖…↗` inside Rust defaults to WGSL. A bare quote after an annotated one at the same level takes that annotation instead (see [Concepts](concepts.md#quote-)). A plain `foo.rs.quilt` → chain `["rs"]`.
 
 A `Zipper<Box<str>>` tracks the current default language as the parser descends into nested quotes. `zipper.back()` moves to the next default; an explicit annotation (`py↖…↗`) pushes the named language to the front.
 
