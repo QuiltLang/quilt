@@ -907,6 +907,7 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
                 term: inner,
                 cmds,
                 span,
+                repr,
             } => arc(QTerm::Quote {
                 tag: tag.clone(),
                 index: *index,
@@ -914,6 +915,7 @@ impl<'m, LS: Languages, MS: MetaLanguages> Notebook<'m, LS, MS> {
                 term: self.resolve_refs(lang, inner, depth + usize::from(*index))?,
                 cmds: cmds.clone(),
                 span: span.clone(),
+                repr: *repr,
             }),
             QTerm::Unquote {
                 tag,

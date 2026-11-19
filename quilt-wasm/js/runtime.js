@@ -325,6 +325,22 @@ function HOLE() {
   return HOLE_CMD;
 }
 
+/**
+ * A `⟨str⟩` quote's value is a plain string, and code written for terms calls
+ * `.coparse()` on what a quote returns. So a string's `coparse()` is itself:
+ * switching a quote between representations leaves its callers alone. Added
+ * once, non-enumerable, and never over a `coparse` someone else defined.
+ */
+if (!Object.prototype.hasOwnProperty.call(String.prototype, "coparse")) {
+  Object.defineProperty(String.prototype, "coparse", {
+    value: function coparseString() {
+      return String(this);
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+
 /**************************************************************/
 // Coparse.
 
@@ -394,6 +410,18 @@ function qlift(value) {
   if (typeof value === "number") return leaf("number", fmtNumber(value));
   if (typeof value === "string") return leaf("string", tsStringLit(value));
   throw new Error("qlift: unsupported type (expected number, string, boolean, or QTerm)");
+}
+
+/**
+ * `qlift` inside a `⟨str⟩` quote: the TypeScript literal for `value` as a
+ * string rather than a term — what `${…}` splices. A safe integer, the common
+ * case in generated code, goes straight through `String`; everything else is
+ * spelled as `qlift` spells it, so the two representations agree.
+ */
+function qlift_str(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value)) return String(value);
+  if (typeof value === "string") return tsStringLit(value);
+  return coparse(qlift(value));
 }
 
 /**
@@ -627,6 +655,7 @@ export {
   qlift,
   qlift_html,
   qlift_text,
+  qlift_str,
   qlift_text_in_quotes,
   qseq,
   quote,

@@ -47,7 +47,7 @@ try {
 
 export const {
   tb, leaf, sym, quote, unquote, cmd, write, push,
-  name, qlift, qlift_html, qlift_text, qlift_text_in_quotes, qseq, NL, POP, HOLE,
+  name, qlift, qlift_html, qlift_text, qlift_text_in_quotes, qseq, qlift_str, NL, POP, HOLE,
   WasmQTerm, WasmBuilder, WasmStrCmd, WasmCmdOrHole,
 } = RT;
 

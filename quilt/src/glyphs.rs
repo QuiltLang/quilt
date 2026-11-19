@@ -109,6 +109,35 @@ pub fn is_annotation(s: &str) -> bool {
     }
 }
 
+/// A quote annotation split into its language and its representation:
+/// `ts⟨str⟩` → `("ts", Some("str"))`, `⟨qt⟩` → `("", Some("qt"))`, `py` →
+/// `("py", None)`. Either part may be empty; an empty language is inherited
+/// (see `Multi::build_nodes`), and no representation means the default or an
+/// inherited one.
+#[must_use]
+pub fn split_anno(anno: &str) -> (&str, Option<&str>) {
+    match anno.strip_suffix('⟩').and_then(|a| a.split_once('⟨')) {
+        Some((lang, repr)) => (lang, Some(repr)),
+        None => (anno, None),
+    }
+}
+
+/// The length of a representation `⟨name⟩` starting at `s`'s first byte, when
+/// a `↖` follows it — the only place one can stand. `name` has an
+/// annotation's shape, `[a-z][a-z0-9]*`, which keeps `⟨T⟩`, `⟨N⟩` and `⟨M⟩`
+/// (uppercase) what they were.
+#[must_use]
+pub fn repr_len(s: &str) -> Option<usize> {
+    let rest = s.strip_prefix('⟨')?;
+    let close = rest.find('⟩')?;
+    let name = &rest[..close];
+    if name.is_empty() || !is_annotation(name) {
+        return None;
+    }
+    let len = '⟨'.len_utf8() + close + '⟩'.len_utf8();
+    s[len..].starts_with('↖').then_some(len)
+}
+
 /// Whether `s` is exactly one deferred Quilt operator, as
 /// `Multi::build_nodes` plugs it back into a term: `↑`, `←`, or a reduce or
 /// machine glyph with its optional language annotation (`↓`, `py↓`, `⟨M⟩`,

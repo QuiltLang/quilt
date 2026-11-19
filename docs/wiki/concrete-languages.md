@@ -158,6 +158,10 @@ const program = ts↖
 ↗;
 ```
 
+### Quote representations
+
+TypeScript implements all three [representations](concepts.md#representations-cst-str-qt). `ts⟨str⟩↖…↗` expands to one template literal: text inline (with `` ` ``, `\` and `${` escaped, layout newlines as `\n` plus the prefix in force), each hole as `${x}`, and a hole under a prefix as `${String(x).replaceAll("\n", "\n<prefix>")}`. `↑` into TypeScript spells `qlift_str` (a safe integer is just `String(x)`) and `←(items)` spells an inline join, `((items, sep = "\n") => Array.from(items, String).join(sep))(items)`, so a `⟨str⟩` quote that lifts nothing needs no runtime. `ts⟨qt⟩↖…↗` expands to `tb("").w(…).n().p(…).c(x)…b()`, with `↑` and `←` as for `⟨cst⟩`. The runtime gives strings a `coparse()` that returns the string, so a call site does not change with the representation.
+
 ### Reduce on the CLI
 
 `↓` needs to do something the runtime cannot do alone: a generated stage's `coparse()` is often still *Quilt* source — a program that itself quotes — so reducing it means **re-expanding** first, and the expander is not part of the runtime crate. Each host solves that differently:

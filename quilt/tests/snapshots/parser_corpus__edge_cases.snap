@@ -1,5 +1,6 @@
 ---
 source: quilt/tests/parser_corpus.rs
+assertion_line: 234
 expression: rendered
 ---
 --- "https://example.com"
@@ -101,9 +102,9 @@ expression: rendered
 --- "sql⟨T⟩"
     [Content("sql"), Type]
 --- "sql⟨M"
-    ERR malformed Quilt syntax (source bytes 3..6) [3..6 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`"]
+    ERR malformed Quilt syntax (source bytes 3..6) [3..6 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩`, `⟨/*⟩` or a quote representation (`⟨str⟩↖`)"]
 --- "sql⟨"
-    ERR malformed Quilt syntax (source bytes 3..6) [3..6 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`"]
+    ERR malformed Quilt syntax (source bytes 3..6) [3..6 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩`, `⟨/*⟩` or a quote representation (`⟨str⟩↖`)"]
 --- "a \\↖ b"
     [Content("a "), Content("↖"), Content(" b")]
 --- "a\\↖b"
@@ -147,6 +148,6 @@ expression: rendered
 --- "↖//x↘↗"
     ERR malformed Quilt syntax (source bytes 6..9) [6..9 "expected `↗` here: the open bracket is a `↖` quote"]
 --- "⟨X⟩"
-    ERR malformed Quilt syntax (source bytes 0..3) [0..3 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`"]
+    ERR malformed Quilt syntax (source bytes 0..3) [0..3 "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩`, `⟨/*⟩` or a quote representation (`⟨str⟩↖`)"]
 --- "a\\"
     ERR malformed Quilt syntax (source bytes 1..2) [1..2 "a `\\` escape needs a character after it"]

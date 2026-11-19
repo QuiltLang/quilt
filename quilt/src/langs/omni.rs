@@ -587,6 +587,23 @@ impl MetaLanguage for OmniMetaLanguage {
         self.inner().emit_str()
     }
 
+    fn lift_str_in(&self, target: &str, repr: crate::qterm::Repr) -> Result<&'static str> {
+        self.inner().lift_str_in(target, repr)
+    }
+
+    fn emit_str_in(&self, repr: crate::qterm::Repr) -> Result<&'static str> {
+        self.inner().emit_str_in(repr)
+    }
+
+    fn expand_flat(
+        &self,
+        repr: crate::qterm::Repr,
+        lang2: &str,
+        pieces: &[crate::meta::Piece],
+    ) -> Result<Arc<QTerm>> {
+        self.inner().expand_flat(repr, lang2, pieces)
+    }
+
     fn type_str(&self) -> Result<&'static str> {
         self.inner().type_str()
     }

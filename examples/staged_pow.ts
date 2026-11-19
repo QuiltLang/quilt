@@ -17,7 +17,7 @@
 // binary to re-expand each generated stage — so this runs under plain node.
 
 // ---- Stage 1: the exponent is known now. ----
-import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qlift, NL, POP, HOLE } from "quilt";
+import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qlift_str, qlift, NL, POP, HOLE } from "quilt";
 
 const p = 4;
 

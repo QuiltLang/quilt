@@ -1,15 +1,21 @@
 use miette::Result;
 
-use super::ops::{build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block};
+use super::ops::{
+    build_qt_code, build_quote_code, build_str_code, build_tuple_code, build_unquote_code,
+    build_variadic_block,
+};
 use crate::lang::Arity;
 use crate::prelude::{Index, *};
 use crate::{
-    meta::{MetaLanguage, Prelude},
-    qterm::QTerm,
+    meta::{MetaLanguage, Piece, Prelude},
+    qterm::{QTerm, Repr},
     term::CmdOrHole,
 };
 
 /**************************************************************/
+
+/// `←` inside a `⟨str⟩` quote, applied to the source's own `(items, sep)`.
+const STR_JOIN: &str = r#"((items, sep = "\n") => Array.from(items, String).join(sep))"#;
 
 #[derive(Default)]
 pub struct TypeScriptMetaLanguage;
@@ -108,6 +114,38 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         Ok("qseq")
     }
 
+    /// Inside a `⟨str⟩` quote a lifted value must be text: into TypeScript
+    /// `↑` spells `qlift_str`, the literal's source as a string (a safe
+    /// integer goes straight through `String`). Into another language the
+    /// term-building lift still works, since a term interpolates as its
+    /// source. `⟨cst⟩` and `⟨qt⟩` quotes take terms, so they lift as before.
+    fn lift_str_in(&self, target: &str, repr: Repr) -> Result<&'static str> {
+        match (repr, target) {
+            (Repr::Str, "typescript" | "ts") => Ok("qlift_str"),
+            _ => self.lift_str(target),
+        }
+    }
+
+    /// `←(items)` joins the items into one string inside a `⟨str⟩` quote —
+    /// natively, with an inline arrow, so a `⟨str⟩` writer needs no runtime
+    /// for it — and builds a `qseq` term everywhere else.
+    fn emit_str_in(&self, repr: Repr) -> Result<&'static str> {
+        match repr {
+            Repr::Str => Ok(STR_JOIN),
+            Repr::Cst | Repr::Qt => self.emit_str(),
+        }
+    }
+
+    /// `⟨str⟩`: a template literal; `⟨qt⟩`: a flat builder chain. See
+    /// [`build_str_code`] and [`build_qt_code`].
+    fn expand_flat(&self, repr: Repr, _lang2: &str, pieces: &[Piece]) -> Result<Arc<QTerm>> {
+        Ok(match repr {
+            Repr::Str => build_str_code(pieces),
+            Repr::Qt => build_qt_code(pieces),
+            Repr::Cst => miette::bail!("a `⟨cst⟩` quote is not flattened"),
+        })
+    }
+
     /// The `import { … } from "quilt"` an expanded file opens with (issue
     /// #274) — bound by `quilt run` to `quilt-wasm/node`, and in the browser
     /// demos by an import map to `examples/web/quilt-rt.js`.
@@ -127,8 +165,18 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         // The builder vocabulary every expansion uses, in the order the
         // hand-written imports have always listed it, with the lift spellings
         // slotted in where `qlift` sat.
-        const HEAD: [&str; 10] = [
-            "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push", "name", "qseq",
+        const HEAD: [&str; 11] = [
+            "tb",
+            "leaf",
+            "sym",
+            "quote",
+            "unquote",
+            "cmd",
+            "write",
+            "push",
+            "name",
+            "qseq",
+            "qlift_str",
         ];
         const TAIL: [&str; 3] = ["NL", "POP", "HOLE"];
         let mut names: Vec<&str> = HEAD.to_vec();
