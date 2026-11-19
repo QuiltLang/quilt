@@ -91,6 +91,15 @@ impl Arity {
     }
 }
 
+/// The separator of a node kind found in one of the derived
+/// `*_COMMA_SEPARATED` tables in [`langs::arity`](crate::langs::arity): `","`
+/// on a hit, `None` otherwise. `table` must be sorted, as the generated ones
+/// are.
+#[must_use]
+pub fn comma_separator(table: &[&str], tag: &str) -> Option<&'static str> {
+    table.binary_search(&tag).is_ok().then_some(",")
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Hole {
     pub otag: Box<str>, // outer tag: where this hole appears in the outer language
@@ -266,6 +275,18 @@ pub trait Language {
         Default::default()
     }
 
+    /// The token that separates the repeated children of a variadic node of
+    /// kind `tag` — `","` for an array, an argument list, a Python list — or
+    /// `None` when they are not separated (a block, a statement list).
+    ///
+    /// The expander asks this for a splice into such a node (`[↙xs↘]`,
+    /// `f(↙xs↘)`) and has the builder separate the elements the splice
+    /// contributes, which otherwise come out back to back (#293). The answer
+    /// is derived from the grammar, like [`arity`](Self::arity)'s.
+    fn separator(&self, _tag: &str) -> Option<&'static str> {
+        None
+    }
+
     fn typ(&self, _tag: &str) -> InnerKind {
         Default::default()
     }
@@ -415,6 +436,10 @@ impl Language for Box<dyn Language<Post = Box<dyn LanguagePost>>> {
 
     fn arity(&self, tag: &str) -> Arity {
         self.as_ref().arity(tag)
+    }
+
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.as_ref().separator(tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {

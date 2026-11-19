@@ -84,10 +84,14 @@ fn seed_script(members: &[(&'static str, u32)]) -> Arc<QTerm> {
         .map(|&(name, age)| tb("statement").c(&tb("insert").c(&leaf("keyword_insert", "INSERT")).w(" ").c(&leaf("keyword_into", "INTO")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("list").c(&sym("(")).c(&tb("column").c(&leaf("identifier", "name")).b()).c(&sym(",")).w(" ").c(&tb("column").c(&leaf("identifier", "age")).b()).c(&sym(")")).b()).w(" ").c(&leaf("keyword_values", "VALUES")).w(" ").c(&{
         let mut b_ = tb("list");
         sym("(").emit(&mut b_);
+        b_.sep(",");
         name.qlift_to::<Sql>().emit(&mut b_);
+        b_.end_sep();
         sym(",").emit(&mut b_);
         b_.write(" ");
+        b_.sep(",");
         age.qlift_to::<Sql>().emit(&mut b_);
+        b_.end_sep();
         sym(")").emit(&mut b_);
         b_.b()
     }).b()).b())
@@ -99,11 +103,11 @@ fn seed_script(members: &[(&'static str, u32)]) -> Arc<QTerm> {
         sym(";").emit(&mut b_);
         b_.nl();
         {
-                for (i, ins) in inserts.into_iter().enumerate() {
-                    if i > 0 { sym(";").emit(&mut b_); NL.emit(&mut b_); }
-                    ins.emit(&mut b_);
-                }
-            };
+            for (i, ins) in inserts.into_iter().enumerate() {
+                if i > 0 { sym(";").emit(&mut b_); NL.emit(&mut b_); }
+                ins.emit(&mut b_);
+            }
+        };
         sym(";").emit(&mut b_);
         b_.nl();
         tb("statement").c(&tb("create_index").c(&leaf("keyword_create", "CREATE")).w(" ").c(&leaf("keyword_index", "INDEX")).w(" ").c(&leaf("identifier", "members_name")).w(" ").c(&leaf("keyword_on", "ON")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("index_fields").c(&sym("(")).c(&tb("field").c(&leaf("identifier", "name")).b()).c(&sym(")")).b()).b()).b().emit(&mut b_);

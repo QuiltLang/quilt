@@ -90,6 +90,11 @@ impl TSProvider for ZshProvider {
         Arity::from_table(crate::langs::arity::ZSH, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::ZSH_COMMA_SEPARATED, tag)
+    }
+
     /// The shell grammars have no `identifier` node kind at all — a bare word is
     /// a `word` — so the trait default would tag a deferred operator with a kind
     /// this grammar does not define.

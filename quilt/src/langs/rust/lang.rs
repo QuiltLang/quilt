@@ -1,7 +1,7 @@
 use crate::{
     lang::{Arity, Comments, InnerKind},
     qterm::QTerm,
-    treesitter::{DynTSLanguage, TSLanguage, TSProvider},
+    treesitter::{DynTSLanguage, FragmentWrapper, TSLanguage, TSProvider},
 };
 use miette::{miette, Result};
 use tree_sitter::Parser;
@@ -68,6 +68,11 @@ impl TSProvider for RustProvider {
         Arity::from_table(crate::langs::arity::RUST, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::RUST_COMMA_SEPARATED, tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         match tag {
             "source_file" => InnerKind::File,
@@ -112,6 +117,50 @@ impl TSProvider for RustProvider {
 
     fn hashbang(&self) -> Option<&'static str> {
         Some("#!/usr/bin/env rust-script")
+    }
+
+    /// A match arm, an enum variant, a struct field, a function parameter or
+    /// a field pattern, quoted on its own (`rs↖A(u64)↗`), parses inside the
+    /// construct it belongs to. Order settles the one overlap: `a: u64` is a
+    /// struct field before it is a parameter, and both write back the same.
+    fn fragment_wrappers(&self) -> &'static [FragmentWrapper] {
+        &[
+            FragmentWrapper {
+                before: "match q {",
+                after: "}",
+                container: "match_block",
+                fragments: &["match_arm"],
+                leading: &[],
+            },
+            FragmentWrapper {
+                before: "enum Q {",
+                after: "}",
+                container: "enum_variant_list",
+                fragments: &["enum_variant"],
+                leading: &["attribute_item"],
+            },
+            FragmentWrapper {
+                before: "struct Q {",
+                after: "}",
+                container: "field_declaration_list",
+                fragments: &["field_declaration"],
+                leading: &["attribute_item"],
+            },
+            FragmentWrapper {
+                before: "fn q(",
+                after: ") {}",
+                container: "parameters",
+                fragments: &["parameter", "self_parameter"],
+                leading: &["attribute_item"],
+            },
+            FragmentWrapper {
+                before: "let Q {",
+                after: "} = q;",
+                container: "struct_pattern",
+                fragments: &["field_pattern", "remaining_field_pattern"],
+                leading: &[],
+            },
+        ]
     }
 }
 

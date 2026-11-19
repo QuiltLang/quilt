@@ -631,3 +631,117 @@ fn a_short_blank_line_in_a_quote_does_not_hold_back_the_dedent() -> Result<()> {
     assert_eq!(out, clean);
     Ok(())
 }
+
+/* -------------------- a quote's body indented past its host -------------------- */
+
+/// The code the first quote in `src` (a TypeScript host) stands for: the body
+/// after dedenting, which is what the quote's term coparses to.
+fn first_quote_body(src: &str) -> Result<String> {
+    first_quote_body_in("ts", src)
+}
+
+fn first_quote_body_in(host: &str, src: &str) -> Result<String> {
+    fn find(t: &Arc<QTerm>) -> Option<Arc<QTerm>> {
+        match &**t {
+            QTerm::Quote { term, .. } => Some(term.clone()),
+            QTerm::Unquote { term, .. } => find(term),
+            QTerm::Tuple { terms, .. } => terms.iter().find_map(find),
+        }
+    }
+    let mut omni = Omni::default();
+    let term = omni.parse_lang(host, src.trim())?;
+    Ok(find(&term).expect("a quote").coparse())
+}
+
+/// A block quote is dedented by its body's common indent, not by its closer's:
+/// the `↗` line is blank, and a blank line says nothing about indentation, so
+/// a closer left of the body no longer leaves its difference on every line.
+#[test]
+fn a_block_quote_closed_left_of_its_body_dedents_by_the_body() -> Result<()> {
+    let body = first_quote_body(indoc! {r#"
+        {
+            prog.push(↖
+                F[1] = {
+                  a: 1,
+                };
+              ↗);
+        }
+    "#})?;
+    assert_eq!(body, "F[1] = {\n  a: 1,\n};");
+    Ok(())
+}
+
+/// An inline quote whose last line closes what its opener line opened is read
+/// relative to that closer, whatever the host line's indent: here the body is
+/// written one level in from the host, the closer half a level.
+#[test]
+fn an_inline_quote_closed_by_a_bracket_dedents_to_the_closer() -> Result<()> {
+    let body = first_quote_body(indoc! {r#"
+        {
+            prog.push(↖F[1] = {
+                a: 1,
+              };↗);
+        }
+    "#})?;
+    assert_eq!(body, "F[1] = {\n  a: 1,\n};");
+    Ok(())
+}
+
+/// The same with the body aligned under the opener's column, far right of the
+/// host line.
+#[test]
+fn an_inline_quote_aligned_to_its_opener_dedents_to_the_closer() -> Result<()> {
+    let body = first_quote_body(indoc! {r#"
+        {
+            prog.push(↖F[1] = {
+                        a: 1,
+                      };↗);
+        }
+    "#})?;
+    assert_eq!(body, "F[1] = {\n  a: 1,\n};");
+    Ok(())
+}
+
+/// A closer indented *less* than a middle line: the middle line keeps what it
+/// has beyond the closer.
+#[test]
+fn an_inline_quote_keeps_lines_deeper_than_its_closer() -> Result<()> {
+    let body = first_quote_body(indoc! {r#"
+        {
+            prog.push(↖F[1] = {
+                  b: [
+                1,
+                  ],
+              };↗);
+        }
+    "#})?;
+    assert_eq!(body, "F[1] = {\n    b: [\n  1,\n    ],\n};");
+    Ok(())
+}
+
+/// The body at the host line's own indent, the shape that always worked,
+/// builds the same term.
+#[test]
+fn an_inline_quote_at_its_host_indent_is_unchanged() -> Result<()> {
+    let body = first_quote_body(indoc! {r#"
+        {
+            prog.push(↖F[1] = {
+              a: 1,
+            };↗);
+        }
+    "#})?;
+    assert_eq!(body, "F[1] = {\n  a: 1,\n};");
+    Ok(())
+}
+
+/// An inline quote whose last line does not close a bracket keeps its body's
+/// indentation: in `↖def f():\n    return 1↗` the indent is the code.
+#[test]
+fn an_inline_python_def_keeps_its_body_indent() -> Result<()> {
+    let body = first_quote_body_in(
+        "rs",
+        "fn f() {\n    let q = py↖def f():\n        return 1↗;\n}",
+    )?;
+    assert_eq!(body, "def f():\n    return 1");
+    Ok(())
+}

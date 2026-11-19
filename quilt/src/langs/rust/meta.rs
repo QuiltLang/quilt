@@ -3,7 +3,7 @@
 use super::ops::{
     build_quote_code, build_tuple_code, build_unquote_code, build_variadic_block, lift_spelling,
     pattern_let_code, pattern_var_code, prelude_spelling, reduce_method_spelling, reduce_spelling,
-    spawn_spelling, type_method_spelling, wrap_emit, wrap_splice,
+    spawn_spelling, type_method_spelling, wrap_emit, wrap_separated, wrap_splice,
 };
 use crate::lang::Arity;
 use crate::meta::OuterKind;
@@ -63,6 +63,10 @@ impl MetaLanguage for RustMetaLanguage {
             OuterKind::Emit => wrap_emit(&qterm),
             OuterKind::Splice => wrap_splice(&qterm),
         })
+    }
+
+    fn wrap_separated(&self, qterm: Arc<QTerm>, sep: &str) -> Result<Arc<QTerm>> {
+        Ok(wrap_separated(&qterm, sep))
     }
 
     fn pattern_tag(&self) -> Option<&'static str> {

@@ -99,6 +99,34 @@ kind = "expr"
 code = '"a\"b\\c"'
 tag = "string_literal"
 
+# Pieces of a construct rather than whole files: each parses inside the
+# smallest construct that takes it, which is then stripped back off
+# (`RustProvider::fragment_wrappers`).
+[[fragments]]
+name = "match_arm"
+code = "Foo::A(a) => f(a),"
+tag = "match_arm"
+
+[[fragments]]
+name = "enum_variant_with_doc"
+code = "/// doc\n#[allow(unused)]\nA(u64)"
+tag = "enum_variant"
+
+[[fragments]]
+name = "struct_field"
+code = "pub a: u64"
+tag = "field_declaration"
+
+[[fragments]]
+name = "parameter"
+code = "mut a: u64"
+tag = "parameter"
+
+[[fragments]]
+name = "field_pattern"
+code = "ref mut a"
+tag = "field_pattern"
+
 [[holes]]
 name = "stmt_then_expr"
 code = "fn main() { @ let x = @; }"

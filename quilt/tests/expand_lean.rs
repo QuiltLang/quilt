@@ -564,3 +564,73 @@ fn a_host_string_spliced_into_a_string_literal_is_left_alone() -> Result<()> {
     assert_eq!(out, "def m : String := \"say one\n  two\"");
     Ok(())
 }
+
+/* ─────────── fragments that are not a command or a term, quoted ─────────── */
+
+// A constructor, a match alternative or a binder is valid only inside its
+// construct. Like a bare term, which the `#check` retry reaches, such a quote
+// was a parse error; it now parses inside the smallest construct that takes it
+// (`LeanProvider::fragment_wrappers`), tried after `#check`.
+
+/// Each fragment parses, writes back byte for byte, and is the node it is.
+#[test]
+fn a_fragment_quotes_on_its_own() -> Result<()> {
+    for (code, tag) in [
+        ("| won (p : PlayerId) (n : Nat)", "ctor_alt"),
+        ("/-- d -/ | won (p : PlayerId) (n : Nat)", "ctor_alt"),
+        ("/-- The winner. -/\n| won (p : PlayerId)", "ctor_alt"),
+        ("| zero", "ctor_alt"),
+        ("red : Nat", "field"),
+        ("/-- Green. -/\ngreen : Nat := 0", "field"),
+        ("| .c a0, .c b0 => Nat.beq a0 b0", "match_alt"),
+        ("| 0 => 1", "match_alt"),
+        ("{α : Type}", "implicit_binder"),
+        ("⦃x : Nat⦄", "strict_implicit_binder"),
+        // Already a term (a type ascription), and still one.
+        ("(n : Nat)", "paren"),
+    ] {
+        let quote = format!("lean↖{code}↗");
+        let q = Omni::default().parse(&quote)?;
+        let sexp = q.sexp();
+        assert!(sexp.starts_with(&format!("lean↖{tag}(")), "{code}: {sexp}");
+        assert_eq!(run(&format!("{quote}.coparse()"))?, code);
+    }
+    Ok(())
+}
+
+/// Holes inside a fragment are the fragment's: a constructor's binder type and
+/// an alternative's body are spliced like any term.
+#[test]
+fn a_fragment_with_holes() -> Result<()> {
+    let out = run(indoc! {r#"{
+        let ty = lean↖PlayerId↗;
+        let body = lean↖Nat.beq a0 b0↗;
+        let c = lean↖| won (p : ↙ty↘) (n : Nat)↗;
+        let m = lean↖| .c a0, .c b0 => ↙body↘↗;
+        format!("{}\n{}", c.coparse(), m.coparse())
+    }"#})?;
+    assert_eq!(
+        out,
+        "| won (p : PlayerId) (n : Nat)\n| .c a0, .c b0 => Nat.beq a0 b0"
+    );
+    Ok(())
+}
+
+/// A quoted binder fills a hole among a declaration's binders. One at a time:
+/// `binders` is an alias of a `REPEAT1`, which the arity tables do not count
+/// as variadic yet, so a `Vec` cannot be spliced there. Constructor and
+/// alternative lists have no hole position yet.
+#[test]
+fn quoted_binders_splice_into_a_def() -> Result<()> {
+    let out = run(indoc! {r#"{
+        let a = lean↖{α : Type}↗;
+        let x = lean↖(x : α)↗;
+        let f = lean↖(f : α → α)↗;
+        lean↖def twice ↙a↘ ↙x↘ ↙f↘ : α := f (f x)↗.coparse()
+    }"#})?;
+    assert_eq!(
+        out,
+        "def twice {α : Type} (x : α) (f : α → α) : α := f (f x)"
+    );
+    Ok(())
+}

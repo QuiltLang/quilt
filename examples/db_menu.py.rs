@@ -33,10 +33,14 @@ fn main() -> Result<()> {
         db.feed(InnerKind::Stmt, &tb("program").c(&tb("statement").c(&tb("insert").c(&leaf("keyword_insert", "INSERT")).w(" ").c(&leaf("keyword_into", "INTO")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "menu")).b()).w(" ").c(&leaf("keyword_values", "VALUES")).w(" ").c(&{
             let mut b_ = tb("list");
             sym("(").emit(&mut b_);
+            b_.sep(",");
             item.qlift_to::<Sql>().emit(&mut b_);
+            b_.end_sep();
             sym(",").emit(&mut b_);
             b_.write(" ");
+            b_.sep(",");
             price.qlift_to::<Sql>().emit(&mut b_);
+            b_.end_sep();
             sym(")").emit(&mut b_);
             b_.b()
         }).b()).b()).c(&sym(";")).b())?;
@@ -63,7 +67,9 @@ fn main() -> Result<()> {
         tb("string").c(&leaf("string_start", "\"")).c(&leaf("string_content", "menu items:")).c(&leaf("string_end", "\"")).b().emit(&mut b_);
         sym(",").emit(&mut b_);
         b_.write(" ");
+        b_.sep(",");
         count.qlift_to::<Python>().emit(&mut b_);
+        b_.end_sep();
         sym(")").emit(&mut b_);
         b_.b()
     }).b()).n().c(&tb("call").c(&leaf("identifier", "print")).c(&{
@@ -72,7 +78,9 @@ fn main() -> Result<()> {
         tb("string").c(&leaf("string_start", "\"")).c(&leaf("string_content", "total:")).c(&leaf("string_end", "\"")).b().emit(&mut b_);
         sym(",").emit(&mut b_);
         b_.write(" ");
+        b_.sep(",");
         total.qlift_to::<Python>().emit(&mut b_);
+        b_.end_sep();
         sym(")").emit(&mut b_);
         b_.b()
     }).b()).n().c(&tb("call").c(&leaf("identifier", "print")).c(&{
@@ -81,7 +89,9 @@ fn main() -> Result<()> {
         tb("string").c(&leaf("string_start", "\"")).c(&leaf("string_content", "dearest:")).c(&leaf("string_end", "\"")).b().emit(&mut b_);
         sym(",").emit(&mut b_);
         b_.write(" ");
+        b_.sep(",");
         dearest.qlift_to::<Python>().emit(&mut b_);
+        b_.end_sep();
         sym(")").emit(&mut b_);
         b_.b()
     }).b()).b()).x().b()).n().n().c(&tb("call").c(&leaf("identifier", "report")).c(&tb("argument_list").c(&sym("(")).c(&sym(")")).b()).b()).b();
