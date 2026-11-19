@@ -116,7 +116,7 @@ fn an_unknown_representation_is_an_error() {
 
 /// `⟨str⟩` is one template literal: `${…}` per hole, `\n` plus the pushed
 /// prefix per layout newline, and a hole under a prefix re-indented with
-/// `replaceAll`. `↑` into TypeScript is `qlift_str`, `←` is `qjoin`.
+/// `replaceAll`. `↑` into TypeScript is `qlift_str`, `←` an inline join.
 #[test]
 fn ts_str_is_a_template_literal() -> Result<()> {
     insta::assert_snapshot!(expand(

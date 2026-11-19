@@ -52,7 +52,7 @@ export function wrapped(x) {
 
 const dir = mkdtempSync(join(tmpdir(), "quilt-repr-"));
 const prelude =
-  `import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qjoin, qlift_str, ` +
+  `import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qlift_str, ` +
   `qlift, NL, POP, HOLE } from ${JSON.stringify(runtime)};`;
 const load = async (tag) => {
   const file = join(dir, `w_${tag.replace(/\W/g, "") || "cst"}.ts.quilt`);

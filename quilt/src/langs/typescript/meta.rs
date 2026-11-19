@@ -14,6 +14,9 @@ use crate::{
 
 /**************************************************************/
 
+/// `←` inside a `⟨str⟩` quote, applied to the source's own `(items, sep)`.
+const STR_JOIN: &str = r#"((items, sep = "\n") => Array.from(items, String).join(sep))"#;
+
 #[derive(Default)]
 pub struct TypeScriptMetaLanguage;
 
@@ -123,11 +126,12 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         }
     }
 
-    /// `←(items)` joins the items into one string inside a `⟨str⟩` quote
-    /// (`qjoin`), and builds a `qseq` term everywhere else.
+    /// `←(items)` joins the items into one string inside a `⟨str⟩` quote —
+    /// natively, with an inline arrow, so a `⟨str⟩` writer needs no runtime
+    /// for it — and builds a `qseq` term everywhere else.
     fn emit_str_in(&self, repr: Repr) -> Result<&'static str> {
         match repr {
-            Repr::Str => Ok("qjoin"),
+            Repr::Str => Ok(STR_JOIN),
             Repr::Cst | Repr::Qt => self.emit_str(),
         }
     }
@@ -161,7 +165,7 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         // The builder vocabulary every expansion uses, in the order the
         // hand-written imports have always listed it, with the lift spellings
         // slotted in where `qlift` sat.
-        const HEAD: [&str; 12] = [
+        const HEAD: [&str; 11] = [
             "tb",
             "leaf",
             "sym",
@@ -172,7 +176,6 @@ impl MetaLanguage for TypeScriptMetaLanguage {
             "push",
             "name",
             "qseq",
-            "qjoin",
             "qlift_str",
         ];
         const TAIL: [&str; 3] = ["NL", "POP", "HOLE"];

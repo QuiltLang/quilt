@@ -425,14 +425,6 @@ function qlift_str(value) {
 }
 
 /**
- * `←(items)` inside a `⟨str⟩` quote: the items as one string, a newline
- * between each, or `sep`. A term among them is written as its source.
- */
-function qjoin(items, sep = "\n") {
-  return Array.from(items, String).join(sep);
-}
-
-/**
  * Lift a JS value to an HTML term (the `↑` operator with an `html` splice
  * target). Strings become entity-escaped `text` leaves; a term passes through
  * unchanged, since an HTML fragment is already escaped.
@@ -663,7 +655,6 @@ export {
   qlift,
   qlift_html,
   qlift_text,
-  qjoin,
   qlift_str,
   qlift_text_in_quotes,
   qseq,

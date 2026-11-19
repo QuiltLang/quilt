@@ -53,8 +53,6 @@ export function qseq(items: Iterable<WasmQTerm | string | number | boolean | big
 
 /** `↑(x)` inside a `⟨str⟩` quote: the TypeScript literal for `value`, as a string. */
 export function qlift_str(value: number | string | boolean | WasmQTerm): string;
-/** `←(items)` inside a `⟨str⟩` quote: the items joined by a newline, or `sep`. */
-export function qjoin(items: Iterable<unknown>, sep?: string): string;
 
 declare global {
   interface String {

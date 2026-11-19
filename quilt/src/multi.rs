@@ -557,9 +557,13 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     // `qseq`) is functional: it takes the whole sequence as an
                     // argument, so the glyph must open a call. Anything else —
                     // Rust's postfix `x.←` habit, say — would expand to a
-                    // reference to the function and fail far from here.
-                    let bare = spelling.chars().all(|c| c.is_alphanumeric() || c == '_');
-                    if bare && !method_position(nodes, i) {
+                    // reference to the function and fail far from here. Asked
+                    // of the host's `⟨cst⟩` spelling, since a `⟨str⟩` one may
+                    // be a function *expression* (an inline join).
+                    let functional = self
+                        .emit_str(lang)
+                        .is_ok_and(|s| s.chars().all(|c| c.is_alphanumeric() || c == '_'));
+                    if functional && !method_position(nodes, i) {
                         miette::bail!(
                             "{lang}'s `←` is a function of the whole sequence: write `←(items)` \
                              (or `←(items, sep)`), which expands to `{spelling}(items)`"

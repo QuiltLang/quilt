@@ -116,7 +116,7 @@ A quote is always parsed against its language's grammar, so a malformed fragment
 | `ts⟨str⟩↖…↗` | a host string, with the host's own string splicing — a TypeScript template literal | code that is only printed; as fast as hand-written string codegen |
 | `ts⟨qt⟩↖…↗` | a flat term: text, newlines and indentation with holes, no object-language tags | printing with `cst`'s exact layout, at a fraction of its cost |
 
-The choice is made at expansion, by the host's `MetaLanguage`: a `⟨str⟩` quote in a TypeScript host expands to one template literal, `` `T[${e}][ids[o + ${off}]] === 1` ``, with nothing to run at all; a `⟨qt⟩` quote to one builder chain with a write per run of text. Inside a quote's unquotes, `↑` and `←` build values of the quote's representation (`qlift_str` and `qjoin` for `⟨str⟩`). A `⟨str⟩` value is a plain string, and its `coparse()` is itself, so callers written for terms keep working.
+The choice is made at expansion, by the host's `MetaLanguage`: a `⟨str⟩` quote in a TypeScript host expands to one template literal, `` `T[${e}][ids[o + ${off}]] === 1` ``, with nothing to run at all; a `⟨qt⟩` quote to one builder chain with a write per run of text. Inside a quote's unquotes, `↑` and `←` build values of the quote's representation (`qlift_str` and a native join for `⟨str⟩`). A `⟨str⟩` value is a plain string, and its `coparse()` is itself, so callers written for terms keep working.
 
 Representations are inherited like languages: by the bare quotes after an annotated one at the same level, while they are in its language (a `ts↖…↗` after a `ts⟨str⟩↖…↗` is `⟨str⟩` too; `⟨cst⟩↖` takes the default back, keeping the language), and by the quotes inside its unquotes. So a writer annotates its first quote and the rest follow.
 

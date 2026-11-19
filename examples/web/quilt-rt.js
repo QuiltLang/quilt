@@ -20,7 +20,7 @@ export { default } from "quilt-wasm"; // the runtime's init(); callers `await` i
 // sandbox by name so a stage's `tb(...).c(...)` etc. resolve without an import.
 const RT_NAMES = [
   "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push",
-  "name", "qlift", "qlift_html", "qlift_text", "qlift_text_in_quotes", "qseq", "qjoin", "qlift_str",
+  "name", "qlift", "qlift_html", "qlift_text", "qlift_text_in_quotes", "qseq", "qlift_str",
   "NL", "POP", "HOLE",
 ];
 
