@@ -66,7 +66,10 @@ tree-sitter-python = {git = "https://github.com/QuiltLang/tree-sitter-python.git
 # 0.26.13 (QuiltLang/tree-sitter-rust#2, issue #184).
 # This rev adds `quilt_hole` to item, enum-variant, struct-field and match-arm
 # lists and to item names (issue #302, QuiltLang/tree-sitter-rust#3).
-tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "3006801b6ebe6091d078546a1deb0e4aea6dd6a1"}
+# This rev lets `quilt_hole` be a struct or tuple struct pattern's path (in a
+# `let` and in match arms) and stand for its fields, and begin a path
+# (`{}::{}`) in expressions and patterns (QuiltLang/tree-sitter-rust#4).
+tree-sitter-rust = {git = "https://github.com/QuiltLang/tree-sitter-rust.git", rev = "9843f5dbf70b3d80a9a9611830a25c4f285cedac"}
 # SQL needs no Quilt hole patch either: `__QUILT_HOLE__` matches this grammar's
 # `_identifier` regex, so it parses unpatched in predicate, select-expression,
 # relation-name and `IN`-list position (the same free ride nix and lean get).

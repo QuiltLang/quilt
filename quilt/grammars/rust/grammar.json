@@ -5510,6 +5510,15 @@
           "name": "scoped_identifier"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression_path_hole"
+          },
+          "named": true,
+          "value": "scoped_identifier"
+        },
+        {
           "type": "SYMBOL",
           "name": "generic_function"
         },
@@ -5831,6 +5840,135 @@
           }
         }
       ]
+    },
+    "_expression_path_hole": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_quilt_path_hole_braces"
+            },
+            "named": true,
+            "value": "quilt_hole"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "::"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "_match_path_hole": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_quilt_hole_braces"
+            },
+            "named": true,
+            "value": "quilt_hole"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "::"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "_pattern_path_hole": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "SYMBOL",
+            "name": "quilt_hole"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "::"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "_quilt_path_hole_braces": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "{"
+          },
+          {
+            "type": "STRING",
+            "value": "}"
+          }
+        ]
+      }
     },
     "scoped_type_identifier_in_expression_position": {
       "type": "PREC",
@@ -7483,8 +7621,22 @@
         "type": "SEQ",
         "members": [
           {
-            "type": "SYMBOL",
-            "name": "quilt_hole"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_quilt_hole_braces"
+                },
+                "named": true,
+                "value": "quilt_hole"
+              }
+            ]
           },
           {
             "type": "CHOICE",
@@ -7629,8 +7781,17 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_pattern"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_pattern"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_match_hole_pattern"
+            }
+          ]
         },
         {
           "type": "CHOICE",
@@ -7658,6 +7819,200 @@
           ]
         }
       ]
+    },
+    "_match_hole_pattern": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_quilt_hole_braces"
+          },
+          "named": true,
+          "value": "quilt_hole"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_match_path_hole"
+          },
+          "named": true,
+          "value": "scoped_identifier"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_match_hole_struct_pattern"
+          },
+          "named": true,
+          "value": "struct_pattern"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_match_hole_tuple_struct_pattern"
+          },
+          "named": true,
+          "value": "tuple_struct_pattern"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_match_hole_or_pattern"
+          },
+          "named": true,
+          "value": "or_pattern"
+        }
+      ]
+    },
+    "_match_hole_struct_pattern": {
+      "type": "PREC_DYNAMIC",
+      "value": -1,
+      "content": {
+        "type": "PREC",
+        "value": -1,
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "type",
+              "content": {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_quilt_hole_braces"
+                },
+                "named": true,
+                "value": "quilt_hole"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_struct_pattern_fields"
+            }
+          ]
+        }
+      }
+    },
+    "_match_hole_tuple_struct_pattern": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "type",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_quilt_hole_braces"
+                },
+                "named": true,
+                "value": "quilt_hole"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_match_path_hole"
+                },
+                "named": true,
+                "value": "scoped_identifier"
+              }
+            ]
+          }
+        },
+        {
+          "type": "IMMEDIATE_TOKEN",
+          "content": {
+            "type": "STRING",
+            "value": "("
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_pattern"
+                },
+                {
+                  "type": "REPEAT",
+                  "content": {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "STRING",
+                        "value": ","
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_pattern"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ","
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "STRING",
+          "value": ")"
+        }
+      ]
+    },
+    "_match_hole_or_pattern": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_quilt_hole_braces"
+            },
+            "named": true,
+            "value": "quilt_hole"
+          },
+          {
+            "type": "STRING",
+            "value": "|"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "_pattern"
+          }
+        ]
+      }
     },
     "while_expression": {
       "type": "SEQ",
@@ -8381,6 +8736,15 @@
           "name": "generic_pattern"
         },
         {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_pattern_path_hole"
+          },
+          "named": true,
+          "value": "scoped_identifier"
+        },
+        {
           "type": "SYMBOL",
           "name": "tuple_pattern"
         },
@@ -8635,6 +8999,19 @@
                 },
                 "named": true,
                 "value": "generic_type"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_pattern_path_hole"
+                },
+                "named": true,
+                "value": "scoped_identifier"
               }
             ]
           }
@@ -8710,10 +9087,23 @@
               {
                 "type": "SYMBOL",
                 "name": "scoped_type_identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
               }
             ]
           }
         },
+        {
+          "type": "SYMBOL",
+          "name": "_struct_pattern_fields"
+        }
+      ]
+    },
+    "_struct_pattern_fields": {
+      "type": "SEQ",
+      "members": [
         {
           "type": "STRING",
           "value": "{"
@@ -8734,6 +9124,10 @@
                     {
                       "type": "SYMBOL",
                       "name": "remaining_field_pattern"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "quilt_hole"
                     }
                   ]
                 },
@@ -8756,6 +9150,10 @@
                           {
                             "type": "SYMBOL",
                             "name": "remaining_field_pattern"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "quilt_hole"
                           }
                         ]
                       }
@@ -9901,6 +10299,10 @@
     [
       "foreign_mod_item",
       "function_modifiers"
+    ],
+    [
+      "_match_arm_hole",
+      "_match_hole_struct_pattern"
     ]
   ],
   "precedences": [],
