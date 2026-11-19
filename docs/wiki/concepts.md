@@ -145,6 +145,26 @@ let block = ↖
 // The common four-space indent is stripped before parsing.
 ```
 
+Blank lines don't count, the closing `↗`'s own line among them, so where the
+closer sits doesn't matter: a body indented past its `↗` is dedented to the
+body, not to the closer.
+
+A quote opened *inline* (`↖foo…`, with content on the opener's line) keeps its
+body's indentation, since the opener line has none to share:
+`py↖def f():\n    return 1↗` is a function with an indented body. The
+exception is a quote whose last line starts with a closing `}`, `)` or `]`.
+That closer marks the column the body is written relative to, so the
+continuation lines' common indent is stripped, wherever the host line sits:
+
+```ts
+prog.push(↖F[1] = {
+    a: 1,
+  };↗);
+// F[1] = {
+//   a: 1,
+// };
+```
+
 ## Variadic nodes and emit `←`
 
 Some language nodes accept an arbitrary number of children — `block` and `source_file` in Rust, for example. Inside a variadic quote, `←` (emit) appends a term to the growing list:

@@ -377,45 +377,32 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         let full_prefix = hole.prefix.concat();
         let prefix = shared_prefix(&full_prefix, nodes);
         let mut nodes_new = Vec::with_capacity(nodes.len());
-        let mut indent = None;
         let mut on_nl = false;
         let mut num_nl = 0;
-        // Inline opener content (`↖foo…`) sits flush with the opener, so its own
-        // leading whitespace bounds the common indent. This keeps a quote whose
-        // body carries meaningful indentation — e.g. `↖def f():\n    body` —
-        // from being dedented; only a block-opened quote (`↖\n    body\n↗`),
-        // whose first line is a newline, has its body's common indent stripped.
-        if let Some(Node::Content(s)) = nodes.first().map(|n| &**n) {
-            indent = Some(RE_WS_PREFIX.find(s).unwrap().as_str());
-        }
+        // The common leading indent of the continuation lines (every line after
+        // a newline), measured after the enclosing prefix is stripped. Blank
+        // lines — the closing `↗`'s own indentation among them — say nothing
+        // about the body's indentation, so they do not bound it: a closer left
+        // of the body (`↖\n        body\n      ↗`) leaves no indent behind.
+        let mut cont: Option<&str> = None;
+        // Where the last line (the one the `↗` is on) starts in `nodes_new`.
+        let mut last_line = None;
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 Node::Content(s) if on_nl => {
-                    // A blank line — the closing `↗`'s own indentation among
-                    // them — gives up as much of the *full* prefix as it has,
-                    // so a closer at the host's indent leaves nothing behind.
-                    let s = if is_blank(nodes, i) {
+                    // A blank line gives up as much of the *full* prefix as it
+                    // has, so a closer at the host's indent leaves nothing behind.
+                    let blank = is_blank(nodes, i);
+                    let s = if blank {
                         &s[common_prefix_len(&full_prefix, s)..]
                     } else {
                         &s[prefix.len()..]
                     };
                     if !s.is_empty() {
                         nodes_new.push(arc(Node::Content(s.into())));
-                        indent = match indent {
-                            None => {
-                                // extract prefix
-                                let m = RE_WS_PREFIX.find(s).unwrap();
-                                Some(m.as_str())
-                            }
-                            Some(pre) => {
-                                // find common prefix
-                                let c = pre
-                                    .chars()
-                                    .zip(s.chars())
-                                    .take_while(|(x, y)| x == y)
-                                    .count();
-                                Some(&pre[..c])
-                            }
+                        if !blank {
+                            let ws = RE_WS_PREFIX.find(s).unwrap().as_str();
+                            cont = Some(cont.map_or(ws, |pre| &pre[..common_prefix_len(pre, ws)]));
                         }
                     }
                 }
@@ -423,7 +410,39 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             }
             on_nl = **n == Node::NewLine;
             num_nl += usize::from(on_nl);
+            if on_nl {
+                last_line = Some(nodes_new.len());
+            }
         }
+        // Inline opener content (`↖foo…`) sits flush with the opener, so its own
+        // leading whitespace bounds the common indent. This keeps a quote whose
+        // body carries meaningful indentation — e.g. `↖def f():\n    body` —
+        // from being dedented; a block-opened quote (`↖\n    body\n↗`), whose
+        // first line is a newline, has its body's common indent stripped.
+        //
+        // The exception is an inline quote whose last line *closes* what the
+        // opener line opened — it starts with `}`, `)` or `]`, as in
+        //
+        //     prog.push(↖F[1] = {
+        //         a: 1,
+        //       };↗);
+        //
+        // There the closer marks the column the body is written relative to,
+        // whatever the host line's indent, so the continuation lines' common
+        // indent is stripped as in a block quote: `F[1] = {\n  a: 1,\n};`.
+        let opener = match nodes.first().map(|n| &**n) {
+            Some(Node::Content(s)) => Some(RE_WS_PREFIX.find(s).unwrap().as_str()),
+            _ => None,
+        };
+        let closes = last_line.is_some_and(|k| {
+            matches!(nodes_new.get(k).map(|n| &**n), Some(Node::Content(s))
+                if s.trim_start().starts_with(['}', ')', ']']))
+        });
+        let indent = match (opener, cont) {
+            (Some(_), Some(cont)) if closes => Some(cont),
+            (Some(op), Some(cont)) => Some(&op[..common_prefix_len(op, cont)]),
+            (op, cont) => op.or(cont),
+        };
         let mut nodes = nodes_new;
         let indent = indent.unwrap_or_default();
 
@@ -439,7 +458,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             for n in nodes {
                 match &*n {
                     Node::Content(s) if on_nl => {
-                        let s = s.strip_prefix(indent).unwrap();
+                        // A blank line did not bound `indent`, so it may have
+                        // less of it than the others: it loses what it has.
+                        let s = &s[common_prefix_len(indent, s)..];
                         if !s.is_empty() {
                             nodes_new.push(arc(Node::Content(s.into())));
                         }
