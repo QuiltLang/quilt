@@ -21,7 +21,8 @@ const hasGlyph = (s) => [...GLYPHS].some((g) => s.includes(g));
 // exports (the same list `examples/web/quilt-rt.js` passes to its sandbox).
 const RT_NAMES = [
   "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push",
-  "name", "qlift", "qlift_html", "NL", "POP", "HOLE",
+  "name", "qlift", "qlift_html", "qlift_text", "qlift_text_in_quotes",
+  "NL", "POP", "HOLE",
 ];
 
 // Expand Quilt source with the server that is serving this page.

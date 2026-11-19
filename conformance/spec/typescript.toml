@@ -38,7 +38,7 @@ quotable = {status = "supported"}
 hole-positions = {status = "supported"}
 variadic-containers = {status = "supported"}
 kind-classification = {status = "supported"}
-lift-into = {status = "supported", note = "numbers, booleans, strings and slices/`Vec`s all lift. One `number` node serves integers and floats, and a negative is a `unary_expression` over its magnitude, as the parser builds it. The Rust host's `LiftTo<TypeScript>`, the Python host's `qlift_ts` and the TypeScript host's own `qlift` share the core's generated shapes"}
+lift-into = {status = "supported", note = "numbers, booleans, strings and slices/`Vec`s all lift. One `number` node serves integers and floats, and a negative is a `unary_expression` over its magnitude, as the parser builds it. The Rust host's `LiftTo<TypeScript>` and the Python host's `qlift_ts` share the core's generated shapes; the TypeScript host's own `qlift` spells the same text"}
 highlights = {status = "unsupported", note = "no `highlights.scm` is vendored for the TypeScript grammar"}
 host = {status = "supported"}
 lift-from = {status = "supported"}

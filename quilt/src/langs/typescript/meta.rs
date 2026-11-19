@@ -57,11 +57,17 @@ impl MetaLanguage for TypeScriptMetaLanguage {
     // `↑` is target-directed and written prefix, `↑(value)`: into TypeScript it
     // spells the `qlift` function (number/string/boolean → TS literals); into
     // HTML it spells `qlift_html`, which entity-escapes lifted strings at
-    // runtime. Both live in the `quilt-wasm` runtime.
+    // runtime, and into text `qlift_text`. All live in the `quilt-wasm`
+    // runtime.
     fn lift_str(&self, target: &str) -> Result<&'static str> {
         match target {
             "typescript" | "ts" => Ok("qlift"),
             "html" => Ok("qlift_html"),
+            // Into text: `qlift_text`, or `qlift_text_in_quotes` for a hole the
+            // author wrapped in `"…"` (`lift::text`). Both take an optional
+            // dialect object as a second argument.
+            "text" | "txt" => Ok("qlift_text"),
+            crate::lift::TEXT_IN_QUOTES => Ok("qlift_text_in_quotes"),
             _ => miette::bail!("typescript can't lift into {target:?}: no spelling registered"),
         }
     }
@@ -134,9 +140,19 @@ impl MetaLanguage for TypeScriptMetaLanguage {
         const TAIL: [&str; 3] = ["NL", "POP", "HOLE"];
         let mut names: Vec<&str> = HEAD.to_vec();
         for target in targets {
-            if let Ok(lift) = self.lift_str(target) {
-                if !names.contains(&lift) {
-                    names.push(lift);
+            // A text quote can hold both spellings: the expander picks the
+            // in-quotes one per hole, from the characters around it, so the
+            // target list (languages, not positions) never names it.
+            let positions: &[&str] = if matches!(*target, "text" | "txt") {
+                &[target, crate::lift::TEXT_IN_QUOTES]
+            } else {
+                &[target]
+            };
+            for position in positions {
+                if let Ok(lift) = self.lift_str(position) {
+                    if !names.contains(&lift) {
+                        names.push(lift);
+                    }
                 }
             }
         }

@@ -102,6 +102,7 @@ Mirrors the Python runtime one-for-one where the ABIs allow:
 | `cmd/write/push`                   | same free functions            |
 | `NL`, `POP`, `HOLE` (constants)    | `NL()`, `POP()`, `HOLE()` (**functions** — see below) |
 | `qlift`, `qlift_html`              | same; lift `number`/`string`/`boolean`, and a `QTerm` |
+| `qlift_text(v, dialect?)`, `qlift_text_in_quotes(v, dialect?)` | same, plus arrays; a dialect is a plain object (`string`, `in_quotes`, `boolean`, `float`, `list_open`, `list_sep`, `list_close`), not a `TextDialect` subclass, and there is no built-in `Raw` — `{ string: (s) => s, in_quotes: (s) => s }` is one |
 | `term.coparse()`                   | `term.coparse()` / `term.toString()` |
 | `reduce(term)` / `term.↓`          | `node/` only: `reduce(term)` / `term.reduce()` |
 | `expand(src, lang)`                | `node/` only: `expand(src, chain)` |

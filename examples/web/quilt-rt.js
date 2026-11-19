@@ -20,7 +20,8 @@ export { default } from "quilt-wasm"; // the runtime's init(); callers `await` i
 // sandbox by name so a stage's `tb(...).c(...)` etc. resolve without an import.
 const RT_NAMES = [
   "tb", "leaf", "sym", "quote", "unquote", "cmd", "write", "push",
-  "name", "qlift", "qlift_html", "NL", "POP", "HOLE",
+  "name", "qlift", "qlift_html", "qlift_text", "qlift_text_in_quotes",
+  "NL", "POP", "HOLE",
 ];
 
 // Presence of any glyph means coparse() returned Quilt source (a generated stage

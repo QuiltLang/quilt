@@ -25,6 +25,12 @@ use std::sync::Arc;
 mod gen;
 pub use gen::*;
 
+mod text;
+pub use text::{
+    json_escape, json_float, json_string, InQuotes, Json, Raw, Text, TextDialect, TextValue,
+    TEXT_IN_QUOTES,
+};
+
 /**************************************************************/
 
 /// Marker: the Rust object language (the homogeneous case; see `QLift`).
@@ -47,6 +53,14 @@ pub struct Nix;
 
 /// Marker: the Lean 4 object language.
 pub struct Lean;
+
+/// Marker: the TypeScript object language.
+pub struct TypeScript;
+
+/// Marker: the HTML object language. A value lifts to an entity-escaped `text`
+/// node — the same rule as the Python and TypeScript runtimes' `qlift_html`,
+/// which call [`escape_html`] too.
+pub struct Html;
 
 /// Marker: the SQL object language, standard dialect.
 ///
@@ -125,9 +139,40 @@ pub fn py_dquote_escape(s: &str) -> String {
 }
 
 /**************************************************************/
-// HTML. There is no `LiftTo<Html>` marker yet (issue #149), so this is a free
-// function rather than an impl — but the escaping rule already has two callers,
-// and that is what it is here for.
+// TypeScript. A string lifts to a double-quoted `string`, escaped as the
+// TypeScript meta escapes the strings in generated code.
+
+/// Escape a string for inclusion in a TypeScript/JavaScript double-quoted
+/// literal: `"` and `\` backslash-escaped, `\n` `\r` `\t` spelled short, every
+/// other control character as `\uXXXX`.
+///
+/// Public for the same reason as [`py_dquote_escape`]: `quilt-python`'s
+/// `qlift_ts` builds the same literal, and `langs::typescript::ops` writes
+/// generated code's strings with it. `quilt-wasm`'s JavaScript runtime keeps a
+/// copy (`tsStringLit`), which the shared runtime corpus holds to this one.
+#[must_use]
+pub fn ts_dquote_escape(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => write!(out, "\\u{:04x}", c as u32).unwrap(),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/**************************************************************/
+// HTML. `LiftTo<Html>` (generated, in `gen`) and both runtimes' `qlift_html`
+// call this, so a value is escaped the same way whichever host lifts it.
 
 /// Escape `& < > " '` so `s` is inert HTML wherever a hole can sit: as text
 /// content, and inside a single- or double-quoted attribute value.

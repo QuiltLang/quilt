@@ -24,8 +24,9 @@
 //!   inside its content, which no runtime reproduces (#174, finding A2).
 
 use super::{
-    lean_dquote_escape, mysql_squote_escape, nix_dquote_escape, py_dquote_escape, sh_dquote_escape,
-    sql_squote_escape, Bash, Lean, LiftTo, MySql, Nix, Python, Sql, Wgsl, Zsh,
+    escape_html, lean_dquote_escape, mysql_squote_escape, nix_dquote_escape, py_dquote_escape,
+    sh_dquote_escape, sql_squote_escape, ts_dquote_escape, Bash, Html, Lean, LiftTo, MySql, Nix,
+    Python, Sql, TypeScript, Wgsl, Zsh,
 };
 use crate::qterm::{leaf, sym, tb, QTerm};
 use std::sync::Arc;
@@ -970,6 +971,259 @@ impl<T: LiftTo<MySql>> LiftTo<MySql> for [T] {
 impl<T: LiftTo<MySql>> LiftTo<MySql> for Vec<T> {
     fn lift_to(&self) -> Arc<QTerm> {
         self.as_slice().lift_to()
+    }
+}
+/// TypeScript `3`, `1.5`, `-3`. One `number` node for integers
+/// and floats; unsigned, so the sign is a `unary_expression`
+/// rather than a character.
+///
+/// Public because `quilt-python`'s `qlift_ts` builds the same
+/// literal, and a shape written twice is how #176 started.
+pub fn ts_number_term(negative: bool, text: &str) -> Arc<QTerm> {
+    if negative {
+        tb("unary_expression")
+            .c(&sym("-"))
+            .c(&leaf("number", text))
+            .b()
+    } else {
+        leaf("number", text)
+    }
+}
+impl LiftTo<TypeScript> for u8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<TypeScript> for u16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<TypeScript> for u32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<TypeScript> for u64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<TypeScript> for u128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<TypeScript> for usize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(false, &self.to_string())
+    }
+}
+impl LiftTo<TypeScript> for i8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<TypeScript> for i16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<TypeScript> for i32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<TypeScript> for i64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<TypeScript> for i128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<TypeScript> for isize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_number_term(*self < 0, &self.unsigned_abs().to_string())
+    }
+}
+impl LiftTo<TypeScript> for f32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        {
+            let s = format!("{self:?}");
+            match s.strip_prefix('-') {
+                Some(mag) => ts_number_term(true, mag),
+                None => ts_number_term(false, &s),
+            }
+        }
+    }
+}
+impl LiftTo<TypeScript> for f64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        {
+            let s = format!("{self:?}");
+            match s.strip_prefix('-') {
+                Some(mag) => ts_number_term(true, mag),
+                None => ts_number_term(false, &s),
+            }
+        }
+    }
+}
+/// TypeScript `true` / `false` — node kinds of their own.
+pub fn ts_bool_term(b: bool) -> Arc<QTerm> {
+    if b {
+        sym("true")
+    } else {
+        sym("false")
+    }
+}
+impl LiftTo<TypeScript> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_bool_term(*self)
+    }
+}
+/// TypeScript `"s"`. Like Python's, the empty string has no
+/// `string_fragment` child, because there is no content.
+pub fn ts_string_term(s: &str) -> Arc<QTerm> {
+    if s.is_empty() {
+        tb("string").c(&sym("\"")).c(&sym("\"")).b()
+    } else {
+        tb("string")
+            .c(&sym("\""))
+            .c(&leaf("string_fragment", &ts_dquote_escape(s)))
+            .c(&sym("\""))
+            .b()
+    }
+}
+impl LiftTo<TypeScript> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_string_term(self)
+    }
+}
+impl LiftTo<TypeScript> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_string_term(self)
+    }
+}
+/// The container shape, with the elements as a parameter. Derived from
+/// the empty, one- and two-element samples: what surrounds the first
+/// element is the opener, what sits between two of them is the
+/// separator, and what the empty container still writes is neither.
+pub fn ts_list_term(items: &[Arc<QTerm>]) -> Arc<QTerm> {
+    let mut b = tb("array");
+    b.child(&sym("["));
+    for (i, x) in items.iter().enumerate() {
+        if i > 0 {
+            b.child(&sym(","));
+            b.write(" ");
+        }
+        b.child(x);
+    }
+    b.child(&sym("]"));
+    b.b()
+}
+impl<T: LiftTo<TypeScript>> LiftTo<TypeScript> for [T] {
+    fn lift_to(&self) -> Arc<QTerm> {
+        ts_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())
+    }
+}
+impl<T: LiftTo<TypeScript>> LiftTo<TypeScript> for Vec<T> {
+    fn lift_to(&self) -> Arc<QTerm> {
+        self.as_slice().lift_to()
+    }
+}
+/// HTML text content. Every value is a `text` node; a string's
+/// is entity-escaped by `escape_html` first, the rule the
+/// runtimes' `qlift_html` share. No list impl: HTML has no
+/// literal syntax for a sequence to borrow.
+pub fn html_text_term(text: &str) -> Arc<QTerm> {
+    leaf("text", text)
+}
+impl LiftTo<Html> for u8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for u16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for u32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for u64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for u128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for usize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for i8 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for i16 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for i32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for i64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for i128 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for isize {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for bool {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&self.to_string())
+    }
+}
+impl LiftTo<Html> for f32 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&format!("{self:?}"))
+    }
+}
+impl LiftTo<Html> for f64 {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&format!("{self:?}"))
+    }
+}
+impl LiftTo<Html> for str {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&escape_html(self))
+    }
+}
+impl LiftTo<Html> for String {
+    fn lift_to(&self) -> Arc<QTerm> {
+        html_text_term(&escape_html(self))
     }
 }
 impl<T: LiftTo<Lean>> LiftTo<Lean> for [T] {

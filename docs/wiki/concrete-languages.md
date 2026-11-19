@@ -94,7 +94,7 @@ def f():
 
 | Glyph  | Expands to                                                     |
 |--------|----------------------------------------------------------------|
-| `↑(x)` | `qlift(x)` into Python; `qlift_html(x)` into an HTML quote     |
+| `↑(x)` | `qlift(x)` into Python; `qlift_html(x)` into HTML; `qlift_ts(x)` into TypeScript; `qlift_text(x)` into text (`qlift_text_in_quotes(x)` between `"…"`) |
 | `⟨N⟩`  | `name("ident")`                                                |
 
 Python's lift is written *prefix* (`↙↑(x)↘`), unlike Rust's postfix `x.↑`: the spelling is a free function because a `qlift` method can't hang off builtin ints and strings.
@@ -113,11 +113,13 @@ TypeScript uses the forked `tree-sitter-typescript` (hole placeholder `__HOLE__`
 
 | Glyph  | Expands to                                                 |
 |--------|------------------------------------------------------------|
-| `↑(x)` | `qlift(x)` into TypeScript; `qlift_html(x)` into an HTML quote |
+| `↑(x)` | `qlift(x)` into TypeScript; `qlift_html(x)` into HTML; `qlift_text(x)` into text (`qlift_text_in_quotes(x)` between `"…"`) |
 | `↓`    | `reduce()` (postfix: `term.↓` → `term.reduce()`)           |
 | `←`    | *no spelling* — ground emit is an error                    |
 | `⟨T⟩`  | `QTerm`                                                    |
 | `⟨N⟩`  | `name("ident")`                                            |
+
+TypeScript is also a target with a `LiftTo` marker (`TypeScript`), so a Rust host can lift into `ts↖…↗`: numbers, booleans, strings and slices/`Vec`s. Its shapes are generated from the grammar like every other target's — one `number` node for integers and floats, a negative as a `unary_expression` over the magnitude — and the Python runtime's `qlift_ts` builds the same terms.
 
 Lift is written *prefix* (`↙↑(x)↘`), like Python's and for the same reason. Emit has Python's limitation too — a fluent chain with no named accumulator — so a ground `←` is the same hard error, pointing at the same alternative ([#152](https://github.com/QuiltLang/quilt/issues/152)). TypeScript could host an accumulator where Python cannot, since an IIFE gives it statements in expression position; the blocker is the runtime half, where `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` exposes no `emit` method.
 
@@ -153,6 +155,8 @@ HTML is a *target* language — it appears inside quotes (`html↖<p>Hello</p>�
 - The ground language of a **notebook** — see [Notebooks](notebook.md).
 
 The HTML grammar is based on the forked `tree-sitter-html` with hole support.
+
+A value lifted into HTML becomes a `text` node: numbers and booleans as written, strings entity-escaped by `lift::escape_html`, so they are inert as text content and inside a quoted attribute value. That is one rule for every host — `LiftTo<Html>` from Rust, `qlift_html` from Python and TypeScript. There is no list lift, since HTML has no literal syntax for a sequence.
 
 Usage in a `*.rs.quilt` file:
 
@@ -497,7 +501,9 @@ expands to the Lean metaprogram `… s!"@[{attr}] theorem {name} (n : Nat) : n +
 
 **Files:** `langs/text/lang.rs`, `langs/text/mod.rs`, `langs/text/meta.rs`
 
-Plain text. Useful when you want to quote an arbitrary string fragment without language-specific parsing.
+Plain text. Useful when you want to quote an arbitrary string fragment without language-specific parsing — and the target for every format Quilt has no grammar for.
+
+Values lift into it through a *dialect* (`lift/text.rs`): JSON's spelling by default, quote-aware between two `"`, and a host-chosen dialect for formats that differ. See [Lifting into text](concepts.md#lifting-into-text).
 
 It also has a `MetaLanguage` — the **identity** meta. Rust and Python translate a quoted fragment into builder calls, Nix and Lean into string literals; text has no expressions to translate into, so `TextMetaLanguage` *holds the object-level code as unparsed lines*: same tags, same `cmds`, same text. Expanding a text-hosted quote yields the quoted term itself, so `↖…↗` contributes its body, a ground `↙x↘` reads straight through, and a nested quote keeps its glyphs for the next stage. The operator spellings are the other half of that fact: `↑ ↓ ← ⟨T⟩ ⟨N⟩` each need a host expression to expand into, so each is a hard error naming a real host rather than a placeholder leaking into the output.
 

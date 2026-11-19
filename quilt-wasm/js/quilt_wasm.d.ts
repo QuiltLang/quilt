@@ -81,3 +81,26 @@ export function qlift(value: number | string | boolean | WasmQTerm): WasmQTerm;
  * unchanged.
  */
 export function qlift_html(value: number | string | boolean | WasmQTerm): WasmQTerm;
+
+/** A text dialect: any rule left out is JSON's (see `qlift_text`). */
+export interface TextDialect {
+  string?(s: string): string;
+  in_quotes?(s: string): string;
+  boolean?(b: boolean): string;
+  float?(f: number): string;
+  list_open?: string;
+  list_sep?: string;
+  list_close?: string;
+}
+/** A value in a text quote: a scalar, a term, or an array of them. */
+export type TextValue = number | string | boolean | WasmQTerm | TextValue[];
+/**
+ * Lift a JS value into a text quote: JSON's spelling unless `dialect`
+ * overrides a rule.
+ */
+export function qlift_text(value: TextValue, dialect?: TextDialect): WasmQTerm;
+/**
+ * `qlift_text` for a hole between two `"` the author wrote: a string as its
+ * escaped contents, an array as its elements joined by the separator.
+ */
+export function qlift_text_in_quotes(value: TextValue, dialect?: TextDialect): WasmQTerm;
