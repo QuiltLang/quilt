@@ -1,0 +1,7 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖const ↙a↘: u32 = 1;↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("const_item").c(&sym("const")).w(" ").c(&a).c(&sym(":")).w(" ").c(&leaf("primitive_type", "u32")).w(" ").c(&sym("=")).w(" ").c(&leaf("integer_literal", "1")).c(&sym(";")).b()
+}

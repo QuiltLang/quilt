@@ -1,0 +1,18 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖struct S { x: u32, ↙a↘ }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("struct_item").c(&sym("struct")).w(" ").c(&leaf("type_identifier", "S")).w(" ").c(&{
+        let mut b_ = tb("field_declaration_list");
+        sym("{").emit(&mut b_);
+        b_.write(" ");
+        tb("field_declaration").c(&leaf("field_identifier", "x")).c(&sym(":")).w(" ").c(&leaf("primitive_type", "u32")).b().emit(&mut b_);
+        sym(",").emit(&mut b_);
+        b_.write(" ");
+        a.emit(&mut b_);
+        b_.write(" ");
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).b()
+}

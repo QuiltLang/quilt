@@ -1,0 +1,17 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖mod m { fn g() {} ↙{ for x in xs { x.← } }↘ }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("mod_item").c(&sym("mod")).w(" ").c(&leaf("identifier", "m")).w(" ").c(&{
+        let mut b_ = tb("declaration_list");
+        sym("{").emit(&mut b_);
+        b_.write(" ");
+        tb("function_item").c(&sym("fn")).w(" ").c(&leaf("identifier", "g")).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).w(" ").c(&tb("block").c(&sym("{")).c(&sym("}")).b()).b().emit(&mut b_);
+        b_.write(" ");
+        { for x in xs { x.emit(&mut b_) } };
+        b_.write(" ");
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).b()
+}
