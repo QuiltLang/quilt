@@ -618,13 +618,15 @@ impl LanguagePost for TSLanguagePost {
                     term,
                     cmds,
                     span,
-                } => arc(crate::qterm::qquote_at(
+                    repr,
+                } => arc(crate::qterm::qquote_repr_at(
                     tag,
                     *index,
                     lang,
                     fill(term, plugs, hole_str),
                     cmds,
                     span.clone(),
+                    *repr,
                 )),
                 QTerm::Unquote {
                     tag,

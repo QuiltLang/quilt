@@ -33,7 +33,7 @@
 //! (issue #204); a second host would add its own pair beside Rust's.
 
 use crate::prelude::*;
-use crate::qterm::{qquote_at, qunquote_at, QTerm};
+use crate::qterm::{qquote_repr_at, qunquote_at, QTerm};
 use crate::strcmd::StrCmd;
 use crate::term::{CmdOrHole, STerm};
 use miette::{bail, ensure};
@@ -393,9 +393,18 @@ pub fn sinstantiate<S: BuildHasher>(
             term,
             cmds,
             span,
+            repr,
         } => {
             let term = sinstantiate(term, bindings);
-            Arc::new(qquote_at(tag, *index, lang, term, cmds, span.clone()))
+            Arc::new(qquote_repr_at(
+                tag,
+                *index,
+                lang,
+                term,
+                cmds,
+                span.clone(),
+                *repr,
+            ))
         }
         QTerm::Unquote {
             tag,
@@ -434,9 +443,18 @@ impl QTerm {
                 term,
                 cmds,
                 span,
+                repr,
             } => {
                 let term = term.rewrite(find, replace);
-                Arc::new(qquote_at(tag, *index, lang, term, cmds, span.clone()))
+                Arc::new(qquote_repr_at(
+                    tag,
+                    *index,
+                    lang,
+                    term,
+                    cmds,
+                    span.clone(),
+                    *repr,
+                ))
             }
             QTerm::Unquote {
                 tag,

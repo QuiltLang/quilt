@@ -1,13 +1,15 @@
+#[cfg(feature = "parse")]
+use crate::glyphs::split_anno;
 use crate::lang::{Arity, Language, LanguagePost};
 #[cfg(feature = "parse")]
 use crate::lang::{FlatNode, Hole};
-use crate::meta::{MetaLanguage, OuterKind};
-#[cfg(feature = "parse")]
+use crate::meta::{MetaLanguage, OuterKind, Piece};
 use crate::node::{Node, MACHINE};
 use crate::prelude::*;
 #[cfg(feature = "parse")]
 use crate::qterm::QTermBuilder;
-use crate::qterm::{tuple, QTerm};
+use crate::qterm::{tuple, QTerm, Repr};
+use crate::strcmd::StrCmd;
 use crate::term::CmdOrHole;
 #[cfg(feature = "parse")]
 use crate::zipper::{List, Zipper};
@@ -89,6 +91,12 @@ pub trait MetaLanguages {
     fn emit_str(&self, lang: &str) -> Result<&'static str> {
         self.get(lang)?.emit_str()
     }
+    fn lift_str_in(&self, lang: &str, target: &str, repr: Repr) -> Result<&'static str> {
+        self.get(lang)?.lift_str_in(target, repr)
+    }
+    fn emit_str_in(&self, lang: &str, repr: Repr) -> Result<&'static str> {
+        self.get(lang)?.emit_str_in(repr)
+    }
     fn type_str(&self, lang: &str) -> Result<&'static str> {
         self.get(lang)?.type_str()
     }
@@ -137,10 +145,10 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// rather than about [`TEXT_IN_QUOTES`](crate::lift::TEXT_IN_QUOTES), a
     /// position inside it they never named.
     #[cfg(feature = "parse")]
-    fn lift_spelling(&self, lang: &str, target: &str) -> Result<&'static str> {
-        match self.lift_str(lang, target) {
+    fn lift_spelling(&self, lang: &str, target: &str, repr: Repr) -> Result<&'static str> {
+        match self.metas.lift_str_in(lang, target, repr) {
             Err(e) if target == crate::lift::TEXT_IN_QUOTES => {
-                self.lift_str(lang, "text")?;
+                self.metas.lift_str_in(lang, "text", repr)?;
                 Err(e)
             }
             r => r,
@@ -319,6 +327,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 &nodes,
                 &zipper_from_chain(chain),
                 None,
+                None,
                 false,
                 0,
             )?
@@ -337,6 +346,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// level: 0 at ground, +1 per enclosing quote, −1 per enclosing unquote.
     /// An operator (`↑`/`↓`/`←`) at sky depth > 0 runs at a *later* stage, so
     /// it is deferred (emitted as the glyph) rather than spelled out now.
+    /// `enclosing` is the language and [`Repr`] of the nearest quote around
+    /// `nodes` (`None` at the top): a bare quote inside its unquotes inherits
+    /// its representation, and a `↑`/`←` there spells that representation's.
     #[cfg(feature = "parse")]
     #[allow(clippy::too_many_arguments)] // recursive parse state; a struct would obscure it
     pub fn build_nodes(
@@ -346,6 +358,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         nodes: &[Arc<Node>],
         zipper: &Zipper<Box<str>>,
         splice_target: Option<&str>,
+        enclosing: Option<(&str, Repr)>,
         bracketed: bool,
         sky_depth: usize,
     ) -> Result<QTermBuilder> {
@@ -475,7 +488,9 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
             let mut sibling = "";
             for n in nodes {
                 match &**n {
-                    Node::Quote { anno, .. } if !anno.is_empty() => sibling = anno,
+                    Node::Quote { anno, .. } if !split_anno(anno).0.is_empty() => {
+                        sibling = split_anno(anno).0;
+                    }
                     Node::Machine { anno } => {
                         let anno = if anno.is_empty() { sibling } else { anno };
                         spawns.push(self.spawn_str(lang, &machine_lang(zipper, lang, anno))?);
@@ -486,6 +501,12 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         }
         let mut spawns = spawns.iter();
 
+        // The representation a value spliced from here must have: the
+        // enclosing quote's, inside one of its unquotes; `cst` at plain ground.
+        let splice_repr = match (splice_target, enclosing) {
+            (Some(_), Some((_, repr))) => repr,
+            _ => Repr::Cst,
+        };
         let mut code = Vec::with_capacity(nodes.len());
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
@@ -505,9 +526,11 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 {
                     code.push(FlatNode::Hole);
                 }
-                Node::Lift => code.push(FlatNode::Str(
-                    self.lift_spelling(lang, splice_target.unwrap_or(lang))?,
-                )),
+                Node::Lift => code.push(FlatNode::Str(self.lift_spelling(
+                    lang,
+                    splice_target.unwrap_or(lang),
+                    splice_repr,
+                )?)),
                 // `↓` flush against an argument list — `db.↓(schema)` — is
                 // *method position*: it spells the host's machine-eval method
                 // name, completed by the source's own parentheses (#268).
@@ -529,7 +552,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                 }
                 Node::Reduce { anno } => code.push(FlatNode::Str(self.reduce_str(lang, anno)?)),
                 Node::Emit => {
-                    let spelling = self.emit_str(lang)?;
+                    let spelling = self.metas.emit_str_in(lang, splice_repr)?;
                     // A host whose `←` is a bare function name (TypeScript's
                     // `qseq`) is functional: it takes the whole sequence as an
                     // argument, so the glyph must open a call. Anything else —
@@ -592,7 +615,11 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // one already is. Only siblings count — a quote nested in an unquote
         // starts its own level — so the rule reads in source order, quote by
         // quote, and an annotation is what changes it.
-        let mut sibling: Option<&str> = None;
+        //
+        // A representation (`ts⟨str⟩↖`) is inherited the same way, by the
+        // quotes after it in the same language, and by those inside its
+        // unquotes (`enclosing`).
+        let mut sibling: Option<(Box<str>, Repr)> = None;
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 // Deferred operators (see the code-building pass): consume the
@@ -651,19 +678,37 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     // lang is then the head of the resolved zipper — the
                     // expander uses it to pick the arity for the body's tags
                     // (e.g. `wgsl`'s `case_compound_statement`).
-                    if !anno.is_empty() {
-                        sibling = Some(&**anno);
-                    }
-                    let zipper = match sibling {
-                        Some(anno) => zipper.clone().cons(anno.into()),
-                        None => zipper
+                    let (lang_part, repr_part) = split_anno(anno);
+                    let zipper = if !lang_part.is_empty() {
+                        zipper.clone().cons(lang_part.into())
+                    } else if let Some((sib, _)) = &sibling {
+                        zipper.clone().cons(sib.clone())
+                    } else {
+                        zipper
                             .clone()
                             .back()
-                            .unwrap_or_else(|| zipper.clone().cons(lang.clone())),
+                            .unwrap_or_else(|| zipper.clone().cons(lang.clone()))
                     };
-                    let quote_lang = zipper.head().unwrap();
-                    let mut builder = qb(&hole.otag, 1, quote_lang);
+                    let quote_lang = zipper.head().unwrap().clone();
+                    let repr = match repr_part {
+                        Some(name) => Repr::from_name(name).map_err(|e| {
+                            miette!(
+                                labels = vec![LabeledSpan::at(span.clone(), "this quote")],
+                                "{e}"
+                            )
+                        })?,
+                        None => match (&sibling, enclosing) {
+                            (Some((sib, repr)), _) if *sib == quote_lang => *repr,
+                            (_, Some((outer, repr))) if *outer == *quote_lang => repr,
+                            _ => Repr::Cst,
+                        },
+                    };
+                    if !anno.is_empty() {
+                        sibling = Some((quote_lang.clone(), repr));
+                    }
+                    let mut builder = qb(&hole.otag, 1, &quote_lang);
                     builder.span(span.clone());
+                    builder.repr(repr);
                     builder.write(anno).write("↖");
                     // A quote's body is free-form (a statement-shaped term may
                     // fill an expression hole and vice versa), so don't coerce
@@ -678,6 +723,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         nodes,
                         &zipper,
                         None,
+                        Some((&quote_lang, repr)),
                         true,
                         sky_depth + 1,
                     )?;
@@ -711,6 +757,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         nodes,
                         &zipper,
                         Some(splice_target),
+                        enclosing,
                         true,
                         sky_depth.saturating_sub(1),
                     )?;
@@ -824,6 +871,17 @@ fn unquote_depth_error(span: Option<&Span>) -> miette::Report {
     }
 }
 
+/// `e`, pointing at the quote it came from when that quote's span is known.
+fn at_span(e: miette::Report, span: Option<&Span>) -> miette::Report {
+    match span {
+        Some(span) => miette!(
+            labels = vec![LabeledSpan::at(span.clone(), "this quote")],
+            "{e}"
+        ),
+        None => e,
+    }
+}
+
 pub struct Expander<'a, LS: Languages, M: MetaLanguage + ?Sized> {
     langs: &'a mut LS,
     meta: &'a M,
@@ -845,6 +903,22 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
     fn expand(&mut self, depth: &Stage, term: &QTerm) -> Result<Arc<QTerm>> {
         match depth {
             Stage::Ground => match term {
+                // `ts⟨str⟩↖…↗` and `ts⟨qt⟩↖…↗`: the host's meta builds the
+                // value from the quote flattened to text and holes, rather
+                // than rebuilding its syntax tree node by node.
+                QTerm::Quote {
+                    index,
+                    lang: lang2,
+                    term,
+                    span,
+                    repr,
+                    ..
+                } if *repr != Repr::Cst => {
+                    let mut pieces = Vec::new();
+                    self.flatten(*repr, *index, term, &mut pieces)
+                        .map_err(|e| at_span(e, span.as_ref()))?;
+                    self.meta.expand_flat(*repr, lang2, &pieces)
+                }
                 QTerm::Quote {
                     index,
                     lang: lang1,
@@ -1055,6 +1129,59 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
     /// `pat` and `val` are the child indices the meta-language reported via
     /// [`MetaLanguage::pattern_binding`]; the expander no longer knows the
     /// separator token or where the pattern sits.
+    /// Flatten the body of a `⟨str⟩`/`⟨qt⟩` quote at quote depth `d` into
+    /// [`Piece`]s: its text and layout commands in order, and a
+    /// [`Piece::Hole`] holding the expanded host code of each ground unquote.
+    /// Adjacent text is merged, so a host spells one literal per run.
+    fn flatten(&mut self, repr: Repr, d: Index, term: &QTerm, out: &mut Vec<Piece>) -> Result<()> {
+        match term {
+            QTerm::Tuple { terms, cmds, .. } => {
+                let mut children = terms.iter();
+                for c in cmds {
+                    match c {
+                        CmdOrHole::Cmd(StrCmd::Write(s)) => match out.last_mut() {
+                            Some(Piece::Text(t)) => *t = format!("{t}{s}").into(),
+                            _ => out.push(Piece::Text(s.clone())),
+                        },
+                        CmdOrHole::Cmd(StrCmd::NewLine) => out.push(Piece::NewLine),
+                        CmdOrHole::Cmd(StrCmd::Push(s)) => out.push(Piece::Push(s.clone())),
+                        CmdOrHole::Cmd(StrCmd::Pop) => out.push(Piece::Pop),
+                        CmdOrHole::Hole => {
+                            let child = children.next().ok_or_else(|| {
+                                miette!("a hole in a `{repr}` quote has no child: {term:?}")
+                            })?;
+                            self.flatten(repr, d, child, out)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            QTerm::Unquote {
+                index, term, span, ..
+            } => {
+                if index > &d {
+                    return Err(unquote_depth_error(span.as_ref()));
+                }
+                ensure!(
+                    index == &d,
+                    "a {repr} quote can't hold an unquote of a quote nested inside it yet: only \
+                     `⟨cst⟩` quotes stage"
+                );
+                // Host code with no accumulator around it, like a `⟨cst⟩`
+                // quote's ground unquote under a fluent node.
+                let outer = std::mem::replace(&mut self.in_builder, false);
+                let expanded = self.expand(&Stage::Ground, term);
+                self.in_builder = outer;
+                out.push(Piece::Hole(expanded?));
+                Ok(())
+            }
+            QTerm::Quote { .. } => Err(miette!(
+                "a {repr} quote can't hold a nested quote yet (a later stage): only `⟨cst⟩` \
+                 quotes stage — quote the inner code inside an unquote instead"
+            )),
+        }
+    }
+
     fn expand_pattern_let(
         &mut self,
         tag: &str,
@@ -1068,6 +1195,12 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
             self.pattern_vars.is_none(),
             "pattern let nested inside another pattern"
         );
+        if let QTerm::Quote { repr, .. } = &*terms[pat] {
+            ensure!(
+                *repr == Repr::Cst,
+                "a pattern quote matches a syntax tree, so it must be `⟨cst⟩`, not {repr}"
+            );
+        }
         self.pattern_vars = Some(Vec::new());
         let pattern = self.expand(&Stage::Ground, &terms[pat]);
         let names = self.pattern_vars.take().unwrap();

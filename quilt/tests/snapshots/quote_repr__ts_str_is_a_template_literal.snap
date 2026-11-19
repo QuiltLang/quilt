@@ -1,0 +1,6 @@
+---
+source: quilt/tests/quote_repr.rs
+assertion_line: 116
+expression: "expand(&[\"ts\"], indoc!\n{r#\"\n            const out = ts⟨str⟩↖\n              // ↙title↘: `quoted` and ${not a hole}\n              F[↙i↘] = {\n                test: (a) => ↙test↘,\n                name: ↙↑(name)↘,\n              };\n              ↙←(rest)↘\n            ↗;\n        \"#})?"
+---
+const out = `// ${title}: \`quoted\` and \${not a hole}\nF[${i}] = {\n  test: (a) => ${String(test).replaceAll("\n", "\n  ")},\n  name: ${String(qlift_str(name)).replaceAll("\n", "\n  ")},\n};\n${qjoin(rest)}`;

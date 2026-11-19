@@ -240,7 +240,7 @@ Quilt is a polyglot metaprogramming language. A `.quilt` file is source code in 
 
 The central type. An enum with three variants:
 - `Tuple { tag, terms, cmds }` — an AST node for a specific language. `tag` is the tree-sitter node kind (e.g. `"block"`, `"expression_statement"`). `cmds` is a sequence of `StrCmd`s (write/newline/push-prefix/pop-prefix) with holes (`CmdOrHole`) that interleave the children when serializing.
-- `Quote { tag, index, lang, term, cmds, span }` — a quoted fragment: `↖...↗` or `lang↖...↗`. `index` tracks quasi-quote nesting depth.
+- `Quote { tag, index, lang, term, cmds, span, repr }` — a quoted fragment: `↖...↗` or `lang↖...↗`. `index` tracks quasi-quote nesting depth. `repr` is the quote's representation (`ts⟨str⟩↖…↗`: `Repr::Cst` by default, `Str`, `Qt`); the expander hands a non-`Cst` quote to `MetaLanguage::expand_flat` as flattened `Piece`s instead of rebuilding its tree, and serde skips it.
 - `Unquote { tag, index, lang, term, cmds, span }` — an unquoted splice: `↙...↘` or `lang↙...↘`.
 
 `span` is the byte range of the quote/unquote in the original source (`Option<Span>`; attached by `build_nodes`, `None` for constructed terms). It is diagnostic metadata only — ignored by `PartialEq` and used to point errors like "unquote depth too high" at the offending source.

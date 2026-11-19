@@ -102,6 +102,9 @@ impl LangZipper {
     /// this level, which inherit it; a bare quote with no annotated sibling
     /// before it resolves as [`Self::quote`] does.
     pub(crate) fn next_quote(&mut self, anno: &str) -> Self {
+        // `ts⟨str⟩` names a representation as well; only the language matters
+        // here, and `⟨str⟩` alone keeps the inherited one.
+        let anno = quilt::glyphs::split_anno(anno).0;
         if !anno.is_empty() {
             self.sibling = Some(anno.to_string());
         }
@@ -114,6 +117,7 @@ impl LangZipper {
     /// next pending default (`Zipper::back`), falling back to the current
     /// language. The quote's body is a new level, with no sibling yet.
     pub(crate) fn quote(&self, anno: &str) -> Self {
+        let anno = quilt::glyphs::split_anno(anno).0;
         let mut z = self.clone();
         z.sibling = None;
         if anno.is_empty() {
@@ -380,6 +384,22 @@ mod tests {
         assert_eq!(langs, ["py", "py", "py", "py", "rs", "rs"]);
         let nested = &root.children[2].children[0].children[0];
         assert_eq!(nested.lang.as_deref(), Some("wgsl"));
+    }
+
+    #[test]
+    fn a_representation_is_not_a_language() {
+        // `ts⟨str⟩↖` is TypeScript in representation `⟨str⟩`; a bare
+        // `⟨qt⟩↖` keeps the inherited language.
+        let text = "(py↖a↗, ts⟨str⟩↖b↗, ⟨qt⟩↖c↗, ↖d↗)\n";
+        let root = regions_of(text, &["rs"]);
+        let langs: Vec<_> = root
+            .children
+            .iter()
+            .map(|q| q.lang.as_deref().unwrap())
+            .collect();
+        assert_eq!(langs, ["py", "ts", "ts", "ts"]);
+        assert_eq!(root.children[1].anno, "ts⟨str⟩");
+        assert_eq!(&text[root.children[1].body.clone()], "b");
     }
 
     #[test]

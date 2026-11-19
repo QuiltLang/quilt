@@ -361,7 +361,7 @@ fn expand_injects_the_hosts_runtime_import() {
         (
             "i.ts.quilt",
             "const x = ↖1 + 2↗;\n",
-            "import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qlift, NL, POP, \
+            "import { tb, leaf, sym, quote, unquote, cmd, write, push, name, qseq, qjoin, qlift_str, qlift, NL, POP, \
              HOLE } from \"quilt\";",
         ),
     ] {

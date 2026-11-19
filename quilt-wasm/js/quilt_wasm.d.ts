@@ -51,6 +51,18 @@ export class WasmBuilder {
  */
 export function qseq(items: Iterable<WasmQTerm | string | number | boolean | bigint>, sep?: string): WasmQTerm;
 
+/** `↑(x)` inside a `⟨str⟩` quote: the TypeScript literal for `value`, as a string. */
+export function qlift_str(value: number | string | boolean | WasmQTerm): string;
+/** `←(items)` inside a `⟨str⟩` quote: the items joined by a newline, or `sep`. */
+export function qjoin(items: Iterable<unknown>, sep?: string): string;
+
+declare global {
+  interface String {
+    /** A `⟨str⟩` quote's value is its own source: `coparse()` returns it. */
+    coparse(): string;
+  }
+}
+
 /** Start building a tuple node with the given tag. */
 export function tb(tag: string): WasmBuilder;
 /** A leaf node: a tag whose only content is `code`. */

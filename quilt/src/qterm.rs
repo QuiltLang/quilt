@@ -11,6 +11,60 @@ use std::{iter::once, sync::Arc};
 
 pub type Gaps = Box<[CmdOrHole]>;
 
+/// What a quote expands to in its host (`ts⟨str⟩↖…↗`). The quote is parsed
+/// against its language's grammar either way; the representation only decides
+/// the runtime value the expanded code builds.
+///
+/// * `Cst` (the default, `⟨cst⟩`): a concrete syntax tree in the object
+///   language, rebuilt node by node — inspectable, matchable, re-indentable.
+/// * `Str` (`⟨str⟩`): a host string, spliced with the host's own string
+///   operations, the way hand-written string-based codegen would. Fastest.
+///   A value spliced at an indented hole is re-indented line by line, which
+///   lays out quoted values exactly as `Cst` does; the one difference is a
+///   host *string* holding a newline, which `Cst` writes raw and `Str`
+///   indents with the rest.
+/// * `Qt` (`⟨qt⟩`): a flat term — text, newlines and indentation commands
+///   with holes, the shape Quilt's own parser builds, with no object-language
+///   tags. Indents exactly as `Cst` does, but is not inspectable.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Repr {
+    #[default]
+    Cst,
+    Str,
+    Qt,
+}
+
+impl Repr {
+    /// The name written between `⟨…⟩` before a quote's `↖`.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Repr::Cst => "cst",
+            Repr::Str => "str",
+            Repr::Qt => "qt",
+        }
+    }
+
+    /// The representation named `name`, as written in `ts⟨name⟩↖…↗`.
+    pub fn from_name(name: &str) -> Result<Self> {
+        match name {
+            "cst" => Ok(Repr::Cst),
+            "str" => Ok(Repr::Str),
+            "qt" => Ok(Repr::Qt),
+            _ => miette::bail!(
+                "unknown quote representation `⟨{name}⟩`: the representations are \
+                 `⟨cst⟩` (the default), `⟨str⟩` and `⟨qt⟩`"
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for Repr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "⟨{}⟩", self.name())
+    }
+}
+
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub enum QTerm {
     Quote {
@@ -25,6 +79,15 @@ pub enum QTerm {
         /// No serde skip: `reduce` round-trips terms through postcard, which
         /// is positional and cannot tolerate omitted fields.
         span: Option<Span>,
+        /// What the quote expands to (`ts⟨str⟩↖…↗`); `Repr::Cst` unless
+        /// written or inherited from a sibling or enclosing quote.
+        ///
+        /// Skipped by serde, unconditionally — which a positional format like
+        /// postcard tolerates, unlike a conditional skip — so the wire format
+        /// the runtimes share is unchanged. Only the expander reads it, and a
+        /// later stage re-reads it from the annotation text in `cmds`.
+        #[serde(skip)]
+        repr: Repr,
     },
     Unquote {
         tag: Box<str>,
@@ -56,6 +119,7 @@ impl PartialEq for QTerm {
                     term,
                     cmds,
                     span: _,
+                    repr,
                 },
                 QTerm::Quote {
                     tag: tag2,
@@ -64,9 +128,17 @@ impl PartialEq for QTerm {
                     term: term2,
                     cmds: cmds2,
                     span: _,
+                    repr: repr2,
                 },
-            )
-            | (
+            ) => {
+                tag == tag2
+                    && index == index2
+                    && lang == lang2
+                    && term == term2
+                    && cmds == cmds2
+                    && repr == repr2
+            }
+            (
                 QTerm::Unquote {
                     tag,
                     index,
@@ -157,7 +229,25 @@ pub fn qquote_at(
         term,
         cmds: cmds.into(),
         span,
+        repr: Repr::Cst,
     }
+}
+/// [`qquote_at`] with a [`Repr`]: what code that rebuilds a quote calls, so
+/// the rebuilt quote expands as the original did.
+pub fn qquote_repr_at(
+    tag: &str,
+    index: Index,
+    lang: &str,
+    term: Arc<QTerm>,
+    cmds: &[CmdOrHole],
+    span: Option<Span>,
+    repr: Repr,
+) -> QTerm {
+    let mut q = qquote_at(tag, index, lang, term, cmds, span);
+    if let QTerm::Quote { repr: r, .. } = &mut q {
+        *r = repr;
+    }
+    q
 }
 pub fn qunquote_at(
     tag: &str,
@@ -262,9 +352,18 @@ impl QTerm {
                 term,
                 cmds,
                 span,
+                repr,
             } => {
                 let term = term.rewrite_naive(find, replace);
-                arc(qquote_at(tag, *index, lang, term, cmds, span.clone()))
+                arc(qquote_repr_at(
+                    tag,
+                    *index,
+                    lang,
+                    term,
+                    cmds,
+                    span.clone(),
+                    *repr,
+                ))
             }
             QTerm::Unquote {
                 tag,
@@ -522,6 +621,8 @@ pub struct QTermBuilder {
     cmds: Vec<CmdOrHole>,
     /// Source span for the built Quote/Unquote (ignored for Tuple).
     span: Option<Span>,
+    /// The built Quote's representation (ignored otherwise).
+    repr: Repr,
     /// Inside an [`align`](QTermBuilder::align): text is laid out at the
     /// hole's column.
     aligned: bool,
@@ -534,12 +635,19 @@ impl QTermBuilder {
             children: Vec::new(),
             cmds: Vec::new(),
             span: None,
+            repr: Repr::Cst,
             aligned: false,
         }
     }
 
     pub fn span(&mut self, span: Span) -> &mut Self {
         self.span = Some(span);
+        self
+    }
+
+    /// Set the built Quote's [`Repr`].
+    pub fn repr(&mut self, repr: Repr) -> &mut Self {
+        self.repr = repr;
         self
     }
 
@@ -558,14 +666,18 @@ impl QTermBuilder {
         match self.tag {
             QTermTag::Quote(tag, index, lang) => {
                 assert_eq!(self.children.len(), 1);
-                qquote_at(
+                let mut q = qquote_at(
                     &tag,
                     index,
                     &lang,
                     self.children[0].clone(),
                     &self.cmds,
                     self.span,
-                )
+                );
+                if let QTerm::Quote { repr, .. } = &mut q {
+                    *repr = self.repr;
+                }
+                q
             }
             QTermTag::Unquote(tag, index, lang) => {
                 assert_eq!(self.children.len(), 1);

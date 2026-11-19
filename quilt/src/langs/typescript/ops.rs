@@ -25,8 +25,10 @@
 //! "Divergences from the Python runtime".
 
 use crate::langs::chain::{Chain, Lit, TYPESCRIPT};
+use crate::meta::Piece;
 use crate::prelude::*;
-use crate::term::CmdOrHole;
+use crate::strcmd::write;
+use crate::term::{cmd, CmdOrHole, HOLE};
 
 /**************************************************************/
 
@@ -94,4 +96,90 @@ pub fn build_variadic_block(tag: &str, cmds: &[CmdOrHole], children: &[Arc<QTerm
 /// Make an identifier term (the `⟨N⟩` operator).
 pub fn name(s: &str) -> Arc<QTerm> {
     leaf("identifier", s)
+}
+
+/**************************************************************/
+// `⟨str⟩` and `⟨qt⟩` quotes (see `crate::qterm::Repr`).
+
+/// Escape `s` for the inside of a template literal: `\`, `` ` `` and `${`,
+/// and a newline as `\n` so the literal stays on one line of the output.
+fn template_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '`' => out.push_str("\\`"),
+            '$' if chars.peek() == Some(&'{') => out.push_str("\\$"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// A `⟨str⟩` quote as one template literal: its text inline, each hole as
+/// `${…}`, each layout newline as `\n` followed by the prefixes pushed at
+/// that point. A hole under a prefix is re-indented the way hand-written
+/// string codegen does it, `String(x).replaceAll("\n", "\n<prefix>")`; a hole
+/// with no prefix is interpolated as is.
+pub fn build_str_code(pieces: &[Piece]) -> Arc<QTerm> {
+    let mut cmds = vec![cmd(write("`"))];
+    let mut children = Vec::new();
+    let mut stack: Vec<&str> = Vec::new();
+    for piece in pieces {
+        match piece {
+            Piece::Text(t) => cmds.push(cmd(write(&template_escape(t)))),
+            Piece::NewLine => {
+                cmds.push(cmd(write(&format!(
+                    "\\n{}",
+                    template_escape(&stack.concat())
+                ))));
+            }
+            Piece::Push(s) => stack.push(s),
+            Piece::Pop => {
+                stack.pop();
+            }
+            Piece::Hole(e) => {
+                let prefix = stack.concat();
+                if prefix.is_empty() {
+                    cmds.extend([cmd(write("${")), HOLE, cmd(write("}"))]);
+                } else {
+                    cmds.extend([
+                        cmd(write("${String(")),
+                        HOLE,
+                        cmd(write(&format!(
+                            ").replaceAll(\"\\n\", {})}}",
+                            str_lit(&format!("\n{prefix}"))
+                        ))),
+                    ]);
+                }
+                children.push(e.clone());
+            }
+        }
+    }
+    cmds.push(cmd(write("`")));
+    tuple("template_string", &children, &cmds)
+}
+
+/// A `⟨qt⟩` quote as one flat builder chain: `tb("").w(…).n().p(…).c(x)…b()`,
+/// a write per run of text rather than a node per token.
+pub fn build_qt_code(pieces: &[Piece]) -> Arc<QTerm> {
+    let mut cmds = vec![cmd(write("tb(\"\")"))];
+    let mut children = Vec::new();
+    for piece in pieces {
+        match piece {
+            Piece::Text(t) => cmds.push(cmd(write(&format!(".w({})", str_lit(t))))),
+            Piece::NewLine => cmds.push(cmd(write(".n()"))),
+            Piece::Push(s) => cmds.push(cmd(write(&format!(".p({})", str_lit(s))))),
+            Piece::Pop => cmds.push(cmd(write(".x()"))),
+            Piece::Hole(e) => {
+                cmds.extend([cmd(write(".c(")), HOLE, cmd(write(")"))]);
+                children.push(e.clone());
+            }
+        }
+    }
+    cmds.push(cmd(write(".b()")));
+    tuple("call_expression", &children, &cmds)
 }

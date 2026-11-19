@@ -163,6 +163,32 @@ fn attribute_end(s: &str) -> Option<usize> {
     None
 }
 
+/// One element of a quote flattened for a non-`cst` representation (see
+/// [`MetaLanguage::expand_flat`]): the quote's text with its layout commands,
+/// and a hole wherever a ground unquote sits.
+#[derive(Debug, Clone)]
+pub enum Piece {
+    /// Literal text of the quoted code (never containing a layout newline).
+    Text(Box<str>),
+    /// A newline, after which the pushed prefixes are written.
+    NewLine,
+    /// Push an indentation prefix.
+    Push(Box<str>),
+    /// Pop the last prefix.
+    Pop,
+    /// A ground unquote's value: the *expanded* host expression.
+    Hole(Arc<QTerm>),
+}
+
+/// The error a host gives for a representation it does not implement.
+#[must_use]
+pub fn no_repr(repr: crate::qterm::Repr) -> miette::Report {
+    miette!(
+        "this host has no {repr} quotes yet: only `⟨cst⟩` (the default) is implemented \
+         for it — TypeScript has all three"
+    )
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub enum OuterKind {
     #[default]
@@ -305,6 +331,35 @@ pub trait MetaLanguage {
     #[inline]
     fn emit_str(&self) -> Result<&'static str> {
         Ok(EMIT)
+    }
+    /// The spelling `↑` expands to inside an unquote of a quote with
+    /// representation `repr` (`ts⟨str⟩↖ … ↙↑(x)↘ … ↗`), where the lifted value
+    /// must be of that representation. `Repr::Cst` is [`Self::lift_str`].
+    fn lift_str_in(&self, target: &str, repr: crate::qterm::Repr) -> Result<&'static str> {
+        match repr {
+            crate::qterm::Repr::Cst => self.lift_str(target),
+            _ => Err(no_repr(repr)),
+        }
+    }
+    /// The spelling `←` expands to inside an unquote of a quote with
+    /// representation `repr`. `Repr::Cst` is [`Self::emit_str`].
+    fn emit_str_in(&self, repr: crate::qterm::Repr) -> Result<&'static str> {
+        match repr {
+            crate::qterm::Repr::Cst => self.emit_str(),
+            _ => Err(no_repr(repr)),
+        }
+    }
+    /// Code that builds a quote's value in representation `repr` — `⟨str⟩` or
+    /// `⟨qt⟩`; `⟨cst⟩` quotes go through [`Self::expand_quote`] and friends —
+    /// from its flattened `pieces`. `lang2` is the quoted language.
+    fn expand_flat(
+        &self,
+        repr: crate::qterm::Repr,
+        lang2: &str,
+        pieces: &[Piece],
+    ) -> Result<Arc<QTerm>> {
+        let _ = (lang2, pieces);
+        Err(no_repr(repr))
     }
     /// The spelling `⟨T⟩` expands to: the type of a quilt term in this host's
     /// meta-code (`Arc<QTerm>` for Rust). `Result` because a host language
@@ -458,6 +513,23 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn emit_str(&self) -> Result<&'static str> {
         (**self).emit_str()
+    }
+
+    fn lift_str_in(&self, target: &str, repr: crate::qterm::Repr) -> Result<&'static str> {
+        (**self).lift_str_in(target, repr)
+    }
+
+    fn emit_str_in(&self, repr: crate::qterm::Repr) -> Result<&'static str> {
+        (**self).emit_str_in(repr)
+    }
+
+    fn expand_flat(
+        &self,
+        repr: crate::qterm::Repr,
+        lang2: &str,
+        pieces: &[Piece],
+    ) -> Result<Arc<QTerm>> {
+        (**self).expand_flat(repr, lang2, pieces)
     }
 
     fn type_str(&self) -> Result<&'static str> {

@@ -268,7 +268,7 @@ pub fn constructs(src: &str) -> Constructs {
         if t.kind == TokenKind::OpenQuote {
             // The span is `anno↖`, annotation included.
             let text = &src[t.span.clone()];
-            let anno = text.strip_suffix('↖').unwrap_or(text);
+            let anno = crate::glyphs::split_anno(text.strip_suffix('↖').unwrap_or(text)).0;
             if !anno.is_empty() && !out.annos.iter().any(|a| &**a == anno) {
                 out.annos.push(anno.into());
             }
@@ -305,6 +305,9 @@ enum Annotated {
     Glyph(char),
     /// `anno⟨M⟩`.
     Machine,
+    /// `anno⟨repr⟩↖`: a quote with a representation; holds the length of
+    /// the `⟨repr⟩`.
+    Repr(usize),
 }
 
 /// One open `anno↖` / `anno↙` and the nodes collected inside it so far.
@@ -589,6 +592,15 @@ impl<'a> Parser<'a> {
                         self.pos = run + MACHINE.len();
                         Step::Node(Node::Machine { anno })
                     }
+                    Some(Annotated::Repr(n)) => {
+                        let anno: Box<str> = self.src[start..run + n].into();
+                        self.pos = run + n + '↖'.len_utf8();
+                        Step::Open {
+                            anno,
+                            quote: true,
+                            open: start,
+                        }
+                    }
                     Some(Annotated::Glyph(g)) => {
                         let anno: Box<str> = self.src[start..run].into();
                         self.pos = run + g.len_utf8();
@@ -673,6 +685,16 @@ impl<'a> Parser<'a> {
                 anno: Box::default(),
             });
         }
+        // `⟨repr⟩↖`: a quote of the inherited language, in representation
+        // `repr` (`⟨str⟩↖…↗`).
+        if let Some(n) = crate::glyphs::repr_len(&self.src[start..]) {
+            self.pos = start + n + '↖'.len_utf8();
+            return Step::Open {
+                anno: self.src[start..start + n].into(),
+                quote: true,
+                open: start,
+            };
+        }
         if self.at(start, Q_LINE) {
             self.pos = start + Q_LINE.len();
             self.pos = self.line_end(bracketed);
@@ -687,7 +709,7 @@ impl<'a> Parser<'a> {
             return Step::Skip;
         }
         self.pos = start + '⟨'.len_utf8();
-        Step::Error("`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`")
+        Step::Error("`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩`, `⟨/*⟩` or a quote representation (`⟨str⟩↖`)")
     }
 
     /// A Quilt comment reached from the newline in front of it, which it takes
@@ -879,6 +901,7 @@ impl<'a> Parser<'a> {
             // it is matched as a string rather than by its first character —
             // `sql⟨N⟩` is content, not an annotated name placeholder.
             Some('⟨') if self.at(run, MACHINE) => Some(Annotated::Machine),
+            Some('⟨') => crate::glyphs::repr_len(&self.src[run..]).map(Annotated::Repr),
             _ => None,
         }
     }
@@ -965,7 +988,7 @@ mod tests {
             (
                 "⟨X⟩",
                 0..3,
-                "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩` or `⟨/*⟩`",
+                "`⟨` only opens `⟨T⟩`, `⟨N⟩`, `⟨M⟩`, `⟨//⟩`, `⟨/*⟩` or a quote representation (`⟨str⟩↖`)",
             ),
             (
                 "⟩",

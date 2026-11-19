@@ -39,6 +39,9 @@ node "$ROOT/quilt-wasm/test/memory.cjs"
 echo "==> differential test (node): the JavaScript runtime against the Rust QTerm"
 node "$ROOT/quilt-wasm/test/differential.cjs"
 
+echo "==> repr test (node): ⟨cst⟩, ⟨str⟩ and ⟨qt⟩ quotes build the same code"
+node "$ROOT/quilt-wasm/test/repr.mjs"
+
 # The `quilt run` tests in quilt/tests/cli.rs skip themselves when the runtime
 # is not built, so a plain `cargo test` stays green without wasm-pack — which
 # means the CI `Test` job, which never builds it, skips every one of them. This

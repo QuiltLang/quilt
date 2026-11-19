@@ -1,0 +1,6 @@
+---
+source: quilt/tests/quote_repr.rs
+assertion_line: 136
+expression: "expand(&[\"ts\"], indoc!\n{r#\"\n            const out = ts⟨qt⟩↖\n              F[↙i↘] = {\n                name: ↙↑(name)↘,\n              };\n              ↙←(rest)↘\n            ↗;\n        \"#})?"
+---
+const out = tb("").w("F[").c(i).w("] = {").p("  ").n().w("name: ").c(qlift(name)).w(",").x().n().w("};").n().c(qseq(rest)).b();
