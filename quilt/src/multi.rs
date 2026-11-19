@@ -147,6 +147,49 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     pub fn prelude(&self, lang: &str, targets: &[&str]) -> Result<Option<crate::meta::Prelude>> {
         self.metas.prelude(lang, targets)
     }
+
+    /// The runtime import the file expanded from `input` under `chain` (ground
+    /// language first) should open with, or `None` (issue #274). Paired with
+    /// [`with_prelude`](crate::meta::with_prelude), this is what `quilt expand`
+    /// writes, and what the in-browser expander (`quilt-expand-wasm`) writes
+    /// too, so a generated module is runnable whichever of them produced it.
+    ///
+    /// `None` for a host whose meta needs none (nix, lean and text generate no
+    /// runtime calls at all), and by the two rules that keep the injection from
+    /// becoming a footgun:
+    ///
+    /// * **The source uses no Quilt construct.** `examples/hello.rs.quilt`
+    ///   expands to itself and must stay import-free: Rust tolerates an unused
+    ///   glob silently, but a Python or TypeScript linter will not.
+    /// * **The author already imported the runtime.** Two identical globs are
+    ///   harmless in Rust and Python, but a doubled *named* import is a hard
+    ///   error in TypeScript — so this is checked rather than assumed. See
+    ///   [`Prelude::present_in`](crate::meta::Prelude::present_in).
+    ///
+    /// The targets the meta is asked about — which only a target-directed host
+    /// like TypeScript reads — are the language chain plus every annotation the
+    /// source's quotes name, so that a `sql↖…↗` inside a `.rs.quilt` counts even
+    /// though the chain never mentions SQL. It over-approximates: a language
+    /// listed but never lifted into costs an unused name, one missing costs a
+    /// name that is not in scope.
+    #[must_use]
+    pub fn prelude_for(&self, chain: &[&str], input: &str) -> Option<crate::meta::Prelude> {
+        let used = crate::node::constructs(input);
+        if !used.any {
+            return None;
+        }
+        let mut targets: Vec<&str> = chain.to_vec();
+        for anno in &used.annos {
+            if !targets.contains(&&**anno) {
+                targets.push(anno);
+            }
+        }
+        // A language with no meta is not an error here — an expansion that
+        // succeeded proves the host is fine — so a failed lookup is simply "no
+        // prelude".
+        let prelude = self.prelude(chain[0], &targets).ok().flatten()?;
+        (!prelude.present_in(input)).then_some(prelude)
+    }
     pub fn type_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.type_str(lang)
     }

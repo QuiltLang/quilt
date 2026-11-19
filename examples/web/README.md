@@ -42,7 +42,10 @@ HTML sink and the readings feed. Editing the schema/opts panel (or the source)
 regenerates the TypeScript; the codegened loop stays cheap. The page shows the
 timings so the contrast is visible.
 
-- `quilt-expand.wasm` — the Quilt parser+expander. Unlike the runtime, expansion
+- `quilt-expand.wasm` — the Quilt parser+expander. Like `quilt expand`, it opens
+  its output with the runtime import (`import { tb, … } from "quilt"`, issue
+  #274), so a source needn't write one; `--no-prelude` leaves it out, which is
+  what `quilt-rt.js`'s reduce asks for. Unlike the runtime, expansion
   needs the `parse` feature (tree-sitter + the C grammars), which needs a libc,
   so it is built for `wasm32-wasip1` (see `bin/build-expand-wasm`, the
   `quilt-expand-wasm` crate).
@@ -94,7 +97,9 @@ node examples/web/verify.mjs             # demo 1: runtime renders the expansion
 node examples/web/verify-dashboard.mjs   # demo 2: source → expand → ↓ reduce → render → HTML
 ```
 
-Both load the same modules the page does but in Node (initialising the
+`bin/test-web` runs both (CI does too), plus the expander's own tests, and fails
+instead of skipping when there is no WASI sdk. Both load the same modules the
+page does but in Node (initialising the
 WebAssembly from bytes). `verify.mjs` asserts the cards demo's escaped output;
 `verify-dashboard.mjs` runs the whole staged pipeline and asserts the generated
 `start()` is unrolled (one gauge per metric, no schema loop), codegens its own

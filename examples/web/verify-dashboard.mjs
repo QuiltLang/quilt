@@ -5,7 +5,8 @@
 //   makeRenderer(schema) --(↓ reduce: re-expand + eval)--> Stage 2 (render)
 //   render(values) --------------------------------------> Stage 3 (HTML)
 //
-// Builds dist/ first. Skips (exit 0) if no WASI sdk produced the expander.
+// Builds dist/ first. Skips (exit 0) if no WASI sdk produced the expander,
+// unless QUILT_WEB_REQUIRE_EXPANDER is set (bin/test-web, CI).
 //
 //   node examples/web/verify-dashboard.mjs
 import { execSync } from "node:child_process";
@@ -20,6 +21,11 @@ const dist = join(here, "dist");
 
 execSync(`node ${join(here, "build.mjs")}`, { stdio: "inherit" });
 if (!existsSync(join(dist, "quilt-expand.wasm"))) {
+  // bin/test-web (and so CI) sets this: there a skip would hide a broken demo.
+  if (process.env.QUILT_WEB_REQUIRE_EXPANDER) {
+    console.error("playground not built (no WASI sdk) — set WASI_SDK_PATH");
+    process.exit(1);
+  }
   console.warn("playground not built (no WASI sdk) — skipping verify");
   process.exit(0);
 }
@@ -36,8 +42,9 @@ writeFileSync(join(nm, "quilt", "package.json"), '{"name":"quilt","type":"module
 
 const enc = new TextEncoder(), dec = new TextDecoder();
 const expander = await WebAssembly.compile(readFileSync(join(dist, "quilt-expand.wasm")));
-function expand(source, chain = ["ts", "html"]) {
-  const wasi = new WASI({ args: ["quilt-expand", ...chain], stdin: enc.encode(source) });
+function expand(source, { prelude = true } = {}) {
+  const args = ["quilt-expand", "ts", "html", ...(prelude ? [] : ["--no-prelude"])];
+  const wasi = new WASI({ args, stdin: enc.encode(source) });
   const code = wasi.start(new WebAssembly.Instance(expander, { wasi_snapshot_preview1: wasi.wasiImport }));
   assert.strictEqual(code, 0, dec.decode(wasi.stderrBytes) || "expander failed");
   return dec.decode(wasi.stdoutBytes);
@@ -46,11 +53,14 @@ function expand(source, chain = ["ts", "html"]) {
 // 1. Initialise the runtime + register the expander, on the shared wrapper.
 const quilt = await import(pathToFileURL(join(nm, "quilt", "index.js")));
 await quilt.default({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_raw_bg.wasm")) });
-quilt.setExpander((s) => expand(s));
+quilt.setExpander(expand);
 
 // 2. Expand Stage 1 (makeRenderer) and import it.
 const ts = expand(readFileSync(join(dist, "dashboard.html.ts.ts.quilt"), "utf8"));
 assert(ts.includes("function makeRenderer") && ts.includes(".reduce()"), "Stage 1 exports makeRenderer + uses ↓");
+// The source imports nothing: the expander writes the runtime import, as
+// `quilt expand` does (issue #274), or the module fails on its first `tb(…)`.
+assert(/^import \{[^}]*\btb\b[^}]*\} from "quilt";$/m.test(ts), "Stage 1 opens with the runtime import");
 const modPath = join(dist, "__dash.mjs");
 writeFileSync(modPath, ts);
 const mod = await import(pathToFileURL(modPath));
@@ -67,6 +77,7 @@ quilt.clearReduceTrace();
 const start = mod.makeRenderer(schema, opts);
 assert.strictEqual(typeof start, "function", "makeRenderer returns start(sink, read)");
 const stage2 = quilt.reduceTrace.at(-1).generated;
+assert(!quilt.reduceTrace.at(-1).expanded.includes("import"), "reduce expands with no import (it runs in new Function)");
 console.log("=== Stage 2: the start() loop Stage 1 generated ===\n" + stage2 + "\n");
 // It must be unrolled (no schema loop), and codegen the update loop + interval.
 assert(!/\bfor\b/.test(stage2), "Stage 2 is unrolled (no for-loop)");
