@@ -17,7 +17,13 @@
 //! renamed node kind could silently stop being treated as a container (#174).
 //! Deriving them is issue #202.
 //!
+//! The `*_COMMA_SEPARATED` tables name the variadic kinds whose repeated
+//! children are separated by `,` (`commaSep1` in the grammar). A splice into
+//! one is separated with `, ` as it is built (#293); see
+//! [`Language::separator`].
+//!
 //! [`Arity::from_table`]: crate::lang::Arity::from_table
+//! [`Language::separator`]: crate::lang::Language::separator
 
 /// bash: 28 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "bash")]
@@ -51,6 +57,10 @@ pub static BASH: &[&str] = &[
     "variable_assignments",
     "while_statement",
 ];
+
+/// bash: 2 of those whose repeated children are separated by `,`.
+#[cfg(feature = "bash")]
+pub static BASH_COMMA_SEPARATED: &[&str] = &["arithmetic_expansion", "c_style_for_statement"];
 
 /// html: 7 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "html")]
@@ -119,6 +129,34 @@ pub static LEAN: &[&str] = &[
     "where_struct",
 ];
 
+/// lean: 23 of those whose repeated children are separated by `,`.
+#[cfg(feature = "lean")]
+pub static LEAN_COMMA_SEPARATED: &[&str] = &[
+    "abbrev",
+    "anon_ctor",
+    "anon_ctor_binder",
+    "array_lit",
+    "attribute_cmd",
+    "attributes",
+    "axiom",
+    "constant",
+    "def",
+    "deriving_cmd",
+    "induction",
+    "inductive",
+    "instance",
+    "list_lit",
+    "match",
+    "match_alt",
+    "opaque",
+    "paren",
+    "struct_lit",
+    "structure",
+    "theorem",
+    "tuple_binder",
+    "universe_app",
+];
+
 /// nix: 9 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "nix")]
 pub static NIX: &[&str] = &[
@@ -132,6 +170,10 @@ pub static NIX: &[&str] = &[
     "path_expression",
     "string_expression",
 ];
+
+/// nix: 1 of those whose repeated children are separated by `,`.
+#[cfg(feature = "nix")]
+pub static NIX_COMMA_SEPARATED: &[&str] = &["formals"];
 
 /// python: 46 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "python")]
@@ -184,6 +226,40 @@ pub static PYTHON: &[&str] = &[
     "with_clause",
 ];
 
+/// python: 29 of those whose repeated children are separated by `,`.
+#[cfg(feature = "python")]
+pub static PYTHON_COMMA_SEPARATED: &[&str] = &[
+    "argument_list",
+    "assert_statement",
+    "case_clause",
+    "class_pattern",
+    "dict_pattern",
+    "dictionary",
+    "except_clause",
+    "exec_statement",
+    "expression_list",
+    "for_in_clause",
+    "future_import_statement",
+    "global_statement",
+    "import_from_statement",
+    "import_statement",
+    "lambda_parameters",
+    "list",
+    "list_pattern",
+    "match_statement",
+    "nonlocal_statement",
+    "parameters",
+    "pattern_list",
+    "print_statement",
+    "set",
+    "subscript",
+    "tuple",
+    "tuple_expression",
+    "tuple_pattern",
+    "type_parameter",
+    "with_clause",
+];
+
 /// rust: 35 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(any(feature = "rust", feature = "bootstrap"))]
 pub static RUST: &[&str] = &[
@@ -214,6 +290,30 @@ pub static RUST: &[&str] = &[
     "token_tree_pattern",
     "trait_bounds",
     "tuple_expression",
+    "tuple_pattern",
+    "tuple_struct_pattern",
+    "tuple_type",
+    "type_arguments",
+    "type_parameters",
+    "use_bounds",
+    "use_list",
+    "where_clause",
+];
+
+/// rust: 19 of those whose repeated children are separated by `,`.
+#[cfg(any(feature = "rust", feature = "bootstrap"))]
+pub static RUST_COMMA_SEPARATED: &[&str] = &[
+    "arguments",
+    "array_expression",
+    "closure_parameters",
+    "enum_variant_list",
+    "field_declaration_list",
+    "field_initializer_list",
+    "for_lifetimes",
+    "ordered_field_declaration_list",
+    "parameters",
+    "slice_pattern",
+    "struct_pattern",
     "tuple_pattern",
     "tuple_struct_pattern",
     "tuple_type",
@@ -291,6 +391,54 @@ pub static SQL: &[&str] = &[
     "while_statement",
 ];
 
+/// sql: 43 of those whose repeated children are separated by `,`.
+#[cfg(feature = "sql")]
+pub static SQL_COMMA_SEPARATED: &[&str] = &[
+    "alter_column",
+    "alter_index",
+    "alter_policy",
+    "alter_table",
+    "array",
+    "assignment_list",
+    "column_definition",
+    "column_definitions",
+    "composite_field",
+    "constraint",
+    "constraints",
+    "create_policy",
+    "create_query",
+    "create_role",
+    "create_table",
+    "create_trigger",
+    "create_type",
+    "create_view",
+    "cross_join",
+    "cte",
+    "drop_extension",
+    "enum",
+    "enum_elements",
+    "from",
+    "function_arguments",
+    "group_by",
+    "index_fields",
+    "insert",
+    "invocation",
+    "list",
+    "order_by",
+    "ordered_columns",
+    "partition_by",
+    "select_expression",
+    "set_statement",
+    "statement",
+    "storage_parameters",
+    "subquery",
+    "table_partition",
+    "table_sort",
+    "update",
+    "values",
+    "when_clause",
+];
+
 /// typescript: 35 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "typescript")]
 pub static TYPESCRIPT: &[&str] = &[
@@ -331,6 +479,29 @@ pub static TYPESCRIPT: &[&str] = &[
     "variable_declaration",
 ];
 
+/// typescript: 18 of those whose repeated children are separated by `,`.
+#[cfg(feature = "typescript")]
+pub static TYPESCRIPT_COMMA_SEPARATED: &[&str] = &[
+    "arguments",
+    "array",
+    "array_pattern",
+    "enum_body",
+    "export_clause",
+    "extends_clause",
+    "extends_type_clause",
+    "formal_parameters",
+    "implements_clause",
+    "lexical_declaration",
+    "named_imports",
+    "object",
+    "object_pattern",
+    "sequence_expression",
+    "tuple_type",
+    "type_arguments",
+    "type_parameters",
+    "variable_declaration",
+];
+
 /// wgsl: 19 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "wgsl")]
 pub static WGSL: &[&str] = &[
@@ -354,6 +525,10 @@ pub static WGSL: &[&str] = &[
     "struct_member",
     "switch_statement",
 ];
+
+/// wgsl: 1 of those whose repeated children are separated by `,`.
+#[cfg(feature = "wgsl")]
+pub static WGSL_COMMA_SEPARATED: &[&str] = &["case_selectors"];
 
 /// zsh: 40 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "zsh")]
@@ -398,4 +573,12 @@ pub static ZSH: &[&str] = &[
     "unset_command",
     "variable_assignments",
     "while_statement",
+];
+
+/// zsh: 3 of those whose repeated children are separated by `,`.
+#[cfg(feature = "zsh")]
+pub static ZSH_COMMA_SEPARATED: &[&str] = &[
+    "arithmetic_call",
+    "arithmetic_expansion",
+    "c_style_for_statement",
 ];

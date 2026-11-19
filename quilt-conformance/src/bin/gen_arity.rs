@@ -32,19 +32,23 @@ fn main() -> Result<()> {
 
     let mut out = String::new();
     out.push_str(HEADER);
-    for (name, tags) in &tables {
-        let n = tags.len();
+    for (name, tables) in &tables {
+        let n = tables.variadic.len();
         writeln!(
             out,
             "\n/// {name}: {n} node kind(s) the grammar gives a variable number of direct children.",
         )
         .unwrap();
-        writeln!(out, "{}", cfg_for(name)).unwrap();
-        writeln!(out, "pub static {}: &[&str] = &[", name.to_uppercase()).unwrap();
-        for tag in tags {
-            writeln!(out, "    {tag:?},").unwrap();
+        table(&mut out, name, "", &tables.variadic);
+        if !tables.comma_separated.is_empty() {
+            let n = tables.comma_separated.len();
+            writeln!(
+                out,
+                "\n/// {name}: {n} of those whose repeated children are separated by `,`.",
+            )
+            .unwrap();
+            table(&mut out, name, "_COMMA_SEPARATED", &tables.comma_separated);
         }
-        out.push_str("];\n");
     }
 
     std::fs::write(&path, &out)
@@ -65,10 +69,29 @@ fn main() -> Result<()> {
     }
 
     println!("wrote {}", path.display());
-    for (name, tags) in &tables {
-        println!("  {name}: {} variadic", tags.len());
+    for (name, tables) in &tables {
+        println!(
+            "  {name}: {} variadic, {} comma-separated",
+            tables.variadic.len(),
+            tables.comma_separated.len()
+        );
     }
     Ok(())
+}
+
+/// Append one `#[cfg]`-gated sorted table, `<LANG><suffix>`.
+fn table(out: &mut String, name: &str, suffix: &str, tags: &[String]) {
+    writeln!(out, "{}", cfg_for(name)).unwrap();
+    writeln!(
+        out,
+        "pub static {}{suffix}: &[&str] = &[",
+        name.to_uppercase()
+    )
+    .unwrap();
+    for tag in tags {
+        writeln!(out, "    {tag:?},").unwrap();
+    }
+    out.push_str("];\n");
 }
 
 const HEADER: &str = r#"//! Which node kinds are variadic containers, derived from the tree-sitter
@@ -90,5 +113,11 @@ const HEADER: &str = r#"//! Which node kinds are variadic containers, derived fr
 //! renamed node kind could silently stop being treated as a container (#174).
 //! Deriving them is issue #202.
 //!
+//! The `*_COMMA_SEPARATED` tables name the variadic kinds whose repeated
+//! children are separated by `,` (`commaSep1` in the grammar). A splice into
+//! one is separated with `, ` as it is built (#293); see
+//! [`Language::separator`].
+//!
 //! [`Arity::from_table`]: crate::lang::Arity::from_table
+//! [`Language::separator`]: crate::lang::Language::separator
 "#;

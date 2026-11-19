@@ -79,6 +79,11 @@ impl TSProvider for NixProvider {
         Arity::from_table(crate::langs::arity::NIX, tag)
     }
 
+    /// `,` for the kinds `bin/gen-arity` finds comma-separated (#293).
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        crate::lang::comma_separator(crate::langs::arity::NIX_COMMA_SEPARATED, tag)
+    }
+
     /// Every Nix fragment is an expression (its node tag ends in `_expression`),
     /// so a hole demands an `Expr`. Non-expression tags (`binding`, `attrpath`,
     /// …) fall back to the `File` default — a `__QUILT_HOLE__` always parses as

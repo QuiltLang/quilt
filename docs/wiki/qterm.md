@@ -109,6 +109,8 @@ The `Emit` trait allows any type that "emits" things into a builder:
 - `&str` emits a `Write` — or, inside an `align(pad)` (an aligned splice in a column-sensitive language, see Lean in [Concrete languages](concrete-languages.md)), one `Write` per line with a `NewLine` between, so its later lines start at the hole's column.
 - `StrCmd` emits itself as a cmd.
 
+Between `b.sep(",")` and `b.end_sep()`, two children added one after the other get a `sym(",")` and a space between them, unless a separator is already there. Expanded code opens such a region around a splice into a comma-separated list, so `[↙xs↘]` builds `[1, 2]` (see [Concepts](concepts.md#into-a-comma-separated-list)).
+
 ### Example
 
 ```rust

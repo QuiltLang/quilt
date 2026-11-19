@@ -84,10 +84,14 @@ fn seed_script(members: &[(&'static str, u32)]) -> Arc<QTerm> {
         .map(|&(name, age)| tb("statement").c(&tb("insert").c(&leaf("keyword_insert", "INSERT")).w(" ").c(&leaf("keyword_into", "INTO")).w(" ").c(&tb("object_reference").c(&leaf("identifier", "members")).b()).w(" ").c(&tb("list").c(&sym("(")).c(&tb("column").c(&leaf("identifier", "name")).b()).c(&sym(",")).w(" ").c(&tb("column").c(&leaf("identifier", "age")).b()).c(&sym(")")).b()).w(" ").c(&leaf("keyword_values", "VALUES")).w(" ").c(&{
         let mut b_ = tb("list");
         sym("(").emit(&mut b_);
+        b_.sep(",");
         name.qlift_to::<Sql>().emit(&mut b_);
+        b_.end_sep();
         sym(",").emit(&mut b_);
         b_.write(" ");
+        b_.sep(",");
         age.qlift_to::<Sql>().emit(&mut b_);
+        b_.end_sep();
         sym(")").emit(&mut b_);
         b_.b()
     }).b()).b())

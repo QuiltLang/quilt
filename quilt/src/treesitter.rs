@@ -68,6 +68,10 @@ pub trait TSProvider {
     fn arity(&self, _tag: &str) -> Arity {
         Default::default()
     }
+    /// See [`Language::separator`].
+    fn separator(&self, _tag: &str) -> Option<&'static str> {
+        None
+    }
     /// Whether a term spliced into a hole mid-line has its continuation lines
     /// aligned to the hole's *column*, not just to the line's indentation.
     ///
@@ -569,6 +573,10 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         self.provider.arity(tag)
     }
 
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.provider.separator(tag)
+    }
+
     fn typ(&self, tag: &str) -> InnerKind {
         self.provider.typ(tag)
     }
@@ -676,6 +684,10 @@ impl<P: TSProvider> Language for DynTSLanguage<P> {
 
     fn arity(&self, tag: &str) -> Arity {
         self.0.arity(tag)
+    }
+
+    fn separator(&self, tag: &str) -> Option<&'static str> {
+        self.0.separator(tag)
     }
 
     fn typ(&self, tag: &str) -> InnerKind {

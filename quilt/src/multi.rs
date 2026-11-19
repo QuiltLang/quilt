@@ -946,9 +946,39 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                     {
                         arity = Arity::Unknown;
                     }
+                    // A ground splice into a comma-separated list gets its
+                    // elements separated (#293) — but only where the splice is
+                    // in element position, which the grammar's tables cannot
+                    // say: Lean's `def` holds a comma-separated list
+                    // somewhere, and its other holes are not in it. So the
+                    // splice must also sit between the list's brackets or
+                    // separators (`[↙xs↘]`, `f(a, ↙xs↘)`), never next to a
+                    // keyword or another element.
+                    let sep = if arity == Arity::Variadic {
+                        self.langs.get(lang1)?.separator(tag)
+                    } else {
+                        None
+                    };
+                    let separated = |i: usize| -> Option<&'static str> {
+                        let sep = sep?;
+                        let QTerm::Unquote { index, .. } = &*terms[i] else {
+                            return None;
+                        };
+                        let opens =
+                            |t: &str| t == sep || t.ends_with(['(', '[', '{', '<', '|', '⟨']);
+                        let closes =
+                            |t: &str| t == sep || t.starts_with([')', ']', '}', '>', '|', '⟩']);
+                        let before = i.checked_sub(1).map(|j| &terms[j]);
+                        let after = terms.get(i + 1);
+                        (*index == *d
+                            && before.is_none_or(|t| token_text(t).is_some_and(opens))
+                            && after.is_none_or(|t| token_text(t).is_some_and(closes)))
+                        .then_some(sep)
+                    };
                     let expanded = terms
                         .iter()
-                        .map(|term| {
+                        .enumerate()
+                        .map(|(i, term)| {
                             // expand each child. A ground unquote under an
                             // accumulator runs where `b_` is bound; under a
                             // fluent node it does not.
@@ -1006,7 +1036,11 @@ impl<M: MetaLanguage + ?Sized, LS: Languages> Expander<'_, LS, M> {
                                     }
                                 }
                             }
-                            self.meta.wrap_child(expanded, okind)
+                            let wrapped = self.meta.wrap_child(expanded, okind)?;
+                            match separated(i) {
+                                Some(sep) => self.meta.wrap_separated(wrapped, sep),
+                                None => Ok(wrapped),
+                            }
                         })
                         .collect::<Result<Vec<_>>>()?;
                     self.meta.expand_tuple(lang1, tag, &expanded, cmds, arity)
@@ -1244,4 +1278,17 @@ fn shared_prefix<'a>(prefix: &'a str, nodes: &[Arc<Node>]) -> &'a str {
 fn is_blank(nodes: &[Arc<Node>], i: usize) -> bool {
     matches!(&*nodes[i], Node::Content(s) if s.trim().is_empty())
         && nodes.get(i + 1).is_none_or(|next| **next == Node::NewLine)
+}
+
+/// The text of an anonymous token — a childless leaf whose tag is its own
+/// text, as `sym` builds it and the parser makes `[`, `,` or `)` — or `None`
+/// for anything else.
+fn token_text(term: &QTerm) -> Option<&str> {
+    match term {
+        QTerm::Tuple { tag, terms, cmds } if terms.is_empty() => match &**cmds {
+            [CmdOrHole::Cmd(StrCmd::Write(s))] if s == tag => Some(tag),
+            _ => None,
+        },
+        _ => None,
+    }
 }
