@@ -513,3 +513,54 @@ fn a_ground_quote_in_a_lean_host_is_not_padded() -> Result<()> {
     assert!(out.contains("by\n  rfl"), "{out}");
     Ok(())
 }
+
+/* ------------------- spliced text keeps Lean's columns -------------------- */
+
+/// Expand and run a Rust program that builds Lean, returning what it returns.
+fn run(code: &str) -> Result<String> {
+    let mut omni = Omni::default();
+    let q = omni.parse(code)?;
+    omni.expand(&q)?.reduce()
+}
+
+/// A host `String` spliced mid-line is laid out like a term spliced there: its
+/// later lines start at the hole's column, not flush left. Only the newlines
+/// Quilt wrote itself used to be aligned (#301), so `b` landed at column 2,
+/// left of `a` — the same parse error, by way of a string.
+#[test]
+fn a_host_string_spliced_mid_line_keeps_its_column() -> Result<()> {
+    let out = run(indoc! {r#"{
+        let s = "{ a := 1,\n  b := 2 }";
+        lean↖def x : S := ↙s↘↗.coparse()
+    }"#})?;
+    assert_eq!(out, "def x : S := { a := 1,\n               b := 2 }");
+    Ok(())
+}
+
+/// At the start of an indented line, the hole's column is the line's indent:
+/// every line of the text keeps it, as every line of a spliced term does.
+#[test]
+fn a_host_string_spliced_on_its_own_line_keeps_its_indent() -> Result<()> {
+    let out = run(indoc! {r#"{
+        let tactics = "intro h\nexact h";
+        lean↖theorem t (p : Prop) : p → p := by
+          ↙tactics↘↗.coparse()
+    }"#})?;
+    assert_eq!(
+        out,
+        "theorem t (p : Prop) : p → p := by\n  intro h\n  exact h"
+    );
+    Ok(())
+}
+
+/// Text spliced into a string literal is the literal's content, whatever
+/// column it starts at: its line breaks are written as they are.
+#[test]
+fn a_host_string_spliced_into_a_string_literal_is_left_alone() -> Result<()> {
+    let out = run(indoc! {r#"{
+        let s = "one\n  two";
+        lean↖def m : String := "say ↙s↘"↗.coparse()
+    }"#})?;
+    assert_eq!(out, "def m : String := \"say one\n  two\"");
+    Ok(())
+}
