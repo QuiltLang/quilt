@@ -1,0 +1,16 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"rs↖↙a↘ => ↙{ for x in xs { x.← } }↘,↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    {
+        let mut b_ = tb("match_arm");
+        a.emit(&mut b_);
+        b_.write(" ");
+        sym("=>").emit(&mut b_);
+        b_.write(" ");
+        { for x in xs { x.emit(&mut b_) } };
+        sym(",").emit(&mut b_);
+        b_.b()
+    }
+}
