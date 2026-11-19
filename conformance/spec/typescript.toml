@@ -28,15 +28,17 @@ variadic = [
 ]
 not_variadic = ["binary_expression", "identifier"]
 
-lift_from = ["typescript", "ts", "html"]
-lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "text", "txt", "sql", "mysql", "mariadb"]
+lift_marker = "TypeScript"
+
+lift_from = ["typescript", "ts", "html", "text", "txt"]
+lift_from_unsupported = ["rust", "rs", "python", "py", "wgsl", "nix", "lean", "lean4", "sql", "mysql", "mariadb"]
 
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported"}
 variadic-containers = {status = "supported"}
 kind-classification = {status = "supported"}
-lift-into = {status = "planned", note = "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`", issue = 149}
+lift-into = {status = "supported", note = "numbers, booleans, strings and slices/`Vec`s all lift. One `number` node serves integers and floats, and a negative is a `unary_expression` over its magnitude, as the parser builds it. The Rust host's `LiftTo<TypeScript>`, the Python host's `qlift_ts` and the TypeScript host's own `qlift` share the core's generated shapes"}
 highlights = {status = "unsupported", note = "no `highlights.scm` is vendored for the TypeScript grammar"}
 host = {status = "supported"}
 lift-from = {status = "supported"}
@@ -72,6 +74,48 @@ tag = "function_declaration"
 name = "declaration_value"
 code = "let x = @;"
 ikinds = ["expr"]
+
+[[lift]]
+value = "u32:3"
+tag = "number"
+text = "3"
+
+# Unsigned in the grammar: the sign is a `unary_expression` over the magnitude.
+[[lift]]
+value = "i32:-7"
+tag = "unary_expression"
+text = "-7"
+
+[[lift]]
+value = "f32:1.5"
+tag = "number"
+text = "1.5"
+
+[[lift]]
+value = "f32:-1.5"
+tag = "unary_expression"
+text = "-1.5"
+
+[[lift]]
+value = "bool:true"
+tag = "true"
+text = "true"
+
+[[lift]]
+value = "bool:false"
+tag = "false"
+text = "false"
+
+[[lift]]
+value = "str:plain"
+tag = "string"
+text = '"hi"'
+
+# `${` means nothing inside a double-quoted (as opposed to template) literal.
+[[lift]]
+value = "str:tricky"
+tag = "string"
+text = '"a\"b\\c${d}"'
 
 [kinds]
 program = "file"

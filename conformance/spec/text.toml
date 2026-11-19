@@ -14,12 +14,14 @@ term is one `text` tuple whose commands interleave literal runs with holes."""
 variadic = ["text"]
 not_variadic = []
 
+lift_marker = "Text"
+
 [capabilities]
 quotable = {status = "supported"}
 hole-positions = {status = "supported", note = "text imposes no kind on a hole, so a spliced child is rendered however the host built it"}
 variadic-containers = {status = "supported"}
 kind-classification = {status = "supported", note = "a text fragment is always an opaque value, so `typ()` answers `Expr` for every tag"}
-lift-into = {status = "planned", note = "no `LiftTo<Text>` marker; a host that wants a value as text lifts it in its own language and splices the result", issue = 149}
+lift-into = {status = "supported", note = "text has no grammar, so the spelling is a *dialect*'s: the default, `Json`, writes JSON literals (strings quoted and escaped, `[a, b]` lists), which are also valid YAML, TOML, JS and HCL values. A hole between two `\"` the author wrote lifts a string as its escaped contents (`InQuotes`). A host picks another dialect — the built-in `Raw`, or one it writes by overriding only the rules that differ — per site or per module; see `docs/wiki/concepts.md`"}
 highlights = {status = "unsupported", note = "plain text has no grammar to highlight"}
 host = {status = "unsupported", note = "the `TextMetaLanguage` exists but is identity-only and is not registered as a host in `Omni`"}
 lift-from = {status = "unsupported", note = "not a host: nothing to lift from"}
@@ -53,6 +55,60 @@ tag = "text"
 name = "mid_string"
 code = "a=@ b=@"
 ikinds = ["any", "any"]
+
+# JSON's spelling, the default dialect's.
+[[lift]]
+value = "u32:3"
+tag = "text"
+text = "3"
+
+[[lift]]
+value = "i32:-7"
+tag = "text"
+text = "-7"
+
+[[lift]]
+value = "f32:1.5"
+tag = "text"
+text = "1.5"
+
+[[lift]]
+value = "bool:true"
+tag = "text"
+text = "true"
+
+[[lift]]
+value = "str:plain"
+tag = "text"
+text = '"hi"'
+
+[[lift]]
+value = "str:tricky"
+tag = "text"
+text = '"a\"b\\c${d}"'
+
+# A newline is escaped, so a lifted value cannot start a new line of config.
+[[lift]]
+value = "str:newline"
+tag = "text"
+text = '"a\nb: c"'
+
+[[lift]]
+value = "vec:strs"
+tag = "text"
+text = '["a", "b c"]'
+
+# Between two `"` the author wrote: the contents, escaped, no quotes of its own.
+[[lift]]
+value = "in_quotes:tricky"
+tag = "text"
+text = 'a\"b\\c${d}'
+
+# The `Raw` dialect: verbatim.
+[[lift]]
+value = "raw:tricky"
+tag = "text"
+text = 'a"b\c${d}'
 
 [kinds]
 text = "expr"

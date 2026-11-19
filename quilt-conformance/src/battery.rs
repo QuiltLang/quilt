@@ -931,15 +931,18 @@ const SQL_TRICKY: &str = "O'Hara'; DROP TABLE users; --";
 /// Build one lifted value.
 ///
 /// The `LiftTo` grid is genuinely ragged — WGSL has no string impl, the shells
-/// have no float or bool impl — and it is ragged for good reasons documented in
-/// `lift.rs`. So this is written out per marker rather than through one macro:
+/// have no float or bool impl, HTML has no list impl — and it is ragged for
+/// good reasons documented in `lift.rs`. So this is written out per marker rather than through one macro:
 /// the arms *are* the (Rust type × target language) matrix, and a missing arm is
 /// a compile error rather than a silently skipped probe. Adding a `LiftTo` impl
 /// upstream means adding its arm here, and the spec's `[[lift]]` entry then
 /// pins the spelling.
 fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
     use miette::miette;
-    use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Rust, Sql, Wgsl, Zsh};
+    use quilt::lift::{
+        Bash, Html, InQuotes, Lean, Nix, Python, QLiftTo as _, Raw, Rust, Sql, Text, TypeScript,
+        Wgsl, Zsh,
+    };
 
     let unknown = || miette!("{marker}: no lift probe for value {value:?}");
 
@@ -1029,6 +1032,43 @@ fn lift_value(marker: &str, value: &str) -> Result<Arc<QTerm>> {
             "i32:-7" => (-7i32).qlift_to::<Bash>(),
             "str:plain" => "hi".qlift_to::<Bash>(),
             "str:tricky" => TRICKY.qlift_to::<Bash>(),
+            _ => return Err(unknown()),
+        },
+        // One `number` for integers and floats; strings, bools, arrays.
+        "TypeScript" => match value {
+            "u32:3" => 3u32.qlift_to::<TypeScript>(),
+            "i32:-7" => (-7i32).qlift_to::<TypeScript>(),
+            "f32:1.5" => 1.5f32.qlift_to::<TypeScript>(),
+            "f32:-1.5" => (-1.5f32).qlift_to::<TypeScript>(),
+            "bool:true" => true.qlift_to::<TypeScript>(),
+            "bool:false" => false.qlift_to::<TypeScript>(),
+            "str:plain" => "hi".qlift_to::<TypeScript>(),
+            "str:tricky" => TRICKY.qlift_to::<TypeScript>(),
+            _ => return Err(unknown()),
+        },
+        // Every value is a `text` node; no list impl, since HTML has no
+        // literal syntax for a sequence.
+        "Html" => match value {
+            "u32:3" => 3u32.qlift_to::<Html>(),
+            "bool:true" => true.qlift_to::<Html>(),
+            "str:plain" => "hi".qlift_to::<Html>(),
+            "str:tricky" => TRICKY.qlift_to::<Html>(),
+            "str:markup" => "<b> & 'c'".qlift_to::<Html>(),
+            _ => return Err(unknown()),
+        },
+        // No grammar, so the probes also cover the two things only text has:
+        // the in-quotes position and a non-default dialect (`lift::text`).
+        "Text" => match value {
+            "u32:3" => 3u32.qlift_to::<Text>(),
+            "i32:-7" => (-7i32).qlift_to::<Text>(),
+            "f32:1.5" => 1.5f32.qlift_to::<Text>(),
+            "bool:true" => true.qlift_to::<Text>(),
+            "str:plain" => "hi".qlift_to::<Text>(),
+            "str:tricky" => TRICKY.qlift_to::<Text>(),
+            "str:newline" => "a\nb: c".qlift_to::<Text>(),
+            "vec:strs" => vec!["a", "b c"].qlift_to::<Text>(),
+            "in_quotes:tricky" => TRICKY.qlift_to::<InQuotes<Text>>(),
+            "raw:tricky" => TRICKY.qlift_to::<Text<Raw>>(),
             _ => return Err(unknown()),
         },
         _ => return Err(miette!("unknown lift marker {marker:?}")),

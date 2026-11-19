@@ -159,8 +159,11 @@ fn corpus_is_complete() {
         "target_parse_error.rs.quilt",
         // heterogeneous operators with no spelling for that pair
         "python_lift_into_wgsl.py.quilt",
-        "rust_lift_into_html.rs.quilt",
         "rust_reduce_via_wgsl.rs.quilt",
+        // …and inside a text quote's `"…"`, where the expander spells the lift
+        // for a position the author never named: the error must still be
+        // about `text`, the language they quoted (issue #149)
+        "nix_lift_into_quoted_text.nix.quilt",
         // pattern-let (issue #18)
         "pattern_duplicate_metavar.rs.quilt",
         "pattern_non_identifier.rs.quilt",

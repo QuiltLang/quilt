@@ -56,7 +56,8 @@ function buildCmds(cmds) {
 
 // A nested term means "lift an already-built term" — the case that exposes the
 // ↓(↑(x)) == x divergence (issue #166).
-const buildValue = (v) => (v !== null && typeof v === "object" ? build(v) : v);
+const buildValue = (v) =>
+  Array.isArray(v) ? v.map(buildValue) : v !== null && typeof v === "object" ? build(v) : v;
 
 function build(t) {
   if ("leaf" in t) return q.leaf(t.leaf.tag, t.leaf.text);
@@ -64,6 +65,8 @@ function build(t) {
   if ("name" in t) return q.name(t.name);
   if ("qlift" in t) return q.qlift(buildValue(t.qlift));
   if ("qlift_html" in t) return q.qlift_html(buildValue(t.qlift_html));
+  if ("qlift_text" in t) return q.qlift_text(buildValue(t.qlift_text));
+  if ("qlift_text_in_quotes" in t) return q.qlift_text_in_quotes(buildValue(t.qlift_text_in_quotes));
   if ("tb" in t) {
     let b = q.tb(t.tb.tag);
     for (const step of t.tb.steps) {
@@ -177,7 +180,11 @@ for (const [label, build_] of Object.entries(lawTerms)) {
 // A lift must not consume its argument: recovering a term from a polymorphic
 // JsValue via TryFromJsValue *takes* it, nulling the caller's handle, so
 // `qlift(t)` left `t` unusable. See issue #166.
-for (const [label, fn] of [["qlift", q.qlift], ["qlift_html", q.qlift_html]]) {
+for (const [label, fn] of [
+  ["qlift", q.qlift],
+  ["qlift_html", q.qlift_html],
+  ["qlift_text", q.qlift_text],
+]) {
   const t = q.leaf("text", "x");
   fn(t);
   try {
@@ -187,7 +194,38 @@ for (const [label, fn] of [["qlift", q.qlift], ["qlift_html", q.qlift_html]]) {
   }
 }
 
-console.log(`${RUNTIME}: ${cases.length} corpus cases, ${stringifyChecked} stringify checks, ${lawChecked} lift-law checks, 2 non-consumption checks — ${failures.length} failure(s)`);
+// Text dialects are code, so they cannot be corpus cases; this is the same
+// check the Python runtime's test_main.py and the core's `lift::text` tests
+// make. A dialect overrides only what differs, and what it leaves out is JSON's.
+const conf = {
+  list_open: "",
+  list_sep: "\n",
+  list_close: "",
+  string: (s) => (/^\w+$/.test(s) ? s : JSON.stringify(s)),
+  boolean: (b) => (b ? "on" : "off"),
+};
+for (const [got, want] of [
+  [() => q.qlift_text("web", conf), "web"],
+  [() => q.qlift_text("a b", conf), '"a b"'],
+  [() => q.qlift_text(true, conf), "on"],
+  [() => q.qlift_text(["x", "y z"], conf), 'x\n"y z"'],
+  [() => q.qlift_text(1.5, conf), "1.5"],
+  [() => q.qlift_text_in_quotes('q"', conf), 'q\\"'],
+]) {
+  const text = got().coparse();
+  if (text !== want) failures.push(`text dialect: ${got} gave ${JSON.stringify(text)}, want ${JSON.stringify(want)}`);
+}
+for (const [label, bad] of [
+  ["NaN in JSON", () => q.qlift_text(NaN)],
+  ["a throwing rule", () => q.qlift_text("x", { string: () => { throw new Error("no"); } })],
+]) {
+  try {
+    bad();
+    failures.push(`text dialect: ${label} should have thrown`);
+  } catch (_) {}
+}
+
+console.log(`${RUNTIME}: ${cases.length} corpus cases, ${stringifyChecked} stringify checks, ${lawChecked} lift-law checks, 3 non-consumption checks — ${failures.length} failure(s)`);
 if (failures.length > 0) {
   console.error(`\n${failures.length} failure(s):`);
   for (const f of failures) console.error(`  • ${f}`);
