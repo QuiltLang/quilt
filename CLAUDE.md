@@ -120,6 +120,11 @@ test-py       # pytest the bindings + `quilt run` the .py.quilt examples
 build-ts
 test-ts       # node tests for `↓` + `quilt run` the .ts.quilt examples
 
+# The browser demos (examples/web): the in-browser expander's tests and both
+# headless verifiers. Needs wasm-pack and a WASI sdk (WASI_SDK_PATH) for the
+# expander wasm; fails rather than skipping without one.
+test-web
+
 # Bootstrap — regenerates quilt/src/langs/rust/meta.rs from mk_meta.rs.quilt.
 # Both stages run mk_meta.rs.quilt via quilt (which writes meta.rs): bootstrap0
 # expands it with the BootstrapMetaLanguage (`-m bootstrap`, feature `bootstrap`),

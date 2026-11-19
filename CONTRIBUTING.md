@@ -40,6 +40,7 @@ bin/lint -- -D warnings   # cargo clippy (pedantic, --tests)
 bin/check-bootstrap    # self-hosting bootstrap must leave meta.rs unchanged
 bin/check-examples     # quilt-check + expand-diff every example
 bin/build-py && bin/test-py   # Python bindings + .py.quilt runtime
+bin/test-web           # browser demos (examples/web); needs a WASI sdk
 ```
 
 `bin/main` is the front door to all of `bin/`: run it with no arguments to list every script, and reach any of them as `main <script>`. With the direnv environment active, `bin/` is on your `PATH`, so it is just `main`. (Without it, run the scripts from the repo root, e.g. `./bin/ctest`.)

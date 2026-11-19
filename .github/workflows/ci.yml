@@ -138,6 +138,20 @@ jobs:
             run: |
               bin/build-ts
               bin/test-ts
+          # The browser demos (examples/web): build the runtime for the web and
+          # the in-browser expander (a WASI command, so it needs a WASI sdk for
+          # the C grammars), then run both headless verifiers. The staged
+          # playground's verifier used to skip itself without a WASI sdk, and
+          # nothing ran it, so the demo broke when expanded code stopped
+          # carrying a hand-written runtime import and nobody saw (#314).
+          - os: ubuntu-latest
+            name: Browser demos (examples/web verifiers)
+            run: |
+              WASI_SDK_PATH="$RUNNER_TEMP/wasi-sdk-33.0-x86_64-linux"
+              curl -fsSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz \
+                | tar -xz -C "$RUNNER_TEMP"
+              export WASI_SDK_PATH
+              bin/test-web
           # macOS is the primary development platform, so run the
           # platform-sensitive checks there too (paths, dyld libpython loading,
           # tree-sitter codegen). The Linux matrix above stays the canonical
