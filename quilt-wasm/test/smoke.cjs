@@ -1,7 +1,7 @@
 // Smoke test for the quilt-wasm runtime: build QTerms the way expanded
 // `.ts.quilt` code does (tuples + qlift/qlift_html) and check `coparse` output.
 //
-// Run after `wasm-pack build --target nodejs`:
+// Run after `bin/build-ts`:
 //   node quilt-wasm/test/smoke.cjs
 
 const assert = require("node:assert");

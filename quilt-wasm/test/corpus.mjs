@@ -5,7 +5,7 @@
 // divergence between the three published runtimes — quiltlang, quilt-python,
 // quilt-wasm — is a test failure rather than something a user discovers.
 //
-//   wasm-pack build quilt-wasm --target nodejs && node quilt-wasm/test/corpus.mjs
+//   bin/build-ts && node quilt-wasm/test/corpus.mjs
 //
 // Built --target nodejs (not --target web, which the npm package ships) purely
 // so this runner can require() it without a fetch/init dance. The API surface
@@ -43,9 +43,8 @@ function buildCmds(cmds) {
     // runner maps it to its own API, so this is the same mapping the Rust and
     // Python runners do — not a special case for wasm. It just happens to be
     // where the one recorded divergence shows: NL/POP/HOLE are functions here
-    // and constants in Python, because wasm-bindgen cannot export a
-    // module-scope constant and a singleton would be consumed by its first use.
-    // Weighed and kept in issue #167; quilt-wasm/README.md has the reasoning.
+    // and constants in Python (issue #167; quilt-wasm/README.md has the
+    // history).
     if (c === "HOLE") return q.HOLE();
     if (c === "NL") return q.cmd(q.NL());
     if (c === "POP") return q.cmd(q.POP());

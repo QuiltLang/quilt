@@ -32,7 +32,7 @@ if (!existsSync(join(nm, "quilt"))) {
 // 3. Initialise the WebAssembly from bytes, then run the program's render().
 const glue = pathToFileURL(join(dist, "quilt-wasm", "quilt_wasm.js"));
 const { default: init } = await import(glue);
-await init({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_bg.wasm")) });
+await init({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_raw_bg.wasm")) });
 
 const { render } = await import(pathToFileURL(join(dist, "app.js")));
 const html = render().coparse(); // render() returns a term; the harness coparses

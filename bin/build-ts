@@ -9,14 +9,10 @@
 # identical either way.
 #
 # `quilt run` resolves the bare `quilt` import to quilt-wasm/node/, which adds
-# the `↓` (reduce) operator on top of what this builds.
+# the `↓` (reduce) operator on top of what this builds. bin/build-wasm does the
+# building: wasm-pack, then the JavaScript runtime around it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-if ! command -v wasm-pack >/dev/null 2>&1; then
-  echo "error: wasm-pack not found — install it: https://rustwasm.github.io/wasm-pack/" >&2
-  exit 1
-fi
-
-wasm-pack build "$ROOT/quilt-wasm" --target nodejs --out-dir pkg "$@"
+"$ROOT/bin/build-wasm" nodejs pkg "$@"
 echo "built quilt-wasm/pkg (nodejs target) — .ts.quilt files are now runnable"

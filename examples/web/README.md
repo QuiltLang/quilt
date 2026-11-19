@@ -80,7 +80,7 @@ node examples/web/build.mjs                          # → examples/web/dist/
 python3 -m http.server -d examples/web/dist 8000     # open http://localhost:8000
 ```
 
-`build.mjs` builds the runtime (`wasm-pack build quilt-wasm --target web`) and
+`build.mjs` builds the runtime (`bin/build-wasm web pkg-web`) and
 assembles `dist/` (git-ignored). The playground also needs the expander wasm,
 which needs a **WASI sdk** for the C grammars: install one from
 <https://github.com/WebAssembly/wasi-sdk/releases> and set `WASI_SDK_PATH` (the

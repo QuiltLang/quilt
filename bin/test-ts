@@ -4,8 +4,9 @@
 # `bin/build-ts` (the CI `typescript` job runs build-ts then test-ts) — the
 # mirror of bin/build-py / bin/test-py for the other runtime.
 #
-#   1. node tests for the `↓` (reduce) operator the Node runtime adds, and for
-#      repeated expansion running in flat memory.
+#   1. node tests for the `↓` (reduce) operator the Node runtime adds, for
+#      repeated expansion running in flat memory, and for the JavaScript
+#      builder and coparse agreeing with the Rust QTerm.
 #   2. `quilt run` the self-contained .ts.quilt examples and assert they exit 0.
 #
 # examples/web/*.ts.quilt are intentionally excluded from (2): they are browser
@@ -34,6 +35,9 @@ node "$ROOT/quilt-wasm/test/reduce.mjs"
 
 echo "==> memory test (node): repeated expansion runs in flat wasm memory"
 node "$ROOT/quilt-wasm/test/memory.cjs"
+
+echo "==> differential test (node): the JavaScript runtime against the Rust QTerm"
+node "$ROOT/quilt-wasm/test/differential.cjs"
 
 # The `quilt run` tests in quilt/tests/cli.rs skip themselves when the runtime
 # is not built, so a plain `cargo test` stays green without wasm-pack — which

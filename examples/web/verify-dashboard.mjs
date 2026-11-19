@@ -45,7 +45,7 @@ function expand(source, chain = ["ts", "html"]) {
 
 // 1. Initialise the runtime + register the expander, on the shared wrapper.
 const quilt = await import(pathToFileURL(join(nm, "quilt", "index.js")));
-await quilt.default({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_bg.wasm")) });
+await quilt.default({ module_or_path: readFileSync(join(dist, "quilt-wasm", "quilt_wasm_raw_bg.wasm")) });
 quilt.setExpander((s) => expand(s));
 
 // 2. Expand Stage 1 (makeRenderer) and import it.

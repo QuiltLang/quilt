@@ -1,247 +1,71 @@
-//! WebAssembly bindings for quilt's core IR.
+//! The WebAssembly half of quilt's JavaScript runtime.
 //!
-//! These expose the real Rust `QTerm`, its builder, and the `coparse`
-//! serializer to JavaScript — the browser runtime that expanded `.ts.quilt`
-//! files target. A `TypeScriptMetaLanguage` (issue #45) emits TypeScript source
-//! like `tb("binary_expression").c(leaf("number", "1")).w(" ")..b()`, and these
-//! bindings are exactly the `tb`/`leaf`/`sym`/`quote`/`unquote`/`cmd`/`write`/
-//! `push`/`name` functions, the `NL`/`POP`/`HOLE` constructors, and the fluent
-//! `Builder` (`.c`/`.w`/`.n`/`.p`/`.x`/`.e`/`.b`) and `QTerm` (`.coparse()`)
-//! classes that source calls into. It mirrors the PyO3 runtime in
-//! `quilt-python/src/lib.rs`, one-for-one where the two host ABIs allow.
+//! Expanded `.ts.quilt` programs build terms with `tb`/`leaf`/`sym`/`quote`/…
+//! and serialize them with `coparse()`. All of that is plain JavaScript, in
+//! `js/runtime.js`: a term is an ordinary object the garbage collector owns.
+//! It used to be a wasm-bindgen wrapper around a Rust `Arc<QTerm>`, built a
+//! node at a time across the boundary, which cost ~25x what the same builder
+//! costs in plain JS, and pinned every term a program kept in wasm memory
+//! (issue #306).
 //!
-//! Where they *don't* allow it, the difference is recorded rather than papered
-//! over — see "Divergences from the Python runtime" in `quilt-wasm/README.md`.
-//! The one that shows up in every generated module is `NL`/`POP`/`HOLE`, which
-//! are constants there and functions here; [`NL`] and [`HOLE`] carry the two
-//! reasons why (issue #167).
+//! What is left here is what the JavaScript cannot do without a second copy of
+//! Rust logic:
+//!
+//! * [`lift`]: `qlift` of an already-built term, whose output comes from the
+//!   generated tables in `quilt::langs::typescript::ops` (issue #166);
+//! * [`fmt_number`]: the numbers JavaScript would print in exponent form.
+//!
+//! A term crosses in the flat encoding [`decode`] reads and [`encode`] writes
+//! (documented beside its JavaScript twin in `js/runtime.js`), once per call.
+//! [`coparse`] is here too, so tests and the benchmark can hold the JavaScript
+//! `coparse` to the Rust one.
+//!
+//! `js/assemble.mjs` turns wasm-pack's output into the package: these exports
+//! become `quilt_wasm_raw.js`, and `quilt_wasm.js` is the runtime bound to
+//! them. See `quilt-wasm/README.md`.
 
 use quilt::prelude::{Arc, QTerm};
-use quilt::qterm::{
-    leaf as mk_leaf, quote as mk_quote, sym as mk_sym, tb as mk_tb, unquote as mk_unquote,
-    QTermBuilder,
-};
-use quilt::strcmd::{push as mk_push, write as mk_write, StrCmd};
-use quilt::term::{cmd as mk_cmd, CmdOrHole, STerm};
+use quilt::qterm::{qquote, qtuple, qunquote};
+use quilt::strcmd::StrCmd;
+use quilt::term::{CmdOrHole, STerm};
 use wasm_bindgen::prelude::*;
 
 /**************************************************************/
+// The exports.
 
-/// A quilt term (`Arc<QTerm>`).
+/// `qlift` of an encoded term: the encoded term whose TypeScript rebuilds it,
+/// so `↓(↑(x)) == x` (issue #166). Returns `[ops, strings]`.
 #[wasm_bindgen]
-#[derive(Clone)]
-pub struct WasmQTerm(Arc<QTerm>);
-
-#[wasm_bindgen]
-impl WasmQTerm {
-    /// Serialize the term back to source code.
-    pub fn coparse(&self) -> String {
-        self.0.coparse()
-    }
-
-    #[wasm_bindgen(js_name = toString)]
-    #[allow(clippy::inherent_to_string)]
-    pub fn to_string(&self) -> String {
-        self.0.coparse()
-    }
-
-    /// `↑` on this term: the TypeScript source that reconstructs it.
-    ///
-    /// Exists as a *method* because `&self` borrows. The free functions take a
-    /// polymorphic `JsValue`, and the only way to get a `WasmQTerm` back out of
-    /// one is `TryFromJsValue`, which **takes** it — nulling the caller's handle
-    /// so the term is unusable afterwards. `call_self` therefore dispatches to
-    /// this method rather than unwrapping. Prefixed `__` because it is plumbing,
-    /// not API: callers use `qlift`.
-    #[wasm_bindgen(js_name = __liftSelf)]
-    pub fn lift_self(&self) -> WasmQTerm {
-        WasmQTerm(lift_term(&self.0))
-    }
-
-    /// A non-consuming copy, for the same reason.
-    #[wasm_bindgen(js_name = __copySelf)]
-    pub fn copy_self(&self) -> WasmQTerm {
-        self.clone()
-    }
+pub fn lift(ops: &[u32], strings: Vec<String>) -> Result<js_sys::Array, JsError> {
+    let term = decode(ops, &strings).map_err(|e| JsError::new(&format!("lift: {e}")))?;
+    let (ops, strings) = encode(&lift_term(&term));
+    let out = js_sys::Array::new();
+    out.push(&js_sys::Uint32Array::from(&ops[..]));
+    out.push(
+        &strings
+            .into_iter()
+            .map(JsValue::from)
+            .collect::<js_sys::Array>(),
+    );
+    Ok(out)
 }
 
-/// A single string command (`write`/`NL`/`push`/`POP`).
+/// The Rust `coparse` of an encoded term.
 #[wasm_bindgen]
-#[derive(Clone)]
-pub struct WasmStrCmd(StrCmd);
+pub fn coparse(ops: &[u32], strings: Vec<String>) -> Result<String, JsError> {
+    let term = decode(ops, &strings).map_err(|e| JsError::new(&format!("coparse: {e}")))?;
+    Ok(term.coparse())
+}
 
-/// A `StrCmd` or a child placeholder (`HOLE`), used in `quote`/`unquote` cmds.
+/// Format a JS number: drop the decimal point when it is integral (`42`, not
+/// `42.0`), so lifted whole numbers read as integer literals.
 #[wasm_bindgen]
-#[derive(Clone)]
-pub struct WasmCmdOrHole(CmdOrHole);
-
-/// A fluent term builder, mirroring the Rust `QTermBuilder` (consuming form:
-/// each method takes `self` and returns the next builder, so chaining works
-/// from JS exactly as `tb("x").w("a").c(child).b()`).
-#[wasm_bindgen]
-pub struct WasmBuilder(QTermBuilder);
-
-#[wasm_bindgen]
-impl WasmBuilder {
-    /// Splice a child term.
-    pub fn c(self, child: &WasmQTerm) -> WasmBuilder {
-        WasmBuilder(self.0.c(&child.0))
+pub fn fmt_number(n: f64) -> String {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() < 9.007_199_254_740_992e15 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
     }
-
-    /// Write literal source text.
-    pub fn w(self, s: &str) -> WasmBuilder {
-        WasmBuilder(self.0.w(s))
-    }
-
-    /// Emit a newline (respecting the current prefix).
-    pub fn n(self) -> WasmBuilder {
-        WasmBuilder(self.0.n())
-    }
-
-    /// Push an indentation prefix.
-    pub fn p(self, s: &str) -> WasmBuilder {
-        WasmBuilder(self.0.p(s))
-    }
-
-    /// Pop an indentation prefix.
-    pub fn x(self) -> WasmBuilder {
-        WasmBuilder(self.0.x())
-    }
-
-    /// Splice a child term, **taking** it: the child's JS handle is consumed
-    /// (nulled), and its Rust side moves into the builder.
-    ///
-    /// This is what expanded code uses for every child it has just built
-    /// itself — `tb("x").t(sym("<"))`, `.t(tb("y")..b())` — while a spliced
-    /// host value (`↙x↘`, which the program may still hold) keeps the
-    /// borrowing [`c`](Self::c)/[`e`](Self::e). The difference is memory, not
-    /// meaning: a borrowed temporary's wrapper keeps its subtree alive in wasm
-    /// memory until the garbage collector gets round to its finalizer, which a
-    /// synchronous loop never lets it do, so every expansion used to pin a
-    /// full copy of its tree. Taken children are freed with their parent, and
-    /// a caller that frees the root (`t.free()`, or `using`) gets the whole
-    /// tree back at once.
-    pub fn t(self, child: WasmQTerm) -> WasmBuilder {
-        WasmBuilder(self.0.c(&child.0))
-    }
-
-    /// Emit a child term (for an `Arc<QTerm>` this is the same as [`c`]).
-    pub fn e(self, child: &WasmQTerm) -> WasmBuilder {
-        WasmBuilder(self.0.e(&child.0))
-    }
-
-    /// Build the term. Consumes the builder.
-    pub fn b(self) -> WasmQTerm {
-        WasmQTerm(self.0.b())
-    }
-}
-
-/**************************************************************/
-
-/// Start building a tuple node with the given tag.
-#[wasm_bindgen]
-pub fn tb(tag: &str) -> WasmBuilder {
-    WasmBuilder(mk_tb(tag))
-}
-
-/// A leaf node: a tag whose only content is `code`.
-#[wasm_bindgen]
-pub fn leaf(tag: &str, code: &str) -> WasmQTerm {
-    WasmQTerm(mk_leaf(tag, code))
-}
-
-/// A symbol: a leaf whose tag and code are the same.
-#[wasm_bindgen]
-pub fn sym(s: &str) -> WasmQTerm {
-    WasmQTerm(mk_sym(s))
-}
-
-/// A quoted fragment.
-#[wasm_bindgen]
-pub fn quote(
-    tag: &str,
-    index: u8,
-    lang: &str,
-    term: &WasmQTerm,
-    cmds: Vec<WasmCmdOrHole>,
-) -> WasmQTerm {
-    let cmds: Vec<CmdOrHole> = cmds.into_iter().map(|c| c.0).collect();
-    WasmQTerm(mk_quote(tag, index, lang, term.0.clone(), &cmds))
-}
-
-/// An unquoted splice.
-#[wasm_bindgen]
-pub fn unquote(
-    tag: &str,
-    index: u8,
-    lang: &str,
-    term: &WasmQTerm,
-    cmds: Vec<WasmCmdOrHole>,
-) -> WasmQTerm {
-    let cmds: Vec<CmdOrHole> = cmds.into_iter().map(|c| c.0).collect();
-    WasmQTerm(mk_unquote(tag, index, lang, term.0.clone(), &cmds))
-}
-
-/// Wrap a `StrCmd` as a `CmdOrHole`.
-#[wasm_bindgen]
-pub fn cmd(c: &WasmStrCmd) -> WasmCmdOrHole {
-    WasmCmdOrHole(mk_cmd(c.0.clone()))
-}
-
-/// A `Write` command.
-#[wasm_bindgen]
-pub fn write(s: &str) -> WasmStrCmd {
-    WasmStrCmd(mk_write(s))
-}
-
-/// A `Push` command.
-#[wasm_bindgen]
-pub fn push(s: &str) -> WasmStrCmd {
-    WasmStrCmd(mk_push(s))
-}
-
-/// The `NewLine` command — `NL()` here, the `NL` *constant* in the Python
-/// runtime.
-///
-/// A function because wasm-bindgen has no way to export a module-scope
-/// constant: `#[wasm_bindgen]` on a `const` is a hard compile error ("will not
-/// work on constants unless you are defining a
-/// `#[wasm_bindgen(typescript_custom_section)]`"), and the only items that
-/// reach JS are functions, structs, enums and impls. A `static get` on an
-/// exported class would give `Consts.NL`, not the bare `NL` the Python runtime
-/// spells — reaching that would mean replacing wasm-pack's generated package
-/// with a hand-maintained JS entry point, on the npm publish path, for an
-/// ergonomics wart. [`HOLE`] documents the second, independent reason. Issue
-/// #167 weighed both and kept the divergence, documented.
-#[wasm_bindgen]
-#[allow(non_snake_case)]
-pub fn NL() -> WasmStrCmd {
-    WasmStrCmd(StrCmd::NewLine)
-}
-
-/// The `Pop` command — `POP()` here, the `POP` constant in the Python runtime.
-/// See [`NL`].
-#[wasm_bindgen]
-#[allow(non_snake_case)]
-pub fn POP() -> WasmStrCmd {
-    WasmStrCmd(StrCmd::Pop)
-}
-
-/// A child placeholder — `HOLE()` here, the `HOLE` constant in the Python
-/// runtime.
-///
-/// A function for [`NL`]'s reason and one of its own, which would survive even
-/// if the export problem were solved: [`quote`] and [`unquote`] take
-/// `Vec<WasmCmdOrHole>`, and wasm-bindgen **moves** each element out of its JS
-/// wrapper (`__unwrap` → `__destroy_into_raw`), nulling the caller's handle.
-/// A module-level `HOLE` singleton would be freed by the first `quote(..)` that
-/// used it and throw "array contains a value of the wrong type" on the second —
-/// the same move-semantics trap `call_self` exists to dodge. Calling it hands
-/// out a fresh value each time, which is exactly what makes reuse safe.
-#[wasm_bindgen]
-#[allow(non_snake_case)]
-pub fn HOLE() -> WasmCmdOrHole {
-    WasmCmdOrHole(CmdOrHole::Hole)
 }
 
 /// The size of this module's linear memory, in bytes — for tests and
@@ -259,77 +83,6 @@ pub fn memory_bytes() -> f64 {
     }
 }
 
-/// An identifier term (the `⟨N⟩` operator).
-#[wasm_bindgen]
-pub fn name(s: &str) -> WasmQTerm {
-    WasmQTerm(mk_leaf("identifier", s))
-}
-
-/**************************************************************/
-
-/// Lift a JS value to a term that reconstructs it (the homogeneous `↑`
-/// operator, TypeScript into TypeScript). Supports `number`, `string`, and
-/// `boolean`. Numbers with no fractional part lift to integer literals;
-/// everything is coparse-only, so the tags are advisory.
-///
-/// An already-built `QTerm` lifts to the TypeScript source that reconstructs it
-/// (see [`lift_term`]), satisfying `↓(↑(x)) == x` — issue #166.
-#[wasm_bindgen]
-pub fn qlift(value: &JsValue) -> Result<WasmQTerm, JsError> {
-    if let Some(q) = lift_if_term(value) {
-        return Ok(q);
-    }
-    if let Some(b) = value.as_bool() {
-        let s = if b { "true" } else { "false" };
-        return Ok(WasmQTerm(mk_leaf(s, s)));
-    }
-    if let Some(n) = value.as_f64() {
-        return Ok(WasmQTerm(mk_leaf("number", &fmt_number(n))));
-    }
-    if let Some(s) = value.as_string() {
-        return Ok(WasmQTerm(mk_leaf("string", &ts_string_lit(&s))));
-    }
-    Err(JsError::new(
-        "qlift: unsupported type (expected number, string, boolean, or QTerm)",
-    ))
-}
-
-/// Lift a JS value to an HTML term (the `↑` operator with an `html` splice
-/// target). Strings become entity-escaped `text` leaves — inert as text content
-/// or as a double-quoted attribute value — and terms pass through unchanged, so
-/// already-built fragments can be lifted too. Mirrors `qlift_html` in the
-/// Python runtime.
-///
-/// The term case is a genuine pass-through here, unlike `qlift`: an
-/// already-built HTML fragment is already escaped, and re-escaping it would
-/// double-encode. The `↓(↑(x)) == x` law that governs `qlift` (issue #166) does
-/// not bite, because HTML has no reduce to round-trip through.
-///
-/// This branch was missing while the doc comment and the error message both
-/// advertised it, so lifting a fragment failed at run time with a message
-/// naming the very type it was given. Found by the shared runtime corpus (#159).
-#[wasm_bindgen]
-pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
-    if let Some(q) = copy_if_term(value) {
-        return Ok(q);
-    }
-    if let Some(b) = value.as_bool() {
-        return Ok(WasmQTerm(mk_leaf("text", if b { "true" } else { "false" })));
-    }
-    if let Some(n) = value.as_f64() {
-        return Ok(WasmQTerm(mk_leaf("text", &fmt_number(n))));
-    }
-    if let Some(s) = value.as_string() {
-        // The core's `escape_html`, not a local copy: quilt-python had a
-        // byte-identical twin of this table and neither had a direct test
-        // (issue #192).
-        return Ok(WasmQTerm(mk_leaf("text", &quilt::lift::escape_html(&s))));
-    }
-    Err(JsError::new(
-        "qlift_html: unsupported type (expected number, string, boolean, or QTerm)",
-    ))
-}
-
 /// Build the TypeScript source that reconstructs `term`, recursively.
 ///
 /// This is what `↑` on an already-built `QTerm` must produce, because `↑` is
@@ -342,8 +95,8 @@ pub fn qlift_html(value: &JsValue) -> Result<WasmQTerm, JsError> {
 /// `↑` maps a value to a term *whose code evaluates back to that value*, and `↓`
 /// evaluates a term's code. For `42` that code is `42`; for a term it has to be
 /// a constructor call — `leaf("integer", "7")` — so evaluating it yields the
-/// term again. Rust's `QLift for Arc<QTerm>` has always done this; the term case
-/// was simply missing here. See issue #166.
+/// term again. Rust's `QLift for Arc<QTerm>` has always done this. See issue
+/// #166.
 fn lift_term(term: &Arc<QTerm>) -> Arc<QTerm> {
     use quilt::langs::typescript::ops;
 
@@ -371,63 +124,227 @@ fn lift_term(term: &Arc<QTerm>) -> Arc<QTerm> {
     }
 }
 
-/// Call one of `WasmQTerm`'s `__`-prefixed self methods on `value`, if it is one
-/// of our terms.
-///
-/// Deliberately *not* `TryFromJsValue`, which is the obvious choice and is
-/// wrong: it **takes** the value out of the JS object, nulling the caller's
-/// handle, so `qlift(t)` left `t` unusable and the next `t.coparse()` failed
-/// with "null pointer passed to rust". A `&WasmQTerm` *parameter* borrows
-/// (wasm-bindgen emits `_assertClass` + `__wbg_ptr`), and so does a `&self`
-/// method — so the lift is implemented as a method and reached from here.
-fn call_self(value: &JsValue, method: &str) -> Option<WasmQTerm> {
-    use wasm_bindgen::convert::TryFromJsValue as _;
-    let f = js_sys::Reflect::get(value, &JsValue::from_str(method)).ok()?;
-    let f = f.dyn_ref::<js_sys::Function>()?;
-    let out = f.call0(value).ok()?;
-    WasmQTerm::try_from_js_value(out).ok()
+/**************************************************************/
+// The flat encoding.
+
+const TUPLE: u32 = 0;
+const QUOTE: u32 = 1;
+const UNQUOTE: u32 = 2;
+
+const OP_WRITE: u32 = 0;
+const OP_NL: u32 = 1;
+const OP_PUSH: u32 = 2;
+const OP_POP: u32 = 3;
+const OP_HOLE: u32 = 4;
+
+/// Rebuild the term `ops` and `strings` encode.
+pub fn decode(ops: &[u32], strings: &[String]) -> Result<Arc<QTerm>, String> {
+    let mut reader = Reader {
+        ops,
+        strings,
+        at: 0,
+    };
+    let term = reader.node()?;
+    if reader.at != ops.len() {
+        return Err(format!("{} trailing ops", ops.len() - reader.at));
+    }
+    Ok(term)
 }
 
-/// The lifted form of `value`, if it is one of our terms — leaving `value`
-/// itself untouched.
-fn lift_if_term(value: &JsValue) -> Option<WasmQTerm> {
-    call_self(value, "__liftSelf")
+struct Reader<'a> {
+    ops: &'a [u32],
+    strings: &'a [String],
+    at: usize,
 }
 
-/// A copy of `value`, if it is one of our terms — leaving `value` untouched.
-/// Used where a lift must pass an existing term straight through.
-fn copy_if_term(value: &JsValue) -> Option<WasmQTerm> {
-    call_self(value, "__copySelf")
-}
+impl Reader<'_> {
+    fn op(&mut self) -> Result<u32, String> {
+        let op = *self.ops.get(self.at).ok_or("truncated term")?;
+        self.at += 1;
+        Ok(op)
+    }
 
-/// Format a JS number: drop the decimal point when it is integral (`42`, not
-/// `42.0`), so lifted whole numbers read as integer literals.
-fn fmt_number(n: f64) -> String {
-    if n.is_finite() && n.fract() == 0.0 && n.abs() < 9.007_199_254_740_992e15 {
-        format!("{}", n as i64)
-    } else {
-        format!("{n}")
+    fn str(&mut self) -> Result<&str, String> {
+        let i = self.op()? as usize;
+        self.strings
+            .get(i)
+            .map(String::as_str)
+            .ok_or_else(|| format!("no string {i}"))
+    }
+
+    fn node(&mut self) -> Result<Arc<QTerm>, String> {
+        let kind = self.op()?;
+        let tag = self.str()?.to_owned();
+        let quoted = match kind {
+            TUPLE => None,
+            QUOTE | UNQUOTE => {
+                let index = u8::try_from(self.op()?).map_err(|e| e.to_string())?;
+                let lang = self.str()?.to_owned();
+                Some((index, lang, self.node()?))
+            }
+            k => return Err(format!("unknown term kind {k}")),
+        };
+        let n = self.op()? as usize;
+        let mut cmds = Vec::with_capacity(n);
+        let mut children = Vec::new();
+        for _ in 0..n {
+            cmds.push(match self.op()? {
+                OP_WRITE => CmdOrHole::Cmd(StrCmd::Write(self.str()?.into())),
+                OP_NL => CmdOrHole::Cmd(StrCmd::NewLine),
+                OP_PUSH => CmdOrHole::Cmd(StrCmd::Push(self.str()?.into())),
+                OP_POP => CmdOrHole::Cmd(StrCmd::Pop),
+                OP_HOLE => {
+                    if quoted.is_none() {
+                        children.push(self.node()?);
+                    }
+                    CmdOrHole::Hole
+                }
+                op => return Err(format!("unknown cmd {op}")),
+            });
+        }
+        Ok(Arc::new(match quoted {
+            None => qtuple(&tag, &children, &cmds),
+            Some((index, lang, term)) if kind == QUOTE => qquote(&tag, index, &lang, term, &cmds),
+            Some((index, lang, term)) => qunquote(&tag, index, &lang, term, &cmds),
+        }))
     }
 }
 
-/// Render a JavaScript/TypeScript double-quoted string literal, escaping the
-/// characters the lexer would otherwise interpret.
-fn ts_string_lit(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' | '\\' => {
-                out.push('\\');
-                out.push(c);
+/// Encode `term` for the JavaScript `decode`.
+pub fn encode(term: &QTerm) -> (Vec<u32>, Vec<String>) {
+    let mut writer = Writer::default();
+    writer.node(term);
+    (writer.ops, writer.strings)
+}
+
+#[derive(Default)]
+struct Writer {
+    ops: Vec<u32>,
+    strings: Vec<String>,
+}
+
+impl Writer {
+    fn str(&mut self, s: &str) -> u32 {
+        self.strings.push(s.to_owned());
+        (self.strings.len() - 1) as u32
+    }
+
+    fn node(&mut self, term: &QTerm) {
+        match term {
+            QTerm::Tuple { tag, terms, cmds } => {
+                let tag = self.str(tag);
+                self.ops.extend([TUPLE, tag]);
+                self.cmds(cmds, Some(terms));
             }
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
+            QTerm::Quote {
+                tag,
+                index,
+                lang,
+                term,
+                cmds,
+                ..
+            } => self.quoted(QUOTE, tag, *index, lang, term, cmds),
+            QTerm::Unquote {
+                tag,
+                index,
+                lang,
+                term,
+                cmds,
+                ..
+            } => self.quoted(UNQUOTE, tag, *index, lang, term, cmds),
         }
     }
-    out.push('"');
-    out
+
+    fn quoted(
+        &mut self,
+        kind: u32,
+        tag: &str,
+        index: u8,
+        lang: &str,
+        term: &QTerm,
+        cmds: &[CmdOrHole],
+    ) {
+        let tag = self.str(tag);
+        let lang = self.str(lang);
+        self.ops.extend([kind, tag, u32::from(index), lang]);
+        self.node(term);
+        self.cmds(cmds, None);
+    }
+
+    /// A node's cmds; a tuple's `children` follow their holes.
+    fn cmds(&mut self, cmds: &[CmdOrHole], children: Option<&[Arc<QTerm>]>) {
+        self.ops.push(cmds.len() as u32);
+        let mut children = children.unwrap_or_default().iter();
+        for cmd in cmds {
+            match cmd {
+                CmdOrHole::Cmd(StrCmd::Write(s)) => {
+                    let s = self.str(s);
+                    self.ops.extend([OP_WRITE, s]);
+                }
+                CmdOrHole::Cmd(StrCmd::NewLine) => self.ops.push(OP_NL),
+                CmdOrHole::Cmd(StrCmd::Push(s)) => {
+                    let s = self.str(s);
+                    self.ops.extend([OP_PUSH, s]);
+                }
+                CmdOrHole::Cmd(StrCmd::Pop) => self.ops.push(OP_POP),
+                CmdOrHole::Hole => {
+                    self.ops.push(OP_HOLE);
+                    if let Some(child) = children.next() {
+                        self.node(child);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**************************************************************/
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quilt::qterm::{leaf, quote, sym, tb, unquote};
+    use quilt::term::{cmd, HOLE};
+
+    fn round_trip(t: &Arc<QTerm>) {
+        let (ops, strings) = encode(t);
+        let back = decode(&ops, &strings).unwrap();
+        assert_eq!(&back, t);
+        assert_eq!(back.coparse(), t.coparse());
+    }
+
+    #[test]
+    fn encoding_round_trips() {
+        round_trip(&leaf("number", "7"));
+        round_trip(&leaf("text", ""));
+        round_trip(
+            &tb("block")
+                .w("{")
+                .p("    ")
+                .n()
+                .c(&sym("x"))
+                .x()
+                .n()
+                .w("}")
+                .b(),
+        );
+        let body = leaf("number", "5");
+        let cmds = [
+            cmd(StrCmd::Write("[".into())),
+            HOLE,
+            cmd(StrCmd::Write("]".into())),
+        ];
+        round_trip(&quote("x", 0, "ts", body.clone(), &cmds));
+        round_trip(&tb("p").c(&unquote("y", 1, "ts", body, &[HOLE, HOLE])).b());
+    }
+
+    #[test]
+    fn decode_rejects_malformed_input() {
+        let strings = ["t".to_owned()];
+        assert!(decode(&[], &strings).is_err());
+        assert!(decode(&[9, 0, 0], &strings).is_err());
+        assert!(decode(&[TUPLE, 1, 0], &strings).is_err());
+        assert!(decode(&[TUPLE, 0, 1, 7], &strings).is_err());
+        assert!(decode(&[TUPLE, 0, 0, 0], &strings).is_err());
+    }
 }

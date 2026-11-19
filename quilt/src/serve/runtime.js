@@ -46,8 +46,8 @@ export async function install(win) {
       if (name in win) continue;
       win[name] = () => {
         throw new Error(
-          `this cell quotes, so it needs the browser runtime: \`wasm-pack build quilt-wasm ` +
-            `--target web --out-dir pkg-web\`, then reload`,
+          `this cell quotes, so it needs the browser runtime: \`bin/build-wasm web pkg-web\`, ` +
+            `then reload`,
         );
       };
     }
