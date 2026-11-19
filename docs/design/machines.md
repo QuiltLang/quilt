@@ -338,6 +338,59 @@ tree-sitter grammars the world already has. Nobody writes an interpreter:
   literal row-set. Combined with #219's injection-proof `LiftTo<Sql>`, Quilt
   becomes a safely-parameterized, stateful query layer with no new concepts.
 
+## Pinned machines: which interpreter answered
+
+`py⟨M⟩` finds `python3` on `PATH`. That is the right default, and it is not
+enough for anything that *records* what a machine said: a cached answer, a
+logged run or a result someone else must reproduce has to say which Python
+answered, built how, with which libraries. `Machine::lang` says what a machine
+speaks, and until now nothing said which machine it is.
+
+Three small pieces close that (`quilt/src/machine/pin.rs`):
+
+- **`Machine::identity`** — `Option<&str>`, defaulting to `None`. A machine
+  whose identity is known answers a name for everything it runs: two machines
+  with one identity are the same interpreter, libraries, arguments and
+  environment. `None` is the honest answer for an interpreter found on `PATH`,
+  and a caller that keys a cache or a log on identity should refuse `None`.
+- **`clear_env`** on `MachineSpec` and `ReplSpec` — start the interpreter with
+  only the environment the spec sets. Off for the registered specs, on for a
+  pinned machine. Without it the caller's `PYTHONPATH` or locale is part of
+  what ran and no name for the interpreter covers it.
+- **`Pin`** and **`qspawn_pinned(lang, &pin)`** — a `Pin` names a Nix store path
+  by the *content address* of its whole runtime closure, and `qspawn_pinned`
+  starts the language's registered provider from that path, with a cleared
+  environment and the address as its identity.
+
+```rust
+let pin = Pin::build("github:NixOS/nixpkgs/<rev>#python3")?;  // build, then address
+let mut py = qspawn_pinned("py", &pin)?;
+py.identity();                        // Some("7r699cyp…-python3-3.14.10")
+
+// Later, or elsewhere: the recorded address finds its machine again, and a
+// recipe that builds anything else is refused.
+let pin = Pin::check("7r699cyp…-python3-3.14.10", Some(recipe))?;
+```
+
+The address is the name of the path `nix store make-content-addressed`
+rewrites the closure to. Nix computes it and can verify it, it needs no
+experimental features, and it covers the closure by content rather than by how
+it was built. The recipe is only a way to obtain the machine: the address is
+what gets recorded.
+
+Two limits, both deliberate:
+
+- **One address per platform.** The same recipe on another system is other
+  bytes and another address. Saying two addresses are "the same Python" is a
+  claim about builds, for whoever is in a position to make it.
+- **macOS runs the original path.** Rewriting store paths inside a signed
+  binary invalidates the signature, and the kernel kills the process. So on
+  macOS the original path runs, after the rewrite has been seen to map it to
+  the address. On Linux the rewritten path itself runs.
+
+Pinning answers *which* machine ran. It does not sandbox it: see the open
+question on capability-gating below.
+
 ## `↓` re-grounded: reduce runs on a machine, not a language
 
 Today `↓`'s annotation names a *meta-language* (`reduce_str(target)`, issue

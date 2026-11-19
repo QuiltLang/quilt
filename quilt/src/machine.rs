@@ -37,6 +37,11 @@ use std::process::Command;
 pub mod html;
 pub use html::HtmlMachine;
 
+// Machines named by the Nix content address of everything they run, and
+// spawned from it with an empty environment.
+pub mod pin;
+pub use pin::{qspawn_pinned, Pin};
+
 /**************************************************************/
 
 /// What a [`ScriptMachine`] needs to know about a language: how to run a
@@ -69,6 +74,15 @@ pub struct MachineSpec {
     /// expression — python's `print(type({}).__name__)`, Lean's `#check {}`.
     /// `None` gives [`Machine::type_of`]'s honest default error.
     pub type_wrap: Option<Box<str>>,
+    /// Start the interpreter with an **empty** environment, so that nothing
+    /// of the caller's (`PATH`, `PYTHONPATH`, locale, …) reaches it: only
+    /// [`env`](Self::env) is set. Off for the registered specs, which mean
+    /// "the interpreter this shell would run"; on for a [pinned](pin)
+    /// machine, where the point is that the spec alone decides what runs.
+    pub clear_env: bool,
+    /// What this machine *is*, when the spec knows exactly: see
+    /// [`Machine::identity`]. `None` for an interpreter found on `PATH`.
+    pub identity: Option<Box<str>>,
 }
 
 impl MachineSpec {
@@ -87,6 +101,8 @@ impl MachineSpec {
             suffix: suffix.into(),
             env: Box::default(),
             type_wrap: None,
+            clear_env: false,
+            identity: None,
         })
     }
 }
@@ -145,6 +161,20 @@ pub struct Answer {
 pub trait Machine: Send {
     /// The language this machine speaks (a registry key, e.g. `"py"`).
     fn lang(&self) -> &str;
+
+    /// Which machine this is, when that is known exactly: a name for
+    /// everything it runs, such that two machines with the same identity
+    /// are the same interpreter, libraries, arguments and environment. A
+    /// [pinned](pin) machine answers its content address.
+    ///
+    /// `None` — the default — is the honest answer for an interpreter found
+    /// on `PATH`: [`lang`](Machine::lang) says what it speaks, and nothing
+    /// says which build of it answered. A caller that records what a machine
+    /// said (a cache, a log, a signed result) keys on this, and should refuse
+    /// to when it is `None`.
+    fn identity(&self) -> Option<&str> {
+        None
+    }
 
     /// Feed one term. Definitions and effects accumulate; queries answer.
     fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer>;
@@ -298,9 +328,8 @@ impl ScriptMachine {
             .tempfile()
             .into_diagnostic()?;
         std::fs::write(file.path(), script).into_diagnostic()?;
-        let output = Command::new(&*self.spec.program)
-            .args(self.spec.args.iter().map(AsRef::<str>::as_ref))
-            .envs(self.spec.env.iter().map(|(k, v)| (&**k, &**v)))
+        let spec = &self.spec;
+        let output = interpreter(&spec.program, &spec.args, &spec.env, spec.clear_env)
             .arg(file.path())
             .output()
             .into_diagnostic()
@@ -378,6 +407,10 @@ impl ScriptMachine {
 impl Machine for ScriptMachine {
     fn lang(&self) -> &str {
         &self.lang
+    }
+
+    fn identity(&self) -> Option<&str> {
+        self.spec.identity.as_deref()
     }
 
     fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer> {
@@ -461,6 +494,29 @@ pub struct ReplSpec {
     /// a race). `None` keeps the best-effort drain, for interpreters with
     /// no way to echo to stderr (`sqlite3`).
     pub echo_err_wrap: Option<Box<str>>,
+    /// Start the interpreter with an empty environment; see
+    /// [`MachineSpec::clear_env`].
+    pub clear_env: bool,
+    /// What this machine is, when the spec knows exactly; see
+    /// [`MachineSpec::identity`].
+    pub identity: Option<Box<str>>,
+}
+
+/// The interpreter a spec names, with the environment it asks for: the
+/// caller's plus `env`, or — with `clear_env` — `env` alone.
+fn interpreter(
+    program: &str,
+    args: &[Box<str>],
+    env: &[(Box<str>, Box<str>)],
+    clear_env: bool,
+) -> Command {
+    let mut command = Command::new(program);
+    command.args(args.iter().map(AsRef::<str>::as_ref));
+    if clear_env {
+        command.env_clear();
+    }
+    command.envs(env.iter().map(|(k, v)| (&**k, &**v)));
+    command
 }
 
 /// How long a [`ReplMachine`] waits for a feed's sentinel before declaring
@@ -498,9 +554,7 @@ impl ReplMachine {
     pub fn spawn(lang: &str, spec: ReplSpec) -> Result<ReplMachine> {
         use std::io::{BufRead as _, BufReader};
 
-        let mut child = Command::new(&*spec.program)
-            .args(spec.args.iter().map(AsRef::<str>::as_ref))
-            .envs(spec.env.iter().map(|(k, v)| (&**k, &**v)))
+        let mut child = interpreter(&spec.program, &spec.args, &spec.env, spec.clear_env)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -706,6 +760,10 @@ impl ReplMachine {
 impl Machine for ReplMachine {
     fn lang(&self) -> &str {
         &self.lang
+    }
+
+    fn identity(&self) -> Option<&str> {
+        self.spec.identity.as_deref()
     }
 
     fn feed(&mut self, kind: InnerKind, term: &QTerm) -> Result<Answer> {
@@ -955,6 +1013,8 @@ pub fn repl_spec(lang: &str) -> Option<ReplSpec> {
         env,
         type_wrap: type_wrap.map(Box::from),
         echo_err_wrap: echo_err_wrap.map(Box::from),
+        clear_env: false,
+        identity: None,
     })
 }
 
@@ -992,6 +1052,8 @@ pub fn script_spec(lang: &str) -> Option<MachineSpec> {
             suffix: ".lean".into(),
             env: Box::default(),
             type_wrap: Some("#check {}".into()),
+            clear_env: false,
+            identity: None,
         }),
         _ => None,
     }
@@ -1095,6 +1157,8 @@ mod tests {
                 suffix: ".sh".into(),
                 env: Box::default(),
                 type_wrap: None,
+                clear_env: false,
+                identity: None,
             },
         )
     }
@@ -1209,6 +1273,8 @@ mod tests {
                 env: Box::default(),
                 type_wrap: None,
                 echo_err_wrap: Some("echo {} >&2".into()),
+                clear_env: false,
+                identity: None,
             },
         )
         .unwrap()
@@ -1369,6 +1435,47 @@ mod tests {
                 .as_deref(),
             Some("'abab'")
         );
+    }
+
+    /// `clear_env` starts the interpreter with the spec's environment and
+    /// nothing of the caller's; without it the caller's is inherited.
+    #[test]
+    fn a_cleared_environment_holds_only_what_the_spec_sets() {
+        if std::env::var_os("HOME").is_none() {
+            return;
+        }
+        let spec = |clear_env| ReplSpec {
+            // By path: with no `PATH` there is nothing to look a name up in.
+            program: "/bin/sh".into(),
+            args: Box::default(),
+            print_wrap: "echo $(( {} ))".into(),
+            echo_wrap: "echo {}".into(),
+            env: Box::new([("ONLY".into(), "set".into())]),
+            type_wrap: None,
+            echo_err_wrap: Some("echo {} >&2".into()),
+            clear_env,
+            identity: None,
+        };
+        let says = |clear_env| {
+            let mut m = ReplMachine::spawn("sh", spec(clear_env)).unwrap();
+            let a = m
+                .feed_str(InnerKind::Stmt, "echo ${HOME:+home}:$ONLY")
+                .unwrap();
+            a.stdout.trim().to_string()
+        };
+        assert_eq!(says(false), "home:set");
+        assert_eq!(says(true), ":set");
+    }
+
+    /// A machine found on `PATH` doesn't claim to know which it is; one
+    /// whose spec says so does.
+    #[test]
+    fn identity_is_none_unless_the_spec_knows() {
+        assert_eq!(sh_repl().identity(), None);
+        assert_eq!(sh_machine().identity(), None);
+        let mut spec = sh_machine().spec.clone();
+        spec.identity = Some("0123-sh".into());
+        assert_eq!(ScriptMachine::new("sh", spec).identity(), Some("0123-sh"));
     }
 
     /// The typing judgment answers the type's spelling, and sees the fed
