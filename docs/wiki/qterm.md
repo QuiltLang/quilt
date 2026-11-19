@@ -106,7 +106,7 @@ The `Emit` trait allows any type that "emits" things into a builder:
 - `Arc<QTerm>` emits itself as a child.
 - `Vec<T: Emit>` emits each element.
 - `()` emits nothing.
-- `&str` emits a `Write`.
+- `&str` emits a `Write` — or, inside an `align(pad)` (an aligned splice in a column-sensitive language, see Lean in [Concrete languages](concrete-languages.md)), one `Write` per line with a `NewLine` between, so its later lines start at the hole's column.
 - `StrCmd` emits itself as a cmd.
 
 ### Example

@@ -459,7 +459,7 @@ fn a_mid_line_splice_is_aligned_to_its_column() -> Result<()> {
     let pad = " ".repeat("def x : S := ".len());
     assert!(
         out.contains(&format!(
-            "b_.push(\"{pad}\");\n    s.emit(&mut b_);\n    b_.pop();"
+            "b_.align(\"{pad}\");\n    s.emit(&mut b_);\n    b_.pop();"
         )),
         "the splice should be padded to its column; got:\n{out}"
     );

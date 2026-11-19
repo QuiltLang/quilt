@@ -20,7 +20,7 @@
 use crate::langs::chain::{Chain, Lit, RUST};
 use crate::meta::Prelude;
 use crate::prelude::*;
-use crate::term::CmdOrHole;
+use crate::term::{is_aligned_splice, CmdOrHole};
 use miette::{bail, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -86,13 +86,16 @@ pub fn build_variadic_block(tag: &str, cmds: &[CmdOrHole], children: &[Arc<QTerm
     b.child(&sym("{")).push("    ").nl();
     b.write(&format!("let mut b_ = tb({});", str_lit(tag))).nl();
     let mut it = children.iter();
-    for c in cmds {
+    for (k, c) in cmds.iter().enumerate() {
         match c {
             CmdOrHole::Cmd(StrCmd::Write(s)) => {
                 b.write(&format!("b_.write({});", str_lit(s)));
             }
             CmdOrHole::Cmd(StrCmd::NewLine) => {
                 b.write("b_.nl();");
+            }
+            CmdOrHole::Cmd(StrCmd::Push(s)) if is_aligned_splice(cmds, k) => {
+                b.write(&format!("b_.align({});", str_lit(s)));
             }
             CmdOrHole::Cmd(StrCmd::Push(s)) => {
                 b.write(&format!("b_.push({});", str_lit(s)));
