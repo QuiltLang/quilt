@@ -57,12 +57,19 @@ impl MetaLanguage for PythonMetaLanguage {
     // `↑` is target-directed and written prefix, `↑(value)`: into Python it
     // spells the `qlift` function (int, str, or QTerm — a method can't hang
     // off builtin ints); into HTML it spells `qlift_html`, which
-    // entity-escapes lifted strings at runtime. Both live in the
-    // `quilt_python` runtime.
+    // entity-escapes lifted strings at runtime; into TypeScript `qlift_ts`, and
+    // into text `qlift_text`. All live in the `quilt_python` runtime.
     fn lift_str(&self, target: &str) -> Result<&'static str> {
         match target {
             "python" | "py" => Ok("qlift"),
             "html" => Ok("qlift_html"),
+            "typescript" | "ts" => Ok("qlift_ts"),
+            // Into text: `qlift_text`, or `qlift_text_in_quotes` for a hole the
+            // author wrapped in `"…"` (`lift::text`). Both take an optional
+            // dialect, and both are plain module globals, so a module that
+            // rebinds them picks a dialect for every `↑` it contains.
+            "text" | "txt" => Ok("qlift_text"),
+            crate::lift::TEXT_IN_QUOTES => Ok("qlift_text_in_quotes"),
             _ => miette::bail!("python can't lift into {target:?}: no spelling registered"),
         }
     }

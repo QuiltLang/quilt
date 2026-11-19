@@ -1,0 +1,6 @@
+---
+source: quilt/tests/ui.rs
+expression: rendered
+input_file: quilt/tests/ui/nix_lift_into_quoted_text.nix.quilt
+---
+  × nix can't lift into "text": only homogeneous `toString`

@@ -85,6 +85,11 @@ term.qlift()        # lift to builder code (like Rust's QLift trait)
 name("ident")       # identifier node (⟨N⟩ operator)
 qlift(value)        # lift int/str/QTerm to a Python term (↑ into a py quote)
 qlift_html(value)   # lift int/str/QTerm to HTML text, entity-escaped (↑ into an html quote)
+qlift_ts(value)     # lift bool/int/float/str/list to a TypeScript literal (↑ into a ts quote)
+qlift_text(value, dialect=None)            # ↑ into a txt quote: JSON spelling by default
+qlift_text_in_quotes(value, dialect=None)  # …between two `"` the author wrote
+TextDialect, Json, Raw                     # dialects; subclass TextDialect for your own
+json_string(s), json_escape(s), json_float(f)  # the default dialect's rules, to build on
 ```
 
 ### Serialization

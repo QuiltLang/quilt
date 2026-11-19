@@ -9,7 +9,7 @@
     "",
     "A term is a tagged object:",
     "  {\"leaf\": {\"tag\": t, \"text\": s}}   {\"sym\": s}   {\"name\": s}",
-    "  {\"qlift\": v}                        {\"qlift_html\": v}",
+    "  {\"qlift\": v}   {\"qlift_html\": v}   {\"qlift_text\": v}   {\"qlift_text_in_quotes\": v}",
     "  {\"tb\": {\"tag\": t, \"steps\": [...]}}",
     "  {\"quote\"|\"unquote\": {tag, index, lang, term, cmds}}",
     "A step is {\"w\": s} | {\"c\": term} | {\"e\": term} | {\"p\": s} | \"n\" | \"x\".",
@@ -492,11 +492,6 @@
     },
     {
       "name": "qlift_html_int",
-      "runtimes": [
-        "python",
-        "wasm"
-      ],
-      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149",
       "term": {
         "qlift_html": 42
       },
@@ -504,11 +499,6 @@
     },
     {
       "name": "qlift_html_escapes_markup",
-      "runtimes": [
-        "python",
-        "wasm"
-      ],
-      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149",
       "term": {
         "qlift_html": "a \"<b>\" & c"
       },
@@ -516,11 +506,6 @@
     },
     {
       "name": "qlift_html_escapes_both_attribute_quotings",
-      "runtimes": [
-        "python",
-        "wasm"
-      ],
-      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149. The apostrophe was the one entry in the escape table with no coverage in either binding (issue #192): a hole inside `title='…'` breaks out of the attribute exactly the way `\"` does inside a double-quoted one",
       "term": {
         "qlift_html": "\" onclick='x'"
       },
@@ -532,7 +517,7 @@
         "python",
         "wasm"
       ],
-      "why": "no LiftTo<Html> marker exists on the Rust side — issue #149",
+      "why": "A pass-through on terms is the bindings' `qlift_html` API, not a lift: a Rust host splices an already-built HTML fragment with `↙t↘`, and `LiftTo<Html>` (issue #149) is implemented for values only.",
       "term": {
         "qlift_html": {
           "leaf": {
@@ -542,6 +527,128 @@
         }
       },
       "coparse": "x"
+    },
+    {
+      "name": "qlift_text_string_is_a_json_literal",
+      "term": {
+        "qlift_text": "say \"hi\"\\\n"
+      },
+      "coparse": "\"say \\\"hi\\\"\\\\\\n\""
+    },
+    {
+      "name": "qlift_text_escapes_control_characters",
+      "term": {
+        "qlift_text": "\u0001\t"
+      },
+      "coparse": "\"\\u0001\\u007f\\u0085\\t\""
+    },
+    {
+      "name": "qlift_text_leaves_other_formats_metacharacters",
+      "term": {
+        "qlift_text": "${a} {b} 'c' #d é"
+      },
+      "coparse": "\"${a} {b} 'c' #d é\""
+    },
+    {
+      "name": "qlift_text_int",
+      "term": {
+        "qlift_text": -42
+      },
+      "coparse": "-42"
+    },
+    {
+      "name": "qlift_text_float",
+      "term": {
+        "qlift_text": 1.5
+      },
+      "coparse": "1.5"
+    },
+    {
+      "name": "qlift_text_float_integral_keeps_its_point",
+      "runtimes": [
+        "rust",
+        "python"
+      ],
+      "why": "As for `qlift`: 1.0 is a float in Rust and Python and stays one. A JS number has no such distinction, so the wasm runtime spells it `1` (the next case)",
+      "term": {
+        "qlift_text": 1.0
+      },
+      "coparse": "1.0"
+    },
+    {
+      "name": "qlift_text_float_integral_in_ts",
+      "runtimes": [
+        "wasm"
+      ],
+      "why": "Every JS number is a double, so `1` and `1.0` are the same value; it lifts as `1`, exactly as `qlift` does",
+      "term": {
+        "qlift_text": 1.0
+      },
+      "coparse": "1"
+    },
+    {
+      "name": "qlift_text_bool",
+      "term": {
+        "qlift_text": true
+      },
+      "coparse": "true"
+    },
+    {
+      "name": "qlift_text_list",
+      "term": {
+        "qlift_text": [
+          "a",
+          1,
+          false,
+          [
+            "b"
+          ]
+        ]
+      },
+      "coparse": "[\"a\", 1, false, [\"b\"]]"
+    },
+    {
+      "name": "qlift_text_empty_list",
+      "term": {
+        "qlift_text": []
+      },
+      "coparse": "[]"
+    },
+    {
+      "name": "qlift_text_term_is_its_text",
+      "term": {
+        "qlift_text": {
+          "leaf": {
+            "tag": "identifier",
+            "text": "x"
+          }
+        }
+      },
+      "coparse": "x"
+    },
+    {
+      "name": "qlift_text_in_quotes_is_the_escaped_contents",
+      "term": {
+        "qlift_text_in_quotes": "a\"b\\c\n"
+      },
+      "coparse": "a\\\"b\\\\c\\n"
+    },
+    {
+      "name": "qlift_text_in_quotes_number",
+      "term": {
+        "qlift_text_in_quotes": 7
+      },
+      "coparse": "7"
+    },
+    {
+      "name": "qlift_text_in_quotes_list_is_joined",
+      "term": {
+        "qlift_text_in_quotes": [
+          "x",
+          "y\""
+        ]
+      },
+      "coparse": "x, y\\\""
     },
     {
       "name": "deep_nesting",

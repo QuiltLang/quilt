@@ -314,6 +314,92 @@ fn qlift_html(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
 }
 
 /**************************************************************/
+// Lifts into the other targets a Python host can quote (issue #149).
+
+/// Lift a Python value into a TypeScript quote (the `↑` operator with a `ts`
+/// splice target): `bool`, `int`, `float` and `str` to their literals, and a
+/// `list`/`tuple` to an array of lifted elements.
+///
+/// Every shape is the core's — `ts_number_term`, `ts_string_term`,
+/// `ts_bool_term`, `ts_list_term`, generated from the TypeScript grammar — so
+/// a value lifted here is the term a Rust host's `LiftTo<TypeScript>` builds,
+/// and the term the TypeScript parser builds for the same text.
+#[pyfunction]
+fn qlift_ts(value: &Bound<'_, PyAny>) -> PyResult<PyQTerm> {
+    lift_ts(value).map(PyQTerm)
+}
+
+fn lift_ts(value: &Bound<'_, PyAny>) -> PyResult<Arc<QTerm>> {
+    use quilt::lift::{ts_bool_term, ts_list_term, ts_number_term, ts_string_term};
+    // Bool before int, as in `qlift`: `True` is an `int` too.
+    if let Ok(b) = value.extract::<bool>() {
+        return Ok(ts_bool_term(b));
+    }
+    if let Ok(n) = value.extract::<i64>() {
+        return Ok(ts_number_term(n < 0, &n.unsigned_abs().to_string()));
+    }
+    if let Ok(f) = value.extract::<f64>() {
+        let s = format!("{f:?}");
+        return Ok(match s.strip_prefix('-') {
+            Some(mag) => ts_number_term(true, mag),
+            None => ts_number_term(false, &s),
+        });
+    }
+    if let Ok(s) = value.extract::<String>() {
+        return Ok(ts_string_term(&s));
+    }
+    if value.is_instance_of::<pyo3::types::PyList>()
+        || value.is_instance_of::<pyo3::types::PyTuple>()
+    {
+        let items = value
+            .try_iter()?
+            .map(|x| lift_ts(&x?))
+            .collect::<PyResult<Vec<_>>>()?;
+        return Ok(ts_list_term(&items));
+    }
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "qlift_ts: unsupported type (expected bool, int, float, str, list or tuple)",
+    ))
+}
+
+/// Escape `s` for the inside of a JSON string literal — the default text
+/// dialect's rule, and the core's `json_escape`, so the three runtimes share
+/// one table. Public so a user's text dialect can build on it.
+#[pyfunction]
+fn json_escape(s: &str) -> String {
+    quilt::lift::json_escape(s)
+}
+
+/// `s` as a JSON string literal, quotes included (the core's `json_string`).
+#[pyfunction]
+fn json_string(s: &str) -> String {
+    quilt::lift::json_string(s)
+}
+
+/// A float as a JSON number (the core's `json_float`): shortest round trip,
+/// decimal point kept. NaN and the infinities raise `ValueError`, since JSON
+/// has no spelling for them.
+#[pyfunction]
+fn json_float(f: f64) -> PyResult<String> {
+    if f.is_finite() {
+        Ok(quilt::lift::json_float(f))
+    } else {
+        Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "cannot lift {f:?} into text: JSON has no spelling for NaN or infinity \
+             (override `float` in a dialect that has one)"
+        )))
+    }
+}
+
+/// The shortest round-trip spelling of a float, as every runtime prints it
+/// (`1.0`, `1e20`, `NaN`) — what the `Raw` text dialect writes. Plumbing for
+/// `quilt/__init__.py`, not API: Python's own `repr` spells `1e20` as `1e+20`.
+#[pyfunction(name = "_float_repr")]
+fn float_repr(f: f64) -> String {
+    format!("{f:?}")
+}
+
+/**************************************************************/
 
 /// A stateful machine speaking one language (docs/design/machines.md, issue
 /// #271) — the value `db.↓(term)` expands onto, since `↓` in method position
@@ -446,6 +532,11 @@ fn _quilt(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(name, m)?)?;
     m.add_function(wrap_pyfunction!(qlift, m)?)?;
     m.add_function(wrap_pyfunction!(qlift_html, m)?)?;
+    m.add_function(wrap_pyfunction!(qlift_ts, m)?)?;
+    m.add_function(wrap_pyfunction!(json_escape, m)?)?;
+    m.add_function(wrap_pyfunction!(json_float, m)?)?;
+    m.add_function(wrap_pyfunction!(json_string, m)?)?;
+    m.add_function(wrap_pyfunction!(float_repr, m)?)?;
     m.add_function(wrap_pyfunction!(from_postcard_bytes, m)?)?;
     m.add_class::<PyMachine>()?;
     m.add_function(wrap_pyfunction!(spawn, m)?)?;

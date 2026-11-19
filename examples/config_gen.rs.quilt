@@ -1,0 +1,169 @@
+#!/usr/bin/env quilt
+//! Generate config files Quilt has no grammar for -- a YAML fragment, a
+//! Caddyfile and a small in-house DSL -- from Rust values.
+//!
+//! All three are plain-text quotes (`txt`). Text does not parse, so nothing
+//! about the target says how a value should be spelled; a lift into text uses a
+//! *dialect* instead (issue #149). The default spells every value the way JSON
+//! does, which is also valid YAML, so the YAML below needs nothing more. The
+//! other two declare their dialect once, as a module-level `type Text`, which
+//! shadows the prelude's and so applies to every lift in the module. Each
+//! dialect overrides only the rules that differ from JSON's.
+//!
+//! There is no hand-written escaping at any splice site: every value crosses
+//! into the config through the lift operator, and `main` feeds them values
+//! chosen to break a config built with format!.
+//!
+//! A lift whose hole sits between two double quotes the author wrote -- the
+//! `greeting` line below -- is spelled for that position: a string becomes its
+//! escaped contents rather than a second pair of quotes.
+
+use quilt::prelude::*;
+
+/// One service to configure.
+pub struct Service {
+    pub name: &'static str,
+    pub host: &'static str,
+    pub port: u16,
+    pub public: bool,
+    pub upstreams: Vec<&'static str>,
+    pub greeting: &'static str,
+}
+
+/// YAML, in the default dialect: strings are JSON string literals (a valid
+/// YAML double-quoted scalar, escapes and all), lists are JSON arrays (a valid
+/// YAML flow sequence), and a newline in a value is `\n`, so it cannot start a
+/// new key.
+pub fn yaml(s: &Service) -> Arc<QTerm> {
+    txt↖
+        - name: ↙s.name.↑↘
+          port: ↙s.port.↑↘
+          public: ↙s.public.↑↘
+          upstreams: ↙s.upstreams.↑↘
+          greeting: "↙s.greeting.↑↘"
+    ↗
+}
+
+/// A Caddyfile. Caddy reads a token bare when it can, and inside `"..."` it
+/// knows exactly one escape, a backslash before a quote -- any other backslash
+/// stays, so a value with one goes in a backtick token, which has no escapes
+/// at all. Lists are words separated by spaces.
+pub mod caddy {
+    use quilt::lift::{json_string, TextDialect};
+    use quilt::prelude::*;
+
+    pub struct Caddy;
+
+    impl TextDialect for Caddy {
+        const LIST_OPEN: &'static str = "";
+        const LIST_SEP: &'static str = " ";
+        const LIST_CLOSE: &'static str = "";
+
+        fn string(s: &str) -> String {
+            let bare = !s.is_empty()
+                && !s.starts_with('#')
+                && !s.chars().any(|c| c.is_whitespace() || "\"`{}\\".contains(c));
+            if bare {
+                s.to_string()
+            } else if !s.contains('\\') {
+                format!("\"{}\"", Self::in_quotes(s))
+            } else if !s.contains('`') {
+                format!("`{s}`")
+            } else {
+                panic!("no Caddyfile token can hold both a backslash and a backtick: {s:?}")
+            }
+        }
+
+        fn in_quotes(s: &str) -> String {
+            assert!(
+                !s.contains('\\'),
+                "a backslash inside a quoted Caddyfile token can escape the closing quote: {s:?}"
+            );
+            s.replace('"', "\\\"")
+        }
+    }
+
+    // The dialect for every lift in this module.
+    type Text = quilt::lift::Text<Caddy>;
+
+    pub fn site(s: &super::Service) -> Arc<QTerm> {
+        // json_string: a header value Caddy passes through verbatim, which the
+        // receiving end parses as JSON.
+        let meta = format!("{{\"service\": {}}}", json_string(s.name));
+        txt↖
+            ↙s.host.↑↘ {
+                reverse_proxy ↙s.upstreams.↑↘
+                header X-Service ↙meta.↑↘
+                respond /hello "↙s.greeting.↑↘"
+            }
+        ↗
+    }
+}
+
+/// A line-oriented DSL with SQL-style strings: single-quoted, a quote written
+/// twice, nothing else special. Lists are comma-separated, booleans `yes`/`no`.
+pub mod rules {
+    use quilt::lift::TextDialect;
+    use quilt::prelude::*;
+
+    pub struct Rules;
+
+    impl TextDialect for Rules {
+        const LIST_OPEN: &'static str = "";
+        const LIST_CLOSE: &'static str = "";
+
+        fn string(s: &str) -> String {
+            assert!(!s.contains('\n'), "a rules value cannot span lines: {s:?}");
+            format!("'{}'", s.replace('\'', "''"))
+        }
+
+        fn boolean(b: bool) -> String {
+            (if b { "yes" } else { "no" }).to_string()
+        }
+    }
+
+    type Text = quilt::lift::Text<Rules>;
+
+    pub fn rule(s: &super::Service) -> Arc<QTerm> {
+        txt↖service ↙s.name.↑↘ port ↙s.port.↑↘ public ↙s.public.↑↘ via ↙s.upstreams.↑↘↗
+    }
+}
+
+/// The services, the second chosen to break a config assembled with format!:
+/// quotes of both kinds, spaces, a newline and a `#` in its values.
+pub fn services() -> Vec<Service> {
+    vec![
+        Service {
+            name: "web",
+            host: "example.com",
+            port: 8080,
+            public: true,
+            upstreams: vec!["10.0.0.1:80", "10.0.0.2:80"],
+            greeting: "hello",
+        },
+        Service {
+            name: "O'Brien's \"admin\"",
+            host: "admin.example.com",
+            port: 9000,
+            public: false,
+            upstreams: vec!["unix//run/admin.sock", "localhost:9001"],
+            greeting: "say \"hi\"\n# not a comment",
+        },
+    ]
+}
+
+fn main() {
+    let all = services();
+    println!("# services.yaml");
+    for s in &all {
+        println!("{}", yaml(s).coparse());
+    }
+    println!("\n# Caddyfile");
+    for s in &all {
+        println!("{}", caddy::site(s).coparse());
+    }
+    println!("\n# services.rules");
+    for s in &all {
+        println!("{}", rules::rule(s).coparse());
+    }
+}

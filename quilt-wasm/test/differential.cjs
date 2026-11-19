@@ -19,7 +19,7 @@ const { join } = require("node:path");
 
 const q = require("../pkg/quilt_wasm.js");
 const raw = require("../pkg/quilt_wasm_raw.js");
-const { tb, leaf, sym, name, quote, unquote, cmd, write, push, NL, POP, HOLE, qlift, qlift_html } = q;
+const { tb, leaf, sym, name, quote, unquote, cmd, write, push, NL, POP, HOLE, qlift, qlift_html, qlift_text, qlift_text_in_quotes } = q;
 
 let checked = 0;
 function same(t, label) {
@@ -41,7 +41,8 @@ function buildCmds(cmds) {
   });
 }
 
-const value = (v) => (v !== null && typeof v === "object" ? build(v) : v);
+const value = (v) =>
+  Array.isArray(v) ? v.map(value) : v !== null && typeof v === "object" ? build(v) : v;
 
 function build(t) {
   if ("leaf" in t) return leaf(t.leaf.tag, t.leaf.text);
@@ -49,6 +50,8 @@ function build(t) {
   if ("name" in t) return name(t.name);
   if ("qlift" in t) return qlift(value(t.qlift));
   if ("qlift_html" in t) return qlift_html(value(t.qlift_html));
+  if ("qlift_text" in t) return qlift_text(value(t.qlift_text));
+  if ("qlift_text_in_quotes" in t) return qlift_text_in_quotes(value(t.qlift_text_in_quotes));
   if ("tb" in t) {
     const b = tb(t.tb.tag);
     for (const step of t.tb.steps) {

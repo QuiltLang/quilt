@@ -20,14 +20,14 @@ A cell marked with a trailing `*` is **declaration-only**: it is recorded in the
 | Language | Quotable | Holes | Variadic | Kinds | Lift in | Highlights |
 |---|---|---|---|---|---|---|
 | **Bash** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
-| **HTML** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
+| **HTML** | ✅ | ✅ | ✅ | ⬜ | ✅ | ✅ |
 | **Lean 4** | ✅ | [🟡](https://github.com/QuiltLang/quilt/issues/133) | ✅ | ✅ | ✅ | ✅ |
 | **Nix** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Python** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Rust** | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | **SQL** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Plain text** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
-| **TypeScript** | ✅ | ✅ | ✅ | ✅ | [🔵](https://github.com/QuiltLang/quilt/issues/149) | ⬜ |
+| **Plain text** | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ |
+| **TypeScript** | ✅ | ✅ | ✅ | ✅ | ✅ | ⬜ |
 | **WGSL** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | [⬜](https://github.com/QuiltLang/quilt/issues/22) |
 | **Zsh** | ✅ | ✅ | ✅ | ⬜ | [🟡](https://github.com/QuiltLang/quilt/issues/149) | ✅ |
 

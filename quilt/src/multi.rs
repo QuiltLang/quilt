@@ -132,6 +132,20 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     pub fn lift_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.lift_str(lang, target)
     }
+    /// [`Self::lift_str`] for a `↑` in source. A host that cannot lift into
+    /// text at all is told so about `text`, the language the author quoted,
+    /// rather than about [`TEXT_IN_QUOTES`](crate::lift::TEXT_IN_QUOTES), a
+    /// position inside it they never named.
+    #[cfg(feature = "parse")]
+    fn lift_spelling(&self, lang: &str, target: &str) -> Result<&'static str> {
+        match self.lift_str(lang, target) {
+            Err(e) if target == crate::lift::TEXT_IN_QUOTES => {
+                self.lift_str(lang, "text")?;
+                Err(e)
+            }
+            r => r,
+        }
+    }
     pub fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.reduce_str(lang, target)
     }
@@ -445,7 +459,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     code.push(FlatNode::Hole);
                 }
                 Node::Lift => code.push(FlatNode::Str(
-                    self.lift_str(lang, splice_target.unwrap_or(lang))?,
+                    self.lift_spelling(lang, splice_target.unwrap_or(lang))?,
                 )),
                 // `↓` flush against an argument list — `db.↓(schema)` — is
                 // *method position*: it spells the host's machine-eval method
@@ -510,7 +524,8 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
 
         // parse children using hole types
         let mut plugs = Vec::new();
-        for n in nodes {
+        let nodes_here = nodes;
+        for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 // Deferred operators (see the code-building pass): consume the
                 // hole and plug the glyph back in, so the term coparses to a real
@@ -605,8 +620,10 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     builder.span(span.clone());
                     // The body's value is spliced into *this* fragment's
                     // language: it directs any `↑` in the body (e.g. a lift
-                    // inside `wgsl↖…↗` lifts into WGSL).
-                    let splice_target = lang;
+                    // inside `wgsl↖…↗` lifts into WGSL). Text has no grammar
+                    // to say where the hole is, so its position comes from
+                    // the characters around it (`text_splice_target`).
+                    let splice_target = text_splice_target(lang, nodes_here, i).unwrap_or(lang);
                     let zipper = zipper.clone().tail().unwrap();
                     // an unquote with no enclosing quote pops the host off the
                     // zipper; catch it here (with a span) instead of panicking
@@ -663,6 +680,31 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         }
         .expand(&Default::default(), qterm)
     }
+}
+
+/// Where a hole in a *text* quote sits, as a splice target: between two `"`
+/// the author wrote, it is [`TEXT_IN_QUOTES`](crate::lift::TEXT_IN_QUOTES), so
+/// `↑` renders a string's escaped contents rather than a second pair of quotes
+/// (issue #149). Anything else, and any other language, is `None`: a grammar
+/// already knows what a hole inside its string literal is.
+///
+/// "The author wrote" means unescaped: `\"↙x↘\"` is a quote character in the
+/// text, not the opening of a quoted context.
+#[cfg(feature = "parse")]
+fn text_splice_target(lang: &str, nodes: &[Arc<Node>], i: usize) -> Option<&'static str> {
+    if !matches!(lang, "text" | "txt") {
+        return None;
+    }
+    let Some(Node::Content(before)) = nodes.get(i.checked_sub(1)?).map(|n| &**n) else {
+        return None;
+    };
+    let Some(Node::Content(after)) = nodes.get(i + 1).map(|n| &**n) else {
+        return None;
+    };
+    let opens = before
+        .strip_suffix('"')
+        .is_some_and(|rest| !rest.ends_with('\\'));
+    (opens && after.starts_with('"')).then_some(crate::lift::TEXT_IN_QUOTES)
 }
 
 /// The language a `⟨M⟩` names. An annotation says it outright; the bare form

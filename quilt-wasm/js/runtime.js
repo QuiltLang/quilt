@@ -367,6 +367,73 @@ function qlift_html(value) {
   throw new Error("qlift_html: unsupported type (expected number, string, boolean, or QTerm)");
 }
 
+/**
+ * Lift a JS value into a text quote (the `↑` operator with a `text` splice
+ * target), in the rules of `quilt::lift::text`: by default JSON's spelling —
+ * a string as a `"…"` literal, a number as its digits, a boolean as
+ * `true`/`false`, an array as `[a, b]`, and a term as the text it stands for.
+ *
+ * `dialect` overrides any of `string(s)`, `in_quotes(s)`, `boolean(b)`,
+ * `float(f)` (functions returning a string) and `list_open`, `list_sep`,
+ * `list_close` (strings), the names the Python runtime's `TextDialect` has;
+ * what it leaves out stays JSON's. A number with no fractional part is an
+ * integer here, as in `qlift`: JS has one number type, so `1.0` is `1`.
+ */
+function qlift_text(value, dialect) {
+  return leaf("text", renderText(value, dialect ?? null, false));
+}
+
+/**
+ * `qlift_text` for a hole between two `"` the author wrote: a string renders
+ * as its escaped contents, with no quotes of its own, and an array as its
+ * elements joined by the separator.
+ */
+function qlift_text_in_quotes(value, dialect) {
+  return leaf("text", renderText(value, dialect ?? null, true));
+}
+
+function dialectRule(dialect, rule, arg) {
+  const f = dialect?.[rule];
+  if (typeof f !== "function") return null;
+  const out = f.call(dialect, arg);
+  if (typeof out !== "string") throw new TypeError(`qlift_text: dialect.${rule} must return a string`);
+  return out;
+}
+
+function dialectStr(dialect, key, fallback) {
+  const v = dialect?.[key];
+  return typeof v === "string" ? v : fallback;
+}
+
+function renderText(value, dialect, inQuotes) {
+  if (value instanceof WasmQTerm) return coparse(value);
+  if (typeof value === "boolean") return dialectRule(dialect, "boolean", value) ?? String(value);
+  if (typeof value === "number") {
+    if (Number.isInteger(value) && Math.abs(value) < 9007199254740992) return String(value);
+    const custom = dialectRule(dialect, "float", value);
+    if (custom !== null) return custom;
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `cannot lift ${value} into text: JSON has no spelling for NaN or infinity ` +
+          "(give the dialect a `float` rule that has one)",
+      );
+    }
+    return fmtNumber(value);
+  }
+  if (typeof value === "string") {
+    const custom = dialectRule(dialect, inQuotes ? "in_quotes" : "string", value);
+    if (custom !== null) return custom;
+    // `quilt::lift::json_escape` is `ts_dquote_escape`'s table.
+    const lit = tsStringLit(value);
+    return inQuotes ? lit.slice(1, -1) : lit;
+  }
+  if (Array.isArray(value)) {
+    const body = value.map((x) => renderText(x, dialect, inQuotes)).join(dialectStr(dialect, "list_sep", ", "));
+    return inQuotes ? body : dialectStr(dialect, "list_open", "[") + body + dialectStr(dialect, "list_close", "]");
+  }
+  throw new Error("qlift_text: unsupported type (expected number, string, boolean, array, or QTerm)");
+}
+
 // `quilt::lift::escape_html`.
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
 const HTML_SPECIAL = /[&<>"']/;
@@ -517,6 +584,8 @@ export {
   push,
   qlift,
   qlift_html,
+  qlift_text,
+  qlift_text_in_quotes,
   quote,
   sym,
   tb,

@@ -231,6 +231,14 @@ pub fn lift_spelling(target: &str) -> Result<&'static str> {
         // Same grammar, different escaping: MySQL reads a backslash inside
         // `'…'` as an escape and the standard does not (#233).
         "mysql" | "mariadb" => Ok("qlift_to::<MySql>()"),
+        "typescript" | "ts" => Ok("qlift_to::<TypeScript>()"),
+        "html" => Ok("qlift_to::<Html>()"),
+        // `Text` is named unqualified on purpose: the prelude's is
+        // `Text<Json>`, and a module that declares its own `type Text = …`
+        // shadows it, which is how a host picks a dialect for every `↑` in
+        // its text quotes (`lift::text`).
+        "text" | "txt" => Ok("qlift_to::<Text>()"),
+        crate::lift::TEXT_IN_QUOTES => Ok("qlift_to::<InQuotes<Text>>()"),
         _ => bail!("rust can't lift into {target:?}: no spelling/LiftTo impls registered"),
     }
 }

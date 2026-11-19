@@ -404,6 +404,31 @@ fn main() -> Result<()> {
         &↖&format!("'{}'", mysql_squote_escape(s))↗,
     );
 
+    ⟨//⟩ TypeScript. One `number` for integers and floats alike, and — like
+    ⟨//⟩ Lean — unsigned, so a negative is the `unary_expression` `-` over its
+    ⟨//⟩ magnitude: a second sample, not a special case.
+    let ts_num_sample = descend(&ts↖3↗, "number");
+    let ts_num = shape_with(&ts_num_sample, &text_of(&ts_num_sample), &text);
+    let ts_num_neg_sample = descend(&ts↖-3↗, "unary_expression");
+    let ts_num_neg = shape_with(
+        &ts_num_neg_sample,
+        &text_of(&descend(&ts_num_neg_sample, "number")),
+        &text,
+    );
+    let ts_true = descend(&ts↖true↗, "true").↑;
+    let ts_false = descend(&ts↖false↗, "false").↑;
+    let ts_str_empty = descend(&ts↖""↗, "string").↑;
+    let ts_str = shape_with(
+        &descend(&ts↖"s"↗, "string"),
+        "s",
+        &↖&ts_dquote_escape(s)↗,
+    );
+
+    ⟨//⟩ HTML. Text content is a `text` node whatever the value was; the escape
+    ⟨//⟩ makes it inert both there and inside a quoted attribute value.
+    let html_text_sample = descend(&html↖x↗, "text");
+    let html_text = shape_with(&html_text_sample, &text_of(&html_text_sample), &text);
+
     ⟨//⟩ Containers: an empty one, a two-element one, and the two elements.
     let py_list = (
         descend(&py↖[]↗, "list"),
@@ -423,6 +448,12 @@ fn main() -> Result<()> {
         descend(&lean↖1↗, "num_lit"),
         descend(&lean↖4↗, "num_lit"),
     );
+    let ts_list = (
+        descend(&ts↖[]↗, "array"),
+        descend(&ts↖[1, 4]↗, "array"),
+        descend(&ts↖1↗, "number"),
+        descend(&ts↖4↗, "number"),
+    );
     let sql_list = (
         descend(&sql↖()↗, "list"),
         descend(&sql↖(1, 4)↗, "list"),
@@ -434,9 +465,9 @@ fn main() -> Result<()> {
 
     let out: ⟨T⟩ = ↖
         use super::{
-            lean_dquote_escape, mysql_squote_escape, nix_dquote_escape, py_dquote_escape,
-            sh_dquote_escape, sql_squote_escape, Bash, Lean, LiftTo, MySql, Nix, Python, Sql,
-            Wgsl, Zsh,
+            escape_html, lean_dquote_escape, mysql_squote_escape, nix_dquote_escape,
+            py_dquote_escape, sh_dquote_escape, sql_squote_escape, ts_dquote_escape, Bash, Html,
+            Lean, LiftTo, MySql, Nix, Python, Sql, TypeScript, Wgsl, Zsh,
         };
         use crate::qterm::{leaf, sym, tb, QTerm};
         use std::sync::Arc;
@@ -883,6 +914,104 @@ fn main() -> Result<()> {
                 "MySql",
                 &↖sql_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
             ).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- TypeScript ----------------
+            ↖
+                /// TypeScript `3`, `1.5`, `-3`. One `number` node for integers
+                /// and floats; unsigned, so the sign is a `unary_expression`
+                /// rather than a character.
+                ///
+                /// Public because `quilt-python`'s `qlift_ts` builds the same
+                /// literal, and a shape written twice is how #176 started.
+                pub fn ts_number_term(negative: bool, text: &str) -> ⟨T⟩ {
+                    if negative {
+                        ↙ts_num_neg↘
+                    } else {
+                        ↙ts_num↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "TypeScript",
+                &["u8", "u16", "u32", "u64", "u128", "usize"],
+                &↖ts_number_term(false, &self.to_string())↗,
+            ).←;
+            scalar_impls(
+                "TypeScript",
+                &["i8", "i16", "i32", "i64", "i128", "isize"],
+                &↖ts_number_term(*self < 0, &self.unsigned_abs().to_string())↗,
+            ).←;
+            ⟨//⟩ `{:?}` keeps the decimal point (`1.0`); the sign is read off the
+            ⟨//⟩ text, as for Lean, so `-0.0` is the negation the parser builds.
+            scalar_impls(
+                "TypeScript",
+                &["f32", "f64"],
+                &↖
+                    {
+                        let s = format!("{self:?}");
+                        match s.strip_prefix('-') {
+                            Some(mag) => ts_number_term(true, mag),
+                            None => ts_number_term(false, &s),
+                        }
+                    }
+                ↗,
+            ).←;
+            NL.←;
+            ↖
+                /// TypeScript `true` / `false` — node kinds of their own.
+                pub fn ts_bool_term(b: bool) -> ⟨T⟩ {
+                    if b {
+                        ↙ts_true↘
+                    } else {
+                        ↙ts_false↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls("TypeScript", &["bool"], &↖ts_bool_term(*self)↗).←;
+            NL.←;
+            ↖
+                /// TypeScript `"s"`. Like Python's, the empty string has no
+                /// `string_fragment` child, because there is no content.
+                pub fn ts_string_term(s: &str) -> ⟨T⟩ {
+                    if s.is_empty() {
+                        ↙ts_str_empty↘
+                    } else {
+                        ↙ts_str↘
+                    }
+                }
+            ↗.←;
+            NL.←;
+            string_impls("TypeScript", &↖ts_string_term(self)↗).←;
+            NL.←;
+            container_fn("ts_list_term", &ts_list).←;
+            NL.←;
+            list_impls(
+                "TypeScript",
+                &↖ts_list_term(&self.iter().map(|x| x.lift_to()).collect::<Vec<_>>())↗,
+            ).←;
+            NL.←;
+
+            ⟨//⟩ ---------------- HTML ----------------
+            ↖
+                /// HTML text content. Every value is a `text` node; a string's
+                /// is entity-escaped by `escape_html` first, the rule the
+                /// runtimes' `qlift_html` share. No list impl: HTML has no
+                /// literal syntax for a sequence to borrow.
+                pub fn html_text_term(text: &str) -> ⟨T⟩ {
+                    ↙html_text↘
+                }
+            ↗.←;
+            NL.←;
+            scalar_impls(
+                "Html",
+                &["u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize", "bool"],
+                &↖html_text_term(&self.to_string())↗,
+            ).←;
+            scalar_impls("Html", &["f32", "f64"], &↖html_text_term(&format!("{self:?}"))↗).←;
+            string_impls("Html", &↖html_text_term(&escape_html(self))↗).←;
             NL.←;
 
             ⟨//⟩ A loop, not `list_impls(…).←;`, because the expander terminates

@@ -1,4 +1,5 @@
 from ._quilt import *
+from ._quilt import _float_repr
 import ast
 import os
 import shutil
@@ -9,6 +10,118 @@ import tempfile
 # still holds Quilt source (a generated fragment that itself quotes), not plain
 # target code, so it must be expanded before it can run.
 _GLYPHS = "↖↗↙↘↑↓←⟨⟩"
+
+# ---------------------------------------------------------------------------
+# Lifting into plain text (`txt↖…↗`), issue #149. The same rules as the Rust
+# core's `quilt::lift::text`: see docs/wiki/concepts.md, "Lifting into text".
+
+
+class TextDialect:
+    """The lift rules of one text dialect. The defaults are JSON's.
+
+    Text has no grammar, so what a lifted value looks like is the dialect's
+    call. Subclass and override only what differs::
+
+        class Conf(TextDialect):
+            list_open, list_sep, list_close = "", "\\n", ""
+            def boolean(self, b):
+                return "on" if b else "off"
+
+    then pass it at the site, ``↙qlift_text(x, Conf)↘``, or pick it for every
+    ``↑`` in a module by rebinding the two names ``↑`` spells::
+
+        qlift_text = Conf().lift
+        qlift_text_in_quotes = Conf().lift_in_quotes
+
+    A rule with no safe rendering for a value should raise; the lift site is
+    where the author can see it.
+    """
+
+    list_open = "["
+    list_sep = ", "
+    list_close = "]"
+
+    def string(self, s):
+        """A string standing on its own: a complete token, quotes included."""
+        return json_string(s)
+
+    def in_quotes(self, s):
+        """A string inside a ``"…"`` the author wrote: its escaped contents."""
+        return json_escape(s)
+
+    def boolean(self, b):
+        return "true" if b else "false"
+
+    def float(self, f):
+        return json_float(f)
+
+    def render(self, value, in_quotes=False):
+        """The text of one value. ``bool`` before ``int``, since ``True`` is one."""
+        if isinstance(value, bool):
+            return self.boolean(value)
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return self.float(value)
+        if isinstance(value, str):
+            return self.in_quotes(value) if in_quotes else self.string(value)
+        if isinstance(value, (list, tuple)):
+            body = self.list_sep.join(self.render(x, in_quotes) for x in value)
+            return body if in_quotes else self.list_open + body + self.list_close
+        if isinstance(value, QTerm):
+            return value.coparse()
+        raise TypeError(
+            "qlift_text: unsupported type (expected bool, int, float, str, list, "
+            f"tuple or QTerm), got {type(value).__name__}"
+        )
+
+    def lift(self, value):
+        """``↑`` into a text quote, in this dialect."""
+        return leaf("text", self.render(value))
+
+    def lift_in_quotes(self, value):
+        """``↑`` into a text hole the author wrapped in ``"…"``."""
+        return leaf("text", self.render(value, True))
+
+
+class Json(TextDialect):
+    """The default dialect: JSON's literal syntax."""
+
+
+class Raw(TextDialect):
+    """Verbatim: strings unescaped, lists space-separated."""
+
+    list_open = list_close = ""
+    list_sep = " "
+
+    def string(self, s):
+        return s
+
+    def in_quotes(self, s):
+        return s
+
+    def float(self, f):
+        return _float_repr(f)
+
+
+def _dialect(dialect):
+    if dialect is None:
+        return Json()
+    return dialect() if isinstance(dialect, type) else dialect
+
+
+def qlift_text(value, dialect=None):
+    """Lift a value into a text quote (the ``↑`` operator with a ``text``
+    splice target). ``dialect`` is a ``TextDialect`` (class or instance);
+    the default is ``Json``."""
+    return _dialect(dialect).lift(value)
+
+
+def qlift_text_in_quotes(value, dialect=None):
+    """``qlift_text`` for a hole between two ``"`` the author wrote: a string
+    renders as its escaped contents, without quotes of its own."""
+    return _dialect(dialect).lift_in_quotes(value)
+
 
 def _reduce_src(src):
     """Reduce target/Quilt source to a value — the engine behind QTerm.reduce()/`↓`.
