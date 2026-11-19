@@ -1,0 +1,7 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖struct S { pub ↙a↘: u64, pub(crate) ↙a↘: u8 }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("struct_item").c(&sym("struct")).w(" ").c(&leaf("type_identifier", "S")).w(" ").c(&tb("field_declaration_list").c(&sym("{")).w(" ").c(&tb("field_declaration").c(&tb("visibility_modifier").c(&sym("pub")).b()).w(" ").c(&a).c(&sym(":")).w(" ").c(&leaf("primitive_type", "u64")).b()).c(&sym(",")).w(" ").c(&tb("field_declaration").c(&tb("visibility_modifier").c(&sym("pub")).c(&sym("(")).c(&sym("crate")).c(&sym(")")).b()).w(" ").c(&a).c(&sym(":")).w(" ").c(&leaf("primitive_type", "u8")).b()).w(" ").c(&sym("}")).b()).b()
+}

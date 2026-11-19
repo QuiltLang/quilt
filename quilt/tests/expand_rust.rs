@@ -616,6 +616,56 @@ fn hole_as_a_pattern_path_runs() -> Result<()> {
     Ok(())
 }
 
+/// A hole as a tuple variant's name, as a field's name after a visibility,
+/// and as the last segment of a path.
+#[test]
+fn hole_as_a_variant_field_or_last_path_segment_name() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_a_tuple_variant_name",
+        expand_gen("↖enum E { A, ↙a↘(↙xs↘), }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_a_field_name_after_pub",
+        expand_gen("↖struct S { pub ↙a↘: u64, pub(crate) ↙a↘: u8 }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_the_last_path_segment",
+        expand_gen("↖f(Site::↙a↘, a::b::↙a↘)↗")?
+    );
+    Ok(())
+}
+
+/// The same three positions, in a program that is compiled and run: a tuple
+/// variant whose name and field types are spliced, `pub`/`pub(crate)` fields
+/// with spliced names, and `Site::↙site↘` / `E::↙pair↘` as expressions and
+/// as pattern paths.
+#[test]
+fn hole_as_a_variant_field_or_last_path_segment_name_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let (pair, n, at, site) = (↖Pair↗, ↖n↗, ↖at↗, ↖Home↗);
+        let tys: Vec<Arc<QTerm>> = vec![↖u32↗, ↖u32↗];
+        ↖{
+            enum Site { Home, Away }
+            enum E { A, ↙pair↘(↙tys↘), }
+            struct S { pub ↙n↘: u32, pub(crate) ↙at↘: Site }
+            let s = S { n: 5, at: Site::↙site↘ };
+            let e = E::↙pair↘(s.n, 2);
+            let _ = (E::A, Site::Away);
+            let k = match s.at { Site::↙site↘ => 1, _ => 0 };
+            let E::↙pair↘(a, b) = e else { unreachable!() };
+            a + b + k
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("enum E { A, Pair(u32, u32), }"), "{src}");
+    assert!(
+        src.contains("struct S { pub n: u32, pub(crate) at: Site }"),
+        "{src}"
+    );
+    assert!(src.contains("Site::Home => 1"), "{src}");
+    assert_eq!(value, 8);
+    Ok(())
+}
+
 #[test]
 fn hole_in_item_name_position() -> Result<()> {
     insta::assert_snapshot!("hole_as_a_fn_name", expand_gen("↖fn ↙a↘() -> u32 { 1 }↗")?);
