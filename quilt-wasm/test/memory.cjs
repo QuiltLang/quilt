@@ -1,15 +1,16 @@
 // Repeated expansion must run in flat wasm memory.
 //
-// A quilt-wasm term is a JS wrapper around a Rust `Arc`, released when the
-// garbage collector runs the wrapper's finalizer. Expanded code used to splice
-// every child with the borrowing `.c(..)`, so each temporary's wrapper kept its
-// subtree alive until then — and a synchronous loop never lets finalizers run,
-// so every iteration pinned another copy of its tree (tens of MB per expansion
-// of a few thousand nodes). Expanded code now splices the children it builds
-// itself, and its lifts, with the taking `.t(..)`, so the root owns its tree and freeing it
-// gives the whole tree back.
+// A quilt-wasm term used to be a JS wrapper around a Rust `Arc`, released when
+// the garbage collector ran the wrapper's finalizer — which a synchronous loop
+// never lets it do, so every expansion pinned a copy of its tree in wasm
+// memory (tens of MB per expansion of a few thousand nodes). #297 had expanded
+// code *take* the children it builds (`.t(..)`), so freeing the root gave the
+// tree back; terms a program kept, and never freed, still stayed pinned.
 //
-// Run after `wasm-pack build --target nodejs` (bin/build-ts):
+// Terms are plain JavaScript objects now (#306), so wasm memory is not
+// involved at all, freed or not.
+//
+// Run after `bin/build-ts`:
 //   node quilt-wasm/test/memory.cjs
 
 const assert = require("node:assert");
@@ -64,7 +65,19 @@ const grown = __memoryBytes() - before;
 const limit = 2 * 1024 * 1024;
 assert.ok(grown < limit, `wasm memory grew by ${(grown / 1e6).toFixed(1)} MB over 200 expansions`);
 
+// Terms a program keeps and never frees cost no wasm memory either: they are
+// the garbage collector's, like any other object.
+const kept = [];
+const before2 = __memoryBytes();
+for (let i = 0; i < 50; i++) kept.push(page(250));
+const grown2 = __memoryBytes() - before2;
+assert.ok(grown2 < limit, `wasm memory grew by ${(grown2 / 1e6).toFixed(1)} MB holding 50 unfreed pages`);
+assert.ok(kept.every((t) => t.coparse() === html));
+
 // The borrowed host value is still usable after every page that held it.
 assert.strictEqual(footer.coparse(), "<hr>");
 
-console.log(`quilt-wasm memory test: grew ${(grown / 1e6).toFixed(1)} MB over 200 expansions`);
+console.log(
+  `quilt-wasm memory test: grew ${(grown / 1e6).toFixed(1)} MB over 200 expansions, ` +
+    `${(grown2 / 1e6).toFixed(1)} MB holding 50 unfreed pages`,
+);
