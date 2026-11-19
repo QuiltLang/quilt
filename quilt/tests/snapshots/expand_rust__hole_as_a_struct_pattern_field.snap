@@ -1,0 +1,19 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖let S { ↙a↘ } = v;↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("let_declaration").c(&sym("let")).w(" ").c(&{
+        let mut b_ = tb("struct_pattern");
+        leaf("type_identifier", "S").emit(&mut b_);
+        b_.write(" ");
+        sym("{").emit(&mut b_);
+        b_.write(" ");
+        b_.sep(",");
+        a.emit(&mut b_);
+        b_.end_sep();
+        b_.write(" ");
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).w(" ").c(&sym("=")).w(" ").c(&leaf("identifier", "v")).c(&sym(";")).b()
+}
