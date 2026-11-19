@@ -856,6 +856,29 @@ impl Emit for &str {
     }
 }
 
+/// Text, as for `&str`. A lone `String` already reached the `&str` impl by
+/// auto-deref; this is for where nothing derefs — the elements of a
+/// `Vec<String>`, which the `&Vec<T>` impl borrows as `&String`. There is no
+/// impl for `String` itself: method resolution would pick it before any
+/// borrow, and the emit would move the string.
+impl Emit for &String {
+    fn emit(self, builder: &mut QTermBuilder) {
+        builder.text(self);
+    }
+}
+
+/// A reference to anything that emits by reference: the elements of a
+/// `Vec<&str>`, `Vec<&String>` or `Vec<&Arc<QTerm>>`, which the `&Vec<T>`
+/// impl borrows once more.
+impl<'a, T: ?Sized> Emit for &&'a T
+where
+    &'a T: Emit,
+{
+    fn emit(self, builder: &mut QTermBuilder) {
+        (*self).emit(builder);
+    }
+}
+
 impl Emit for &StrCmd {
     fn emit(self, builder: &mut QTermBuilder) {
         builder.cmd(self);
@@ -1062,5 +1085,29 @@ mod tests {
         b_.pop();
         "\nc".emit(&mut b_);
         assert_eq!(b_.b().coparse(), "def x := { a := 1,\n  b := 2 }\nc");
+    }
+
+    /// Owned and borrowed strings emit as text wherever a `&str` does, alone
+    /// or as the elements of a `Vec` — and, like every other emit, without
+    /// consuming them.
+    #[test]
+    fn strings_emit_as_text() {
+        let s = String::from("a");
+        let owned = vec![String::from("b"), String::from("c")];
+        let strs = vec!["d", "e"];
+        let refs: Vec<&String> = owned.iter().collect();
+        let terms = [sym("f")];
+        let term_refs: Vec<&Arc<QTerm>> = terms.iter().collect();
+
+        let mut b_ = tb("block");
+        s.emit(&mut b_);
+        (&s).emit(&mut b_);
+        owned.emit(&mut b_);
+        strs.emit(&mut b_);
+        refs.emit(&mut b_);
+        term_refs.emit(&mut b_);
+        // Still usable: each emit above borrowed.
+        assert_eq!((s.as_str(), owned.len()), ("a", 2));
+        assert_eq!(b_.b().coparse(), "aabcdebcf");
     }
 }
