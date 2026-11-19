@@ -176,7 +176,9 @@ fn main() -> Result<()> {
         }).b()).w(" ").c(&sym(":")).w(" ").c(&tb("binary_op").c(&tb("proj").c(&{
             let mut b_ = tb("paren");
             sym("(").emit(&mut b_);
+            b_.sep(",");
             mk.emit(&mut b_);
+            b_.end_sep();
             sym(")").emit(&mut b_);
             b_.b()
         }).c(&sym(".")).c(&leaf("identifier", "total")).b()).w(" ").c(&sym("=")).w(" ").c(&rhs).b()).w(" ").c(&sym(":=")).w(" ").c(&tb("by").c(&sym("by")).w(" ").c(&leaf("identifier", "rfl")).b()).b()
@@ -204,7 +206,9 @@ fn main() -> Result<()> {
                 tb("app").c(&leaf("identifier", "IO.println")).w(" ").c(&tb("paren").c(&sym("(")).c(&tb("binary_op").p("            ").c(&ch.qlift_to::<Lean>()).x().w(" ").c(&sym("++")).w(" ").c(&tb("binary_op").c(&tb("str_lit").c(&sym("\"")).w(" -> ").c(&sym("\"")).b()).w(" ").c(&sym("++")).w(" ").c(&tb("proj").c(&tb("app").c(&leaf("identifier", "toString")).w(" ").c(&{
                     let mut b_ = tb("paren");
                     sym("(").emit(&mut b_);
+                    b_.sep(",");
                     ctor.emit(&mut b_);
+                    b_.end_sep();
                     sym(")").emit(&mut b_);
                     b_.b()
                 }).b()).c(&sym(".")).c(&leaf("identifier", "code")).b()).b()).b()).c(&sym(")")).b()).b().emit(&mut b_);

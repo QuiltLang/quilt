@@ -52,7 +52,9 @@ fn apply_chain(names: &[String], arg: Arc<QTerm>) -> Arc<QTerm> {
         chain = tb("app").c(&f).w(" ").c(&{
             let mut b_ = tb("paren");
             sym("(").emit(&mut b_);
+            b_.sep(",");
             chain.emit(&mut b_);
+            b_.end_sep();
             sym(")").emit(&mut b_);
             b_.b()
         }).b();
@@ -162,7 +164,9 @@ fn main() -> Result<()> {
                 let mut b_ = tb("paren");
                 sym("(").emit(&mut b_);
                 b_.push("                                      ");
+                b_.sep(",");
                 applied.emit(&mut b_);
+                b_.end_sep();
                 b_.pop();
                 sym(")").emit(&mut b_);
                 b_.b()
