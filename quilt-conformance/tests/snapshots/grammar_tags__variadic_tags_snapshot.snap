@@ -2,7 +2,7 @@
 source: quilt-conformance/tests/grammar_tags.rs
 expression: report
 ---
-bash: 28 variadic
+bash: 29 variadic
   arithmetic_expansion
   array
   c_style_for_statement
@@ -22,6 +22,7 @@ bash: 28 variadic
   heredoc_body
   heredoc_redirect
   if_statement
+  parenthesized_expression
   pipeline
   process_substitution
   program
@@ -41,7 +42,7 @@ html: 7 variadic
   start_tag
   style_element
 
-lean: 50 variadic
+lean: 51 variadic
   abbrev
   anon_ctor
   anon_ctor_binder
@@ -49,6 +50,7 @@ lean: 50 variadic
   attribute_cmd
   attributes
   axiom
+  binders
   by
   constant
   decl_doc_cmd
@@ -189,7 +191,7 @@ rust: 35 variadic
   use_list
   where_clause
 
-sql: 62 variadic
+sql: 63 variadic
   alter_column
   alter_index
   alter_policy
@@ -222,6 +224,7 @@ sql: 62 variadic
   drop_extension
   enum
   enum_elements
+  field
   from
   function_arguments
   function_body
@@ -255,7 +258,7 @@ sql: 62 variadic
 
 text: (no tree-sitter grammar)
 
-typescript: 35 variadic
+typescript: 36 variadic
   abstract_class_declaration
   arguments
   array
@@ -270,6 +273,7 @@ typescript: 35 variadic
   extends_type_clause
   formal_parameters
   implements_clause
+  interface_body
   lexical_declaration
   named_imports
   object
@@ -313,7 +317,7 @@ wgsl: 19 variadic
   struct_member
   switch_statement
 
-zsh: 40 variadic
+zsh: 41 variadic
   arithmetic_call
   arithmetic_expansion
   array
@@ -343,6 +347,7 @@ zsh: 40 variadic
   heredoc_body
   heredoc_redirect
   if_statement
+  parenthesized_expression
   pipeline
   process_substitution
   program

@@ -634,3 +634,42 @@ fn quoted_binders_splice_into_a_def() -> Result<()> {
     );
     Ok(())
 }
+
+/* ---------------------- a sequence spliced as binders --------------------- */
+
+/// Lean's `binders` has no rule of its own — the grammar only ever spells it
+/// `alias(repeat1($._binder), $.binders)` — so the arity tables, which listed
+/// rule names, never counted it variadic. A hole that shared it with a literal
+/// binder then expanded to `.c(&bs)`, which does not compile for a `Vec`. The
+/// repeat is now credited to the alias's name, so the splice emits each binder.
+#[test]
+fn a_vec_of_binders_splices_beside_a_literal_binder() -> Result<()> {
+    let src = indoc! {r#"{
+        let bs: Vec<Arc<QTerm>> = vec![lean↖(x : Nat)↗, lean↖(y : Nat)↗];
+        lean↖def f (n : Nat) ↙bs↘ : Nat := n + x + y↗.coparse()
+    }"#};
+    let expanded = expand(src)?;
+    assert!(expanded.contains("bs.emit(&mut b_)"), "{expanded}");
+    assert!(!expanded.contains(".c(&bs)"), "{expanded}");
+    // Binders are juxtaposed, not separated (#293's separators are commas),
+    // and Lean reads `(x : Nat)(y : Nat)` as two binders.
+    assert_eq!(
+        run(src)?,
+        "def f (n : Nat) (x : Nat)(y : Nat) : Nat := n + x + y"
+    );
+    Ok(())
+}
+
+/// A single binder term still splices into the same position.
+#[test]
+fn a_binder_term_splices_beside_a_literal_binder() -> Result<()> {
+    let out = run(indoc! {r#"{
+        let b = lean↖(y : Nat)↗;
+        lean↖theorem t (x : Nat) ↙b↘ : x + y = y + x := Nat.add_comm x y↗.coparse()
+    }"#})?;
+    assert_eq!(
+        out,
+        "theorem t (x : Nat) (y : Nat) : x + y = y + x := Nat.add_comm x y"
+    );
+    Ok(())
+}

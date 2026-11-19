@@ -43,6 +43,11 @@
 //!   $.block)` puts its repeated statements under the `block` — which is why
 //!   python's `function_definition` is *not* variadic even though a repeat is
 //!   reachable through its `body` field.
+//! * **…and a named alias is a node kind of its own.** The repeat inside it is
+//!   credited to the alias's name, alongside the rule of that name if there is
+//!   one. Lean's `binders` has no rule at all — it is only ever
+//!   `alias(repeat1($._binder), $.binders)` — so listing rule names alone left
+//!   it fixed-arity, and a sequence of binders could not be spliced into it.
 //!
 //! # Which containers are comma-separated
 //!
@@ -63,7 +68,7 @@
 use crate::registry;
 use miette::{IntoDiagnostic as _, Result, WrapErr as _};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 /// Node types that stand for exactly one node in the tree (or none), and so can
@@ -136,39 +141,94 @@ impl Grammar {
     /// Every node kind this grammar gives a variable number of direct children,
     /// sorted.
     ///
+    /// A kind is defined by its own rule and by every named `ALIAS` that spells
+    /// it (see [`Self::definitions`]); it is variadic when any of them is.
+    ///
     /// Restricted to kinds the compiled parser actually reports, so the result
     /// is exactly the set that can affect expansion — a tag that never appears
     /// in a tree could never be looked up anyway.
     #[must_use]
     pub fn variadic_tags(&self, kinds: &BTreeSet<&str>) -> Vec<String> {
-        let mut tags: Vec<String> = self
-            .rules
-            .iter()
-            .filter(|(name, _)| !name.starts_with('_'))
+        self.definitions()
+            .into_iter()
             .filter(|(name, _)| kinds.contains(name.as_str()))
-            .filter(|(name, rule)| self.has_repeat(rule, &mut vec![name.as_str()]))
-            .map(|(name, _)| name.clone())
-            .collect();
-        tags.sort();
-        tags
+            .filter(|(_, defs)| defs.iter().any(|def| def.has_repeat(self)))
+            .map(|(name, _)| name)
+            .collect()
     }
 
     /// Every variadic node kind whose repeated children are separated by `,`,
     /// sorted. See the module docs.
     #[must_use]
     pub fn comma_separated_tags(&self, kinds: &BTreeSet<&str>) -> Vec<String> {
+        let defs = self.definitions();
         self.variadic_tags(kinds)
             .into_iter()
             .filter(|name| {
                 let mut seps = BTreeSet::new();
-                self.separators(
-                    &self.rules[name.as_str()],
-                    &mut vec![name.as_str()],
-                    &mut seps,
-                );
+                for def in &defs[name] {
+                    self.separators(def.body, &mut def.seen.clone(), &mut seps);
+                }
                 seps.len() == 1 && seps.contains(",")
             })
             .collect()
+    }
+
+    /// Every visible node kind, with the rule bodies that give it its direct
+    /// children: its own rule, if it has one, and the content of every named
+    /// `ALIAS` that produces it.
+    ///
+    /// An alias is a leaf to the rule that *contains* it, but it is a node in
+    /// its own right, and its content is that node's structure. Lean's `binders`
+    /// exists only as `_binders: alias(repeat1($._binder), $.binders)`, so
+    /// without this a hole in binder position could never take a sequence.
+    /// When the content is a single symbol the node takes that rule's children
+    /// (`alias($._simple_statements, $.block)`), so the symbol is followed even
+    /// when it is visible — unless it is a category, which is still one child.
+    ///
+    /// An alias's repeat must also repeat something named: bash spells `word`
+    /// as `alias(repeat1($._special_character), $.word)` in places, and a
+    /// `_special_character` is a token, so that is a lexical run rather than a
+    /// list of children (likewise SQL's `identifier`, zsh's `_expansion_word`).
+    /// Rules keep the plain test, so this adds kinds without removing any.
+    fn definitions(&self) -> BTreeMap<String, Vec<Def<'_>>> {
+        let mut defs: BTreeMap<String, Vec<Def<'_>>> = BTreeMap::new();
+        for (name, rule) in &self.rules {
+            if !name.starts_with('_') {
+                defs.entry(name.clone()).or_default().push(Def {
+                    body: rule,
+                    seen: vec![name.as_str()],
+                    alias: false,
+                });
+            }
+            let mut aliases = Vec::new();
+            collect_aliases(rule, &mut aliases);
+            for (value, content) in aliases {
+                let inner = strip(content);
+                let (body, seen) = match inner.get("type").and_then(Value::as_str) {
+                    Some("SYMBOL") => {
+                        let Some((target, body)) = inner
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .and_then(|t| self.rules.get_key_value(t))
+                        else {
+                            continue; // an external token: a leaf
+                        };
+                        if is_category(body) {
+                            continue;
+                        }
+                        (body, vec![target.as_str()])
+                    }
+                    _ => (content, Vec::new()),
+                };
+                defs.entry(value.to_string()).or_default().push(Def {
+                    body,
+                    seen,
+                    alias: true,
+                });
+            }
+        }
+        defs
     }
 
     /// Collect the tokens that lead a separator repeat (`repeat(seq(",", x))`)
@@ -229,14 +289,24 @@ impl Grammar {
 
     /// Does `rule` give the node it belongs to a variable number of *direct*
     /// children? See the module docs for why each case is what it is.
-    fn has_repeat<'a>(&'a self, rule: &'a Value, seen: &mut Vec<&'a str>) -> bool {
+    ///
+    /// With `named_only`, a repeat counts only when it repeats something
+    /// named ([`Self::yields_named`]); see [`Self::definitions`].
+    fn has_repeat<'a>(
+        &'a self,
+        rule: &'a Value,
+        seen: &mut Vec<&'a str>,
+        named_only: bool,
+    ) -> bool {
         let Some(kind) = rule.get("type").and_then(Value::as_str) else {
             return false;
         };
         match kind {
-            "REPEAT" | "REPEAT1" => true,
-            "SEQ" | "CHOICE" => members(rule).any(|m| self.has_repeat(m, seen)),
-            _ if TRANSPARENT.contains(&kind) => self.has_repeat(content(rule), seen),
+            "REPEAT" | "REPEAT1" => {
+                !named_only || self.yields_named(content(rule), &mut Vec::new())
+            }
+            "SEQ" | "CHOICE" => members(rule).any(|m| self.has_repeat(m, seen, named_only)),
+            _ if TRANSPARENT.contains(&kind) => self.has_repeat(content(rule), seen, named_only),
             "SYMBOL" => {
                 let Some(target) = rule.get("name").and_then(Value::as_str) else {
                     return false;
@@ -252,15 +322,50 @@ impl Grammar {
                     return false;
                 }
                 seen.push(target);
-                let found = self.has_repeat(body, seen);
+                let found = self.has_repeat(body, seen, named_only);
                 seen.pop();
                 found
             }
             // Everything else is a leaf as far as *this* node's children go.
             // `ALIAS`, `TOKEN` and `IMMEDIATE_TOKEN` are the ones worth naming:
             // each collapses to exactly one node, so a repeat inside is that
-            // node's structure rather than this one's. The rest (`STRING`,
+            // node's structure rather than this one's (a named alias's own
+            // structure is credited to it by `definitions`). The rest (`STRING`,
             // `PATTERN`, `BLANK`) have no inner structure at all.
+            _ => false,
+        }
+    }
+
+    /// Can `rule` produce a *named* node? External tokens (symbols without a
+    /// rule) are assumed to.
+    fn yields_named<'a>(&'a self, rule: &'a Value, seen: &mut Vec<&'a str>) -> bool {
+        let Some(kind) = rule.get("type").and_then(Value::as_str) else {
+            return false;
+        };
+        match kind {
+            "ALIAS" => rule.get("named").and_then(Value::as_bool) == Some(true),
+            "SEQ" | "CHOICE" => members(rule).any(|m| self.yields_named(m, seen)),
+            "REPEAT" | "REPEAT1" => self.yields_named(content(rule), seen),
+            _ if TRANSPARENT.contains(&kind) => self.yields_named(content(rule), seen),
+            "SYMBOL" => {
+                let Some(target) = rule.get("name").and_then(Value::as_str) else {
+                    return false;
+                };
+                if !target.starts_with('_') {
+                    return true;
+                }
+                if seen.contains(&target) {
+                    return false;
+                }
+                let Some(body) = self.rules.get(target) else {
+                    return true; // an external token
+                };
+                seen.push(target);
+                let found = self.yields_named(body, seen);
+                seen.pop();
+                found
+            }
+            // `STRING`, `PATTERN`, `BLANK`, `TOKEN`, `IMMEDIATE_TOKEN`.
             _ => false,
         }
     }
@@ -297,6 +402,31 @@ fn is_single_node(rule: &Value) -> bool {
     false
 }
 
+/// Every named `ALIAS` inside `rule`, as `(value, content)`. Anonymous aliases
+/// (`alias($.x, "kw")`) produce no node kind, so they are skipped; an alias
+/// nested in another alias's content is still collected.
+fn collect_aliases<'a>(rule: &'a Value, out: &mut Vec<(&'a str, &'a Value)>) {
+    let Some(kind) = rule.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    match kind {
+        "ALIAS" => {
+            if rule.get("named").and_then(Value::as_bool) == Some(true) {
+                if let Some(value) = rule.get("value").and_then(Value::as_str) {
+                    out.push((value, content(rule)));
+                }
+            }
+            collect_aliases(content(rule), out);
+        }
+        "SEQ" | "CHOICE" => {
+            for m in members(rule) {
+                collect_aliases(m, out);
+            }
+        }
+        _ => collect_aliases(content(rule), out),
+    }
+}
+
 fn members(rule: &Value) -> impl Iterator<Item = &Value> {
     rule.get("members")
         .and_then(Value::as_array)
@@ -318,6 +448,21 @@ fn strip(mut rule: &Value) -> &Value {
         rule = content(rule);
     }
     rule
+}
+
+/// One rule body that defines a node kind's direct children: the kind's own
+/// rule, or the content of a named `ALIAS` that produces it.
+struct Def<'a> {
+    body: &'a Value,
+    /// The hidden rules already being followed, for the cycle check.
+    seen: Vec<&'a str>,
+    alias: bool,
+}
+
+impl Def<'_> {
+    fn has_repeat(&self, grammar: &Grammar) -> bool {
+        grammar.has_repeat(self.body, &mut self.seen.clone(), self.alias)
+    }
 }
 
 /// One language's derived tables.
