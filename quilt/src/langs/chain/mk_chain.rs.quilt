@@ -285,7 +285,7 @@ fn main() -> Result<()> {
 
     ⟨//⟩ ---- the file ----
 
-    let out: ⟨T⟩ = ↖
+    let out: ⟨T⟩ = rs↖
         use super::Shapes;
 
         ↙
