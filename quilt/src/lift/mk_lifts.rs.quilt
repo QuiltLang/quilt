@@ -180,14 +180,12 @@ fn container_fn(fname: &str, sample: &(Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<Q
         panic!("not a tuple")
     };
     let tag = tag.to_string();
-    ⟨//⟩ A hole does not parse in function-name position (`pub fn {}(…)` is not
-    ⟨//⟩ Rust), so the name goes in as a placeholder and is rewritten after.
-    let generic: ⟨T⟩ = ↖
+    ↖
         /// The container shape, with the elements as a parameter. Derived from
         /// the empty, one- and two-element samples: what surrounds the first
         /// element is the opener, what sits between two of them is the
         /// separator, and what the empty container still writes is neither.
-        pub fn list_term(items: &[⟨T⟩]) -> ⟨T⟩ {
+        pub fn ↙⟨N⟩(fname)↘(items: &[⟨T⟩]) -> ⟨T⟩ {
             let mut b = tb(↙tag.↑↘);
             ↙for p in &open { piece_stmt(p).← }↘
             ↙
@@ -218,8 +216,7 @@ fn container_fn(fname: &str, sample: &(Arc<QTerm>, Arc<QTerm>, Arc<QTerm>, Arc<Q
             ↙for p in &close { piece_stmt(p).← }↘
             b.b()
         }
-    ↗;
-    generic.rewrite_naive(&⟨N⟩("list_term"), &⟨N⟩(fname))
+    ↗
 }
 
 /**************************************************************/
