@@ -468,18 +468,22 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // (issue #273) — so the spellings are built here, up front, and the
         // `FlatNode::Str`s below borrow from this vector. Deferred `⟨M⟩`s
         // (sky depth > 0) belong to a later stage and get no spelling at all.
-        let spawns: Vec<String> = if sky_depth > 0 {
-            Vec::new()
-        } else {
-            nodes
-                .iter()
-                .filter_map(|n| match &**n {
-                    Node::Machine { anno } => Some(anno),
-                    _ => None,
-                })
-                .map(|anno| self.spawn_str(lang, &machine_lang(zipper, lang, anno)))
-                .collect::<Result<_>>()?
-        };
+        // A bare `⟨M⟩` resolves as a bare quote in its place would, so it
+        // reads the last annotated quote before it at this level too.
+        let mut spawns = Vec::new();
+        if sky_depth == 0 {
+            let mut sibling = "";
+            for n in nodes {
+                match &**n {
+                    Node::Quote { anno, .. } if !anno.is_empty() => sibling = anno,
+                    Node::Machine { anno } => {
+                        let anno = if anno.is_empty() { sibling } else { anno };
+                        spawns.push(self.spawn_str(lang, &machine_lang(zipper, lang, anno))?);
+                    }
+                    _ => {}
+                }
+            }
+        }
         let mut spawns = spawns.iter();
 
         let mut code = Vec::with_capacity(nodes.len());
@@ -568,6 +572,12 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         // parse children using hole types
         let mut plugs = Vec::new();
         let nodes_here = nodes;
+        // The annotation of the last annotated quote at this level: a bare
+        // `↖…↗` after `py↖…↗` is Python too, the way a bare quote *inside*
+        // one already is. Only siblings count — a quote nested in an unquote
+        // starts its own level — so the rule reads in source order, quote by
+        // quote, and an annotation is what changes it.
+        let mut sibling: Option<&str> = None;
         for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 // Deferred operators (see the code-building pass): consume the
@@ -616,20 +626,25 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                         .ok_or_else(|| miette!("Ran out of holes for quote: {n:?}"))?;
                     // .unwrap_or_else(|| miette!("Ran out of holes for quote: {n:?}"))?;
                     // Descend into the quote's embedded language. An annotation
-                    // selects it explicitly; an un-annotated `↖…↗` resolves the
+                    // selects it explicitly, and is inherited by the bare
+                    // quotes after it at this level. An un-annotated `↖…↗`
+                    // with no annotated sibling before it resolves the
                     // default embedded language via `.back()`, which walks the
                     // file's extension chain (e.g. `wgsl` for `*.wgsl.rs.quilt`)
-                    // or a previously-used lang, falling back to the host when
-                    // none is set. The quote's lang is then the head of the
-                    // resolved zipper — the expander uses it to pick the arity
-                    // for the body's tags (e.g. `wgsl`'s `case_compound_statement`).
-                    let zipper = if anno.is_empty() {
-                        zipper
+                    // or the enclosing quote's lang (from inside its unquote),
+                    // falling back to the host when none is set. The quote's
+                    // lang is then the head of the resolved zipper — the
+                    // expander uses it to pick the arity for the body's tags
+                    // (e.g. `wgsl`'s `case_compound_statement`).
+                    if !anno.is_empty() {
+                        sibling = Some(&**anno);
+                    }
+                    let zipper = match sibling {
+                        Some(anno) => zipper.clone().cons(anno.into()),
+                        None => zipper
                             .clone()
                             .back()
-                            .unwrap_or_else(|| zipper.clone().cons(lang.clone()))
-                    } else {
-                        zipper.clone().cons(anno.clone())
+                            .unwrap_or_else(|| zipper.clone().cons(lang.clone())),
                     };
                     let quote_lang = zipper.head().unwrap();
                     let mut builder = qb(&hole.otag, 1, quote_lang);
@@ -750,9 +765,10 @@ fn text_splice_target(lang: &str, nodes: &[Arc<Node>], i: usize) -> Option<&'sta
     (opens && after.starts_with('"')).then_some(crate::lift::TEXT_IN_QUOTES)
 }
 
-/// The language a `⟨M⟩` names. An annotation says it outright; the bare form
-/// resolves exactly as a bare `↖…↗` does — the chain's next default language
-/// via the zipper's `.back()`, falling back to the host — so `⟨M⟩` in a
+/// The language a `⟨M⟩` names. An annotation says it outright (the caller
+/// passes an inherited sibling annotation as `anno`); the bare form resolves
+/// exactly as a bare `↖…↗` does — the chain's next default language via the
+/// zipper's `.back()`, falling back to the host — so `⟨M⟩` in a
 /// `.sql.py.quilt` file is a SQL machine and in a plain `.py.quilt` file a
 /// Python one (issue #273).
 #[cfg(feature = "parse")]

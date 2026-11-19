@@ -179,6 +179,24 @@ fn the_bare_machine_glyph_follows_the_file_chain() -> Result<()> {
         expand(&mut multi, &["py", "sql"], "sh = bash⟨M⟩\n")?,
         "sh = spawn(\"bash\")"
     );
+    // Like a bare quote, a bare `⟨M⟩` takes the last annotated quote before
+    // it at its level; a machine's own annotation is not a quote's, so it
+    // does not carry over.
+    let src = "a = ⟨M⟩\nq = bash↖ls↗\nb = ⟨M⟩\nc = py⟨M⟩\nd = ⟨M⟩\n";
+    let out = expand(&mut multi, &["py", "sql"], src)?;
+    let spawns: Vec<_> = out
+        .lines()
+        .filter_map(|l| l.split_once(" = spawn"))
+        .collect();
+    assert_eq!(
+        spawns,
+        [
+            ("a", "(\"sql\")"),
+            ("b", "(\"bash\")"),
+            ("c", "(\"py\")"),
+            ("d", "(\"bash\")"),
+        ]
+    );
     Ok(())
 }
 

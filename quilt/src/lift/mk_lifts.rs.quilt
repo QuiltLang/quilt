@@ -314,7 +314,7 @@ fn main() -> Result<()> {
     let py_str = shape_with(
         &descend(&py↖"s"↗, "string"),
         "s",
-        &↖&py_dquote_escape(s)↗,
+        &rs↖&py_dquote_escape(s)↗,
     );
 
     ⟨//⟩ Shells. Derived per language rather than shared: bash and zsh have the
@@ -325,7 +325,7 @@ fn main() -> Result<()> {
     let bash_str = shape_with(
         &descend(&bash↖"s"↗, "string"),
         "s",
-        &↖&sh_dquote_escape(s)↗,
+        &rs↖&sh_dquote_escape(s)↗,
     );
     let zsh_num_sample = descend(&zsh↖3↗, "number");
     let zsh_num = shape_with(&zsh_num_sample, &text_of(&zsh_num_sample), &text);
@@ -333,7 +333,7 @@ fn main() -> Result<()> {
     let zsh_str = shape_with(
         &descend(&zsh↖"s"↗, "string"),
         "s",
-        &↖&sh_dquote_escape(s)↗,
+        &rs↖&sh_dquote_escape(s)↗,
     );
 
     ⟨//⟩ Nix.
@@ -347,7 +347,7 @@ fn main() -> Result<()> {
     let nix_str = shape_with(
         &descend(&nix↖"s"↗, "string_expression"),
         "s",
-        &↖&nix_dquote_escape(s)↗,
+        &rs↖&nix_dquote_escape(s)↗,
     );
 
     ⟨//⟩ Lean. `num_lit` and `scientific_lit` are unsigned in the grammar, so a
@@ -376,7 +376,7 @@ fn main() -> Result<()> {
     let lean_str = shape_with(
         &descend(&lean↖"s"↗, "str_lit"),
         "s",
-        &↖&lean_dquote_escape(s)↗,
+        &rs↖&lean_dquote_escape(s)↗,
     );
 
     ⟨//⟩ SQL. The sign is *outside* the number token in this grammar
@@ -394,14 +394,14 @@ fn main() -> Result<()> {
     let sql_str = shape_with(
         &descend(&sql↖'s'↗, "literal"),
         "'s'",
-        &↖&format!("'{}'", sql_squote_escape(s))↗,
+        &rs↖&format!("'{}'", sql_squote_escape(s))↗,
     );
     ⟨//⟩ The MySQL dialect differs from the standard in exactly one place: the
     ⟨//⟩ escaper. Same grammar, same token, so the same sample serves (#233).
     let mysql_str = shape_with(
         &descend(&sql↖'s'↗, "literal"),
         "'s'",
-        &↖&format!("'{}'", mysql_squote_escape(s))↗,
+        &rs↖&format!("'{}'", mysql_squote_escape(s))↗,
     );
 
     ⟨//⟩ TypeScript. One `number` for integers and floats alike, and — like
@@ -421,7 +421,7 @@ fn main() -> Result<()> {
     let ts_str = shape_with(
         &descend(&ts↖"s"↗, "string"),
         "s",
-        &↖&ts_dquote_escape(s)↗,
+        &rs↖&ts_dquote_escape(s)↗,
     );
 
     ⟨//⟩ HTML. Text content is a `text` node whatever the value was; the escape
@@ -463,7 +463,7 @@ fn main() -> Result<()> {
 
     ⟨//⟩ ---- the file ----
 
-    let out: ⟨T⟩ = ↖
+    let out: ⟨T⟩ = rs↖
         use super::{
             escape_html, lean_dquote_escape, mysql_squote_escape, nix_dquote_escape,
             py_dquote_escape, sh_dquote_escape, sql_squote_escape, ts_dquote_escape, Bash, Html,
