@@ -25,7 +25,7 @@
 //! [`Arity::from_table`]: crate::lang::Arity::from_table
 //! [`Language::separator`]: crate::lang::Language::separator
 
-/// bash: 28 node kind(s) the grammar gives a variable number of direct children.
+/// bash: 29 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "bash")]
 pub static BASH: &[&str] = &[
     "arithmetic_expansion",
@@ -47,6 +47,7 @@ pub static BASH: &[&str] = &[
     "heredoc_body",
     "heredoc_redirect",
     "if_statement",
+    "parenthesized_expression",
     "pipeline",
     "process_substitution",
     "program",
@@ -58,9 +59,13 @@ pub static BASH: &[&str] = &[
     "while_statement",
 ];
 
-/// bash: 2 of those whose repeated children are separated by `,`.
+/// bash: 3 of those whose repeated children are separated by `,`.
 #[cfg(feature = "bash")]
-pub static BASH_COMMA_SEPARATED: &[&str] = &["arithmetic_expansion", "c_style_for_statement"];
+pub static BASH_COMMA_SEPARATED: &[&str] = &[
+    "arithmetic_expansion",
+    "c_style_for_statement",
+    "parenthesized_expression",
+];
 
 /// html: 7 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "html")]
@@ -74,7 +79,7 @@ pub static HTML: &[&str] = &[
     "style_element",
 ];
 
-/// lean: 50 node kind(s) the grammar gives a variable number of direct children.
+/// lean: 51 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "lean")]
 pub static LEAN: &[&str] = &[
     "abbrev",
@@ -84,6 +89,7 @@ pub static LEAN: &[&str] = &[
     "attribute_cmd",
     "attributes",
     "axiom",
+    "binders",
     "by",
     "constant",
     "decl_doc_cmd",
@@ -324,7 +330,7 @@ pub static RUST_COMMA_SEPARATED: &[&str] = &[
     "where_clause",
 ];
 
-/// sql: 62 node kind(s) the grammar gives a variable number of direct children.
+/// sql: 63 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "sql")]
 pub static SQL: &[&str] = &[
     "alter_column",
@@ -359,6 +365,7 @@ pub static SQL: &[&str] = &[
     "drop_extension",
     "enum",
     "enum_elements",
+    "field",
     "from",
     "function_arguments",
     "function_body",
@@ -391,7 +398,7 @@ pub static SQL: &[&str] = &[
     "while_statement",
 ];
 
-/// sql: 43 of those whose repeated children are separated by `,`.
+/// sql: 44 of those whose repeated children are separated by `,`.
 #[cfg(feature = "sql")]
 pub static SQL_COMMA_SEPARATED: &[&str] = &[
     "alter_column",
@@ -417,6 +424,7 @@ pub static SQL_COMMA_SEPARATED: &[&str] = &[
     "drop_extension",
     "enum",
     "enum_elements",
+    "field",
     "from",
     "function_arguments",
     "group_by",
@@ -439,7 +447,7 @@ pub static SQL_COMMA_SEPARATED: &[&str] = &[
     "when_clause",
 ];
 
-/// typescript: 35 node kind(s) the grammar gives a variable number of direct children.
+/// typescript: 36 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "typescript")]
 pub static TYPESCRIPT: &[&str] = &[
     "abstract_class_declaration",
@@ -456,6 +464,7 @@ pub static TYPESCRIPT: &[&str] = &[
     "extends_type_clause",
     "formal_parameters",
     "implements_clause",
+    "interface_body",
     "lexical_declaration",
     "named_imports",
     "object",
@@ -530,7 +539,7 @@ pub static WGSL: &[&str] = &[
 #[cfg(feature = "wgsl")]
 pub static WGSL_COMMA_SEPARATED: &[&str] = &["case_selectors"];
 
-/// zsh: 40 node kind(s) the grammar gives a variable number of direct children.
+/// zsh: 41 node kind(s) the grammar gives a variable number of direct children.
 #[cfg(feature = "zsh")]
 pub static ZSH: &[&str] = &[
     "arithmetic_call",
@@ -562,6 +571,7 @@ pub static ZSH: &[&str] = &[
     "heredoc_body",
     "heredoc_redirect",
     "if_statement",
+    "parenthesized_expression",
     "pipeline",
     "process_substitution",
     "program",
@@ -575,10 +585,11 @@ pub static ZSH: &[&str] = &[
     "while_statement",
 ];
 
-/// zsh: 3 of those whose repeated children are separated by `,`.
+/// zsh: 4 of those whose repeated children are separated by `,`.
 #[cfg(feature = "zsh")]
 pub static ZSH_COMMA_SEPARATED: &[&str] = &[
     "arithmetic_call",
     "arithmetic_expansion",
     "c_style_for_statement",
+    "parenthesized_expression",
 ];
