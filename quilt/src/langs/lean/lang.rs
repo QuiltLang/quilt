@@ -18,7 +18,7 @@ use crate::{
     prelude::*,
     qterm::QTerm,
     term::CmdOrHole,
-    treesitter::{TSLanguage, TSLanguagePost, TSProvider},
+    treesitter::{FragmentWrapper, TSLanguage, TSLanguagePost, TSProvider},
 };
 use miette::{bail, Result};
 use tree_sitter::Parser;
@@ -179,6 +179,50 @@ impl TSProvider for LeanProvider {
         // Trust an explicitly requested kind over the guess when the caller
         // placed the hole in a known position.
         Ok((squashed, ikind.unwrap_or(kind)))
+    }
+
+    /// A constructor (`lean↖| zero↗`), a structure field (`lean↖x : Nat↗`), a
+    /// match alternative (`lean↖| 0 => 1↗`) or a binder
+    /// (`lean↖{α : Type}↗`), quoted on its
+    /// own, parses inside the construct it belongs to. [`LeanLanguage`] tries
+    /// these after its `#check` retry, so `(n : Nat)`, which is also a term,
+    /// stays one.
+    fn fragment_wrappers(&self) -> &'static [FragmentWrapper] {
+        &[
+            FragmentWrapper {
+                before: "inductive Q where",
+                after: "",
+                container: "inductive",
+                fragments: &["ctor_alt"],
+                leading: &[],
+            },
+            FragmentWrapper {
+                before: "structure Q where",
+                after: "",
+                container: "structure",
+                fragments: &["field"],
+                leading: &[],
+            },
+            FragmentWrapper {
+                before: "def q : Q",
+                after: "",
+                container: "def",
+                fragments: &["match_alt"],
+                leading: &[],
+            },
+            FragmentWrapper {
+                before: "def q",
+                after: ": Q := q",
+                container: "binders",
+                fragments: &[
+                    "explicit_binder",
+                    "implicit_binder",
+                    "instance_binder",
+                    "strict_implicit_binder",
+                ],
+                leading: &[],
+            },
+        ]
     }
 
     /// Classify a fully-parsed Lean term.
@@ -364,7 +408,7 @@ impl Language for LeanLanguage {
         // A command fragment (`def …`, `theorem …`, a whole module) parses on
         // its own; only a bare term needs the wrapper, so try plain first and
         // keep this a no-op for everything else.
-        let err = match self.0.parse_pre(ikind, code) {
+        let err = match self.0.parse_plain(ikind, code) {
             Ok(post) => return Ok(post),
             Err(e) => e,
         };
@@ -386,7 +430,7 @@ impl Language for LeanLanguage {
         // rather than trusted.
         if let Some(post) = self
             .0
-            .parse_pre(Some(InnerKind::Expr), &wrapped)
+            .parse_plain(Some(InnerKind::Expr), &wrapped)
             .ok()
             .and_then(|post| {
                 let qterm = strip_check(&post.qterm).ok()?;
@@ -405,7 +449,7 @@ impl Language for LeanLanguage {
         let targets = line_hole_ordinals(code);
         if !targets.is_empty() {
             let wrapped = wrap_line_holes(code, &targets);
-            if let Some(post) = self.0.parse_pre(ikind, &wrapped).ok().map(|post| {
+            if let Some(post) = self.0.parse_plain(ikind, &wrapped).ok().map(|post| {
                 let hole_str = post.hole_str;
                 let qterm = strip_wrapped_checks(&arc(post.qterm.clone()), hole_str, &targets);
                 TSLanguagePost {
@@ -417,7 +461,10 @@ impl Language for LeanLanguage {
             }
         }
 
-        Err(err)
+        // Neither a command nor a term: a piece of one, such as a constructor
+        // or a match alternative (`LeanProvider::fragment_wrappers`). Last, so
+        // that whatever already parsed as a term still does.
+        self.0.parse_fragment(code).ok_or(err)
     }
 
     fn arity(&self, tag: &str) -> Arity {

@@ -638,3 +638,118 @@ fn hole_in_match_arm_position_runs() -> Result<()> {
     assert_eq!(value, vec![0, 10, 20, 30, 99]);
     Ok(())
 }
+
+/* ─────────── fragments that are not a whole file, quoted on their own ─────────── */
+
+// A match arm, an enum variant, a struct field, a parameter or a field pattern
+// is valid only *inside* its construct, so the grammar, whose root is a file,
+// rejected a quote of one with "Parsed with errors". The provider now retries
+// such a quote inside the smallest construct that takes it, and strips the
+// construct back off (`RustProvider::fragment_wrappers`).
+
+/// Each fragment parses, writes back byte for byte, and is the node it is
+/// rather than the wrapper it was parsed in.
+#[test]
+fn a_fragment_quotes_on_its_own() -> Result<()> {
+    for (code, tag) in [
+        ("Foo::A(a) => f(a),", "match_arm"),
+        ("Foo::A(a) => f(a)", "match_arm"),
+        ("Foo::B { .. } => {\n    g()\n}", "match_arm"),
+        ("pub a: u64", "field_declaration"),
+        ("a: u64", "field_declaration"),
+        ("#[serde(skip)]\npub a: u64", "field_declaration"),
+        ("mut a: u64", "parameter"),
+        ("ref mut a", "field_pattern"),
+        ("/// doc\n#[allow(unused)]\nA(u64)", "enum_variant"),
+        ("#[allow(unused)] A(u64)", "enum_variant"),
+    ] {
+        let quote = format!("rs↖{code}↗");
+        let mut omni = Omni::default();
+        let q = omni.parse(&quote)?;
+        let sexp = q.sexp();
+        assert!(sexp.starts_with(&format!("rs↖{tag}(")), "{code}: {sexp}");
+        let mut omni = Omni::default();
+        let q = omni.parse(&format!("{quote}.coparse()"))?;
+        let back: String = omni.expand(&q)?.reduce()?;
+        assert_eq!(back, code);
+    }
+    Ok(())
+}
+
+/// A fragment with holes: the holes are the fragment's, none the wrapper's.
+#[test]
+fn a_fragment_with_holes() -> Result<()> {
+    insta::assert_snapshot!(expand_gen("rs↖↙a↘ => ↙{ for x in xs { x.← } }↘,↗")?);
+    Ok(())
+}
+
+/// What the wrapper cannot hand back exactly is still an error: the `,` after
+/// a variant belongs to the list, not to the variant, and two fields are a
+/// list.
+#[test]
+fn a_fragment_that_needs_its_container_still_fails() {
+    for code in ["rs↖A(u64),↗", "rs↖pub a: u64, b: u64↗"] {
+        let err = Omni::default().parse(code).expect_err(code);
+        assert!(
+            err.to_string().contains("Parsed with errors"),
+            "{code}: {err}"
+        );
+    }
+}
+
+/// A `match` built from quoted arms: one spliced alone, the rest as a `Vec`.
+#[test]
+fn quoted_match_arms_splice_into_a_match() -> Result<()> {
+    let (src, value): (_, Vec<u32>) = generate_and_run(indoc! {r#"{
+        let one = rs↖1 => 10,↗;
+        let rest = vec![rs↖2 => 20,↗, rs↖n if n < 4 => n * 10,↗];
+        let last = rs↖_ => 99↗;
+        rs↖{
+            let f = |x: u32| match x { 0 => 0, ↙one↘ ↙rest↘ ↙last↘ };
+            (0..5).map(f).collect::<Vec<u32>>()
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("n if n < 4 => n * 10,"), "{src}");
+    assert_eq!(value, vec![0, 10, 20, 30, 99]);
+    Ok(())
+}
+
+/// An `enum` built from quoted variants, and a `match` over it from quoted
+/// arms. Variants are a comma-separated list, so the `Vec` is separated.
+#[test]
+fn quoted_variants_splice_into_an_enum() -> Result<()> {
+    let (src, value): (_, u64) = generate_and_run(indoc! {r#"{
+        let vs = vec![rs↖A(u64)↗, rs↖B { x: u64 }↗, rs↖C↗];
+        let arms = vec![rs↖E::A(a) => a,↗, rs↖E::B { x } => x * 2,↗, rs↖E::C => 0,↗];
+        rs↖{
+            enum E { ↙vs↘ }
+            fn f(e: E) -> u64 { match e { ↙arms↘ } }
+            f(E::A(1)) + f(E::B { x: 20 }) + f(E::C)
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("enum E { A(u64), B { x: u64 }, C }"), "{src}");
+    assert_eq!(value, 41);
+    Ok(())
+}
+
+/// A `struct` built from quoted fields, and a function from quoted parameters.
+#[test]
+fn quoted_fields_and_parameters_splice() -> Result<()> {
+    let (src, value): (_, u64) = generate_and_run(indoc! {r#"{
+        let first = rs↖pub a: u64↗;
+        let rest = vec![rs↖b: u64↗, rs↖#[allow(dead_code)] c: u64↗];
+        let ps = vec![rs↖s: &S↗, rs↖mut k: u64↗];
+        rs↖{
+            struct S { ↙first↘, ↙rest↘ }
+            fn f(↙ps↘) -> u64 { k += 1; s.a + s.b * k }
+            f(&S { a: 1, b: 2, c: 3 }, 1)
+        }↗.coparse()
+    }"#})?;
+    assert!(
+        src.contains("struct S { pub a: u64, b: u64, #[allow(dead_code)] c: u64 }"),
+        "{src}"
+    );
+    assert!(src.contains("fn f(s: &S, mut k: u64)"), "{src}");
+    assert_eq!(value, 5);
+    Ok(())
+}
