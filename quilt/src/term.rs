@@ -144,6 +144,25 @@ pub fn hole() -> CmdOrHole {
 
 pub const HOLE: CmdOrHole = CmdOrHole::Hole;
 
+/// Whether the `Push` at `cmds[k]` aligns a splice to its column: a push, the
+/// hole, then the pop. A language whose layout is column-sensitive wraps each
+/// one-line splice in exactly that (`TSProvider::align_splices`, #301), and
+/// nothing else puts a hole straight after a push — a quoted line break pushes
+/// its indent and then writes the newline. Expanded code spells such a push
+/// `align` rather than `push`, so that host text spliced there is laid out at
+/// the hole's column as a term is (#310; see `QTermBuilder::align`).
+#[must_use]
+pub fn is_aligned_splice(cmds: &[CmdOrHole], k: usize) -> bool {
+    matches!(
+        cmds.get(k..k + 3),
+        Some([
+            CmdOrHole::Cmd(StrCmd::Push(_)),
+            CmdOrHole::Hole,
+            CmdOrHole::Cmd(StrCmd::Pop)
+        ])
+    )
+}
+
 #[derive(Debug, Clone)]
 pub struct ArcSTerm<T> {
     tag: T,

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Test the browser demos (examples/web) headlessly, as the CI `Browser demos`
+# job does:
+#
+#   1. the in-browser expander's own tests (quilt-expand-wasm, built natively);
+#   2. examples/web/verify.mjs — demo 1, the runtime renders the committed
+#      expansion;
+#   3. examples/web/verify-dashboard.mjs — demo 2, the staged playground:
+#      source → in-browser expand → ↓ reduce → start() loop → HTML.
+#
+# Both verifiers build examples/web/dist first (`build.mjs`: wasm-pack for the
+# runtime, a WASI sdk for the expander). Run on its own, verify-dashboard.mjs
+# skips when no WASI sdk is found; here that is an error, since a skipped
+# verifier is how the playground came to fail unnoticed. Point WASI_SDK_PATH at
+# a wasi-sdk install (https://github.com/WebAssembly/wasi-sdk/releases).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+echo "==> in-browser expander tests (quilt-expand-wasm, native)"
+cargo test --quiet --manifest-path "$ROOT/Cargo.toml" -p quilt-expand-wasm
+
+export QUILT_WEB_REQUIRE_EXPANDER=1
+
+echo "==> demo 1: ahead-of-time cards (verify.mjs)"
+node "$ROOT/examples/web/verify.mjs"
+
+echo "==> demo 2: staged dashboard playground (verify-dashboard.mjs)"
+node "$ROOT/examples/web/verify-dashboard.mjs"
+
+echo "browser demos OK ✓"

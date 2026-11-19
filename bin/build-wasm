@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Build the quilt-wasm package: wasm-pack, then the JavaScript runtime around it.
+#
+#   build-wasm [nodejs|web] [out-dir] [wasm-pack args…]
+#
+# The runtime expanded .ts.quilt programs call is plain JavaScript
+# (quilt-wasm/js/runtime.js), with wasm only at its edges (issue #306), so a bare
+# `wasm-pack build` is no longer the package: its module becomes
+# quilt_wasm_raw.js, and quilt-wasm/js/assemble.mjs writes the quilt_wasm.js
+# entry beside it. Defaults to `nodejs pkg`, what bin/build-ts builds; the
+# browser demos and `quilt notebook --serve` use `web pkg-web`, and the npm
+# package is `web pkg`. <out-dir> is relative to quilt-wasm/, as for wasm-pack.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+target="${1:-nodejs}"
+out="${2:-pkg}"
+shift $(( $# < 2 ? $# : 2 ))
+
+if ! command -v wasm-pack >/dev/null 2>&1; then
+  echo "error: wasm-pack not found — install it: https://rustwasm.github.io/wasm-pack/" >&2
+  exit 1
+fi
+
+rm -rf "$ROOT/quilt-wasm/$out"
+wasm-pack build "$ROOT/quilt-wasm" --target "$target" --out-dir "$out" --out-name quilt_wasm_raw "$@"
+node "$ROOT/quilt-wasm/js/assemble.mjs" "$ROOT/quilt-wasm/$out" "$target"

@@ -524,6 +524,9 @@ pub struct QTermBuilder {
     span: Option<Span>,
     /// The open separated region, if any (see [`QTermBuilder::sep`]).
     sep: Option<Separated>,
+    /// Inside an [`align`](QTermBuilder::align): text is laid out at the
+    /// hole's column.
+    aligned: bool,
 }
 
 /// A run of children that must be separated by `token` — the elements a
@@ -558,6 +561,7 @@ impl QTermBuilder {
             cmds: Vec::new(),
             span: None,
             sep: None,
+            aligned: false,
         }
     }
 
@@ -679,7 +683,40 @@ impl QTermBuilder {
     }
 
     pub fn pop(&mut self) -> &mut Self {
+        self.aligned = false;
         self.cmd(&StrCmd::Pop)
+    }
+
+    /// Push `pad`, the indent that aligns a splice to its hole's column, for
+    /// the length of the splice (up to the next [`pop`](Self::pop)).
+    ///
+    /// The same push as [`push`](Self::push) for a term: its own newlines
+    /// write the prefix. The difference is for text: `\n` in a `&str` emitted
+    /// here is written as a newline too, so its later lines start at the
+    /// hole's column instead of flush left, as a term's would (#310).
+    /// Expanded code spells the push of an aligned splice this way (see
+    /// [`is_aligned_splice`](crate::term::is_aligned_splice)), which only a
+    /// column-sensitive language has.
+    pub fn align(&mut self, pad: &str) -> &mut Self {
+        self.push(pad);
+        self.aligned = true;
+        self
+    }
+
+    /// Write `s` as text spliced into this builder: as one
+    /// [`write`](Self::write), except inside an [`align`](Self::align), where
+    /// each line break is a [`nl`](Self::nl).
+    pub fn text(&mut self, s: &str) -> &mut Self {
+        if !self.aligned {
+            return self.write(s);
+        }
+        for (i, line) in s.split('\n').enumerate() {
+            if i > 0 {
+                self.nl();
+            }
+            self.write(line);
+        }
+        self
     }
 
     pub fn emit(&mut self, x: impl Emit) -> &mut Self {
@@ -815,7 +852,7 @@ where
 
 impl Emit for &str {
     fn emit(self, builder: &mut QTermBuilder) {
-        builder.write(self);
+        builder.text(self);
     }
 }
 
@@ -1004,5 +1041,26 @@ mod tests {
         b_.end_sep();
         sym("b").emit(&mut b_);
         assert_eq!(b_.b().coparse(), "ab");
+    }
+
+    /// Text emitted inside an `align` is laid out at the hole's column: each
+    /// line break is a newline, which writes the pad. Outside one it is a
+    /// single write, line breaks and all.
+    #[test]
+    fn text_in_an_aligned_splice_keeps_its_column() {
+        let mut b_ = tb("def");
+        b_.write("def x := ");
+        b_.align("         ");
+        "{ a := 1,\n  b := 2 }".emit(&mut b_);
+        b_.pop();
+        assert_eq!(b_.b().coparse(), "def x := { a := 1,\n           b := 2 }");
+
+        let mut b_ = tb("def");
+        b_.write("def x := ");
+        b_.push("         ");
+        "{ a := 1,\n  b := 2 }".emit(&mut b_);
+        b_.pop();
+        "\nc".emit(&mut b_);
+        assert_eq!(b_.b().coparse(), "def x := { a := 1,\n  b := 2 }\nc");
     }
 }

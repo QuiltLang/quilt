@@ -47,6 +47,19 @@
         }
       }
     },
+    "_quilt_hole_braces": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
     "_statement": {
       "type": "CHOICE",
       "members": [
@@ -1289,8 +1302,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -1360,8 +1382,17 @@
         {
           "type": "REPEAT",
           "content": {
-            "type": "SYMBOL",
-            "name": "_declaration_statement"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_declaration_statement"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -1393,8 +1424,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "_type_identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_type_identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -1501,8 +1541,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "_type_identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_type_identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -1566,8 +1615,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "_type_identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_type_identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -1632,8 +1690,17 @@
                       }
                     },
                     {
-                      "type": "SYMBOL",
-                      "name": "enum_variant"
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "enum_variant"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "quilt_hole"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -1657,8 +1724,17 @@
                             }
                           },
                           {
-                            "type": "SYMBOL",
-                            "name": "enum_variant"
+                            "type": "CHOICE",
+                            "members": [
+                              {
+                                "type": "SYMBOL",
+                                "name": "enum_variant"
+                              },
+                              {
+                                "type": "SYMBOL",
+                                "name": "quilt_hole"
+                              }
+                            ]
                           }
                         ]
                       }
@@ -1789,8 +1865,17 @@
                       }
                     },
                     {
-                      "type": "SYMBOL",
-                      "name": "field_declaration"
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "field_declaration"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "quilt_hole"
+                        }
+                      ]
                     }
                   ]
                 },
@@ -1814,8 +1899,17 @@
                             }
                           },
                           {
-                            "type": "SYMBOL",
-                            "name": "field_declaration"
+                            "type": "CHOICE",
+                            "members": [
+                              {
+                                "type": "SYMBOL",
+                                "name": "field_declaration"
+                              },
+                              {
+                                "type": "SYMBOL",
+                                "name": "quilt_hole"
+                              }
+                            ]
                           }
                         ]
                       }
@@ -2083,8 +2177,26 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_quilt_hole_braces"
+                },
+                "named": true,
+                "value": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -2177,8 +2289,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -2247,8 +2368,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "_type_identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_type_identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -2353,6 +2483,10 @@
               {
                 "type": "SYMBOL",
                 "name": "metavariable"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
               }
             ]
           }
@@ -2472,6 +2606,10 @@
               {
                 "type": "SYMBOL",
                 "name": "metavariable"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
               }
             ]
           }
@@ -2929,8 +3067,17 @@
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "_type_identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_type_identifier"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "quilt_hole"
+              }
+            ]
           }
         },
         {
@@ -7285,18 +7432,36 @@
                 {
                   "type": "REPEAT",
                   "content": {
-                    "type": "SYMBOL",
-                    "name": "match_arm"
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "SYMBOL",
+                        "name": "match_arm"
+                      },
+                      {
+                        "type": "SYMBOL",
+                        "name": "_match_arm_hole"
+                      }
+                    ]
                   }
                 },
                 {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "last_match_arm"
-                  },
-                  "named": true,
-                  "value": "match_arm"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "ALIAS",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "last_match_arm"
+                      },
+                      "named": true,
+                      "value": "match_arm"
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "_match_arm_hole"
+                    }
+                  ]
                 }
               ]
             },
@@ -7310,6 +7475,31 @@
           "value": "}"
         }
       ]
+    },
+    "_match_arm_hole": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "quilt_hole"
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "STRING",
+                "value": ","
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        ]
+      }
     },
     "match_arm": {
       "type": "PREC_RIGHT",

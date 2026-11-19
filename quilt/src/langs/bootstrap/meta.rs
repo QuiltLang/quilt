@@ -151,9 +151,14 @@ impl MetaLanguage for BootstrapMetaLanguage {
 
             b_.child(&self.parse_stmt(&one_liner(&format!("let mut b_ = tb(\"{tag}\");")))?)
                 .nl();
-            for cmd in cmds {
+            for (k, cmd) in cmds.iter().enumerate() {
                 let child = match cmd {
                     CmdOrHole::Cmd(cmd) => match cmd {
+                        StrCmd::Push(s) if crate::term::is_aligned_splice(cmds, k) => &self
+                            .parse_stmt(&one_liner(&format!(
+                                "b_.align({});",
+                                s.as_ref().strlift()
+                            )))?,
                         StrCmd::Write(s) => &self.parse_stmt(&one_liner(&format!(
                             "b_.write({});",
                             s.as_ref().strlift()

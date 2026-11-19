@@ -345,9 +345,12 @@ impl<P: TSProvider> Language for TSLanguage<P> {
             // The padding that aligns a splice at `node` to its column (see
             // [`TSProvider::align_splices`]): the text between the line's
             // prefix and the hole, every character but a tab turned into a
-            // space. `None` when `node` is not a splice (a one-line unquote's
-            // hole, [`FlatNode::Splice`]), when nothing precedes it on its
-            // line, or when another hole does — that hole's splice has a width
+            // space — empty when nothing precedes the hole on its line, where
+            // the line's indent is already its column. The push still marks
+            // the splice as aligned, so host text spliced there is laid out at
+            // that column too (#310). `None` when `node` is not a splice (a
+            // one-line unquote's hole, [`FlatNode::Splice`]), or when another
+            // hole precedes it on its line — that hole's splice has a width
             // only known when the term is built.
             fn splice_pad<P: TSProvider>(
                 provider: &P,
@@ -365,7 +368,7 @@ impl<P: TSProvider> Language for TSLanguage<P> {
                 }
                 let before = &lines[start.row][..start.column];
                 let before = before.strip_prefix(&*prefix.concat()).unwrap_or(before);
-                if before.is_empty() || before.contains(provider.hole_str()) {
+                if before.contains(provider.hole_str()) {
                     return None;
                 }
                 Some(

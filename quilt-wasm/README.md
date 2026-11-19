@@ -1,10 +1,16 @@
 # quilt-wasm
 
-WebAssembly bindings for Quilt's core IR — the runtime that expanded
-`.ts.quilt` programs target, in a browser and under Node alike. It is the
-JS/WASM analog of the `quilt` Python module (`quilt-python/`): the same `QTerm`
-builder, `qlift`/`qlift_html`, and `coparse` serializer, exposed to JavaScript
-via `wasm-bindgen`.
+Quilt's core IR for JavaScript — the runtime that expanded `.ts.quilt` programs
+target, in a browser and under Node alike. It is the JS analog of the `quilt`
+Python module (`quilt-python/`): the same `QTerm` builder, `qlift`/`qlift_html`,
+and `coparse` serializer.
+
+The builder and `coparse` are plain JavaScript (`js/runtime.js`): a term is an
+ordinary object the garbage collector owns. The wasm-bindgen crate (`src/`) is
+only the edges that need Rust — `qlift` of an already-built term, whose output
+comes from the generated tables in `quilt::langs::typescript::ops`, and the
+numbers JavaScript would print in exponent form. Those cross once per call, the
+term sent as a flat buffer (issue #306). See [Performance](#performance).
 
 Like `nanobots-codegen`, it depends on `quilt` with
 `default-features = false, features = ["rust"]`, so it uses only the
@@ -16,13 +22,19 @@ tracked separately as Phase 2 of issue #43.)
 
 ```sh
 # from the repo root
-bin/build-ts                                 # for `quilt run` (the nodejs target)
-wasm-pack build quilt-wasm --target web      # for the browser demos (ESM)
-wasm-pack build quilt-wasm --target nodejs   # for Node (CommonJS) + tests
+bin/build-ts                     # for `quilt run` and the tests (= bin/build-wasm nodejs pkg)
+bin/build-wasm web pkg-web       # for the browser demos and `quilt notebook --serve` (ESM)
+bin/build-wasm web pkg           # the npm package
 ```
 
+`bin/build-wasm` runs `wasm-pack build --out-name quilt_wasm_raw`, then
+`js/assemble.mjs`, which writes the package entry `quilt_wasm.js` (the runtime,
+bound to the wasm), its `.d.ts`, and `quilt_runtime.js` beside wasm-pack's
+output, and points `package.json` at them. A bare `wasm-pack build` is *not*
+the package: it has only the edge functions.
+
 The artifact lands in `quilt-wasm/pkg/` (git-ignored); `examples/web/build.mjs`
-puts its `--target web` build in `pkg-web/`, so the two never clobber each other.
+puts its `web` build in `pkg-web/`, so the two never clobber each other.
 
 ## `node/` — the Node runtime
 
@@ -48,7 +60,7 @@ also runs under `quilt run`.
 Published to npm as [`quilt-wasm`](https://www.npmjs.com/package/quilt-wasm) — the
 same bare specifier expanded `.ts.quilt` programs import. The `publish-npm` job
 in `.github/workflows/ci.yml` runs on every `v*` tag (after the check matrix
-passes): it does `wasm-pack build quilt-wasm --target web` and `npm publish`es
+passes): it does `bin/build-wasm web pkg` and `npm publish`es
 the resulting `pkg/`. The package version tracks the workspace version in
 `Cargo.toml`.
 
@@ -57,7 +69,7 @@ Auth is **npm Trusted Publishing (OIDC)** — no secret to manage; GitHub's
 setup, because npm can only attach a trusted publisher to a package that already
 exists:
 
-1. Publish the first version manually: `wasm-pack build quilt-wasm --target web`,
+1. Publish the first version manually: `bin/build-wasm web pkg`,
    then `npm login` and `npm publish` from `quilt-wasm/pkg/`.
 2. On npmjs.com → the package → **Settings → Trusted Publisher**, add a GitHub
    Actions publisher for repo `QuiltLang/quilt`, workflow `ci.yml`.
@@ -68,11 +80,13 @@ no-op, not a failure.
 ## Tests
 
 ```sh
-wasm-pack build quilt-wasm --target nodejs   # or: bin/build-ts
+bin/build-ts
 node quilt-wasm/test/smoke.cjs               # the builder API
-node quilt-wasm/test/memory.cjs              # repeated expansion in flat memory (bin/test-ts)
+node quilt-wasm/test/memory.cjs              # expansion costs no wasm memory (bin/test-ts)
+node quilt-wasm/test/differential.cjs        # JS coparse/lifts = the Rust QTerm's (bin/test-ts)
 node quilt-wasm/test/corpus.mjs              # the shared runtime corpus (bin/test-runtimes)
-cargo test -p quilt-wasm --lib               # in-crate units (none today; see quilt::lift for escape_html)
+node quilt-wasm/test/bench.cjs [other/pkg]   # timings against a string template; not a gate
+cargo test -p quilt-wasm --lib               # the flat encoding
 QUILT=bin/quilt node quilt-wasm/test/reduce.mjs   # `↓`, in node/ (bin/test-ts)
 ```
 
@@ -83,50 +97,57 @@ Mirrors the Python runtime one-for-one where the ABIs allow:
 | Python runtime        | quilt-wasm                                  |
 | --------------------- | ------------------------------------------- |
 | `tb(tag)` + `.c/.w/.n/.p/.x/.e/.b` | same fluent `WasmBuilder`      |
-| (none: refcounting frees temporaries) | `.t(child)`: splice and **take** a fresh child (see Memory) |
+| (none)                             | `.t(child)`: the same as `.c`; what expanded code spells (see Memory) |
 | `leaf/sym/quote/unquote/name`      | same free functions            |
 | `cmd/write/push`                   | same free functions            |
 | `NL`, `POP`, `HOLE` (constants)    | `NL()`, `POP()`, `HOLE()` (**functions** — see below) |
 | `qlift`, `qlift_html`              | same; lift `number`/`string`/`boolean`, and a `QTerm` |
+| `qlift_text(v, dialect?)`, `qlift_text_in_quotes(v, dialect?)` | same, plus arrays; a dialect is a plain object (`string`, `in_quotes`, `boolean`, `float`, `list_open`, `list_sep`, `list_close`), not a `TextDialect` subclass, and there is no built-in `Raw` — `{ string: (s) => s, in_quotes: (s) => s }` is one |
 | `term.coparse()`                   | `term.coparse()` / `term.toString()` |
 | `reduce(term)` / `term.↓`          | `node/` only: `reduce(term)` / `term.reduce()` |
 | `expand(src, lang)`                | `node/` only: `expand(src, chain)` |
 
-Builder and term methods that take `self`/a child by value **consume** the JS
-object (wasm-bindgen move semantics), so chain in one expression and don't reuse
-a spliced term.
+A term is immutable once built, so it can be spliced any number of times and
+kept. A builder's methods append to it and return it, so chain in one
+expression or reassign (`b = b.e(x)`), as you would in Rust.
 
 ## Memory
 
-A term here is a JS wrapper around a Rust `Arc`, and wasm-bindgen releases it
-when the garbage collector runs the wrapper's finalizer, not when the last
-reference goes away. Until then the wrapper keeps its whole subtree alive in
-wasm memory. V8 cannot see that memory, so it is in no hurry to collect, and
-a synchronous loop never lets finalizers run at all.
+Terms are plain JavaScript objects, freed by the garbage collector like any
+other, whether a quote built them or the program keeps them in a variable.
+Nothing is held in wasm memory between calls. `free()` and `using` still work,
+as no-ops, for code written when a term was a wasm handle and had to be freed
+(#297); `.t(child)` is from then too.
 
-Expanded code therefore splices every child it has just built itself with
-`.t(child)`, which **takes** the child: its handle is consumed, and its
-`Arc` moves into the parent. Spliced host values (`↙x↘`, `↙f(x)↘`,
-`↙↑(x)↘`) still go through the borrowing `.c`/`.e`, because the program may
-hold on to them. So a term built entirely by one quote is owned by its root,
-and freeing the root gives it all back at once:
+`test/memory.cjs` checks that repeated expansion, and holding the results,
+costs no wasm memory.
 
-```js
-const t = render();
-const html = t.coparse();
-t.free();            // or: using t = render();
-```
+## Performance
 
-Terms the program keeps in variables or returns from helpers are still
-released by the garbage collector. Free them yourself (`free()`/`using`) if
-you build large trees in a loop. `test/memory.cjs` checks that a repeated
-expansion runs in flat memory.
+Until #306 a term was a wasm-bindgen wrapper around a Rust `Arc<QTerm>`. Every
+builder call crossed into wasm, allocated a wrapper, and registered it with a
+`FinalizationRegistry`, so most of an expansion's time went to the boundary,
+not to building. `test/bench.cjs` builds the page from the issue — 150 items of
+`html↖<li><b>↙↑(t)↘</b> ↙↑(b)↘</li>↗`, about 3000 terms — and compares it with
+a string template that produces the same text:
+
+| | ms per page |
+| --- | ---: |
+| wasm-bindgen terms (before #306) | ~17 |
+| JavaScript terms, `coparse` in JavaScript | ~0.25 |
+| JavaScript terms, `coparse` in wasm (one crossing) | ~2.3 |
+| string template | ~0.07 |
+
+(Node 22, Apple silicon; run it for your own numbers.) The third row is the
+other design #306 weighed: building in JavaScript and crossing once to coparse
+in Rust. Copying the tree across costs more than writing it, so `coparse` is in
+JavaScript, held to the Rust one by `test/differential.cjs` and the corpus.
 
 ## Divergences from the Python runtime
 
-Two, both deliberate. The shared corpus (`conformance/runtime/cases.json`)
-drives all three runtimes through the same cases, so a change to either of these
-shows up as a test failure rather than as something a user discovers.
+One, deliberate. The shared corpus (`conformance/runtime/cases.json`) drives all
+three runtimes through the same cases, so a change to it shows up as a test
+failure rather than as something a user discovers.
 
 ### `NL`/`POP`/`HOLE` are functions here, constants in Python
 
@@ -145,29 +166,14 @@ and `PythonMetaLanguage` each emit their runtime's spelling — so this costs
 readers, not programs: porting a metaprogram between the two hosts means
 adding or dropping the parens.
 
-Making wasm match Python was investigated and rejected (issue #167). Two
-independent things block it:
+Issue #167 kept the functions for two reasons, both about wasm-bindgen: it
+cannot export a module-scope constant, and it *moved* each element of a
+`quote(..)`'s cmds out of its JS wrapper, so a shared `HOLE` would have been
+freed by its first use. Neither holds since #306 — the package entry is
+hand-written JavaScript, and `NL()`, `POP()` and `HOLE()` return shared
+immutable values — but the TypeScript meta still emits the calls, and changing
+that is a change to every expansion, so they stay functions for now.
 
-1. **wasm-bindgen cannot export a module-scope constant.** `#[wasm_bindgen]`
-   on a `const` is a hard compile error — *"will not work on constants unless
-   you are defining a `#[wasm_bindgen(typescript_custom_section)]`"* — and the
-   only items that reach JS are functions, structs, enums and impls. A
-   `static get` on an exported class yields `Consts.NL`, not the bare `NL`
-   Python spells. Getting real bare constants means replacing wasm-pack's
-   generated `pkg/` with a hand-maintained JS entry point and patching the
-   package manifest the npm publish job ships — and in the `--target web` build
-   that npm actually publishes, such constants could only be filled in *after*
-   `await init()`, so they would read as `undefined` beforehand. That trades a
-   visible divergence for a subtler one.
-2. **A singleton would not survive reuse.** `quote`/`unquote` take
-   `Vec<WasmCmdOrHole>`, and wasm-bindgen *moves* each element out of its JS
-   wrapper, nulling the handle. One shared `HOLE` object is freed by the first
-   `quote(..)` that uses it and throws `array contains a value of the wrong
-   type` on the second. Calling `HOLE()` per use is what makes reuse safe.
-
-### Move semantics
-
-The `.c(&child)` / `.c(child)` split that separates the Rust and Python
-runtimes shows up here too, one level deeper: a JS object passed by value is
-**consumed**. Build in one chain, and don't reuse a term you have already
-spliced.
+Move semantics, the other divergence the wasm-bindgen classes had (a term
+passed by value was consumed), went with them: nothing here consumes its
+argument.

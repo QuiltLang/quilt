@@ -85,9 +85,11 @@ check() {
     run_gate "python runtime" "$BIN/test-py"
     run_gate "typescript runtime (build)" "$BIN/build-ts"
     run_gate "typescript runtime" "$BIN/test-ts"
+    run_gate "browser demos" "$BIN/test-web"
   else
-    echo "note: skipped feature matrix, vendored grammars and the python /" >&2
-    echo "      typescript runtimes — run 'main check --all' for the full" >&2
+    echo "note: skipped feature matrix, vendored grammars, the python /" >&2
+    echo "      typescript runtimes and the browser demos — run" >&2
+    echo "      'main check --all' for the full" >&2
     echo "      CI set." >&2
   fi
 

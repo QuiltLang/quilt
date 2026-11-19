@@ -20,7 +20,7 @@
 use crate::langs::chain::{Chain, Lit, RUST};
 use crate::meta::Prelude;
 use crate::prelude::*;
-use crate::term::CmdOrHole;
+use crate::term::{is_aligned_splice, CmdOrHole};
 use miette::{bail, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -86,13 +86,16 @@ pub fn build_variadic_block(tag: &str, cmds: &[CmdOrHole], children: &[Arc<QTerm
     b.child(&sym("{")).push("    ").nl();
     b.write(&format!("let mut b_ = tb({});", str_lit(tag))).nl();
     let mut it = children.iter();
-    for c in cmds {
+    for (k, c) in cmds.iter().enumerate() {
         match c {
             CmdOrHole::Cmd(StrCmd::Write(s)) => {
                 b.write(&format!("b_.write({});", str_lit(s)));
             }
             CmdOrHole::Cmd(StrCmd::NewLine) => {
                 b.write("b_.nl();");
+            }
+            CmdOrHole::Cmd(StrCmd::Push(s)) if is_aligned_splice(cmds, k) => {
+                b.write(&format!("b_.align({});", str_lit(s)));
             }
             CmdOrHole::Cmd(StrCmd::Push(s)) => {
                 b.write(&format!("b_.push({});", str_lit(s)));
@@ -240,6 +243,14 @@ pub fn lift_spelling(target: &str) -> Result<&'static str> {
         // Same grammar, different escaping: MySQL reads a backslash inside
         // `'…'` as an escape and the standard does not (#233).
         "mysql" | "mariadb" => Ok("qlift_to::<MySql>()"),
+        "typescript" | "ts" => Ok("qlift_to::<TypeScript>()"),
+        "html" => Ok("qlift_to::<Html>()"),
+        // `Text` is named unqualified on purpose: the prelude's is
+        // `Text<Json>`, and a module that declares its own `type Text = …`
+        // shadows it, which is how a host picks a dialect for every `↑` in
+        // its text quotes (`lift::text`).
+        "text" | "txt" => Ok("qlift_to::<Text>()"),
+        crate::lift::TEXT_IN_QUOTES => Ok("qlift_to::<InQuotes<Text>>()"),
         _ => bail!("rust can't lift into {target:?}: no spelling/LiftTo impls registered"),
     }
 }

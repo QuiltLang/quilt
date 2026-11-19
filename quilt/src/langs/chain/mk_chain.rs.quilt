@@ -137,15 +137,11 @@ fn opt(ps: &Option<Vec<String>>) -> ⟨T⟩ {
 }
 
 /// One `pub const NAME: Shapes = Shapes { .. };`.
-///
-/// A hole does not parse in const-name position (`pub const {}: Shapes` is not
-/// Rust), so the name goes in as a placeholder and is rewritten after — the
-/// same dodge `mk_lifts.rs.quilt` uses for function names.
 fn shapes_const(ident: &str, s: &Sh) -> ⟨T⟩ {
-    let generic: ⟨T⟩ = ↖
+    ↖
         /// Read off samples parsed with this language's own grammar. See
         /// `mk_chain.rs.quilt` for the sample behind each field.
-        pub const SHAPES_PLACEHOLDER: Shapes = Shapes {
+        pub const ↙⟨N⟩(ident)↘: Shapes = Shapes {
             tb: ↙val(&s.tb)↘,
             w: ↙val(&s.w)↘,
             n: ↙val(&s.n)↘,
@@ -167,8 +163,7 @@ fn shapes_const(ident: &str, s: &Sh) -> ⟨T⟩ {
             pop: ↙val(&s.pop)↘,
             hole: ↙val(&s.hole)↘,
         };
-    ↗;
-    generic.rewrite_naive(&⟨N⟩("SHAPES_PLACEHOLDER"), &⟨N⟩(ident))
+    ↗
 }
 
 /**************************************************************/

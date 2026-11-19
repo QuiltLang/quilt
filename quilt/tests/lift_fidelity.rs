@@ -47,11 +47,14 @@
 
 use quilt::lang::{flat_nodes, Language};
 use quilt::langs::{
-    bash::lang::BashLanguage, lean::lang::LeanLanguage, nix::lang::NixLanguage,
-    python::lang::PythonLanguage, rust::lang::RustLanguage, sql::lang::SqlLanguage,
+    bash::lang::BashLanguage, html::lang::HtmlLanguage, lean::lang::LeanLanguage,
+    nix::lang::NixLanguage, python::lang::PythonLanguage, rust::lang::RustLanguage,
+    sql::lang::SqlLanguage, text::lang::TextLanguage, typescript::lang::TypeScriptLanguage,
     wgsl::lang::WgslLanguage, zsh::lang::ZshLanguage,
 };
-use quilt::lift::{Bash, Lean, Nix, Python, QLiftTo as _, Sql, Wgsl, Zsh};
+use quilt::lift::{
+    Bash, Html, InQuotes, Lean, Nix, Python, QLiftTo as _, Raw, Sql, Text, TypeScript, Wgsl, Zsh,
+};
 use quilt::prelude::*;
 
 /// The first subtree tagged `tag`, breadth-first (so an outer wrapper of the
@@ -285,4 +288,68 @@ fn rust_lifts_match_the_parser() {
             "ab".qlift(),
         ],
     );
+}
+
+/// TypeScript, whose numbers are unsigned like Lean's: a negative is the
+/// `unary_expression` the parser builds, not a signed `number`.
+#[test]
+fn typescript_lifts_match_the_parser() {
+    let empty: Vec<u8> = Vec::new();
+    check(
+        &mut TypeScriptLanguage::default(),
+        &[
+            3u32.qlift_to::<TypeScript>(),
+            (-7i32).qlift_to::<TypeScript>(),
+            1.5f64.qlift_to::<TypeScript>(),
+            (-1.5f64).qlift_to::<TypeScript>(),
+            true.qlift_to::<TypeScript>(),
+            false.qlift_to::<TypeScript>(),
+            "".qlift_to::<TypeScript>(),
+            "hi there".qlift_to::<TypeScript>(),
+            vec![1u8, 4].qlift_to::<TypeScript>(),
+            vec![vec![1u8], vec![2, 3]].qlift_to::<TypeScript>(),
+            empty.qlift_to::<TypeScript>(),
+        ],
+    );
+}
+
+/// HTML text content. Escape-free strings only, for the reason the module docs
+/// give for every other target: the parser splits `a &lt; b` around its
+/// entities, so an escaped lift is one `text` node where the parse has several
+/// (#174, finding A2).
+#[test]
+fn html_lifts_match_the_parser() {
+    check(
+        &mut HtmlLanguage::default(),
+        &[
+            3u32.qlift_to::<Html>(),
+            true.qlift_to::<Html>(),
+            "hi there".qlift_to::<Html>(),
+        ],
+    );
+}
+
+/// Text has no grammar: its "parse" is one `text` node holding the characters.
+/// So every lift — list, escaped string, in-quotes or raw — must be exactly
+/// that, which is why a lifted list is flat text rather than a tree of its
+/// elements. (Not through `check`, which is for tree-sitter languages.)
+#[test]
+fn text_lifts_match_the_parser() {
+    let mut lang = TextLanguage;
+    for lifted in [
+        3u32.qlift_to::<Text>(),
+        (-1.5f64).qlift_to::<Text>(),
+        true.qlift_to::<Text>(),
+        "say \"hi\"\n".qlift_to::<Text>(),
+        "".qlift_to::<Text>(),
+        vec![vec!["a"], vec![]].qlift_to::<Text>(),
+        "a\"b".qlift_to::<InQuotes<Text>>(),
+        "a b".qlift_to::<Text<Raw>>(),
+    ] {
+        let text = lifted.coparse();
+        let parsed = lang
+            .parse(&flat_nodes(&text))
+            .unwrap_or_else(|e| panic!("lifted {text:?} does not parse: {e}"));
+        assert_eq!(parsed, lifted, "lift of {text:?} is not the text parse");
+    }
 }

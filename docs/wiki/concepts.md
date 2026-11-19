@@ -188,7 +188,68 @@ nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗
 
 - **Rust `↑`** — calls `qlift()` on the value, building a term whose code reconstructs it. Integers become `integer_literal` nodes; strings become `string_literal` nodes; `Arc<QTerm>` values lift themselves recursively.
 - **Python `↑`** — similar, but written *prefix*: `↑(x)` expands to the `quilt` module's `qlift(x)` function (a method can't hang off builtin ints), or to `qlift_html(x)` when the lift targets an HTML quote.
-- **Heterogeneous `↑`** — inside a quote of another language (e.g. `python↖ … ↙x.↑↘ … ↗`), Rust's `↑` expands to `qlift_to::<L>()` for that target language, producing a term in the *target's* syntax. `LiftTo` impls exist for Python, WGSL, Zsh, and Bash (see `lift/gen.rs`); e.g. a Rust `Vec<u64>` lifts into Python as a `list` literal, and a Rust string lifts into zsh as a properly escaped double-quoted word.
+- **Heterogeneous `↑`** — inside a quote of another language (e.g. `python↖ … ↙x.↑↘ … ↗`), Rust's `↑` expands to `qlift_to::<L>()` for that target language, producing a term in the *target's* syntax. `LiftTo` impls exist for every registered language — Python, TypeScript, HTML, WGSL, Zsh, Bash, Nix, Lean, SQL/MySQL and plain text (see `lift/gen.rs` and `lift/text.rs`; the [support matrix](support-matrix.md) has which value types each takes); e.g. a Rust `Vec<u64>` lifts into Python as a `list` literal, and a Rust string lifts into zsh as a properly escaped double-quoted word. The Python host reaches TypeScript (`qlift_ts`), HTML (`qlift_html`) and text (`qlift_text`) the same way; the TypeScript host reaches HTML and text.
+
+### Lifting into text
+
+Every other target has a grammar, and the grammar decides what a lifted value looks like. Plain text (`txt↖…↗`) has none, which is why it is the target for formats Quilt has no grammar for — Caddyfiles, nginx configs, YAML fragments, `.env` files, in-house DSLs. So `↑` into text is spelled by a **dialect**: a small set of lift rules the host chooses. Quilt knows no config format by name. It ships a default and a verbatim dialect, and a format is a dialect its author writes by overriding only the rules that differ.
+
+The default dialect, `Json`, spells every value as JSON does:
+
+| value | `↑` into `txt↖…↗` |
+| --- | --- |
+| string | `"…"`, with `"`, `\` and control characters escaped (`\n`, `\t`, `\u0001`) |
+| integer | its decimal digits |
+| float | the shortest round-trip form, decimal point kept (`1.0`); NaN and infinity fail at the lift |
+| bool | `true` / `false` |
+| list | `[a, b]`, each element lifted the same way |
+| already-built term | the text it stands for |
+
+JSON is the default because it is the closest thing config formats have to a common literal syntax: the same text is a valid YAML scalar or flow sequence, a TOML value, a JavaScript or HCL literal. A newline in a value is `\n`, so a lifted value cannot start a new line of config.
+
+**Quote-aware.** A text quote does not parse, so `↑` cannot ask the tree where it is — but the expander can look at the characters beside the hole. When the hole sits directly between two `"` the author wrote, `↑` is spelled for the inside of a string, and a string renders as its escaped contents rather than a second pair of quotes:
+
+```rust
+txt↖name: ↙name.↑↘↗        // name: "O'Brien \"x\""
+txt↖name: "↙name.↑↘"↗      // the same text
+```
+
+Numbers and booleans read the same in either position; a list inside quotes is its elements and separators, without brackets. An escaped quote (`\"↙x↘\"`) is a quote character in the text, not a string the value is inside.
+
+**Raw.** `Raw` writes a string as its own characters, unescaped, and a list as words separated by spaces. In a Rust host, splicing a `&str` with `↙s↘` (no `↑`) already does that.
+
+**Writing a dialect.** In Rust, implement `TextDialect`. Every method defaults to JSON's rule:
+
+```rust
+use quilt::lift::{TextDialect, json_string};
+
+struct Conf;
+impl TextDialect for Conf {
+    const LIST_OPEN: &'static str = "";   // list layout: `a b c`
+    const LIST_SEP: &'static str = " ";
+    const LIST_CLOSE: &'static str = "";
+    fn string(s: &str) -> String {        // bare when it can be
+        if s.chars().all(|c| c.is_alphanumeric() || "._-/:".contains(c)) && !s.is_empty() {
+            s.to_string()
+        } else {
+            json_string(s)
+        }
+    }
+    // also: `in_quotes(s)`, `boolean(b)`, `float(f)`
+}
+```
+
+A rule with no safe spelling for a value — a newline where a bare token must go — should panic with a message saying so: `↑` cannot return an error, and a failure at the lift site is one the author sees.
+
+**Choosing a dialect.** Each host decides where the lift is spelled:
+
+| host | per module | per site |
+| --- | --- | --- |
+| Rust | `type Text = quilt::lift::Text<Conf>;` — `↑` names `Text` unqualified, so this shadows the prelude's `Text<Json>` | `↙x.qlift_to::<Text<Conf>>()↘` |
+| Python | `qlift_text = Conf().lift` and `qlift_text_in_quotes = Conf().lift_in_quotes` (subclass `TextDialect`) | `↙qlift_text(x, Conf)↘` |
+| TypeScript | — (the runtime import is fixed) | `↙qlift_text(x, conf)↘`, where `conf` is an object with any of `string`, `in_quotes`, `boolean`, `float`, `list_open`, `list_sep`, `list_close` |
+
+`examples/config_gen.rs.quilt` generates a YAML fragment, a Caddyfile and a small DSL this way, with no escaping written at any splice site, and `quilt/tests/expand_text.rs` runs what it generates.
 
 The operators `↑` (lift), `↓` (reduce), and `←` (emit) are **staged** like the brackets around them. An operator only spells itself out (`qlift(…)`, `reduce()`, …) once it reaches ground — when its enclosing unquotes bring it back to the running stage. An operator still nested inside an unresolved quote belongs to a *later* stage, so it is deferred: it survives expansion as its literal glyph, which the generated code spells out when it runs. So a nested generator emits a real operator for its output to expand — e.g. `py↖ … py↖ … ↙↑(a)↘ … ↗ … ↗` coparses with a literal `↙↑(a)↘`, not a prematurely-spelled `↙qlift(a)↘`.
 

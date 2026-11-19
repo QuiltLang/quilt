@@ -55,7 +55,7 @@ pub use gen::{PYTHON, RUST, TYPESCRIPT};
 
 use crate::prelude::*;
 use crate::qterm::QTermBuilder;
-use crate::term::CmdOrHole;
+use crate::term::{is_aligned_splice, CmdOrHole};
 
 /**************************************************************/
 
@@ -257,8 +257,16 @@ impl Chain {
         let mut b = tb("_");
         self.call1(&mut b, s.tb, tag);
         let mut it = children.iter();
-        for c in cmds {
+        // An aligned splice at the start of its line pushes an empty pad
+        // (`is_aligned_splice`). It only matters to text, which a chain's
+        // child never is, so the push and its pop are left out.
+        let mut skip_pop = false;
+        for (k, c) in cmds.iter().enumerate() {
             match c {
+                CmdOrHole::Cmd(StrCmd::Push(t)) if t.is_empty() && is_aligned_splice(cmds, k) => {
+                    skip_pop = true;
+                }
+                CmdOrHole::Cmd(StrCmd::Pop) if skip_pop => skip_pop = false,
                 CmdOrHole::Cmd(StrCmd::Write(t)) => self.call1(&mut b, s.w, t),
                 CmdOrHole::Cmd(StrCmd::NewLine) => {
                     b.write(s.n);

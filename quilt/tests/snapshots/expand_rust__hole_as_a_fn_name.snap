@@ -1,0 +1,7 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖fn ↙a↘() -> u32 { 1 }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("function_item").c(&sym("fn")).w(" ").c(&a).c(&tb("parameters").c(&sym("(")).c(&sym(")")).b()).w(" ").c(&sym("->")).w(" ").c(&leaf("primitive_type", "u32")).w(" ").c(&tb("block").c(&sym("{")).w(" ").c(&leaf("integer_literal", "1")).w(" ").c(&sym("}")).b()).b()
+}

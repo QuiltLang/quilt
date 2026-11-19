@@ -78,6 +78,91 @@ impl Prelude {
     }
 }
 
+/// `body` — code generated for `lang` — opened with `prelude`, placed after
+/// whatever has to stay at the top (see [`prelude_offset`]). The injection
+/// [`Multi::prelude_for`](crate::multi::Multi::prelude_for) decides on, issue
+/// #274.
+///
+/// `lang` names the language (any alias) whose line comments make up the
+/// header the prelude goes after; `//` for one the registry does not know.
+/// Needs `parse`, which is what the language registry it asks lives behind.
+#[cfg(feature = "parse")]
+#[must_use]
+pub fn with_prelude(body: &str, prelude: &str, lang: &str) -> String {
+    let line_comment = crate::langs::line_comment(lang).unwrap_or("//");
+    let at = prelude_offset(body, line_comment);
+    let (before, after) = body.split_at(at);
+    if after.is_empty() {
+        format!("{before}{prelude}\n")
+    } else {
+        format!("{before}{prelude}\n\n{after}")
+    }
+}
+
+/// The byte offset in `body` at which a runtime import can be inserted: after
+/// the leading header — blank lines, whole-line comments, a shebang and Rust's
+/// inner attributes — and before the first item.
+///
+/// Not cosmetic. Rust's `//!` doc comments and `#![…]` attributes are *inner*,
+/// and inner means "before any item", so an import written above a file's `//!`
+/// header turns the header itself into a syntax error (`expected outer doc
+/// comment`) — which is what nine of this repo's own examples do. Python and
+/// TypeScript are laxer, but a header is what a reader expects first there too,
+/// and a `#!` shebang is only a shebang on line 1.
+///
+/// A line comment is recognised by `line_comment`, the ground language's own
+/// introducer, so `//!` and `//` both count for Rust and `#`-anything for
+/// Python (its shebang included).
+#[cfg(feature = "parse")]
+fn prelude_offset(body: &str, line_comment: &str) -> usize {
+    let mut at = 0;
+    let mut rest = body;
+    while !rest.is_empty() {
+        let line_end = rest.find('\n').map_or(rest.len(), |i| i + 1);
+        let line = rest[..line_end].trim_end();
+        let take = if line.is_empty() || line.starts_with(line_comment) {
+            line_end
+        } else if line.starts_with("#![") {
+            // An inner attribute, which may wrap across lines: take it whole,
+            // by balancing its brackets. Splitting one is worse than placing
+            // the import above it.
+            match attribute_end(rest) {
+                Some(end) => end,
+                None => break,
+            }
+        } else if at == 0 && line.starts_with("#!") {
+            line_end // a shebang, which is only one on the first line
+        } else {
+            break;
+        };
+        at += take;
+        rest = &rest[take..];
+    }
+    at
+}
+
+/// The byte length of the `#![…]` inner attribute `s` starts with, counting to
+/// the `]` that balances its `[` (so a nested `[..]` inside does not end it) and
+/// through the newline after it. `None` if the brackets never balance.
+#[cfg(feature = "parse")]
+fn attribute_end(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    let after = i + c.len_utf8();
+                    return Some(s[after..].find('\n').map_or(s.len(), |j| after + j + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub enum OuterKind {
     #[default]
@@ -294,9 +379,12 @@ pub trait MetaLanguage {
     /// is target-directed (see [`Self::lift_str`]), builds its named import
     /// list from them, which is the half of this that a human gets wrong.
     ///
-    /// The injection itself is the CLI's, not the expander's: a prelude is a
-    /// property of the *file written*, not of the term, so `quilt check` stays
-    /// a pure parse-and-expand and the expander snapshots do not carry it.
+    /// The injection itself belongs to what writes the file — `quilt expand`,
+    /// `quilt run` and the in-browser expander, through
+    /// [`Multi::prelude_for`](crate::multi::Multi::prelude_for) and
+    /// [`with_prelude`] — not to expansion: a prelude is a property of the
+    /// *file written*, not of the term, so `quilt check` stays a pure
+    /// parse-and-expand and the expander snapshots do not carry it.
     #[inline]
     fn prelude(&self, targets: &[&str]) -> Option<Prelude> {
         let _ = targets;
@@ -405,5 +493,40 @@ impl MetaLanguage for Box<dyn MetaLanguage> {
 
     fn prelude(&self, targets: &[&str]) -> Option<Prelude> {
         (**self).prelude(targets)
+    }
+}
+
+#[cfg(all(test, feature = "parse"))]
+mod tests {
+    use super::*;
+
+    /// The injected runtime import goes *after* the file's header, because
+    /// Rust's `//!` and `#![…]` are inner and inner means "before any item" —
+    /// an import above them is a syntax error, not a style choice.
+    #[test]
+    fn a_prelude_goes_after_the_header() {
+        // Each case names where the first *item* starts, so the expected
+        // offset is read off the fixture rather than counted by hand.
+        let at = |body: &str, comment: &str, item: &str| {
+            assert_eq!(
+                prelude_offset(body, comment),
+                body.find(item).unwrap(),
+                "{body:?}"
+            );
+        };
+        // Nothing to skip.
+        at("fn main() {}\n", "//", "fn");
+        // A doc header, its trailing blank line included.
+        at("//! docs\n//! more\n\nfn main() {}\n", "//", "fn");
+        // A shebang, and only on the first line.
+        at("#!/usr/bin/env quilt\nfn main() {}\n", "//", "fn");
+        at("fn main() {}\n#!/usr/bin/env quilt\n", "//", "fn");
+        // An inner attribute is taken whole, brackets balanced across lines.
+        at("#![allow(dead_code)]\nfn f() {}\n", "//", "fn");
+        at("#![allow(\n    dead_code\n)]\nfn f() {}\n", "//", "fn");
+        // An unbalanced one stops the scan rather than splitting it.
+        at("#![allow(\nfn f() {}\n", "//", "#![");
+        // Python's introducer covers its shebang and its comments alike.
+        at("#!/usr/bin/env quilt\n# hi\nx = 1\n", "#", "x =");
     }
 }

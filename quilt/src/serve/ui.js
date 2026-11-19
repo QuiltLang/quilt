@@ -339,7 +339,7 @@ function listen() {
     state.runtime = hello.runtime;
     $("engine").textContent = `ts: ${hello.typescript}`;
     if (hello.typescript === "browser" && !hello.runtime) {
-      note("TypeScript cells that quote need the browser runtime: wasm-pack build quilt-wasm --target web --out-dir pkg-web");
+      note("TypeScript cells that quote need the browser runtime: bin/build-wasm web pkg-web");
     }
     renderCells();
   });

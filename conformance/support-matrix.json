@@ -200,7 +200,7 @@
       "display": "HTML",
       "aliases": [],
       "feature": "html",
-      "blurb": "A target language for code-generated pages, reports and templates — the Python and TypeScript hosts lift values into it through `qlift_html`, which entity-escapes so a lifted value is inert as text or as an attribute value — and the ground language of a *notebook*: an `.html.quilt` page whose quoted cells (`py↖…↗`, `sql↖…↗`, `bash↖…↗`) run on the machines of their languages, with the page itself as the HTML machine (`quilt notebook`).",
+      "blurb": "A target language for code-generated pages, reports and templates — hosts lift values into it entity-escaped (`LiftTo<Html>` from Rust, `qlift_html` from Python and TypeScript), so a lifted value is inert as text or as an attribute value — and the ground language of a *notebook*: an `.html.quilt` page whose quoted cells (`py↖…↗`, `sql↖…↗`, `bash↖…↗`) run on the machines of their languages, with the page itself as the HTML machine (`quilt notebook`).",
       "meta_kind": "identity",
       "lang_src": "quilt/src/langs/html/lang.rs",
       "meta_src": "quilt/src/langs/html/meta.rs",
@@ -246,10 +246,16 @@
         },
         {
           "axis": "lift-into",
-          "status": "partial",
-          "note": "no `LiftTo<Html>` marker, so a Rust host cannot lift into an HTML quote; the Python and TypeScript hosts lift through `qlift_html` instead, which is a host-side spelling rather than a `LiftTo` impl",
-          "issue": 149,
-          "verified_by": "lift-into/html"
+          "status": "supported",
+          "note": "numbers, booleans and strings lift to a `text` node, a string entity-escaped by `lift::escape_html` — one rule for the Rust host's `LiftTo<Html>` and the Python and TypeScript runtimes' `qlift_html`. No list impl: HTML has no literal syntax for a sequence. A Python bool spells `True`/`False` there, as Python prints it",
+          "verified_by": "lift-into/html",
+          "detail": [
+            "u32:3 → 3",
+            "bool:true → true",
+            "str:plain → hi",
+            "str:tricky → a&quot;b\\c${d}",
+            "str:markup → &lt;b&gt; &amp; &#x27;c&#x27;"
+          ]
         },
         {
           "axis": "highlights",
@@ -790,7 +796,11 @@
           "detail": [
             "python → qlift",
             "py → qlift",
-            "html → qlift_html"
+            "html → qlift_html",
+            "typescript → qlift_ts",
+            "ts → qlift_ts",
+            "text → qlift_text",
+            "txt → qlift_text"
           ]
         },
         {
@@ -849,7 +859,7 @@
           "status": "supported",
           "verified_by": "runtime-binding/python",
           "detail": [
-            "python: 26 shared corpus case(s)"
+            "python: 39 shared corpus case(s)"
           ]
         },
         {
@@ -915,6 +925,7 @@
           "detail": [
             "stmt_then_expr: stmt, expr",
             "fn_body_is_block: block",
+            "item_in_an_impl_body: item",
             "inside_a_string: expr"
           ]
         },
@@ -993,7 +1004,12 @@
             "lean4 → qlift_to::<Lean>()",
             "sql → qlift_to::<Sql>()",
             "mysql → qlift_to::<MySql>()",
-            "mariadb → qlift_to::<MySql>()"
+            "mariadb → qlift_to::<MySql>()",
+            "typescript → qlift_to::<TypeScript>()",
+            "ts → qlift_to::<TypeScript>()",
+            "html → qlift_to::<Html>()",
+            "text → qlift_to::<Text>()",
+            "txt → qlift_to::<Text>()"
           ]
         },
         {
@@ -1052,7 +1068,7 @@
           "status": "supported",
           "verified_by": "runtime-binding/rust",
           "detail": [
-            "rust: 22 shared corpus case(s)"
+            "rust: 38 shared corpus case(s)"
           ]
         },
         {
@@ -1312,10 +1328,21 @@
         },
         {
           "axis": "lift-into",
-          "status": "planned",
-          "note": "no `LiftTo<Text>` marker; a host that wants a value as text lifts it in its own language and splices the result",
-          "issue": 149,
-          "verified_by": "lift-into/text"
+          "status": "supported",
+          "note": "text has no grammar, so the spelling is a *dialect*'s: the default, `Json`, writes JSON literals (strings quoted and escaped, `[a, b]` lists), which are also valid YAML, TOML, JS and HCL values. A hole between two `\"` the author wrote lifts a string as its escaped contents (`InQuotes`). A host picks another dialect — the built-in `Raw`, or one it writes by overriding only the rules that differ — per site or per module; see `docs/wiki/concepts.md`",
+          "verified_by": "lift-into/text",
+          "detail": [
+            "u32:3 → 3",
+            "i32:-7 → -7",
+            "f32:1.5 → 1.5",
+            "bool:true → true",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c${d}\"",
+            "str:newline → \"a\\nb: c\"",
+            "vec:strs → [\"a\", \"b c\"]",
+            "in_quotes:tricky → a\\\"b\\\\c${d}",
+            "raw:tricky → a\"b\\c${d}"
+          ]
         },
         {
           "axis": "highlights",
@@ -1459,10 +1486,19 @@
         },
         {
           "axis": "lift-into",
-          "status": "planned",
-          "note": "no `LiftTo<TypeScript>` marker in `lift.rs`, so a Rust host cannot lift a value into a TypeScript quote; the TypeScript host lifts its own values through the wasm runtime's `qlift`",
-          "issue": 149,
-          "verified_by": "lift-into/typescript"
+          "status": "supported",
+          "note": "numbers, booleans, strings and slices/`Vec`s all lift. One `number` node serves integers and floats, and a negative is a `unary_expression` over its magnitude, as the parser builds it. The Rust host's `LiftTo<TypeScript>` and the Python host's `qlift_ts` share the core's generated shapes; the TypeScript host's own `qlift` spells the same text",
+          "verified_by": "lift-into/typescript",
+          "detail": [
+            "u32:3 → 3",
+            "i32:-7 → -7",
+            "f32:1.5 → 1.5",
+            "f32:-1.5 → -1.5",
+            "bool:true → true",
+            "bool:false → false",
+            "str:plain → \"hi\"",
+            "str:tricky → \"a\\\"b\\\\c${d}\""
+          ]
         },
         {
           "axis": "highlights",
@@ -1485,7 +1521,9 @@
           "detail": [
             "typescript → qlift",
             "ts → qlift",
-            "html → qlift_html"
+            "html → qlift_html",
+            "text → qlift_text",
+            "txt → qlift_text"
           ]
         },
         {
@@ -1539,7 +1577,7 @@
           "status": "supported",
           "verified_by": "runtime-binding/typescript",
           "detail": [
-            "wasm: 26 shared corpus case(s)"
+            "wasm: 39 shared corpus case(s)"
           ]
         },
         {

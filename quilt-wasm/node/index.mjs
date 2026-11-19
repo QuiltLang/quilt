@@ -40,14 +40,14 @@ try {
 } catch (cause) {
   throw new Error(
     `the quilt-wasm runtime is not built for Node at ${PKG} — run \`bin/build-ts\`` +
-      " (wasm-pack build quilt-wasm --target nodejs --out-dir pkg)",
+      " (bin/build-wasm nodejs pkg)",
     { cause },
   );
 }
 
 export const {
   tb, leaf, sym, quote, unquote, cmd, write, push,
-  name, qlift, qlift_html, NL, POP, HOLE,
+  name, qlift, qlift_html, qlift_text, qlift_text_in_quotes, NL, POP, HOLE,
   WasmQTerm, WasmBuilder, WasmStrCmd, WasmCmdOrHole,
 } = RT;
 

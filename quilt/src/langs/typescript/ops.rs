@@ -31,34 +31,24 @@ use crate::term::CmdOrHole;
 /**************************************************************/
 
 /// Render a TypeScript double-quoted string literal, escaping `\` and `"`
-/// (and the control characters a lexer would choke on).
+/// (and the control characters a lexer would choke on). The table is
+/// [`crate::lift::ts_dquote_escape`], shared with `LiftTo<TypeScript>`, so
+/// generated code and lifted values agree.
 fn str_lit(s: &str) -> String {
-    use std::fmt::Write as _;
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' | '\\' => {
-                out.push('\\');
-                out.push(c);
-            }
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() => write!(out, "\\u{:04x}", c as u32).unwrap(),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
+    format!("\"{}\"", crate::lift::ts_dquote_escape(s))
 }
 
 /// The shared builder-call fold, spelled for TypeScript.
 ///
-/// The lifts are named as fresh: `qlift`/`qlift_html` return a new term on
-/// every call, so `↙↑(x)↘` can hand its result to the builder outright.
-const CHAIN: Chain =
-    Chain::new(&TYPESCRIPT, Lit::Flat(str_lit)).fresh_calls(&["qlift", "qlift_html"]);
+/// The lifts are named as fresh: `qlift`/`qlift_html`/`qlift_text…` return a
+/// new term on every call, so `↙↑(x)↘` can hand its result to the builder
+/// outright.
+const CHAIN: Chain = Chain::new(&TYPESCRIPT, Lit::Flat(str_lit)).fresh_calls(&[
+    "qlift",
+    "qlift_html",
+    "qlift_text",
+    "qlift_text_in_quotes",
+]);
 
 /**************************************************************/
 

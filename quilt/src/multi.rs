@@ -132,6 +132,20 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     pub fn lift_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.lift_str(lang, target)
     }
+    /// [`Self::lift_str`] for a `↑` in source. A host that cannot lift into
+    /// text at all is told so about `text`, the language the author quoted,
+    /// rather than about [`TEXT_IN_QUOTES`](crate::lift::TEXT_IN_QUOTES), a
+    /// position inside it they never named.
+    #[cfg(feature = "parse")]
+    fn lift_spelling(&self, lang: &str, target: &str) -> Result<&'static str> {
+        match self.lift_str(lang, target) {
+            Err(e) if target == crate::lift::TEXT_IN_QUOTES => {
+                self.lift_str(lang, "text")?;
+                Err(e)
+            }
+            r => r,
+        }
+    }
     pub fn reduce_str(&self, lang: &str, target: &str) -> Result<&'static str> {
         self.metas.reduce_str(lang, target)
     }
@@ -146,6 +160,49 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
     /// [`MetaLanguage::prelude`](crate::meta::MetaLanguage::prelude).
     pub fn prelude(&self, lang: &str, targets: &[&str]) -> Result<Option<crate::meta::Prelude>> {
         self.metas.prelude(lang, targets)
+    }
+
+    /// The runtime import the file expanded from `input` under `chain` (ground
+    /// language first) should open with, or `None` (issue #274). Paired with
+    /// [`with_prelude`](crate::meta::with_prelude), this is what `quilt expand`
+    /// writes, and what the in-browser expander (`quilt-expand-wasm`) writes
+    /// too, so a generated module is runnable whichever of them produced it.
+    ///
+    /// `None` for a host whose meta needs none (nix, lean and text generate no
+    /// runtime calls at all), and by the two rules that keep the injection from
+    /// becoming a footgun:
+    ///
+    /// * **The source uses no Quilt construct.** `examples/hello.rs.quilt`
+    ///   expands to itself and must stay import-free: Rust tolerates an unused
+    ///   glob silently, but a Python or TypeScript linter will not.
+    /// * **The author already imported the runtime.** Two identical globs are
+    ///   harmless in Rust and Python, but a doubled *named* import is a hard
+    ///   error in TypeScript — so this is checked rather than assumed. See
+    ///   [`Prelude::present_in`](crate::meta::Prelude::present_in).
+    ///
+    /// The targets the meta is asked about — which only a target-directed host
+    /// like TypeScript reads — are the language chain plus every annotation the
+    /// source's quotes name, so that a `sql↖…↗` inside a `.rs.quilt` counts even
+    /// though the chain never mentions SQL. It over-approximates: a language
+    /// listed but never lifted into costs an unused name, one missing costs a
+    /// name that is not in scope.
+    #[must_use]
+    pub fn prelude_for(&self, chain: &[&str], input: &str) -> Option<crate::meta::Prelude> {
+        let used = crate::node::constructs(input);
+        if !used.any {
+            return None;
+        }
+        let mut targets: Vec<&str> = chain.to_vec();
+        for anno in &used.annos {
+            if !targets.contains(&&**anno) {
+                targets.push(anno);
+            }
+        }
+        // A language with no meta is not an error here — an expansion that
+        // succeeded proves the host is fine — so a failed lookup is simply "no
+        // prelude".
+        let prelude = self.prelude(chain[0], &targets).ok().flatten()?;
+        (!prelude.present_in(input)).then_some(prelude)
     }
     pub fn type_str(&self, lang: &str) -> Result<&'static str> {
         self.metas.type_str(lang)
@@ -445,7 +502,7 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     code.push(FlatNode::Hole);
                 }
                 Node::Lift => code.push(FlatNode::Str(
-                    self.lift_str(lang, splice_target.unwrap_or(lang))?,
+                    self.lift_spelling(lang, splice_target.unwrap_or(lang))?,
                 )),
                 // `↓` flush against an argument list — `db.↓(schema)` — is
                 // *method position*: it spells the host's machine-eval method
@@ -510,7 +567,8 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
 
         // parse children using hole types
         let mut plugs = Vec::new();
-        for n in nodes {
+        let nodes_here = nodes;
+        for (i, n) in nodes.iter().enumerate() {
             match &**n {
                 // Deferred operators (see the code-building pass): consume the
                 // hole and plug the glyph back in, so the term coparses to a real
@@ -605,8 +663,10 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
                     builder.span(span.clone());
                     // The body's value is spliced into *this* fragment's
                     // language: it directs any `↑` in the body (e.g. a lift
-                    // inside `wgsl↖…↗` lifts into WGSL).
-                    let splice_target = lang;
+                    // inside `wgsl↖…↗` lifts into WGSL). Text has no grammar
+                    // to say where the hole is, so its position comes from
+                    // the characters around it (`text_splice_target`).
+                    let splice_target = text_splice_target(lang, nodes_here, i).unwrap_or(lang);
                     let zipper = zipper.clone().tail().unwrap();
                     // an unquote with no enclosing quote pops the host off the
                     // zipper; catch it here (with a span) instead of panicking
@@ -663,6 +723,31 @@ impl<LS: Languages, MS: MetaLanguages> Multi<LS, MS> {
         }
         .expand(&Default::default(), qterm)
     }
+}
+
+/// Where a hole in a *text* quote sits, as a splice target: between two `"`
+/// the author wrote, it is [`TEXT_IN_QUOTES`](crate::lift::TEXT_IN_QUOTES), so
+/// `↑` renders a string's escaped contents rather than a second pair of quotes
+/// (issue #149). Anything else, and any other language, is `None`: a grammar
+/// already knows what a hole inside its string literal is.
+///
+/// "The author wrote" means unescaped: `\"↙x↘\"` is a quote character in the
+/// text, not the opening of a quoted context.
+#[cfg(feature = "parse")]
+fn text_splice_target(lang: &str, nodes: &[Arc<Node>], i: usize) -> Option<&'static str> {
+    if !matches!(lang, "text" | "txt") {
+        return None;
+    }
+    let Some(Node::Content(before)) = nodes.get(i.checked_sub(1)?).map(|n| &**n) else {
+        return None;
+    };
+    let Some(Node::Content(after)) = nodes.get(i + 1).map(|n| &**n) else {
+        return None;
+    };
+    let opens = before
+        .strip_suffix('"')
+        .is_some_and(|rest| !rest.ends_with('\\'));
+    (opens && after.starts_with('"')).then_some(crate::lift::TEXT_IN_QUOTES)
 }
 
 /// The language a `⟨M⟩` names. An annotation says it outright; the bare form

@@ -138,6 +138,20 @@ jobs:
             run: |
               bin/build-ts
               bin/test-ts
+          # The browser demos (examples/web): build the runtime for the web and
+          # the in-browser expander (a WASI command, so it needs a WASI sdk for
+          # the C grammars), then run both headless verifiers. The staged
+          # playground's verifier used to skip itself without a WASI sdk, and
+          # nothing ran it, so the demo broke when expanded code stopped
+          # carrying a hand-written runtime import and nobody saw (#314).
+          - os: ubuntu-latest
+            name: Browser demos (examples/web verifiers)
+            run: |
+              WASI_SDK_PATH="$RUNNER_TEMP/wasi-sdk-33.0-x86_64-linux"
+              curl -fsSL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-33/wasi-sdk-33.0-x86_64-linux.tar.gz \
+                | tar -xz -C "$RUNNER_TEMP"
+              export WASI_SDK_PATH
+              bin/test-web
           # macOS is the primary development platform, so run the
           # platform-sensitive checks there too (paths, dyld libpython loading,
           # tree-sitter codegen). The Linux matrix above stays the canonical
@@ -434,7 +448,7 @@ jobs:
   # ⚠️ One-time setup: trusted publishing is configured on the package at
   # npmjs.com, which requires the package to already exist (npm has no
   # PyPI-style "pending publisher"). So the FIRST release must be published
-  # another way — `wasm-pack build quilt-wasm --target web && npm publish` from
+  # another way — `bin/build-wasm web pkg && npm publish` from
   # quilt-wasm/pkg with `npm login`, or a one-off token. After that, add the
   # trusted publisher (GitHub Actions → repo QuiltLang/quilt, workflow ci.yml)
   # and this job handles every release with no secret. An already-published
@@ -468,12 +482,13 @@ jobs:
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
           version: 'latest'
-      # `--target web`: a default-export `init()` + the named runtime functions,
-      # the API expanded `.ts.quilt` modules import. Lands in quilt-wasm/pkg/
-      # with a generated package.json (name/version/license/description/
-      # repository/keywords all from quilt-wasm/Cargo.toml).
-      - name: wasm-pack build
-        run: wasm-pack build quilt-wasm --target web
+      # `web`: a default-export `init()` + the named runtime functions, the API
+      # expanded `.ts.quilt` modules import. bin/build-wasm runs wasm-pack, then
+      # puts the JavaScript runtime around it (issue #306). Lands in
+      # quilt-wasm/pkg/ with a generated package.json (name/version/license/
+      # description/repository/keywords all from quilt-wasm/Cargo.toml).
+      - name: build the package
+        run: bin/build-wasm web pkg
       # No token / NODE_AUTH_TOKEN: with a trusted publisher configured, npm
       # detects the GitHub OIDC environment and authenticates automatically
       # (provenance included). Until that one-time setup is done (see header),

@@ -14,7 +14,20 @@ import json
 import pathlib
 
 import pytest
-from quilt import HOLE, NL, POP, cmd, from_postcard_bytes, leaf, name, push, qlift, qlift_html
+from quilt import (
+    HOLE,
+    NL,
+    POP,
+    cmd,
+    from_postcard_bytes,
+    leaf,
+    name,
+    push,
+    qlift,
+    qlift_html,
+    qlift_text,
+    qlift_text_in_quotes,
+)
 from quilt import quote as mk_quote
 from quilt import sym, tb
 from quilt import unquote as mk_unquote
@@ -70,6 +83,8 @@ def build_value(v):
     # A nested term means "lift an already-built term", which is how the corpus
     # pins qlift's behaviour on terms — see issue #166, where the three
     # runtimes disagree.
+    if isinstance(v, list):
+        return [build_value(x) for x in v]
     return build(v) if isinstance(v, dict) else v
 
 
@@ -85,6 +100,10 @@ def build(t):
         return qlift(build_value(t["qlift"]))
     if "qlift_html" in t:
         return qlift_html(build_value(t["qlift_html"]))
+    if "qlift_text" in t:
+        return qlift_text(build_value(t["qlift_text"]))
+    if "qlift_text_in_quotes" in t:
+        return qlift_text_in_quotes(build_value(t["qlift_text_in_quotes"]))
     if "tb" in t:
         b = tb(t["tb"]["tag"])
         for step in t["tb"]["steps"]:

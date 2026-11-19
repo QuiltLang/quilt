@@ -63,7 +63,7 @@ fn main() -> Result<()> {
             let mut b_ = tb("def");
             sym("def").emit(&mut b_);
             b_.write(" ");
-            b_.push("    ");
+            b_.align("    ");
             name.emit(&mut b_);
             b_.pop();
             b_.write(" ");
@@ -83,7 +83,7 @@ fn main() -> Result<()> {
                 let mut b_ = tb("theorem");
                 sym("theorem").emit(&mut b_);
                 b_.write(" ");
-                b_.push("                ");
+                b_.align("                ");
                 lemma.emit(&mut b_);
                 b_.pop();
                 b_.write(" ");
@@ -98,7 +98,7 @@ fn main() -> Result<()> {
                 tb("by").c(&sym("by")).p("  ").n().c(&tb("app").c(&leaf("identifier", "simp")).w(" ").c(&{
                     let mut b_ = tb("list_lit");
                     sym("[").emit(&mut b_);
-                    b_.push("      ");
+                    b_.align("      ");
                     b_.sep(",");
                     name.emit(&mut b_);
                     b_.end_sep();

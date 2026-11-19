@@ -91,6 +91,8 @@ pub enum Term {
     Name(String),
     Qlift(Value),
     QliftHtml(Value),
+    QliftText(Value),
+    QliftTextInQuotes(Value),
     Tb(Tb),
     Quote(Bracket),
     Unquote(Bracket),
@@ -148,7 +150,27 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Str(String),
+    /// Only text lifts take one: no other runtime lift has a list form that all
+    /// three runtimes share.
+    List(Vec<Value>),
     Term(Box<Term>),
+}
+
+/// A corpus value renders through the core's text rules exactly as the Rust
+/// value it stands for would — the runner adds no rendering of its own.
+impl quilt::lift::TextValue for Value {
+    fn render<D: quilt::lift::TextDialect>(&self, in_quotes: bool) -> String {
+        match self {
+            Value::Bool(b) => b.render::<D>(in_quotes),
+            Value::Int(n) => n.render::<D>(in_quotes),
+            Value::Float(f) => f.render::<D>(in_quotes),
+            Value::Str(s) => s.render::<D>(in_quotes),
+            Value::List(xs) => xs.render::<D>(in_quotes),
+            Value::Term(t) => build(t)
+                .expect("a corpus term inside a text lift must build")
+                .render::<D>(in_quotes),
+        }
+    }
 }
 
 pub fn corpus_path() -> PathBuf {
@@ -183,6 +205,7 @@ fn build_value(v: &Value) -> Result<Arc<QTerm>> {
         Value::Int(n) => n.qlift(),
         Value::Float(f) => f.qlift(),
         Value::Str(s) => s.as_str().qlift(),
+        Value::List(_) => bail!("qlift takes no list in the corpus; only the text lifts do"),
         // `qlift` on a term is the identity — the property the corpus pins.
         Value::Term(t) => build(t)?.qlift(),
     })
@@ -195,12 +218,20 @@ pub fn build(t: &Term) -> Result<Arc<QTerm>> {
         Term::Sym(s) => sym(s),
         Term::Name(s) => name(s),
         Term::Qlift(v) => build_value(v)?,
-        Term::QliftHtml(_) => {
-            bail!(
-                "qlift_html has no Rust implementation (no LiftTo<Html> marker — issue #149); \
-                 the case should narrow `runtimes` to python and wasm"
-            )
-        }
+        // `LiftTo<Html>`, the marker `↑` into `html↖…↗` spells from a Rust host.
+        // A term has no lift into HTML here: a Rust host splices one with
+        // `↙t↘`, so the corpus's pass-through case stays narrowed.
+        Term::QliftHtml(v) => match v {
+            Value::Bool(b) => b.qlift_to::<Html>(),
+            Value::Int(n) => n.qlift_to::<Html>(),
+            Value::Float(f) => f.qlift_to::<Html>(),
+            Value::Str(s) => s.as_str().qlift_to::<Html>(),
+            Value::List(_) | Value::Term(_) => {
+                bail!("LiftTo<Html> has no impl for lists or terms; narrow the case's `runtimes`")
+            }
+        },
+        Term::QliftText(v) => v.qlift_to::<Text>(),
+        Term::QliftTextInQuotes(v) => v.qlift_to::<InQuotes<Text>>(),
         Term::Tb(Tb { tag, steps }) => {
             let mut b = tb(tag);
             for step in steps {

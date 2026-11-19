@@ -15,8 +15,15 @@ from quilt import (
     name,
     qlift,
     qlift_html,
+    qlift_text,
+    qlift_text_in_quotes,
+    qlift_ts,
+    json_string,
+    Raw,
+    TextDialect,
     HOLE,
 )
+import pytest
 
 
 def test_builder_coparse():
@@ -71,6 +78,54 @@ def test_qlift_html():
     # lift/reduce law to apply to.
     t = leaf("text", "x")
     assert qlift_html(t).coparse() == "x"
+
+
+def test_qlift_ts():
+    # The core's generated TypeScript shapes, so a negative number is the
+    # `unary_expression` the parser builds and a list is an `array`.
+    assert qlift_ts(42).coparse() == "42"
+    assert qlift_ts(-7).coparse() == "-7"
+    assert qlift_ts(1.0).coparse() == "1.0"
+    assert qlift_ts(True).coparse() == "true"
+    assert qlift_ts('say "hi"').coparse() == '"say \\"hi\\""'
+    assert qlift_ts([1, "a", [False]]).coparse() == '[1, "a", [false]]'
+    with pytest.raises(TypeError):
+        qlift_ts(object())
+
+
+def test_qlift_text_defaults_to_json():
+    assert qlift_text("a\nb").coparse() == '"a\\nb"'
+    assert qlift_text([1, True, "x"]).coparse() == '[1, true, "x"]'
+    assert qlift_text_in_quotes('a"b').coparse() == 'a\\"b'
+    # JSON has no NaN: the lift fails where it is written, not in the config.
+    with pytest.raises(ValueError, match="NaN"):
+        qlift_text(float("nan"))
+
+
+def test_qlift_text_raw():
+    s = 'a "b" ${c}'
+    assert qlift_text(s, Raw).coparse() == s
+    assert qlift_text(["a", "b"], Raw).coparse() == "a b"
+    assert qlift_text(float("nan"), Raw()).coparse() == "NaN"
+
+
+def test_qlift_text_user_dialect_overrides_only_what_differs():
+    class Conf(TextDialect):
+        list_open, list_sep, list_close = "", "\n", ""
+
+        def string(self, s):
+            return s if s.isidentifier() else json_string(s)
+
+        def boolean(self, b):
+            return "on" if b else "off"
+
+    assert qlift_text("web", Conf).coparse() == "web"
+    assert qlift_text("a b", Conf).coparse() == '"a b"'
+    assert qlift_text(True, Conf).coparse() == "on"
+    assert qlift_text(["x", "y z"], Conf).coparse() == 'x\n"y z"'
+    # Untouched rules are JSON's.
+    assert qlift_text(1.5, Conf).coparse() == "1.5"
+    assert qlift_text_in_quotes('q"', Conf).coparse() == 'q\\"'
 
 
 def test_str_and_repr():

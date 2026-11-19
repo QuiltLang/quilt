@@ -423,3 +423,218 @@ fn hand_placed_list_separators_are_kept() -> Result<()> {
     assert_eq!(out, "[0, 1, 2, 3] | [1, 2]");
     Ok(())
 }
+
+/* ──────── holes in item, variant, field and match-arm position (#302) ──────── */
+
+// A hole could stand only where the Rust grammar fork had a `quilt_hole`: type
+// and pattern position, plus wherever `{}` happens to parse as an empty block
+// (expression and statement position, and the top level of a file). These are
+// the positions a code generator reaches for next, each of which was a parse
+// error.
+//
+// The snapshots pin the builder calls. The `*_runs` tests go one step further:
+// they run the generator, then compile and run the Rust it generated.
+
+/// Run the generator `code` (a Rust expression returning the `coparse` of a
+/// quoted block), then compile and run the block it generated. Returns the
+/// generated source and its value.
+fn generate_and_run<T: serde::Serialize + for<'de> serde::Deserialize<'de>>(
+    code: &str,
+) -> Result<(String, T)> {
+    let mut omni = Omni::default();
+    let generator = omni.parse(code)?;
+    let src: String = omni.expand(&generator)?.reduce()?;
+    let mut omni = Omni::default();
+    let generated = omni.parse(&src)?;
+    Ok((src.clone(), generated.reduce()?))
+}
+
+const GEN: &str = "fn gen(a: ⟨T⟩, xs: Vec<⟨T⟩>) -> ⟨T⟩ {\n    BODY\n}";
+
+fn expand_gen(body: &str) -> Result<String> {
+    expand_both(&GEN.replace("BODY", body))
+}
+
+#[test]
+fn hole_in_enum_variant_position() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_the_only_enum_variant",
+        expand_gen("↖enum Color { ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_after_an_enum_variant",
+        expand_gen("↖enum Color { Red, ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_emitted_enum_variants",
+        expand_gen("↖enum Color { ↙{ for x in xs { x.← } }↘ }↗")?
+    );
+    Ok(())
+}
+
+#[test]
+fn hole_in_enum_variant_position_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let green = ↖Green↗;
+        ↖{
+            enum Color { Red, ↙green↘, Blue }
+            let _ = (Color::Red, Color::Blue);
+            Color::Green as u32
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("enum Color { Red, Green, Blue }"), "{src}");
+    assert_eq!(value, 1);
+    Ok(())
+}
+
+#[test]
+fn hole_in_struct_field_position() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_the_only_struct_field",
+        expand_gen("↖struct S { ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_after_a_struct_field",
+        expand_gen("↖struct S { x: u32, ↙a↘ }↗")?
+    );
+    Ok(())
+}
+
+/// The field comes out of another struct by a pattern-let, which puts the same
+/// hole position in a pattern quote.
+#[test]
+fn hole_in_struct_field_position_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let ↖struct Q { ↙field↘ }↗ = ↖struct Q { y: u32 }↗;
+        ↖{
+            struct P { x: u32, ↙field↘ }
+            let p = P { x: 1, y: 2 };
+            p.x + p.y
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("struct P { x: u32, y: u32 }"), "{src}");
+    assert_eq!(value, 3);
+    Ok(())
+}
+
+#[test]
+fn hole_in_item_name_position() -> Result<()> {
+    insta::assert_snapshot!("hole_as_a_fn_name", expand_gen("↖fn ↙a↘() -> u32 { 1 }↗")?);
+    insta::assert_snapshot!(
+        "hole_as_a_struct_name",
+        expand_gen("↖struct ↙a↘ { x: u32 }↗")?
+    );
+    insta::assert_snapshot!("hole_as_a_const_name", expand_gen("↖const ↙a↘: u32 = 1;↗")?);
+    Ok(())
+}
+
+/// `const` is the awkward one: in statement position `const {` also starts a
+/// `const_block`, so the grammar takes the hole there as two tokens and tells
+/// the readings apart by the `:` after it. A `const` block must still parse.
+#[test]
+fn hole_in_item_name_position_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let (f, s, c) = (↖three↗, ↖Pair↗, ↖FOUR↗);
+        ↖{
+            fn ↙f↘() -> u32 { 3 }
+            struct ↙s↘ { x: u32 }
+            const ↙c↘: u32 = 4;
+            let _ = const { 0 };
+            three() + Pair { x: FOUR }.x
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("fn three() -> u32 { 3 }"), "{src}");
+    assert!(src.contains("const FOUR: u32 = 4;"), "{src}");
+    assert_eq!(value, 7);
+    Ok(())
+}
+
+#[test]
+fn hole_in_declaration_list_position() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_the_only_impl_item",
+        expand_gen("↖impl X { ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_after_an_impl_item",
+        expand_gen("↖impl X { fn g() {} ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_emitted_mod_items",
+        expand_gen("↖mod m { fn g() {} ↙{ for x in xs { x.← } }↘ }↗")?
+    );
+    Ok(())
+}
+
+#[test]
+fn hole_in_declaration_list_position_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let method = ↖fn two(&self) -> u32 { 2 }↗;
+        let fns = vec![↖pub fn one() -> u32 { 1 }↗, ↖pub fn ten() -> u32 { 10 }↗];
+        ↖{
+            struct S;
+            impl S { fn zero(&self) -> u32 { 0 } ↙method↘ }
+            mod m { ↙{ for f in fns { f.← } }↘ }
+            S.zero() + S.two() + m::one() + m::ten()
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("fn two(&self)"), "{src}");
+    assert_eq!(value, 13);
+    Ok(())
+}
+
+#[test]
+fn hole_in_match_arm_position() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_the_only_match_arm",
+        expand_gen("↖match x { ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_arms_before_a_fallback",
+        expand_gen("↖match x { ↙xs↘ _ => 0 }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_after_a_match_arm",
+        expand_gen("↖match x { 0 => 1, ↙a↘ }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_emitted_arms_before_a_fallback",
+        expand_gen("↖match x { ↙{ for x in xs { x.← } }↘ _ => 0 }↗")?
+    );
+    Ok(())
+}
+
+/// A hole that *begins* an arm's pattern is still a pattern: the token after
+/// it (`=>`, `|`, `if`) decides, and `|` goes to the pattern.
+#[test]
+fn hole_beginning_a_match_pattern_is_still_a_pattern() -> Result<()> {
+    for code in [
+        "↖match x { ↙a↘ => 0 }↗",
+        "↖match x { ↙a↘ | 1 => 0 }↗",
+        "↖match x { ↙a↘ if c => 0 }↗",
+    ] {
+        let out = expand_gen(code)?;
+        assert!(out.contains(r#"tb("match_arm")"#), "{code}:\n{out}");
+    }
+    Ok(())
+}
+
+/// Arms are taken out of other `match`es by pattern-lets (the same hole
+/// position, in a pattern quote) and spliced between literal arms: one alone,
+/// then a sequence. Each arm carries its own `,`, so no separator is needed.
+#[test]
+fn hole_in_match_arm_position_runs() -> Result<()> {
+    let (src, value): (_, Vec<u32>) = generate_and_run(indoc! {r#"{
+        let ↖match x { ↙one↘ }↗ = ↖match x { 1 => 10, }↗;
+        let ↖match x { ↙two↘ }↗ = ↖match x { 2 => 20, }↗;
+        let ↖match x { ↙three↘ }↗ = ↖match x { 3 => 30, }↗;
+        let rest = vec![two, three];
+        ↖{
+            let f = |x: u32| match x { 0 => 0, ↙one↘ ↙{ for arm in rest { arm.← } }↘ _ => 99 };
+            (0..5).map(f).collect::<Vec<u32>>()
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("1 => 10,"), "{src}");
+    assert_eq!(value, vec![0, 10, 20, 30, 99]);
+    Ok(())
+}
