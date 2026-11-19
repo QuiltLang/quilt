@@ -1,0 +1,15 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖impl X { ↙a↘ }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("impl_item").c(&sym("impl")).w(" ").c(&leaf("type_identifier", "X")).w(" ").c(&{
+        let mut b_ = tb("declaration_list");
+        sym("{").emit(&mut b_);
+        b_.write(" ");
+        a.emit(&mut b_);
+        b_.write(" ");
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).b()
+}

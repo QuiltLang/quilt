@@ -110,6 +110,11 @@ code = "fn f() @"
 ikinds = ["block"]
 
 [[holes]]
+name = "item_in_an_impl_body"
+code = "impl X { fn g() {} @ }"
+ikinds = ["item"]
+
+[[holes]]
 name = "inside_a_string"
 code = 'let s = "hi @ there";'
 ikinds = ["expr"]

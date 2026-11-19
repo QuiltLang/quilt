@@ -86,6 +86,16 @@ impl TSProvider for RustProvider {
         // `fn f() {…}` / `loop {…}` use the `body` field, `if c {…}` uses
         // `consequence`, and the `else {…}` block hangs off an `else_clause`.
         // (A `block` in `value` position — `let x = {…}` — stays `Expr`.)
+        // A hole among the items of an `impl`, `mod` or `trait` body stands
+        // for items. Its tag is the grammar's `quilt_hole`, which says nothing
+        // about position on its own (#302).
+        if node.kind() == "quilt_hole"
+            && node
+                .parent()
+                .is_some_and(|p| p.kind() == "declaration_list")
+        {
+            return InnerKind::Item;
+        }
         if node.kind() == "block" {
             if let Some(parent) = node.parent() {
                 let is_body = parent.kind() == "else_clause"

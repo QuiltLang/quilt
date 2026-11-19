@@ -1,0 +1,18 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖enum Color { Red, ↙a↘ }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("enum_item").c(&sym("enum")).w(" ").c(&leaf("type_identifier", "Color")).w(" ").c(&{
+        let mut b_ = tb("enum_variant_list");
+        sym("{").emit(&mut b_);
+        b_.write(" ");
+        tb("enum_variant").c(&leaf("identifier", "Red")).b().emit(&mut b_);
+        sym(",").emit(&mut b_);
+        b_.write(" ");
+        a.emit(&mut b_);
+        b_.write(" ");
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).b()
+}
