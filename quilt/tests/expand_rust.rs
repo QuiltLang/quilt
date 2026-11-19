@@ -638,3 +638,29 @@ fn hole_in_match_arm_position_runs() -> Result<()> {
     assert_eq!(value, vec![0, 10, 20, 30, 99]);
     Ok(())
 }
+
+/* ───────────────────── strings spliced where a &str is ───────────────────── */
+
+/// A `Vec<String>` splices its elements as text, as a `&str` does, and so do a
+/// `&String` and a `Vec<&str>`: a generator that formats its items as strings
+/// no longer has to `join` them, or keep them as `&str`, to splice them.
+#[test]
+fn strings_splice_as_text_and_run() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let fns: Vec<String> = (1..=3u32)
+            .map(|i| format!("fn f{i}() -> u32 {{ {i} }}\n"))
+            .collect();
+        let consts: Vec<&str> = vec!["const A: u32 = 10;\n", "const B: u32 = 20;\n"];
+        let names = vec!["f1() + f2() + f3() + A + B".to_string()];
+        let sum: &String = &names[0];
+        ↖{
+            ↙fns↘
+            ↙consts↘
+            ↙sum↘
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("fn f2() -> u32 { 2 }"), "{src}");
+    assert!(src.contains("const B: u32 = 20;"), "{src}");
+    assert_eq!(value, 36);
+    Ok(())
+}
