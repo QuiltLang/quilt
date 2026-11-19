@@ -99,8 +99,12 @@ function setStatus(msg, isError = false) {
 }
 
 // Run the expander wasm once: stdin = source, argv = chain, returns stdout.
-function expand(source) {
-  const wasi = new WASI({ args: ["quilt-expand", ...CHAIN], stdin: enc.encode(source) });
+// Like `quilt expand`, its output opens with the runtime import (`import { tb,
+// … } from "quilt"`), which a module needs; `{ prelude: false }` leaves it out,
+// for reduce (↓), which evaluates the result with the runtime already in scope.
+function expand(source, { prelude = true } = {}) {
+  const args = ["quilt-expand", ...CHAIN, ...(prelude ? [] : ["--no-prelude"])];
+  const wasi = new WASI({ args, stdin: enc.encode(source) });
   const instance = new WebAssembly.Instance(expanderModule, { wasi_snapshot_preview1: wasi.wasiImport });
   const code = wasi.start(instance);
   if (code !== 0) throw new Error(dec.decode(wasi.stderrBytes) || `expander exited ${code}`);

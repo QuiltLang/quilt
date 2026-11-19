@@ -30,7 +30,10 @@ const GLYPHS = "↖↗↙↘↑↓←⟨⟩";
 const hasGlyph = (s) => [...GLYPHS].some((g) => s.includes(g));
 
 // The expander (source string → expanded TypeScript). Injected by the page,
-// which owns the WASI shim + expander wasm. Kept here so `term.reduce()` works
+// which owns the WASI shim + expander wasm. It is called as
+// `expander(source, { prelude: false })`: like `quilt expand --no-prelude`, it
+// must leave out the runtime import, since reduce evaluates the result inside
+// `new Function` with the runtime passed in, where an `import` is a syntax error. Kept here so `term.reduce()` works
 // anywhere the term flows, including inside other expanded modules.
 let expander = null;
 export function setExpander(fn) {
@@ -66,7 +69,7 @@ function reduceSrc(src) {
     if (!expander) {
       throw new Error("reduce (↓): no expander registered — call setExpander() first");
     }
-    code = stripBanner(expander(code));
+    code = stripBanner(expander(code, { prelude: false }));
   }
   reduceTrace.push({ generated, expanded: code });
   const fn = new Function(...RT_NAMES, `"use strict";\nreturn (\n${code}\n);`);

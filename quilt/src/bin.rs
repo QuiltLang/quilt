@@ -332,25 +332,9 @@ fn expand(args: &ExpandArgs) -> Result<()> {
 }
 
 /// The runtime import the file expanded from `input` should open with, or
-/// `None` (issue #274).
-///
-/// `None` in four cases: `--no-prelude`; a host whose meta needs none (nix,
-/// lean and text generate no runtime calls at all); and the two rules that keep
-/// the injection from becoming a footgun:
-///
-/// * **The source uses no Quilt construct.** `examples/hello.rs.quilt` expands
-///   to itself and must stay import-free: Rust tolerates an unused glob
-///   silently, but a Python or TypeScript linter will not.
-/// * **The author already imported the runtime.** Two identical globs are
-///   harmless in Rust and Python, but a doubled *named* import is a hard error
-///   in TypeScript — so this is checked rather than assumed. See
-///   [`Prelude::present_in`](quilt::meta::Prelude::present_in).
-///
-/// `targets` — which only a target-directed host like TypeScript reads — is the
-/// language chain plus every annotation the source's quotes name, so that a
-/// `sql↖…↗` inside a `.rs.quilt` counts even though the chain never mentions
-/// SQL. It over-approximates: a language listed but never lifted into costs an
-/// unused name, one missing costs a name that is not in scope.
+/// `None` (issue #274): [`Multi::prelude_for`] under the CLI's two overrides,
+/// `--no-prelude` and `--prelude <LINE>` (which still only applies to a source
+/// that uses a Quilt construct and has not written that line itself).
 fn prelude_for<LS: Languages, MS: MetaLanguages>(
     multi: &Multi<LS, MS>,
     chain: &[&str],
@@ -360,24 +344,11 @@ fn prelude_for<LS: Languages, MS: MetaLanguages>(
     if opts.off {
         return None;
     }
-    let used = quilt::node::constructs(input);
-    if !used.any {
-        return None;
-    }
     if let Some(text) = opts.text {
-        return (!input.contains(text.trim())).then(|| text.to_owned());
+        let used = quilt::node::constructs(input).any;
+        return (used && !input.contains(text.trim())).then(|| text.to_owned());
     }
-    let mut targets: Vec<&str> = chain.to_vec();
-    for anno in &used.annos {
-        if !targets.contains(&&**anno) {
-            targets.push(anno);
-        }
-    }
-    // A language with no meta is not an error here — the expansion that just
-    // succeeded proves the host is fine — so a failed lookup is simply "no
-    // prelude".
-    let prelude = multi.prelude(chain[0], &targets).ok().flatten()?;
-    (!prelude.present_in(input)).then(|| prelude.text.into_owned())
+    multi.prelude_for(chain, input).map(|p| p.text.into_owned())
 }
 
 /// Validate each file like `expand` would (parse + expansion), but discard the
@@ -1055,7 +1026,7 @@ fn expand_to<LS: Languages, MS: MetaLanguages>(
     // expanding, since the runner comes from the language rather than from what
     // the script's own `#!` line names.
     let body = match prelude_for(multi, chain, input, opts) {
-        Some(prelude) => with_prelude(&body, &prelude, line_comment(host)),
+        Some(prelude) => quilt::meta::with_prelude(&body, &prelude, host),
         None => body,
     };
     fs::write(path, body).into_diagnostic()?;
@@ -1106,7 +1077,7 @@ fn generate(filename: &str, input: &str, x: &Arc<QTerm>, prelude: Option<&str>) 
     let body = x.coparse();
     let body = strip_shebang(&body);
     let body = match prelude {
-        Some(prelude) => with_prelude(body, prelude, line_comment(lang)),
+        Some(prelude) => quilt::meta::with_prelude(body, prelude, lang),
         None => body.to_owned(),
     };
     fs::write(filename, format!("{header}\n\n{body}")).into_diagnostic()
@@ -1158,88 +1129,6 @@ fn strip_shebang(body: &str) -> &str {
     }
     let rest = rest.find('\n').map_or("", |i| &rest[i + 1..]);
     rest.strip_prefix('\n').unwrap_or(rest)
-}
-
-/// The line-comment introducer for `lang`, asked of the registry the same way
-/// [`header_comment`] asks for the header's. Used to recognise the leading
-/// comment header an inserted prelude has to go *after*; `//` for anything the
-/// registry does not know, matching [`header_comment`]'s fallback.
-fn line_comment(lang: &str) -> &'static str {
-    quilt::langs::line_comment(lang).unwrap_or("//")
-}
-
-/// `body` opened with `prelude`, placed after whatever has to stay at the top
-/// (see [`prelude_offset`]).
-fn with_prelude(body: &str, prelude: &str, line_comment: &str) -> String {
-    let at = prelude_offset(body, line_comment);
-    let (before, after) = body.split_at(at);
-    if after.is_empty() {
-        format!("{before}{prelude}\n")
-    } else {
-        format!("{before}{prelude}\n\n{after}")
-    }
-}
-
-/// The byte offset in `body` at which a runtime import can be inserted: after
-/// the leading header — blank lines, whole-line comments, a shebang and Rust's
-/// inner attributes — and before the first item.
-///
-/// Not cosmetic. Rust's `//!` doc comments and `#![…]` attributes are *inner*,
-/// and inner means "before any item", so an import written above a file's `//!`
-/// header turns the header itself into a syntax error (`expected outer doc
-/// comment`) — which is what nine of this repo's own examples do. Python and
-/// TypeScript are laxer, but a header is what a reader expects first there too,
-/// and a `#!` shebang is only a shebang on line 1.
-///
-/// A line comment is recognised by `line_comment`, the ground language's own
-/// introducer, so `//!` and `//` both count for Rust and `#`-anything for
-/// Python (its shebang included).
-fn prelude_offset(body: &str, line_comment: &str) -> usize {
-    let mut at = 0;
-    let mut rest = body;
-    while !rest.is_empty() {
-        let line_end = rest.find('\n').map_or(rest.len(), |i| i + 1);
-        let line = rest[..line_end].trim_end();
-        let take = if line.is_empty() || line.starts_with(line_comment) {
-            line_end
-        } else if line.starts_with("#![") {
-            // An inner attribute, which may wrap across lines: take it whole,
-            // by balancing its brackets. Splitting one is worse than placing
-            // the import above it.
-            match attribute_end(rest) {
-                Some(end) => end,
-                None => break,
-            }
-        } else if at == 0 && line.starts_with("#!") {
-            line_end // a shebang, which is only one on the first line
-        } else {
-            break;
-        };
-        at += take;
-        rest = &rest[take..];
-    }
-    at
-}
-
-/// The byte length of the `#![…]` inner attribute `s` starts with, counting to
-/// the `]` that balances its `[` (so a nested `[..]` inside does not end it) and
-/// through the newline after it. `None` if the brackets never balance.
-fn attribute_end(s: &str) -> Option<usize> {
-    let mut depth = 0usize;
-    for (i, c) in s.char_indices() {
-        match c {
-            '[' => depth += 1,
-            ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    let after = i + c.len_utf8();
-                    return Some(s[after..].find('\n').map_or(s.len(), |j| after + j + 1));
-                }
-            }
-            _ => {}
-        }
-    }
-    None
 }
 
 // --- Expand cache -----------------------------------------------------------
@@ -1321,36 +1210,6 @@ mod tests {
             repl_line(&mut multi, &["py"], "x + 2").unwrap().as_deref(),
             Some("7")
         );
-    }
-
-    /// The injected runtime import goes *after* the file's header, because
-    /// Rust's `//!` and `#![…]` are inner and inner means "before any item" —
-    /// an import above them is a syntax error, not a style choice.
-    #[test]
-    fn a_prelude_goes_after_the_header() {
-        // Each case names where the first *item* starts, so the expected
-        // offset is read off the fixture rather than counted by hand.
-        let at = |body: &str, comment: &str, item: &str| {
-            assert_eq!(
-                prelude_offset(body, comment),
-                body.find(item).unwrap(),
-                "{body:?}"
-            );
-        };
-        // Nothing to skip.
-        at("fn main() {}\n", "//", "fn");
-        // A doc header, its trailing blank line included.
-        at("//! docs\n//! more\n\nfn main() {}\n", "//", "fn");
-        // A shebang, and only on the first line.
-        at("#!/usr/bin/env quilt\nfn main() {}\n", "//", "fn");
-        at("fn main() {}\n#!/usr/bin/env quilt\n", "//", "fn");
-        // An inner attribute is taken whole, brackets balanced across lines.
-        at("#![allow(dead_code)]\nfn f() {}\n", "//", "fn");
-        at("#![allow(\n    dead_code\n)]\nfn f() {}\n", "//", "fn");
-        // An unbalanced one stops the scan rather than splitting it.
-        at("#![allow(\nfn f() {}\n", "//", "#![");
-        // Python's introducer covers its shebang and its comments alike.
-        at("#!/usr/bin/env quilt\n# hi\nx = 1\n", "#", "x =");
     }
 
     /// The `.quilt` script's own shebang does not travel into the artifact,
