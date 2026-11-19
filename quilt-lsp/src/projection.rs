@@ -207,6 +207,7 @@ fn collect_quotes(
     zipper: &LangZipper,
     out: &mut Vec<(usize, LangZipper)>,
 ) {
+    let mut zipper = zipper.clone();
     while let Some(token) = tokens.get(*i) {
         match token.kind {
             TokenKind::CloseQuote | TokenKind::CloseUnquote => {
@@ -214,7 +215,7 @@ fn collect_quotes(
                 return;
             }
             TokenKind::OpenQuote => {
-                let qz = zipper.quote(open_anno(text, &token.span));
+                let qz = zipper.next_quote(open_anno(text, &token.span));
                 out.push((*i, qz.clone()));
                 *i += 1;
                 collect_quotes(text, tokens, i, &qz, out);
@@ -295,6 +296,7 @@ fn emit_ground(
     zipper: &LangZipper,
     quotes: &mut Vec<(usize, LangZipper)>,
 ) {
+    let mut zipper = zipper.clone();
     while let Some(token) = tokens.get(*i) {
         let span = token.span.clone();
         match token.kind {
@@ -303,7 +305,7 @@ fn emit_ground(
                 return;
             }
             TokenKind::OpenQuote => {
-                let qz = zipper.quote(open_anno(text, &span));
+                let qz = zipper.next_quote(open_anno(text, &span));
                 if stage == 0 {
                     quotes.push((*i, qz.clone())); // fragment candidate
                 }
@@ -382,6 +384,7 @@ fn emit_fragment(
     zipper: &LangZipper,
     quotes: &mut Vec<(usize, LangZipper)>,
 ) {
+    let mut zipper = zipper.clone();
     while let Some(token) = tokens.get(*i) {
         let span = token.span.clone();
         match token.kind {
@@ -392,7 +395,7 @@ fn emit_fragment(
             TokenKind::OpenQuote => {
                 let (whole, next) = bracket_span(text, tokens, *i);
                 mask_multiline(b, &text[whole], lang.splice_placeholder());
-                quotes.push((*i, zipper.quote(open_anno(text, &span))));
+                quotes.push((*i, zipper.next_quote(open_anno(text, &span))));
                 *i = next;
             }
             TokenKind::OpenUnquote => {

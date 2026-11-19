@@ -45,7 +45,7 @@ fn main() -> Result<()> {
 
     // Generate the Python report — `↑` again, now lifting the same Rust
     // values into *Python* literals. The emitted program needs no database.
-    let program = ↖
+    let program = py↖
         def report():
             print("menu items:", ↙count.↑↘)
             print("total:", ↙total.↑↘)

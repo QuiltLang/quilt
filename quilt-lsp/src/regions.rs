@@ -69,11 +69,14 @@ pub enum RegionKind {
 /// (top = current, like `list`), `pending` the defaults for successively
 /// deeper un-annotated quotes (like `anti`) — seeded from the filename's
 /// extension chain, and re-fed by [`Self::unquote`] so a quote re-entered from
-/// inside a splice gets its language back.
+/// inside a splice gets its language back. `sibling` is the annotation of the
+/// last annotated quote met at this level, which the bare quotes after it
+/// inherit (like `sibling` in `Multi::build_nodes`).
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LangZipper {
     stack: Vec<String>,
     pending: Vec<String>,
+    sibling: Option<String>,
 }
 
 impl LangZipper {
@@ -94,12 +97,25 @@ impl LangZipper {
         self.stack.last().map(String::as_str)
     }
 
+    /// Enter the next `↖…↗` quote at this level: an annotation selects the
+    /// language explicitly and is remembered for the bare quotes after it at
+    /// this level, which inherit it; a bare quote with no annotated sibling
+    /// before it resolves as [`Self::quote`] does.
+    pub(crate) fn next_quote(&mut self, anno: &str) -> Self {
+        if !anno.is_empty() {
+            self.sibling = Some(anno.to_string());
+        }
+        let anno = self.sibling.clone().unwrap_or_default();
+        self.quote(&anno)
+    }
+
     /// Enter a `↖…↗` quote: an annotation selects the language explicitly (and
     /// resets the pending defaults, like `Zipper::cons`); otherwise take the
     /// next pending default (`Zipper::back`), falling back to the current
-    /// language.
+    /// language. The quote's body is a new level, with no sibling yet.
     pub(crate) fn quote(&self, anno: &str) -> Self {
         let mut z = self.clone();
+        z.sibling = None;
         if anno.is_empty() {
             let next = z.pending.pop().or_else(|| z.stack.last().cloned());
             z.stack.extend(next);
@@ -114,6 +130,7 @@ impl LangZipper {
     /// leave becomes the next quote default again (`Zipper::tail`).
     pub(crate) fn unquote(&self) -> Self {
         let mut z = self.clone();
+        z.sibling = None;
         if let Some(cur) = z.stack.pop() {
             z.pending.push(cur);
         }
@@ -175,9 +192,11 @@ pub fn regions(text: &str, tokens: &[Token], chain: &[&str]) -> Region {
                 // annotation, the next chain default, or the enclosing
                 // language; an unquote drops back one level (its annotation,
                 // like in quilt proper, does not select a language).
-                let inner = zippers.last().expect("the ground zipper is never popped");
+                let inner = zippers
+                    .last_mut()
+                    .expect("the ground zipper is never popped");
                 let inner = if quote {
-                    inner.quote(anno)
+                    inner.next_quote(anno)
                 } else {
                     inner.unquote()
                 };
@@ -344,6 +363,35 @@ mod tests {
         let q2 = &u.children[0];
         assert_eq!(q2.kind, RegionKind::Quote);
         assert_eq!(q2.lang.as_deref(), Some("wgsl"));
+    }
+
+    #[test]
+    fn a_bare_quote_inherits_the_last_annotated_sibling() {
+        // As in `Multi::build_nodes`: `py` carries over to the bare quotes
+        // after it at the same level, `rs` takes over, and an annotation in a
+        // nested level (inside `↙…↘`) stays there.
+        let text = "(py↖a↗, ↖b↗, ↖c ↙wgsl↖d↗↘↗, ↖e↗, rs↖f↗, ↖g↗)\n";
+        let root = regions_of(text, &["ts", "html"]);
+        let langs: Vec<_> = root
+            .children
+            .iter()
+            .map(|q| q.lang.as_deref().unwrap())
+            .collect();
+        assert_eq!(langs, ["py", "py", "py", "py", "rs", "rs"]);
+        let nested = &root.children[2].children[0].children[0];
+        assert_eq!(nested.lang.as_deref(), Some("wgsl"));
+    }
+
+    #[test]
+    fn a_bare_quote_before_any_annotation_keeps_the_chain_default() {
+        let text = "(↖a↗, rs↖b↗, ↖c↗)\n";
+        let root = regions_of(text, &["rs", "wgsl"]);
+        let langs: Vec<_> = root
+            .children
+            .iter()
+            .map(|q| q.lang.as_deref().unwrap())
+            .collect();
+        assert_eq!(langs, ["wgsl", "rs", "rs"]);
     }
 
     /// The point of scanning with recovery rather than parsing strictly: a
