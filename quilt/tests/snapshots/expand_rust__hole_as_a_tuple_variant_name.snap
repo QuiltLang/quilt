@@ -1,0 +1,15 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖enum E { A, ↙a↘(↙xs↘), }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("enum_item").c(&sym("enum")).w(" ").c(&leaf("type_identifier", "E")).w(" ").c(&tb("enum_variant_list").c(&sym("{")).w(" ").c(&tb("enum_variant").c(&leaf("identifier", "A")).b()).c(&sym(",")).w(" ").c(&tb("enum_variant").c(&a).c(&{
+        let mut b_ = tb("ordered_field_declaration_list");
+        sym("(").emit(&mut b_);
+        b_.sep(",");
+        xs.emit(&mut b_);
+        b_.end_sep();
+        sym(")").emit(&mut b_);
+        b_.b()
+    }).b()).c(&sym(",")).w(" ").c(&sym("}")).b()).b()
+}

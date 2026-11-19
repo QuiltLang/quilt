@@ -88,7 +88,21 @@ let html_frag = html↖<p>Hello</p>↗;
 let wgsl_frag = wgsl↖vec4<f32>(1.0, 0.0, 0.0, 1.0)↗;
 ```
 
-An un-annotated `↖…↗` defaults to the host language, or to the second language in the file's extension chain (e.g. `shaders.wgsl.rs.quilt` → bare quotes default to WGSL).
+An un-annotated `↖…↗` takes its language from, in order:
+
+1. the last annotated quote before it **at the same level** — after `py↖…↗`, a bare `↖…↗` is Python too, until another annotation takes over;
+2. the enclosing quote, when it sits inside that quote's `↙…↘`;
+3. the next language in the file's extension chain (e.g. `shaders.wgsl.rs.quilt` → bare quotes default to WGSL);
+4. the host language.
+
+```rust
+let a = py↖x + 1↗;   // Python
+let b = ↖[y]↗;       // Python: inherits from `a`
+let c = rs↖1 + 2↗;   // Rust
+let d = ↖[z]↗;       // Rust
+```
+
+"The same level" is the same list of siblings: a quote's body, an unquote's body, or the file. An annotation inside an unquote stays in it, and does not reach the quotes after the enclosing quote. A bare `⟨M⟩` follows the same rule.
 
 An annotation is a lowercase letter followed by letters or digits — `lean4↖…↗` as well as `lean↖…↗`, since both are registered names for the same language. The leading letter is what keeps a number that happens to abut the glyph as ordinary content: `x = 42↖…↗` is the literal `42` and a *bare* quote, not a quote of some language named `42`. The same shape spells the annotation on `↙…↘` and on `↓`.
 
@@ -143,6 +157,26 @@ let block = ↖
     }
 ↗;
 // The common four-space indent is stripped before parsing.
+```
+
+Blank lines don't count, the closing `↗`'s own line among them, so where the
+closer sits doesn't matter: a body indented past its `↗` is dedented to the
+body, not to the closer.
+
+A quote opened *inline* (`↖foo…`, with content on the opener's line) keeps its
+body's indentation, since the opener line has none to share:
+`py↖def f():\n    return 1↗` is a function with an indented body. The
+exception is a quote whose last line starts with a closing `}`, `)` or `]`.
+That closer marks the column the body is written relative to, so the
+continuation lines' common indent is stripped, wherever the host line sits:
+
+```ts
+prog.push(↖F[1] = {
+    a: 1,
+  };↗);
+// F[1] = {
+//   a: 1,
+// };
 ```
 
 ## Variadic nodes and emit `←`

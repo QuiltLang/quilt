@@ -1,0 +1,25 @@
+---
+source: quilt/tests/expand_rust.rs
+expression: "expand_gen(\"↖match v { S { x, ↙xs↘, .. } => x }↗\")?"
+---
+fn gen(a: Arc<QTerm>, xs: Vec<Arc<QTerm>>) -> Arc<QTerm> {
+    tb("expression_statement").c(&tb("match_expression").c(&sym("match")).w(" ").c(&leaf("identifier", "v")).w(" ").c(&tb("match_block").c(&sym("{")).w(" ").c(&tb("match_arm").c(&tb("match_pattern").c(&{
+        let mut b_ = tb("struct_pattern");
+        leaf("type_identifier", "S").emit(&mut b_);
+        b_.write(" ");
+        sym("{").emit(&mut b_);
+        b_.write(" ");
+        tb("field_pattern").c(&leaf("shorthand_field_identifier", "x")).b().emit(&mut b_);
+        sym(",").emit(&mut b_);
+        b_.write(" ");
+        b_.sep(",");
+        xs.emit(&mut b_);
+        b_.end_sep();
+        sym(",").emit(&mut b_);
+        b_.write(" ");
+        tb("remaining_field_pattern").c(&sym("..")).b().emit(&mut b_);
+        b_.write(" ");
+        sym("}").emit(&mut b_);
+        b_.b()
+    }).b()).w(" ").c(&sym("=>")).w(" ").c(&leaf("identifier", "x")).b()).w(" ").c(&sym("}")).b()).b()).b()
+}

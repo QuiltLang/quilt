@@ -517,6 +517,155 @@ fn hole_in_struct_field_position_runs() -> Result<()> {
     Ok(())
 }
 
+/// A struct pattern's fields and its path were parse errors (`let {} { {} } =
+/// v;` has no `struct_pattern` reading in the upstream grammar). The fork
+/// takes a hole in both places.
+#[test]
+fn hole_in_struct_pattern_position() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_a_let_struct_pattern_type_and_fields",
+        expand_gen("↖let ↙a↘ { ↙xs↘ } = v;↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_a_struct_pattern_field",
+        expand_gen("↖let S { ↙a↘ } = v;↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_among_struct_pattern_fields_in_a_match_arm",
+        expand_gen("↖match v { S { x, ↙xs↘, .. } => x }↗")?
+    );
+    Ok(())
+}
+
+/// The struct type and a sequence of fields, one field alone, and a field
+/// beside literal ones in a match arm: each destructures a real struct. The
+/// arm's `w: ww` comes out of another arm by a pattern-let, which puts the
+/// same hole in a pattern quote.
+#[test]
+fn hole_in_struct_pattern_position_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let ty = ↖P↗;
+        let fs: Vec<Arc<QTerm>> = vec![↖x↗, ↖y↗];
+        let f = ↖z↗;
+        let ↖match q { Q { ↙rest↘ } => 0 }↗ = ↖match q { Q { w: ww } => 0 }↗;
+        ↖{
+            struct P { w: u32, x: u32, y: u32, z: u32 }
+            let p = P { w: 8, x: 1, y: 2, z: 4 };
+            let ↙ty↘ { ↙fs↘, .. } = p;
+            let P { ↙f↘, .. } = p;
+            let s = match p { P { w: 0, .. } => 0, P { ↙rest↘, .. } => ww };
+            x + y + z + s
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("let P { x, y, .. } = p;"), "{src}");
+    assert!(src.contains("let P { z, .. } = p;"), "{src}");
+    assert_eq!(value, 15);
+    Ok(())
+}
+
+/// A hole as the path of a struct or tuple struct pattern at the start of a
+/// match arm, and a path that begins with holes. At an arm's start the fork
+/// lexes the hole as `{` `}` (a hole may also stand for whole arms there), so
+/// these pin that the term is the same `quilt_hole` either way.
+#[test]
+fn hole_as_a_pattern_path_in_a_match_arm() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_a_tuple_struct_pattern_path_in_a_match_arm",
+        expand_gen("↖match v { ↙a↘(↙xs↘) => 0 }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_a_struct_pattern_path_in_a_match_arm",
+        expand_gen("↖match v { ↙a↘ { ↙xs↘ } => 0 }↗")?
+    );
+    insta::assert_snapshot!(
+        "holes_as_a_path_in_a_match_arm",
+        expand_gen("↖match v { ↙a↘::↙a↘(↙xs↘) => 0 }↗")?
+    );
+    insta::assert_snapshot!("holes_as_a_path_expression", expand_gen("↖↙a↘::↙a↘↗")?);
+    Ok(())
+}
+
+/// Every pattern-path hole, in a `let` and in match arms, with sequences
+/// spliced into the field lists, plus `↙ty↘::↙v↘` as an expression: the
+/// generated program destructures a real enum.
+#[test]
+fn hole_as_a_pattern_path_runs() -> Result<()> {
+    let (src, value): (_, Vec<u32>) = generate_and_run(indoc! {r#"{
+        let (ty, unit) = (↖E↗, ↖Unit↗);
+        let (pair, rec) = (↖E::Pair↗, ↖E::Rec↗);
+        let ab: Vec<Arc<QTerm>> = vec![↖a↗, ↖b↗];
+        let xy: Vec<Arc<QTerm>> = vec![↖x↗, ↖y↗];
+        ↖{
+            enum E { Pair(u32, u32), Rec { x: u32, y: u32 }, Unit }
+            let f = |e: E| match e {
+                ↙pair↘(↙ab↘) => a + b,
+                ↙rec↘ { ↙xy↘ } => x * y,
+                ↙ty↘::↙unit↘ => 0,
+            };
+            let ↙pair↘(↙ab↘) = E::Pair(1, 2) else { unreachable!() };
+            let ↙rec↘ { ↙xy↘ } = (E::Rec { x: 3, y: 4 }) else { unreachable!() };
+            let k = ↙ty↘::↙unit↘;
+            vec![f(E::Pair(1, 2)), f(E::Rec { x: 3, y: 4 }), f(k), a + b + x + y]
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("E::Pair(a, b) => a + b,"), "{src}");
+    assert!(src.contains("E::Rec { x, y } => x * y,"), "{src}");
+    assert!(src.contains("E::Unit => 0,"), "{src}");
+    assert!(src.contains("let k = E::Unit;"), "{src}");
+    assert_eq!(value, vec![3, 12, 0, 10]);
+    Ok(())
+}
+
+/// A hole as a tuple variant's name, as a field's name after a visibility,
+/// and as the last segment of a path.
+#[test]
+fn hole_as_a_variant_field_or_last_path_segment_name() -> Result<()> {
+    insta::assert_snapshot!(
+        "hole_as_a_tuple_variant_name",
+        expand_gen("↖enum E { A, ↙a↘(↙xs↘), }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_a_field_name_after_pub",
+        expand_gen("↖struct S { pub ↙a↘: u64, pub(crate) ↙a↘: u8 }↗")?
+    );
+    insta::assert_snapshot!(
+        "hole_as_the_last_path_segment",
+        expand_gen("↖f(Site::↙a↘, a::b::↙a↘)↗")?
+    );
+    Ok(())
+}
+
+/// The same three positions, in a program that is compiled and run: a tuple
+/// variant whose name and field types are spliced, `pub`/`pub(crate)` fields
+/// with spliced names, and `Site::↙site↘` / `E::↙pair↘` as expressions and
+/// as pattern paths.
+#[test]
+fn hole_as_a_variant_field_or_last_path_segment_name_runs() -> Result<()> {
+    let (src, value): (_, u32) = generate_and_run(indoc! {r#"{
+        let (pair, n, at, site) = (↖Pair↗, ↖n↗, ↖at↗, ↖Home↗);
+        let tys: Vec<Arc<QTerm>> = vec![↖u32↗, ↖u32↗];
+        ↖{
+            enum Site { Home, Away }
+            enum E { A, ↙pair↘(↙tys↘), }
+            struct S { pub ↙n↘: u32, pub(crate) ↙at↘: Site }
+            let s = S { n: 5, at: Site::↙site↘ };
+            let e = E::↙pair↘(s.n, 2);
+            let _ = (E::A, Site::Away);
+            let k = match s.at { Site::↙site↘ => 1, _ => 0 };
+            let E::↙pair↘(a, b) = e else { unreachable!() };
+            a + b + k
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("enum E { A, Pair(u32, u32), }"), "{src}");
+    assert!(
+        src.contains("struct S { pub n: u32, pub(crate) at: Site }"),
+        "{src}"
+    );
+    assert!(src.contains("Site::Home => 1"), "{src}");
+    assert_eq!(value, 8);
+    Ok(())
+}
+
 #[test]
 fn hole_in_item_name_position() -> Result<()> {
     insta::assert_snapshot!("hole_as_a_fn_name", expand_gen("↖fn ↙a↘() -> u32 { 1 }↗")?);
@@ -636,6 +785,121 @@ fn hole_in_match_arm_position_runs() -> Result<()> {
     }"#})?;
     assert!(src.contains("1 => 10,"), "{src}");
     assert_eq!(value, vec![0, 10, 20, 30, 99]);
+    Ok(())
+}
+
+/* ─────────── fragments that are not a whole file, quoted on their own ─────────── */
+
+// A match arm, an enum variant, a struct field, a parameter or a field pattern
+// is valid only *inside* its construct, so the grammar, whose root is a file,
+// rejected a quote of one with "Parsed with errors". The provider now retries
+// such a quote inside the smallest construct that takes it, and strips the
+// construct back off (`RustProvider::fragment_wrappers`).
+
+/// Each fragment parses, writes back byte for byte, and is the node it is
+/// rather than the wrapper it was parsed in.
+#[test]
+fn a_fragment_quotes_on_its_own() -> Result<()> {
+    for (code, tag) in [
+        ("Foo::A(a) => f(a),", "match_arm"),
+        ("Foo::A(a) => f(a)", "match_arm"),
+        ("Foo::B { .. } => {\n    g()\n}", "match_arm"),
+        ("pub a: u64", "field_declaration"),
+        ("a: u64", "field_declaration"),
+        ("#[serde(skip)]\npub a: u64", "field_declaration"),
+        ("mut a: u64", "parameter"),
+        ("ref mut a", "field_pattern"),
+        ("/// doc\n#[allow(unused)]\nA(u64)", "enum_variant"),
+        ("#[allow(unused)] A(u64)", "enum_variant"),
+    ] {
+        let quote = format!("rs↖{code}↗");
+        let mut omni = Omni::default();
+        let q = omni.parse(&quote)?;
+        let sexp = q.sexp();
+        assert!(sexp.starts_with(&format!("rs↖{tag}(")), "{code}: {sexp}");
+        let mut omni = Omni::default();
+        let q = omni.parse(&format!("{quote}.coparse()"))?;
+        let back: String = omni.expand(&q)?.reduce()?;
+        assert_eq!(back, code);
+    }
+    Ok(())
+}
+
+/// A fragment with holes: the holes are the fragment's, none the wrapper's.
+#[test]
+fn a_fragment_with_holes() -> Result<()> {
+    insta::assert_snapshot!(expand_gen("rs↖↙a↘ => ↙{ for x in xs { x.← } }↘,↗")?);
+    Ok(())
+}
+
+/// What the wrapper cannot hand back exactly is still an error: the `,` after
+/// a variant belongs to the list, not to the variant, and two fields are a
+/// list.
+#[test]
+fn a_fragment_that_needs_its_container_still_fails() {
+    for code in ["rs↖A(u64),↗", "rs↖pub a: u64, b: u64↗"] {
+        let err = Omni::default().parse(code).expect_err(code);
+        assert!(
+            err.to_string().contains("Parsed with errors"),
+            "{code}: {err}"
+        );
+    }
+}
+
+/// A `match` built from quoted arms: one spliced alone, the rest as a `Vec`.
+#[test]
+fn quoted_match_arms_splice_into_a_match() -> Result<()> {
+    let (src, value): (_, Vec<u32>) = generate_and_run(indoc! {r#"{
+        let one = rs↖1 => 10,↗;
+        let rest = vec![rs↖2 => 20,↗, rs↖n if n < 4 => n * 10,↗];
+        let last = rs↖_ => 99↗;
+        rs↖{
+            let f = |x: u32| match x { 0 => 0, ↙one↘ ↙rest↘ ↙last↘ };
+            (0..5).map(f).collect::<Vec<u32>>()
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("n if n < 4 => n * 10,"), "{src}");
+    assert_eq!(value, vec![0, 10, 20, 30, 99]);
+    Ok(())
+}
+
+/// An `enum` built from quoted variants, and a `match` over it from quoted
+/// arms. Variants are a comma-separated list, so the `Vec` is separated.
+#[test]
+fn quoted_variants_splice_into_an_enum() -> Result<()> {
+    let (src, value): (_, u64) = generate_and_run(indoc! {r#"{
+        let vs = vec![rs↖A(u64)↗, rs↖B { x: u64 }↗, rs↖C↗];
+        let arms = vec![rs↖E::A(a) => a,↗, rs↖E::B { x } => x * 2,↗, rs↖E::C => 0,↗];
+        rs↖{
+            enum E { ↙vs↘ }
+            fn f(e: E) -> u64 { match e { ↙arms↘ } }
+            f(E::A(1)) + f(E::B { x: 20 }) + f(E::C)
+        }↗.coparse()
+    }"#})?;
+    assert!(src.contains("enum E { A(u64), B { x: u64 }, C }"), "{src}");
+    assert_eq!(value, 41);
+    Ok(())
+}
+
+/// A `struct` built from quoted fields, and a function from quoted parameters.
+#[test]
+fn quoted_fields_and_parameters_splice() -> Result<()> {
+    let (src, value): (_, u64) = generate_and_run(indoc! {r#"{
+        let first = rs↖pub a: u64↗;
+        let rest = vec![rs↖b: u64↗, rs↖#[allow(dead_code)] c: u64↗];
+        let ps = vec![rs↖s: &S↗, rs↖mut k: u64↗];
+        rs↖{
+            struct S { ↙first↘, ↙rest↘ }
+            fn f(↙ps↘) -> u64 { k += 1; s.a + s.b * k }
+            f(&S { a: 1, b: 2, c: 3 }, 1)
+        }↗.coparse()
+    }"#})?;
+    assert!(
+        src.contains("struct S { pub a: u64, b: u64, #[allow(dead_code)] c: u64 }"),
+        "{src}"
+    );
+    assert!(src.contains("fn f(s: &S, mut k: u64)"), "{src}");
+    assert_eq!(value, 5);
     Ok(())
 }
 

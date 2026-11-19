@@ -1,6 +1,7 @@
 use crate::lang::{Arity, FlatNode, Hole, InnerKind, Language, LanguagePost};
 use crate::prelude::*;
 use crate::qterm::{qsym, QTerm, QTermBuilder};
+use crate::term::CmdOrHole;
 use miette::bail;
 use std::fmt::Debug;
 use std::iter::Peekable;
@@ -138,6 +139,138 @@ pub trait TSProvider {
     fn repl_spec(&self) -> Option<crate::machine::ReplSpec> {
         None
     }
+
+    /// The syntactic contexts a *fragment* — a match arm, an enum variant, a
+    /// constructor, anything that is a valid piece of a file but not a file —
+    /// is retried inside when it does not parse on its own. Tried in order;
+    /// see [`FragmentWrapper`] and [`TSLanguage::parse_fragment`].
+    fn fragment_wrappers(&self) -> &'static [FragmentWrapper] {
+        &[]
+    }
+}
+
+/// A synthetic context that makes a fragment parse, and how to find the
+/// fragment in it again.
+///
+/// The root of every grammar is a whole file, so a quote of something that
+/// only exists *inside* a construct — `rs↖Foo::A(a) => f(a),↗`, a match arm;
+/// `lean↖| zero↗`, a constructor — is a parse error on its own. The fix is the
+/// one Lean's `#check` and SQL's `SELECT` wrappers already use for bare terms:
+/// parse the fragment inside the smallest construct that accepts it, then take
+/// the construct away again.
+///
+/// The fragment sits on lines of its own between [`before`](Self::before) and
+/// [`after`](Self::after), so it keeps its columns (and with them its indent
+/// prefixes). After the parse, the first [`container`](Self::container) node
+/// must hold exactly one child tagged one of [`fragments`](Self::fragments);
+/// that child is the result. Comments directly before it, and the
+/// [`leading`](Self::leading) kinds (Rust's `#[attr]`, which the grammar hangs
+/// on the list rather than on the variant), are folded into it, so a doc
+/// comment travels with the thing it documents.
+///
+/// The result must write back as the quoted text, byte for byte (modulo the
+/// whitespace around it), or the wrapper is not used: a trailing `,` the
+/// container would own, or a second fragment, falls through to the original
+/// parse error.
+#[derive(Debug, Clone, Copy)]
+pub struct FragmentWrapper {
+    /// Text on the line(s) before the fragment, e.g. `match q {`.
+    pub before: &'static str,
+    /// Text on the line(s) after the fragment, e.g. `}`.
+    pub after: &'static str,
+    /// The node kind whose child the fragment is, e.g. `match_block`.
+    pub container: &'static str,
+    /// The node kinds the fragment may be, e.g. `match_arm`.
+    pub fragments: &'static [&'static str],
+    /// Sibling kinds, beyond comments, that belong to the fragment after them.
+    pub leading: &'static [&'static str],
+}
+
+impl FragmentWrapper {
+    /// Find the fragment in `term`, the parse of the wrapped code: the one
+    /// [`fragments`](Self::fragments) child of the first
+    /// [`container`](Self::container), with the comments and
+    /// [`leading`](Self::leading) siblings right before it folded in.
+    fn extract(&self, term: &QTerm) -> Option<Arc<QTerm>> {
+        let QTerm::Tuple { tag, terms, cmds } = term else {
+            return None;
+        };
+        if &**tag != self.container {
+            return terms.iter().find_map(|t| self.extract(t));
+        }
+        let tag_of = |t: &QTerm| match t {
+            QTerm::Tuple { tag, .. } => Some(tag.clone()),
+            _ => None,
+        };
+        let mut hits = terms
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| tag_of(t).is_some_and(|tag| self.fragments.contains(&&*tag)));
+        let (j, _) = hits.next()?;
+        if hits.next().is_some() {
+            return None;
+        }
+        let mut i = j;
+        while i > 0
+            && tag_of(&terms[i - 1]).is_some_and(|tag| {
+                crate::lang::is_comment_tag(&tag) || self.leading.contains(&&*tag)
+            })
+        {
+            i -= 1;
+        }
+        if i == j {
+            return Some(terms[j].clone());
+        }
+        // Fold children `i..j` into child `j`: its tag, their holes and the
+        // text between them, then its own commands.
+        let QTerm::Tuple {
+            tag: jtag,
+            terms: jterms,
+            cmds: jcmds,
+        } = &*terms[j]
+        else {
+            return None;
+        };
+        let holes: Vec<usize> = cmds
+            .iter()
+            .enumerate()
+            .filter_map(|(k, c)| matches!(c, CmdOrHole::Hole).then_some(k))
+            .collect();
+        let between = &cmds[holes[i]..holes[j]];
+        // A prefix pushed between them would be popped after the container,
+        // not inside the fragment.
+        if between
+            .iter()
+            .any(|c| matches!(c, CmdOrHole::Cmd(StrCmd::Push(_) | StrCmd::Pop)))
+        {
+            return None;
+        }
+        let mut new_terms = terms[i..j].to_vec();
+        new_terms.extend(jterms.iter().cloned());
+        let mut new_cmds = between.to_vec();
+        new_cmds.extend(jcmds.iter().cloned());
+        Some(tuple(jtag, &new_terms, &new_cmds))
+    }
+}
+
+/// The text `code` stands for, with each hole spelled `hole_str`.
+fn flat_text(code: &[FlatNode], hole_str: &str) -> String {
+    code.iter()
+        .map(|c| match c {
+            FlatNode::Hole | FlatNode::Splice => hole_str,
+            FlatNode::Str(s) => s,
+            FlatNode::NewLine => "\n",
+        })
+        .collect()
+}
+
+/// How many holes `term` holds: tuples tagged `hole_str`.
+fn count_holes(term: &QTerm, hole_str: &str) -> usize {
+    match term {
+        QTerm::Tuple { tag, .. } if &**tag == hole_str => 1,
+        QTerm::Tuple { terms, .. } => terms.iter().map(|t| count_holes(t, hole_str)).sum(),
+        _ => 0,
+    }
 }
 
 #[derive(Default)]
@@ -152,10 +285,16 @@ pub struct TSLanguagePost {
     pub hole_str: &'static str,
 }
 
-impl<P: TSProvider> Language for TSLanguage<P> {
-    type Post = TSLanguagePost;
-
-    fn parse_pre(&mut self, ikind: Option<InnerKind>, code: &[FlatNode]) -> Result<Self::Post> {
+impl<P: TSProvider> TSLanguage<P> {
+    /// Parse `code` as the grammar's root (a whole file) and nothing else:
+    /// [`parse_pre`](Language::parse_pre) without the
+    /// [fragment](Self::parse_fragment) retry. A language with retries of its
+    /// own (Lean's `#check`) calls this, so that it can order them.
+    pub fn parse_plain(
+        &mut self,
+        ikind: Option<InnerKind>,
+        code: &[FlatNode],
+    ) -> Result<TSLanguagePost> {
         // convert node to sterm while populating holes.
         fn f<P: TSProvider>(
             provider: &P,
@@ -562,11 +701,63 @@ impl<P: TSProvider> Language for TSLanguage<P> {
         let holes = holes.into();
         let hole_str = self.provider.hole_str();
 
-        Ok(Self::Post {
+        Ok(TSLanguagePost {
             holes,
             qterm,
             hole_str,
         })
+    }
+
+    /// Parse `code` as a *fragment*: inside each of the provider's
+    /// [`fragment_wrappers`](TSProvider::fragment_wrappers) in turn, keeping
+    /// the first whose fragment writes back as `code` did. `None` when none
+    /// does — the caller reports its own error, since the wrappers are an
+    /// implementation detail.
+    pub fn parse_fragment(&mut self, code: &[FlatNode]) -> Option<TSLanguagePost> {
+        let hole_str = self.provider.hole_str();
+        let text = flat_text(code, hole_str);
+        let want = text.trim();
+        if want.is_empty() {
+            return None;
+        }
+        let holes = code.iter().filter(|c| c.is_hole()).count();
+        for w in self.provider.fragment_wrappers() {
+            let mut wrapped = Vec::with_capacity(code.len() + 4);
+            wrapped.push(FlatNode::Str(w.before));
+            wrapped.push(FlatNode::NewLine);
+            wrapped.extend_from_slice(code);
+            wrapped.push(FlatNode::NewLine);
+            wrapped.push(FlatNode::Str(w.after));
+            let Ok(post) = self.parse_plain(None, &wrapped) else {
+                continue;
+            };
+            let Some(qterm) = w.extract(&post.qterm) else {
+                continue;
+            };
+            // Byte-exact, and every hole inside it: nothing of the wrapper is
+            // left, and nothing of the fragment was lost.
+            if qterm.coparse() == want && count_holes(&qterm, hole_str) == holes {
+                return Some(TSLanguagePost {
+                    qterm: (*qterm).clone(),
+                    ..post
+                });
+            }
+        }
+        None
+    }
+}
+
+impl<P: TSProvider> Language for TSLanguage<P> {
+    type Post = TSLanguagePost;
+
+    /// [`parse_plain`](Self::parse_plain), then — only if that fails — the
+    /// [fragment](Self::parse_fragment) retry, reporting the plain parse's
+    /// error when that fails too.
+    fn parse_pre(&mut self, ikind: Option<InnerKind>, code: &[FlatNode]) -> Result<Self::Post> {
+        match self.parse_plain(ikind, code) {
+            Ok(post) => Ok(post),
+            Err(err) => self.parse_fragment(code).ok_or(err),
+        }
     }
 
     fn arity(&self, tag: &str) -> Arity {

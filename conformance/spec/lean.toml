@@ -66,6 +66,24 @@ name = "theorem_by_tactic"
 code = "theorem t (n : Nat) : n + 0 = n := by simp"
 tag = "theorem"
 
+# Pieces of a construct rather than commands or terms: each parses inside the
+# smallest construct that takes it, which is then stripped back off
+# (`LeanProvider::fragment_wrappers`).
+[[fragments]]
+name = "constructor"
+code = "/-- d -/\n| won (p : PlayerId) (n : Nat)"
+tag = "ctor_alt"
+
+[[fragments]]
+name = "match_alternative"
+code = "| .c a0, .c b0 => Nat.beq a0 b0"
+tag = "match_alt"
+
+[[fragments]]
+name = "implicit_binder"
+code = "{α : Type}"
+tag = "implicit_binder"
+
 [[holes]]
 name = "term_position"
 code = "def f := @"
