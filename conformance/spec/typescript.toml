@@ -44,7 +44,7 @@ host = {status = "supported"}
 lift-from = {status = "supported"}
 reduce = {status = "supported", note = "`quilt run` binds the bare `quilt` import to the Node runtime (`quilt-wasm/node`), which re-expands a generated stage by shelling out to the `quilt` binary; needs `bin/build-ts`"}
 machine = {status = "supported", note = "a persistent `ReplMachine`: one long-lived `node` running a small `vm`-context kernel, so a top-level `const` is real process state for later feeds and effects run once; a thrown exception rejects the feed. Queries answer through `JSON.stringify`, so values JSON cannot spell (functions, `undefined`) answer nothing. The replay `ScriptMachine` remains registered as `machine_spec`"}
-emit = {status = "unsupported", note = "same fluent-chain shape as Python: `build_variadic_block` emits `tb(..).e(child).b()` with no named accumulator, so a ground `←` is a hard error naming the alternative (build the sequence with your own `tb(..)` builder and splice the finished term with `↙…↘`). An IIFE would give TypeScript statements in expression position, unlike Python — but `WasmBuilder.e` consumes rather than mutates its builder and `WasmQTerm` has no `emit` method, so the runtime half is missing too. Automatic emission into a variadic container (`wrap_child`) is unaffected", issue = 152}
+emit = {status = "partial", note = "the *functional* reading of emit, as in Nix: `←(items)` (or `←(items, sep)`) spells the runtime's `qseq`, which splices a whole iterable of fragments into the surrounding container, a newline (respecting the prefix) between each unless `sep` is given. Rust's imperative reading — append to a `b_` accumulator once around a ground loop — is not offered: the fluent `.e(child)` chain has no named accumulator", issue = 152}
 pattern-match = {status = "unsupported", note = "no `pattern_tag`/`pattern_var` implementation; pattern lets are a Rust-host feature"}
 runnable = {status = "supported"}
 runtime-binding = {status = "supported"}
@@ -124,8 +124,8 @@ function_declaration = "stmt"
 binary_expression = "expr"
 
 [meta]
-# No `←`: same fluent-chain shape as Python, so nothing to emit into.
-emit_error = "your own `tb(..)` builder"
+# `←` is functional: `←(items)` spells the runtime's `qseq`.
+emit = "qseq"
 type_str = "QTerm"
 name_str = "name"
 reduce_unsupported = ["rust", "rs", "python", "py", "wgsl", "html", "nix", "lean", "lean4", "bash", "zsh"]

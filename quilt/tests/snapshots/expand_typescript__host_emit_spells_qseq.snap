@@ -1,0 +1,7 @@
+---
+source: quilt/tests/expand_typescript.rs
+assertion_line: 138
+expression: "expand(&[\"ts\"], indoc!\n{r#\"\n            const out = ts↖function f() {\n              console.log(\"start\");\n              ↙←(names.map((n) => ts↖console.log(↙name(n)↘);↗))↘\n            }↗;\n            const call = ts↖g(↙←(args, \", \")↘)↗;\n        \"#})?"
+---
+const out = tb("function_declaration").t(sym("function")).w(" ").t(leaf("identifier", "f")).t(tb("formal_parameters").t(sym("(")).t(sym(")")).b()).w(" ").t(tb("statement_block").t(sym("{")).p("  ").n().t(tb("expression_statement").t(tb("call_expression").t(tb("member_expression").t(leaf("identifier", "console")).t(sym(".")).t(leaf("property_identifier", "log")).b()).t(tb("arguments").t(sym("(")).t(tb("string").t(sym("\"")).t(leaf("string_fragment", "start")).t(sym("\"")).b()).t(sym(")")).b()).b()).t(sym(";")).b()).n().e(qseq(names.map((n) => tb("expression_statement").t(tb("call_expression").t(tb("member_expression").t(leaf("identifier", "console")).t(sym(".")).t(leaf("property_identifier", "log")).b()).t(tb("arguments").t(sym("(")).e(name(n)).t(sym(")")).b()).b()).t(sym(";")).b()))).x().n().t(sym("}")).b()).b();
+const call = tb("call_expression").t(leaf("identifier", "g")).t(tb("arguments").t(sym("(")).e(qseq(args, ", ")).t(sym(")")).b()).b();

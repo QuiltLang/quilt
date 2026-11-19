@@ -208,9 +208,9 @@ let xs: Vec<Arc<QTerm>> = vec![1.qlift(), 2.qlift()];
 
 Which containers count is derived from the grammars (`bin/gen-arity`, the `*_COMMA_SEPARATED` tables in `quilt/src/langs/arity.rs`), and the splice must sit in element position: between the list's brackets or its commas, as above. A separator already between two elements is kept rather than doubled, so emitting `sym(",")` yourself still works, and a newline you emit between elements lands after the comma. Statement sequences are not separated: there, as in SQL, the separators are yours to place.
 
-So far only the Rust host does this; in Python and TypeScript hosts a builder's `.e(…)` takes one term (#293).
+So far only the Rust host does this; in a Python host a builder's `.e(…)` takes one term (#293), and a TypeScript host's functional `←` takes the separator as an argument, `↙←(xs, ", ")↘`.
 
-That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)):
+That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)), and TypeScript reads it the same way, written as a call — `↙←(items)↘` (see [TypeScript operators](concrete-languages.md#typescript-operators)):
 
 ```nix
 nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗
