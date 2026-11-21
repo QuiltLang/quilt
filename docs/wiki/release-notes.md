@@ -16,7 +16,7 @@ Older releases (v0.1.0-alpha through v0.5.0) are listed on the [GitHub Releases 
 
 ## v0.6.0 — 2026-11-21
 
-The largest release so far: three new languages, a hand-written Quilt parser, *machines* and live notebooks, and a conformance harness that checks every support claim in CI.
+The largest release so far: three new languages, a hand-written Quilt parser, *machines* and live notebooks, new demos, and a conformance harness that checks every support claim in CI.
 
 ### New languages
 
@@ -30,6 +30,22 @@ The largest release so far: three new languages, a hand-written Quilt parser, *m
 
 - **Machines**: stateful evaluators that complete the Language / MetaLanguage square. A machine is fed fragments over time, keeps its definitions, and answers queries with the literal spelling of the value ([#262](https://github.com/QuiltLang/quilt/pull/262)). This release adds a Lean machine, `ForkMachine` for live siblings, and pinned machines with identity, a cleared environment and Nix content addresses ([#287](https://github.com/QuiltLang/quilt/pull/287), [#307](https://github.com/QuiltLang/quilt/pull/307)).
 - **[Notebooks](notebook.md)**: an `.html.quilt` page whose cells run on machines ([#276](https://github.com/QuiltLang/quilt/pull/276)), plus live notebooks with an editor, the running page, and a site built from inside it ([#279](https://github.com/QuiltLang/quilt/pull/279)).
+
+### New demos and examples
+
+The website has a new [Demos](https://quiltlang.github.io/demos/) gallery. Demos now live at top-level URLs, and the old `/demo/` links redirect.
+
+- **[Phib](https://quiltlang.github.io/phib/)**: a language for cellular automata where every rule is a picture of cells before and after. You can play its frog puzzles, redraw the rules, and race three engines. Its JavaScript and WGSL compilers are written in Quilt ([source](https://github.com/QuiltLang/phib)).
+- **[Browser Playground](https://quiltlang.github.io/playground/)**, rebuilt as a three-stage live dashboard: TypeScript that generates TypeScript that generates HTML. Edit the schema or the `.quilt` source and the WebAssembly expander re-runs every stage in the browser, including `↓` ([source](https://github.com/QuiltLang/quiltlang.github.io/blob/main/docs-site/static/playground/dashboard.html.ts.ts.quilt)).
+- **[Polyglot Notebook](https://github.com/QuiltLang/quilt/blob/main/examples/notebook/tour.html.quilt)**: an HTML page that is also the program. Python, SQL, shell and Node cells are quotes spliced into the page, each run on a persistent machine, and `quilt notebook` writes their output back in.
+- **[metaarch](https://github.com/QuiltLang/metaarch)**: a distributed-system compiler built on Quilt. One `.arch` file describes services, databases and events, and it generates Rust and Python services, SQL schemas, clients, tests, docs and a Nix deployment.
+- **New examples** in [`examples/`](https://github.com/QuiltLang/quilt/tree/main/examples):
+  - Lean: `lean_datatypes`, `lean_do_pipeline`, `lean_specialize`, `lean_tactics`, `lean_host`
+  - SQL: `sql_query`, `sql_session`
+  - Nix: `nix_module`, `nix_emit`, `nix_host`
+  - Staged code generation: `staged_pow` in Python and TypeScript, `web/dashboard`
+  - Notebooks: `notebook/tour`, `notebook/cafe`
+  - Also: `config_gen`, `db_menu`, `shell_host`
 
 ### Core language
 
