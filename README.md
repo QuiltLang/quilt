@@ -55,10 +55,13 @@ cargo install --git https://github.com/QuiltLang/quilt quiltlang
 
 This builds the `quilt` binary (`expand`, `run`, `check`, `repl`, `notebook`, `clean`) and drops it in `~/.cargo/bin`. (The package is named `quiltlang` — `quilt` is taken on crates.io — but the binary it installs is still `quilt`.) That's all you need to **expand** `.quilt` files into plain source.
 
+Prefer not to build? Each [GitHub release](https://github.com/QuiltLang/quilt/releases) attaches prebuilt `quilt` + `quilt-lsp` binaries for macOS (Apple silicon) and Linux (x86_64, aarch64), plus a `SHA256SUMS` file.
+
 To **run** a `.quilt` file as a script, you also need the runtime for its ground language:
 
 - **`.rs.quilt` (Rust ground):** `cargo install rust-script`
-- **`.py.quilt` (Python ground):** the `quilt` Python module — see [Python bindings](docs/wiki/python-bindings.md).
+- **`.py.quilt` (Python ground):** the `quilt` Python module (`pip install quilt-python`) — see [Python bindings](docs/wiki/python-bindings.md).
+- **`.ts.quilt` (TypeScript ground):** Node, plus the `quilt-wasm` runtime built in a source checkout with `bin/build-ts`.
 
 ### Library
 
@@ -79,13 +82,13 @@ is left alone; see [CLI](docs/wiki/cli.md#the-runtime-import-issue-274).
 
 ### Editor tooling (LSP + VS Code)
 
-`quilt-lsp` is a Language Server that multiplexes per-language servers (currently `rust-analyzer`) across the embedded fragments. Install it the same way:
+`quilt-lsp` is a Language Server that multiplexes per-language servers across the embedded fragments — `rust-analyzer` for Rust, `pyright` for Python, `lean --server` for Lean, `wgsl-analyzer` for WGSL — and highlights the rest (HTML, bash, zsh, …) in-process. Install it the same way:
 
 ```sh
 cargo install --git https://github.com/QuiltLang/quilt quilt-lsp
 ```
 
-The VS Code extension (syntax highlighting, glyph keybindings, LSP client) is on the [Marketplace](https://marketplace.visualstudio.com/items?itemName=quiltlang.quiltlang) as **QuiltLang** — search for it in the Extensions view or run `code --install-extension quiltlang.quiltlang`. To hack on the extension locally instead, clone the repo and run `bin/install_tools`, which cargo-installs `quilt-lsp`, installs the extension's npm dependencies, and symlinks it into `~/.vscode/extensions`. See [Editor setup](docs/wiki/editor-setup.md) for details, including how to type the arrow glyphs.
+The VS Code extension (syntax highlighting, glyph keybindings, LSP client) is **QuiltLang** (`quiltlang.quiltlang`). The current version is on [Open VSX](https://open-vsx.org/extension/quiltlang/quiltlang) and attached to each [GitHub release](https://github.com/QuiltLang/quilt/releases/latest) as a `.vsix` (`code --install-extension quiltlang-<version>.vsix`); the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=quiltlang.quiltlang) listing is still at an older 0.4.1. To hack on the extension locally instead, clone the repo and run `bin/install_tools`, which cargo-installs `quilt-lsp`, installs the extension's npm dependencies, and symlinks it into `~/.vscode/extensions`. See [Editor setup](docs/wiki/editor-setup.md) for details, including how to type the arrow glyphs.
 
 ## Quickstart
 
@@ -137,6 +140,19 @@ The VS Code extension (syntax highlighting, glyph keybindings, LSP client) is on
 
 For more, browse the [`examples/`](examples/) directory and the [Documentation Wiki](docs/wiki/index.md).
 
+## Languages
+
+Any of these can be quoted (`lang↖…↗`) as a target; the hosts can also be the ground language a `.quilt` file is written in:
+
+| Role | Languages |
+|---|---|
+| Hosts that rebuild quotes as runtime terms | Rust, Python, TypeScript |
+| String-based hosts (quotes become interpolated strings) | Nix, Lean 4, bash, zsh |
+| Identity host (quotes held verbatim, run as notebook cells) | HTML |
+| Targets only | WGSL, SQL (`sql`, `mysql`, `mariadb`), plain text |
+
+What each language supports operator by operator is in the generated [Support Matrix](docs/wiki/support-matrix.md), which CI checks against the implementation.
+
 ## Supported platforms
 
 Quilt is developed on **macOS** and continuously tested on both **macOS** and **Linux** in CI (`macos-latest` + `ubuntu-latest`); both are known-good. **Windows is currently untested** — it may work, but it isn't part of CI, so expect rough edges. Reports are welcome.
@@ -171,6 +187,8 @@ The `bin/` scripts then work from anywhere the env is active:
 - `cargo test` (or `bin/ctest`) — run the test suite.
 - `bin/bootstrap` — regenerate the self-hosted Rust meta-language from `mk_meta.rs.quilt`.
 - `bin/install_tools` — build and install the LSP + VS Code extension.
+- `bin/gen-matrix` / `bin/check-matrix` — re-verify every language's capability claims and regenerate the [Support Matrix](docs/wiki/support-matrix.md).
+- `bin/main` — list every helper script.
 
 See the [wiki](docs/wiki/index.md) — especially [Pipeline](docs/wiki/pipeline.md), [Bootstrap](docs/wiki/bootstrap.md), and [Adding a language](docs/wiki/adding-a-language.md) — for the full picture.
 

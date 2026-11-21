@@ -8,7 +8,7 @@
 
 ```rust
 pub enum QTerm {
-    Quote   { tag, index, lang, term: Arc<QTerm>, cmds, span: Option<Span> },
+    Quote   { tag, index, lang, term: Arc<QTerm>, cmds, span: Option<Span>, repr: Repr },
     Unquote { tag, index, lang, term: Arc<QTerm>, cmds, span: Option<Span> },
     Tuple   { tag, terms: Box<[Arc<QTerm>]>,      cmds },
 }
@@ -32,6 +32,7 @@ Wraps a fragment to be treated as data.
 - **`term`** — the quoted `QTerm`.
 - **`cmds`** — the surrounding serialization commands (includes the `↖…↗` glyphs).
 - **`span`** — byte range of the `anno↖…↗` in the original source when the term came from parsing (`build_nodes` attaches it), `None` for constructed terms. Diagnostic metadata only: it is ignored by `PartialEq`, and errors like "unquote depth too high" use it to point at the offending source.
+- **`repr`** — the quote's [representation](concepts.md#representations-cst-str-qt): `Repr::Cst` (the default), `Str` or `Qt` (`ts⟨str⟩↖…↗`), written or inherited from a sibling or enclosing quote. Read only by the expander, which hands a non-`Cst` quote to `MetaLanguage::expand_flat`. `#[serde(skip)]` unconditionally — a positional format like postcard tolerates that, unlike a conditional skip — so the wire format the runtimes share is unchanged; a later stage re-reads it from the annotation text in `cmds`.
 
 ### `Unquote`
 
@@ -40,7 +41,7 @@ A splice site.
 - **`tag`** — the hole kind in the outer language.
 - **`index`** — depth at which this unquote escapes (1 = escape one level of quoting).
 - **`lang`** — the language being unquoted into.
-- Same `term`, `cmds`, and `span` fields as `Quote`.
+- Same `term`, `cmds`, and `span` fields as `Quote` (no `repr`).
 
 ## Constructor functions
 
@@ -103,11 +104,12 @@ ub(tag, index, lang)     // Unquote builder
 
 The `Emit` trait allows any type that "emits" things into a builder:
 
-- `Arc<QTerm>` emits itself as a child.
-- `Vec<T: Emit>` emits each element.
-- `()` emits nothing.
+- `&Arc<QTerm>` emits itself as a child.
+- `&Vec<T>` emits each element (where `&T: Emit`).
+- `&()` emits nothing.
+- `&String` emits as `&str` does, and `&&T` as `&T` does — so a `Vec<String>`, `Vec<&str>` or `Vec<&Arc<QTerm>>` splices too (#321). There is deliberately no impl for an owned `String`: method resolution would pick it first and `s.emit(..)` would move `s`.
 - `&str` emits a `Write` — or, inside an `align(pad)` (an aligned splice in a column-sensitive language, see Lean in [Concrete languages](concrete-languages.md)), one `Write` per line with a `NewLine` between, so its later lines start at the hole's column.
-- `StrCmd` emits itself as a cmd.
+- `&StrCmd` emits itself as a cmd.
 
 Between `b.sep(",")` and `b.end_sep()`, two children added one after the other get a `sym(",")` and a space between them, unless a separator is already there. Expanded code opens such a region around a splice into a comma-separated list, so `[↙xs↘]` builds `[1, 2]` (see [Concepts](concepts.md#into-a-comma-separated-list)).
 

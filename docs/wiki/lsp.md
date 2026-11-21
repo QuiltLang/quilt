@@ -5,9 +5,10 @@
 `quilt-lsp` is a multiplexing Language Server for `.quilt` files. It sits between the editor and the language-specific downstream servers (`rust-analyzer` for Rust, pyright for Python, wgsl-analyzer for WGSL, `lean --server` for Lean), handling:
 
 1. Quilt-level syntax diagnostics (bracket errors, structure problems).
-2. Ground-language features (hover, go-to-definition, completion, diagnostics) by projecting the `.quilt` file into a virtual plain-language document and proxying to the downstream server.
+2. Ground-language features (hover, go-to-definition, completion, document symbols, diagnostics) by projecting the `.quilt` file into a virtual plain-language document and proxying to the downstream server.
 3. Semantic token highlighting inside `↖…↗` quote fragments.
 4. Folding ranges for quilt regions.
+5. Quilt-specific code actions (wrap in `↖…↗`, extract an unquote or a quote to a named binding).
 
 ## Architecture
 
@@ -26,9 +27,11 @@ quilt-lsp  (server.rs)
     │
     ├─ SourceMap                    → bidirectional byte-position mapping (srcmap.rs)
     │
-    └─ ChildServer (rust-analyzer)  → downstream LSP (child.rs)
-        │  LSP over stdio
-        └─ proxied requests/responses, positions remapped via LineIndex + translate.rs
+    ├─ ChildServer (ground)         → rust-analyzer / pyright / lean, one per workspace root (child.rs)
+    │   │  LSP over stdio
+    │   └─ proxied requests/responses, positions remapped via LineIndex + translate.rs
+    │
+    └─ ChildServer (embedded)       → one per fragment language (wgsl-analyzer, lean)
 ```
 
 ### Module responsibilities
@@ -36,54 +39,71 @@ quilt-lsp  (server.rs)
 | Module          | Responsibility                                                                |
 |-----------------|-------------------------------------------------------------------------------|
 | `lineindex.rs`  | Byte ↔ UTF-16/UTF-8 ↔ `Position` conversion. One place for all encoding math. |
-| `regions.rs`    | Parse the quilt CST → region tree + syntax errors                             |
+| `document.rs`   | Per-document state: text, tokens, region tree, syntax errors (re-scanned from scratch on every edit) |
+| `regions.rs`    | `quilt::node::scan` tokens → region tree + syntax errors                      |
 | `srcmap.rs`     | Bidirectional byte map between quilt and a virtual document                   |
 | `projection.rs` | Build the ground virtual document + its source map                            |
 | `child.rs`      | Spawn, frame, and route a downstream LSP server                               |
 | `translate.rs`  | Remap downstream results (ranges, URIs) back to quilt coordinates             |
 | `server.rs`     | The editor-facing server, LSP method handlers, merged diagnostics             |
-| `adapters.rs`   | Language-specific placeholders and comment syntax                             |
+| `adapters.rs`   | Language adapters (`LanguageAdapter` / `MetaLanguageAdapter`): server commands, placeholders, fragment wrappers, comment syntax, ground prologues |
+| `code_actions.rs` | Quilt code actions, computed from the region tree alone                     |
 | `semtok.rs`     | Semantic token merging and remap                                              |
-| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (WGSL, HTML, bash, zsh, Nix, Lean) |
+| `tshl.rs`       | Tree-sitter semantic tokens for embedded fragments (WGSL, HTML, bash, zsh, Lean) and the Python ground fallback |
+
+The Quilt bracket syntax is read with `quilt::node::scan`, the same hand-written scanner the compiler uses (issue #254), so the server and compiler cannot disagree about where a bracket is. There is no `tree-sitter-quilt` grammar any more (#255).
 
 ## The projection
 
-The **ground projection** copies every ground-language byte verbatim and replaces each quilt construct (`↖…↗`, `↙…↘`, `↑↓←⟨T⟩⟨N⟩`) with a small placeholder that keeps the host language roughly parseable (e.g. `_ /* ↖ */` for a quote hole in Rust).
+The **ground projection** copies every ground-language byte verbatim and replaces each quilt construct (`↖…↗`, `↙…↘`, `↑↓←⟨T⟩⟨N⟩`) with a small placeholder that keeps the host language roughly parseable: glyphs become `__q__`, and a quote becomes the host's splice block (`{ }` in Rust, `__q__()` in Python, a list literal in Lean). Stage-0 `↙…↘` splices nested inside a quote are copied verbatim into that block (`{ a; b; }`), so the ground server resolves the names they reference and hover/go-to-definition work on spliced ground code.
+
+A host can also prepend a synthetic **ground prologue** so placeholders typecheck rather than merely parse: Rust adds `use quilt::prelude::*;` (the import `quilt expand` injects), Python binds `__q__` to `Any`. It is only added to files that contain quilt constructs; diagnostics landing in it, or on any other synthetic span, are dropped.
 
 A file with no quilt constructs (e.g. `examples/hello.rs.quilt`) projects byte-for-byte to itself — `rust-analyzer` sees ordinary Rust.
 
-Quote fragments are **appended** to the virtual document, each wrapped in a `fn _quilt_qN() { … }` so `rust-analyzer` tokenizes them for highlighting. Diagnostics from appended fragments are suppressed (their wrapping makes positions unreliable); only their semantic tokens are kept.
+Quote fragments in the ground language are **appended** to the virtual document, each wrapped (in Rust, in a `fn _quilt_qN() { … }`) so the ground server tokenizes them for highlighting. Quotes in other languages (e.g. `wgsl↖…↗` in a Rust host) get their own per-fragment virtual documents instead. Diagnostics from appended fragments are suppressed (their wrapping makes positions unreliable); only their semantic tokens are kept.
 
 The `SourceMap` records the mapping between quilt byte positions and virtual document byte positions, and `LineIndex` converts between bytes and `Position` for LSP messages.
 
 ## Downstream server lifecycle
 
-A single `rust-analyzer` process is spawned lazily when the first `.rs.quilt` file is opened. It is kept alive for the session. All document operations on the projected virtual document are forwarded to it as `workspace/didChangeWatchedFiles` notifications or `textDocument/didOpen` / `textDocument/didChange` overlay updates.
+A ground server is spawned lazily when the first file of its host language (`.rs.quilt`, `.py.quilt`, `.lean.quilt`) is opened, one per workspace root (`MetaLanguageAdapter::find_root`; for Rust, the owning Cargo workspace or package, so separate projects resolve their crate graphs independently, and a file no crate owns is handed to rust-analyzer as a detached file). A per-root lock stops the burst of requests on file open from spawning duplicates. Servers are kept alive for the session; the projected virtual document is synced with `textDocument/didOpen` / `textDocument/didChange` overlay updates.
 
-The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) so it resolves the file inside the real Cargo project.
+The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) so it resolves the file inside the real project.
+
+Embedded fragment languages get one standalone server per language (a single wgsl-analyzer serves every `wgsl↖…↗` quote across all files). Each fragment is opened as its own virtual document (`foo.rs.q0.wgsl`, …) and closed when its quote disappears.
 
 ## Implemented features
 
 - **Syntax diagnostics** — bracket/structure errors on every `.quilt` file.
 - **Rust ground language** via rust-analyzer:
-  - Hover, go-to-definition, completion, diagnostics.
-  - Positions mapped between `.quilt` and the projected `.rs`.
+  - Hover, go-to-definition, completion, document symbols, diagnostics.
+  - Positions mapped between `.quilt` and the projected `.rs`, including
+    ground code spliced into quotes via `↙…↘`.
 - **Python ground language** via pyright (`pyright-langserver --stdio` by
   default; override with `QUILT_LSP_PYTHON_SERVER`):
-  - Hover, go-to-definition, completion for `.py.quilt` files.
+  - Hover, go-to-definition, completion and diagnostics for `.py.quilt` files.
   - Semantic highlighting from the in-process tree-sitter highlighter
     (`tshl.rs`): pyright provides no semantic tokens (a Pylance-only
     feature), so the whole ground projection is highlighted as a fallback —
     which also works when pyright isn't installed at all.
-  - Downstream diagnostics are suppressed: the projection replaces each quote
-    with a `()` placeholder expression, which mistypes any ground line that
-    consumes a quoted value, so pyright's errors would be spurious
-    (`PythonAdapter::publishes_diagnostics` is `false`).
+  - Diagnostics are on (#145): each quote projects to a call to `__q__`, which
+    the ground prologue binds to `Any`, so ground lines consuming a quoted
+    value (`q.coparse()`, `q.↓`, `↑(x)`) typecheck instead of being mistyped,
+    as they were under the old `()` placeholder.
+- **Lean** via `lean --server` (override with `QUILT_LSP_LEAN_SERVER`), on both
+  sides: a `.lean.quilt` file gets a ground projection, and `lean↖…↗` quotes in
+  another host are analyzed as embedded fragments. Hover, go-to-definition and
+  highlighting work; Lean diagnostics stay suppressed
+  (`LeanAdapter::publishes_diagnostics` is `false`), because quoted fragments
+  depend on binders and types that only the running metaprogram supplies.
+- **WGSL** fragments (`wgsl↖…↗`) via wgsl-analyzer: hover, go-to-definition,
+  diagnostics.
 - **Semantic tokens** — including inside `↖…↗` quotes. Embedded-language
-  quotes (`wgsl↖…↗`, `html↖…↗`, `bash↖…↗`, `zsh↖…↗`, `nix↖…↗`, `lean↖…↗`) are highlighted
+  quotes (`wgsl↖…↗`, `html↖…↗`, `bash↖…↗`, `zsh↖…↗`, `lean↖…↗`) are highlighted
   by the server itself with tree-sitter highlight queries (`tshl.rs`), since
   their downstream servers may provide no semantic tokens (wgsl-analyzer
-  advertises none) or not exist at all (html/bash/zsh/nix are highlight-only:
+  advertises none) or not exist at all (html/bash/zsh are highlight-only:
   `server_command` is `None`, so their fragments are projected but never
   opened downstream); the downstream legend is advertised with the
   tree-sitter token types appended. A *ground* server with the same gap
@@ -91,6 +111,11 @@ The downstream server is sent the de-quilted URI (`foo.rs`, not `foo.rs.quilt`) 
   in-process whenever the downstream server can't answer
   `semanticTokens/full`.
 - **Folding** — quilt regions + ground server folds.
+- **Code actions** (`code_actions.rs`, quilt-only, no downstream server):
+  *Wrap in `↖…↗`* for a non-empty selection; *Inline unquote* moves the
+  expression in a stage-0 `↙…↘` to a local binding before the enclosing quote;
+  *Extract to named fragment* moves a whole stage-1 quote into a binding and
+  leaves `↙name↘` in its place.
 
 ### Design notes — semantic tokens
 
@@ -106,12 +131,12 @@ Constraints learned while building the token pipeline (June 2026):
   extension highlights via a static TextMate grammar). Embedded-fragment
   tokens therefore come from in-process tree-sitter highlighting (`tshl.rs`),
   which also works when no WGSL server is installed.
-- **A fragment language needs no server at all.** html/bash/zsh/nix adapters
+- **A fragment language needs no server at all.** html/bash/zsh adapters
   return `None` from `server_command`: `embedded_sync` skips their `didOpen`
   (`ensure_embedded_child` bails before spawning), and the fragments exist
-  purely so `tshl.rs` can highlight them. Their queries come from the grammar
-  crates' own consts (`HIGHLIGHTS_QUERY`/`HIGHLIGHT_QUERY`), so only WGSL's
-  stays vendored.
+  purely so `tshl.rs` can highlight them. Their grammars and queries come from
+  `quiltlang`'s vendored `quilt::grammars::<lang>` (`LANGUAGE`,
+  `HIGHLIGHTS_QUERY`), so only WGSL's query is vendored in quilt-lsp itself.
 - **Legends merge by appending.** The editor accepts one legend per
   registration. Advertising the downstream server's legend with our
   tree-sitter token-type names appended — never reordered — lets downstream
@@ -133,8 +158,8 @@ Constraints learned while building the token pipeline (June 2026):
   own query is upstream-flavored (catch-all first, later patterns override —
   last wins); each `Highlighter` declares its `Order`. Nested ranges resolve
   to the *narrowest* span either way, so emitted tokens never overlap. The
-  WGSL query is vendored under `quilt-lsp/queries/` because that fork's Rust
-  binding exposes no `HIGHLIGHTS_QUERY` const; the Python binding has one.
+  WGSL query is vendored under `quilt-lsp/queries/` because
+  `quilt::grammars::wgsl` exposes no `HIGHLIGHTS_QUERY`; the others do.
 - **Downstream capability gaps are harmless for rust-analyzer.** quilt-lsp
   advertises no `semanticTokens` client capability to children; rust-analyzer
   returns identical tokens and legend either way (verified empirically).
@@ -145,9 +170,12 @@ Constraints learned while building the token pipeline (June 2026):
 
 ## Not yet implemented
 
-- Hover/definition for ground code spliced into quotes via `↙…↘`.
-- `↙name↘` → go-to-definition in the ground language.
-- Python ground diagnostics (needs a type-aware quote placeholder; see above).
+- Lean diagnostics (see above).
+- Nix and SQL quotes: `tshl.rs` has highlighter arms for `nix` and `sql`, but
+  no adapter projects `nix↖…↗` / `sql↖…↗` fragments yet, so they get no
+  semantic tokens (the VS Code TextMate grammar still colors SQL quotes), and
+  `.nix.quilt` files get quilt-only features.
+- Template awareness: `*.tmpl.quilt` files are not projected specially.
 
 ## Configuration
 
@@ -169,6 +197,9 @@ Set via `quilt-lsp.*` extension settings (see [Editor Setup](editor-setup.md)):
 |------------------------------|---------------------------------------------------------|
 | `quilt-lsp.serverPath`       | Path to the `quilt-lsp` binary                          |
 | `quilt-lsp.rustAnalyzerPath` | Override rust-analyzer (sets `QUILT_LSP_RUST_ANALYZER`) |
+| `quilt-lsp.pythonServerPath` | Override the Python server (sets `QUILT_LSP_PYTHON_SERVER`) |
+| `quilt-lsp.wgslServerPath`   | Override the WGSL server (sets `QUILT_LSP_WGSL_SERVER`) |
+| `quilt-lsp.leanServerPath`   | Override the Lean server (sets `QUILT_LSP_LEAN_SERVER`) |
 | `quilt-lsp.trace.server`     | `off` \| `messages` \| `verbose`                        |
 
 ## Building and testing
@@ -189,13 +220,20 @@ python3 quilt-lsp/tests/integration_ra.py   target/debug/quilt-lsp
 python3 quilt-lsp/tests/integration_gotodef.py target/debug/quilt-lsp
 python3 quilt-lsp/tests/integration_semtok.py  target/debug/quilt-lsp
 python3 quilt-lsp/tests/integration_python.py  target/debug/quilt-lsp  # .py.quilt ground (mock + pyright)
+
+# Ad-hoc diagnostic: dump rust-analyzer's documentSymbol + hover for one file
+python3 quilt-lsp/tests/diag_examples.py target/debug/quilt-lsp examples/hello.rs.quilt
 ```
 
 ## Installing
 
 ```sh
 cargo install --path quilt-lsp
+# or, without a checkout:
+cargo install --git https://github.com/QuiltLang/quilt quilt-lsp
 # puts `quilt-lsp` on your PATH
 ```
+
+Prebuilt `quilt-lsp` binaries (macOS Apple silicon, Linux x86_64/aarch64) are attached to each [GitHub release](https://github.com/QuiltLang/quilt/releases).
 
 Or run `bin/install_tools`, which installs the LSP and the VS Code extension together (see [Editor Setup](editor-setup.md)).

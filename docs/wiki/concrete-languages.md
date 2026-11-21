@@ -2,7 +2,22 @@
 
 **Directory:** `quilt/src/langs/`
 
-Each language lives in its own subdirectory and contributes (at minimum) a `lang.rs` implementing `Language` and optionally a `meta.rs` implementing `MetaLanguage`.
+Each language lives in its own subdirectory and contributes (at minimum) a `lang.rs` implementing `Language` and optionally a `meta.rs` implementing `MetaLanguage`. A few modules are shared rather than per-language — see [Shared modules](#shared-modules) at the end.
+
+| Language | Keys | Role | Meta-language | Machine |
+|---|---|---|---|---|
+| [Rust](#rust-rs--host--meta) | `rust`, `rs` | host + target | runtime-backed (generated) | — |
+| [Python](#python-py--host--meta) | `python`, `py` | host + target | runtime-backed | persistent kernel (`python3`) |
+| [TypeScript](#typescript-ts--host--meta) | `typescript`, `ts` | host + target | runtime-backed | persistent kernel (`node`) |
+| [HTML](#html-html--target-identity-host-and-machine) | `html` | target + identity host | holds its quotes | native `HtmlMachine` |
+| [WGSL](#wgsl-wgsl--target-only) | `wgsl` | target | — | — |
+| [SQL](#sql-sql-mysql-mariadb--target-only) | `sql`, `mysql`, `mariadb` | target | — | persistent `sqlite3` |
+| [Bash, Zsh](#zsh-zsh-and-bash-bash--target-and-host) | `bash`, `zsh` | target + host | string-based | persistent shell |
+| [Nix](#nix-nix--target-and-host) | `nix` | target + host | string-based | — |
+| [Lean](#lean-lean-lean4--target-and-host) | `lean`, `lean4` | target + host | string-based | replay (`lean`) |
+| [Text](#text-txt--target-only) | `text`, `txt` | target | identity (not registered) | — |
+
+The machine column is what `quilt repl`, notebook cells and `lang⟨M⟩` run on (`quilt/src/machine.rs`; see [Language Traits](language-traits.md#machines--running-a-language)).
 
 ## Rust (`rs`) — host + meta
 
@@ -25,7 +40,7 @@ A hole can stand anywhere `{}` parses as an empty block (expression and statemen
 | enum variants, struct fields | `enum E { A, ↙v↘ }`, `struct S { x: u32, ↙f↘ }` |
 | match arms, alone or around literal arms | `match x { ↙arms↘ _ => 0 }` |
 
-A hole at the start of a match arm is the arm's *pattern* when `=>`, `|` or `if` follows it, and a run of whole arms otherwise. Each arm carries its own `,`, so a sequence of arms splices without separators. Enum variants and struct fields need `,` between them, which emitting a sequence into those lists does not add yet (issue [#293](https://github.com/QuiltLang/quilt/issues/293)). The holes were added in issue [#302](https://github.com/QuiltLang/quilt/issues/302).
+A hole at the start of a match arm is the arm's *pattern* when `=>`, `|` or `if` follows it, and a run of whole arms otherwise. Each arm carries its own `,`, so a sequence of arms splices without separators. Enum variants and struct fields need `,` between them; splicing a `Vec` into those lists supplies it, since both are comma-separated containers (`Language::separator`, issue [#293](https://github.com/QuiltLang/quilt/issues/293)). The holes were added in issue [#302](https://github.com/QuiltLang/quilt/issues/302).
 
 ### Fragments
 
@@ -43,15 +58,22 @@ Comments and `#[attr]`s before a variant, field or parameter belong to it. A fra
 
 ### Variadic nodes
 
-`"block"` and `"source_file"` have `Arity::Variadic`. Inside a block quote, each child is emitted with `.emit(&mut b_);` into an imperative `QTermBuilder` block:
+Which node kinds are `Arity::Variadic` is derived from the grammar's `REPEAT` rules (`RUST` in `langs/arity.rs`, written by `bin/gen-arity`): `block` and `source_file`, but also `arguments`, `array_expression`, `match_block`, `declaration_list`, `enum_variant_list`, `field_declaration_list`, `parameters` and more. A variadic node with no unquote among its direct children is built fluently like any other. When an unquote *is* a direct child — so ground code may contribute zero or many terms — the node is built in an imperative `QTermBuilder` block, and each emitted child is appended with `.emit(&mut b_);`:
 
 ```rust
 {
     let mut b_ = tb("block");
-    b_.write("{");
-    child1.emit(&mut b_);
-    child2.emit(&mut b_);
-    b_.write("}");
+    sym("{").emit(&mut b_);
+    b_.push("    ");
+    b_.nl();
+    {
+        for i in 0..3 {
+            tb("expression_statement")…b().emit(&mut b_);
+        }
+    };
+    b_.pop();
+    b_.nl();
+    sym("}").emit(&mut b_);
     b_.b()
 }
 ```
@@ -60,9 +82,15 @@ Comments and `#[attr]`s before a variant, field or parameter belong to it. A fra
 
 | Glyph   | Expands to      | Result                                             |
 |---------|-----------------|----------------------------------------------------|
-| `↑x`    | `x.qlift()`     | A `QTerm` whose code reconstructs `x`              |
-| `↓expr` | `expr.reduce()` | Evaluate `expr` at generation time via rust-script |
-| `⟨N⟩`   | `name("ident")` | An `identifier` node                               |
+| `x.↑`   | `x.qlift()`     | A `QTerm` whose code reconstructs `x`              |
+| `x.↑` in a `lang↖…↗` | `x.qlift_to::<L>()` | Lift into another target, with `L` its `LiftTo` marker (`Python`, `Wgsl`, `Sql`, `Text`, …) |
+| `expr.↓` | `expr.reduce()` | Evaluate `expr` at generation time via rust-script |
+| `expr.py↓` | `expr.reduce_py()` | Evaluate it as Python instead                  |
+| `x.←`   | `x.emit(&mut b_)` | Append to the enclosing variadic builder         |
+| `⟨T⟩`   | `Arc<QTerm>`    | The type of a quilt term                           |
+| `⟨N⟩("ident")` | `name("ident")` | An `identifier` node                          |
+| `lang⟨M⟩` | `qspawn("lang")` | A machine speaking `lang`                       |
+| `m.↓(&t)` / `m.⟨T⟩(&t)` | `m.eval(&t)` / `m.type_of(&t)` | Evaluate / type a term on a machine |
 
 ### `QLift` trait (`ops.rs`)
 
@@ -71,6 +99,10 @@ Comments and `#[attr]`s before a variant, field or parameter belong to it. A fra
 - `str` / `String` — becomes a `string_literal` node.
 - `char` — becomes a `char_literal` node.
 - All integer types — become `integer_literal` nodes.
+- `f32` / `f64` — become `float_literal` nodes (a negative as a `unary_expression` over the magnitude).
+- `bool` — becomes a `boolean_literal` node.
+
+Lifting into other targets goes through `LiftTo<L>` instead (`quilt/src/lift/`); those impls are generated from sample literals by `bin/gen-lifts`.
 
 ### `reduce` (`ops.rs`)
 
@@ -123,11 +155,20 @@ def f():
 | Glyph  | Expands to                                                     |
 |--------|----------------------------------------------------------------|
 | `↑(x)` | `qlift(x)` into Python; `qlift_html(x)` into HTML; `qlift_ts(x)` into TypeScript; `qlift_text(x)` into text (`qlift_text_in_quotes(x)` between `"…"`) |
+| `↓`    | `reduce()`; `reduce_rs()` for `rs↓`                            |
+| `←`    | error — see above                                              |
+| `⟨T⟩`  | `QTerm`                                                        |
 | `⟨N⟩`  | `name("ident")`                                                |
+| `lang⟨M⟩` | `spawn("lang")` — a machine speaking `lang`                 |
+| `m.↓(t)` / `m.⟨T⟩(t)` | `m.eval(t)` / `m.type_of(t)`                    |
+
+The expanded file opens with `from quilt import *`, injected by `quilt expand` / `quilt run` unless the source already imports the runtime.
 
 Python's lift is written *prefix* (`↙↑(x)↘`), unlike Rust's postfix `x.↑`: the spelling is a free function because a `qlift` method can't hang off builtin ints and strings.
 
 Python also has a `LiftTo` marker type (`Python` in `lift/mod.rs`), so a Rust host can lift values into quoted Python (`python↖ … ↙x.↑↘ … ↗`): integers, floats, bools, and strings lift to the corresponding literals, and slices/`Vec`s lift element-wise to `list` literals.
+
+Python's machine is a persistent kernel: one long-lived `python3` exec-ing each fed chunk in a single namespace (with the quilt runtime pre-imported), so a cell's definitions are real process state and its effects run once. A replay `script_spec` remains for callers that want a snapshot-exact machine.
 
 ---
 
@@ -181,6 +222,12 @@ Two properties follow from being on Node rather than in a page:
 
 `examples/staged_pow.ts.quilt` is the three-stage program this makes runnable; `bin/test-ts` runs it and the `↓` unit tests.
 
+### Prelude and machine
+
+TypeScript is the one host whose runtime import is not a constant: it has no glob import, so the injected `import { … } from "quilt"` names the builder vocabulary plus the lift function of every target the file may lift into — its language chain and every annotation its quotes name (`TypeScriptMetaLanguage::prelude`).
+
+Its machine is a persistent Node kernel: one `vm` context kept for the life of the process, so a top-level `const` in one chunk is visible to the next, with type annotations stripped on a syntax error. In a live notebook (`quilt notebook --serve`), TypeScript cells run in the page's own realm instead, unless `--ts server` asks for the kernel.
+
 ---
 
 ## HTML (`html`) — target, identity host, and machine
@@ -211,7 +258,7 @@ let frag: Arc<QTerm> = html↖<div class="foo">↙content↘</div>↗;
 
 WebGPU Shading Language — used in `*.wgsl.rs.quilt` files where the extension chain is `["rs", "wgsl"]`. Bare quotes inside such a file default to WGSL, while the ground language is Rust.
 
-WGSL is target-only: no `MetaLanguage`.
+WGSL is target-only: no `MetaLanguage`, and no machine. It has a `LiftTo` marker (`Wgsl`), so a Rust host can lift values into it (`LiftTo<Wgsl> for u32` is an `int_literal` spelled `3u`).
 
 Usage in `shaders.wgsl.rs.quilt`:
 
@@ -324,6 +371,10 @@ sql↖
 ↗
 ```
 
+### Machine
+
+SQL is no host, but it does have a machine: a persistent `sqlite3 -batch -bail`, so statements fed to it build up a real database and a query answers with sqlite's spelling of the value (the typing judgment is sqlite's `typeof`). It is what `sql↖…↗` cells run on in a [notebook](notebook.md), and what `sql⟨M⟩` spawns from a Rust or Python host; `examples/sql_session.sql.py.quilt` drives one from Python.
+
 ---
 
 ## Zsh (`zsh`) and Bash (`bash`) — target *and* host
@@ -340,7 +391,7 @@ Each dialect now derives its own table from its own grammar (`bin/gen-arity`, is
 
 ### As a host (string-based meta)
 
-`ShellMetaLanguage` makes a shell drive generation, on the Nix and Lean model: no runtime library, generated code represented as plain **double-quoted shell words**. A `.bash.quilt` file therefore expands to an ordinary bash script that, run, prints the generated code — which is what makes the `#!/usr/bin/env bash` shebang `BashLanguage` has always declared reachable at last (issue #151, where the two were 🟡 for promising a `quilt run` that could not work). One implementation serves both dialects, carrying a `ShellDialect` marker, for the reason the tag tables are shared: they double-quote identically, so two copies would be two things to drift.
+`ShellMetaLanguage` makes a shell drive generation, on the Nix and Lean model: no runtime library, generated code represented as plain **double-quoted shell words**. A `.bash.quilt` file therefore expands to an ordinary bash script that, run, prints the generated code — which is what makes the `#!/usr/bin/env bash` shebang `BashLanguage` has always declared reachable at last (issue #151, where the two were 🟡 for promising a `quilt run` that could not work). One implementation, `ShellMetaLanguage<D: ShellDialect>` (`BashMetaLanguage`, `ZshMetaLanguage`), serves both dialects, for the reason `is_expr_tag` is shared: they double-quote identically, so two copies would be two things to drift. The dialect only names the host in error messages.
 
 ```bash
 #!/usr/bin/env quilt
@@ -356,7 +407,7 @@ expands to `echo "systemctl enable --now $u"` inside the same loop, and `quilt r
 
 Escaping is `lift::sh_dquote_escape`, shared with the `LiftTo<Bash>`/`LiftTo<Zsh>` impls so that a lifted value and the literal text around it — which land in the same generated word — cannot escape two different ways. `$`, `` ` ``, `"` and `\` in the *generated* code are data, so the generated script expands them, not the metaprogram.
 
-**Four of the five operator glyphs refuse.** An operator spelling is spliced into the ground source and applied *prefix* to what follows, and a shell has no prefix-applied word operators — juxtaposition is command invocation, and a command is not a word. So:
+**All five operator glyphs refuse.** An operator spelling is spliced into the ground source and applied *prefix* to what follows, and a shell has no prefix-applied word operators — juxtaposition is command invocation, and a command is not a word. So:
 
 | glyph | why there is no spelling | what to write instead |
 |---|---|---|
@@ -368,7 +419,9 @@ Escaping is `lift::sh_dquote_escape`, shared with the `LiftTo<Bash>`/`LiftTo<Zsh
 
 Each fails loudly with that advice rather than leaking a placeholder into a generated script; `conformance/spec/bash.toml` pins the errors so they stay actionable.
 
-A hole used to have to **be** a whole word here: `__QUILT_HOLE__` lexes as a plain `word`, and hole detection matched a node whose byte range *equalled* the hole's, so inside a `"…"` string, inside a comment, or glued to adjacent text (`↙u↘.service` is one word) the surrounding token swallowed it and the parse failed. `build_nodes` now splits that token around the hole instead (issue #221), so all four positions work. The fix is in `treesitter.rs`, not in either shell grammar — the forks' `quilt_hole` rule is still parked, since `tree-sitter generate` panics on it — and being below the grammars it applies to every language at once.
+Both shells also have a machine: a persistent `bash` / `zsh` process fed each fragment on stdin, whose state (variables, functions, the working directory) is real shell state. A query is an arithmetic expression (`echo $(( … ))`), and a fragment whose last command exits non-zero is a failed feed.
+
+A hole used to have to **be** a whole word here: `__QUILT_HOLE__` lexes as a plain `word`, and hole detection matched a node whose byte range *equalled* the hole's, so inside a `"…"` string, inside a comment, or glued to adjacent text (`↙u↘.service` is one word) the surrounding token swallowed it and the parse failed. `TSLanguage` now splits that token around the hole instead (issue #221), so all four positions work. The fix is in `treesitter.rs`, not in either shell grammar — the forks' `quilt_hole` rule is still parked, since `tree-sitter generate` panics on it — and being below the grammars it applies to every language at once.
 
 ---
 
@@ -457,6 +510,8 @@ Because a hole's spelling is the same everywhere it appears, `LeanProvider` clas
 
 Lean's `module` holds *commands*, not terms, so a bare term fragment (`lean↖n + 1↗`) would not parse on its own — unlike Rust or Python, whose `source_file` accepts a bare expression. `LeanLanguage` therefore retries a failed parse inside `#check …`, the smallest command taking an arbitrary term, and strips the wrapper back off, which is what makes term-level composition (`lean↖↙acc↘ * x↗`) work.
 
+Lean's machine is a *replay* machine on the `lean` binary: the history of fed definitions is re-checked with each feed, a query is `#eval`, and the typing judgment is `#check`. Lean is effect-free, so replay is exact rather than a degenerate case, and a rejected `theorem` is a failed feed that stays out of the history.
+
 ### As a target
 
 Quote and splice Lean fragments inside another host (`lean↖…↗`). Lean has a `LiftTo` marker type (`Lean` in `lift/mod.rs`): integers lift to `num_lit`s (negatives as a `unary_op`, since `num_lit` is unsigned), floats to `scientific_lit`s, booleans to Lean's `true`/`false` constants, strings to `str_lit`s, and slices/`Vec`s to comma-separated `list_lit`s.
@@ -481,7 +536,7 @@ let p = lean↖def m : IO Unit := do
 Error: Parsed with errors: ["def m : IO Unit := do\n", "    let x __QUILT_HOLE__ IO.getStdout\n", …]
 ```
 
-Write Lean's ASCII alias `<-` instead. It means exactly the same thing to Lean, has no meaning to Quilt, and passes through untouched:
+Escape it as `\←`, which reaches Lean as a plain `←` ([#141](https://github.com/QuiltLang/quilt/issues/141)), or write Lean's ASCII alias `<-` instead. The alias means exactly the same thing to Lean, has no meaning to Quilt, and passes through untouched:
 
 ```rust
 let p = lean↖def m : IO Unit := do
@@ -489,19 +544,13 @@ let p = lean↖def m : IO Unit := do
     pure ()↗;
 ```
 
-This is what `examples/lean_do_pipeline.rs.quilt` uses throughout, and it is the recommended spelling for generated monadic Lean — it needs no Quilt knowledge from the reader. (Issue #141 adds `\←` as an escaped alternative; until it lands, `<-` is the only spelling that works.)
+This is what `examples/lean_do_pipeline.rs.quilt` uses throughout, and it is the recommended spelling for generated monadic Lean — it needs no Quilt knowledge from the reader.
 
-`↑` and `↓` are the same kind of hazard — they are Lean's coercion and lowering notation as well as Quilt's lift and reduce — but those have always been escapable as `\↑` and `\↓`.
+`↑` and `↓` are the same kind of hazard — they are Lean's coercion and lowering notation as well as Quilt's lift and reduce — and escape the same way, as `\↑` and `\↓`; so do the anonymous-constructor brackets, `\⟨1, 2\⟩` (`conformance/spec/lean.toml`'s `glyph-collisions` claim lists all five).
 
-#### Gotcha: a hole cannot go inside a string literal
+#### A hole inside a string literal
 
-Lean lexes a whole string literal as one token, so a `__QUILT_HOLE__` inside `"…"` or `s!"…"` never becomes a node and the splice fails with *"Ran out of holes for unquote"*:
-
-```rust
-lean↖IO.println s!"↙name↘ -> done"↗   // WRONG: hole inside a string literal
-```
-
-Lift the value into a Lean string and concatenate instead:
+Lean lexes a whole string literal as one token, so a `__QUILT_HOLE__` inside `"…"` never becomes a node of its own. That used to fail with *"Ran out of holes for unquote"*; since [#221](https://github.com/QuiltLang/quilt/issues/221) the token is split around the hole instead, so `lean↖def f := "hi ↙x↘"↗` works, and the spliced value is written as the literal's content (see the layout paragraph above). To splice a *value* as a Lean string rather than as text, lift it and concatenate:
 
 ```rust
 lean↖IO.println (↙name.↑↘ ++ " -> done")↗
@@ -542,11 +591,11 @@ expands to the Lean metaprogram `… s!"@[{attr}] theorem {name} (n : Nat) : n +
 
 **Files:** `langs/text/lang.rs`, `langs/text/mod.rs`, `langs/text/meta.rs`
 
-Plain text. Useful when you want to quote an arbitrary string fragment without language-specific parsing — and the target for every format Quilt has no grammar for.
+Plain text. Useful when you want to quote an arbitrary string fragment without language-specific parsing — and the target for every format Quilt has no grammar for. It is the one language that implements `Language` directly rather than through tree-sitter: "parsing" records the literal runs and the holes between them as a single `text` tuple.
 
 Values lift into it through a *dialect* (`lift/text.rs`): JSON's spelling by default, quote-aware between two `"`, and a host-chosen dialect for formats that differ. See [Lifting into text](concepts.md#lifting-into-text).
 
-It also has a `MetaLanguage` — the **identity** meta. Rust and Python translate a quoted fragment into builder calls, Nix and Lean into string literals; text has no expressions to translate into, so `TextMetaLanguage` *holds the object-level code as unparsed lines*: same tags, same `cmds`, same text. Expanding a text-hosted quote yields the quoted term itself, so `↖…↗` contributes its body, a ground `↙x↘` reads straight through, and a nested quote keeps its glyphs for the next stage. The operator spellings are the other half of that fact: `↑ ↓ ← ⟨T⟩ ⟨N⟩` each need a host expression to expand into, so each is a hard error naming a real host rather than a placeholder leaking into the output.
+It also has a `MetaLanguage` — the **identity** meta, `TextMetaLanguage = HoldMetaLanguage<Text>`, the same one HTML's is (see [Shared modules](#shared-modules)). Rust and Python translate a quoted fragment into builder calls, Nix and Lean into string literals; text has no expressions to translate into, so it *holds the object-level code as unparsed lines*: same tags, same `cmds`, same text. Expanding a text-hosted quote yields the quoted term itself, so `↖…↗` contributes its body, a ground `↙x↘` reads straight through, and a nested quote keeps its glyphs for the next stage. The operator spellings are the other half of that fact: `↑ ↓ ← ⟨T⟩ ⟨N⟩` each need a host expression to expand into, so each is a hard error naming a real host rather than a placeholder leaking into the output.
 
 Text is absent from `omni.rs`'s `metas` section, so `Omni` never selects it — the meta is reached by wiring text into a `Single`/`DictMulti` by hand, which is what the tests in `langs/text/meta.rs` do.
 
@@ -556,9 +605,22 @@ Text is absent from `omni.rs`'s `metas` section, so `Omni` never selects it — 
 
 **Files:** `langs/bootstrap/lang.rs`, `langs/bootstrap/meta.rs`, `langs/bootstrap/strlift.rs`
 
-The bootstrap language is used exclusively during the self-hosting step that generates `langs/rust/meta.rs`. It does not use tree-sitter; instead it parses Rust code using the production `RustLanguage`, then lifts by building strings (`strlift.rs`) and re-parsing them. This is slower but avoids the chicken-and-egg problem of needing `meta.rs` to generate `meta.rs`.
+The bootstrap language is used exclusively during the self-hosting step that generates `langs/rust/meta.rs`. Its `lang.rs` re-exports the production tree-sitter `RustLanguage` unchanged (as `BootstrapLanguage`); only its meta is special: `BootstrapMetaLanguage` lifts by building strings (`strlift.rs`) and re-parsing them. This is slower but avoids the chicken-and-egg problem of needing `meta.rs` to generate `meta.rs`. `langs::bootstrap::Bootstrap` is the `Single<BootstrapLanguage, BootstrapMetaLanguage>` that `quilt -m bootstrap` runs with.
 
 See [Bootstrap](bootstrap.md) for details.
+
+---
+
+## Shared modules
+
+Not every module under `langs/` is a language.
+
+- **`omni.rs`** — the `Omni` registry, generated by `define_omni!` from one table of languages and hosts. See [Multi and Omni](multi-omni.md#omni).
+- **`arity.rs`** — *generated*, not hand-written: each grammar's variadic-container table (`RUST`, `PYTHON`, …) and its comma-separated subset (`RUST_COMMA_SEPARATED`, …), derived from the vendored `grammar.json` by `bin/gen-arity` (issue #202) and read by every provider's `arity` / `separator`. `bin/check-arity` fails on drift.
+- **`hold.rs`** — `HoldMetaLanguage<H: Holds>`, the identity meta both text and HTML are dialects of: a quote expands to itself, and every operator glyph is refused with the name of a real host to use instead. Ungated, since either language may be enabled without the other.
+- **`shell/`** — what bash and zsh share: `ShellMetaLanguage<D>` and its `ops.rs` (the string-based host), and `is_expr_tag` in `mod.rs`.
+- **`chain/`** — the builder-call fold shared by the Rust, Python and TypeScript metas: the code that turns a term's `cmds` into `.w(…)`, `.n()`, `.c(…)` calls. The per-language fragments (`.c(&x)` against `.c(x)`, `&[..]` against `[..]`) are a table in `chain/gen.rs`, **generated** by `bin/gen-chain` from `mk_chain.rs.quilt`, which parses samples with each language's own grammar (issue #204); `bin/check-chain` fails on drift. Rust's imperative variadic block and `bootstrap::strlift` are deliberately not built on it.
+- **`bootstrap/`** — above.
 
 ---
 
@@ -568,19 +630,26 @@ Each language is gated behind a Cargo feature with the same name (`quilt/Cargo.t
 
 ```toml
 [features]
-default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash", "sql"]
-parse = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-python"]
-bash  = ["dep:tree-sitter-bash", "parse"]
-html  = ["dep:tree-sitter-html", "parse"]
+default = ["python", "rust", "text", "bootstrap", "wgsl", "html", "zsh", "bash",
+           "typescript", "nix", "lean", "sql", "serve"]
+parse = ["dep:tree-sitter", "dep:tree-sitter-language"]
+bash  = ["parse"]
+html  = ["parse"]
+lean  = ["parse"]   # ~44MB of vendored parser.c — the first to turn off (issue #134)
+nix   = ["parse"]
 sql   = ["parse"]   # ~42MB of vendored parser.c — see quilt/Cargo.toml
-wgsl  = ["dep:tree-sitter-wgsl", "parse"]
-zsh   = ["dep:tree-sitter-zsh", "parse"]
-python = []
-rust   = []
-text   = []
-bootstrap = ["parse"]
+wgsl  = ["parse"]
+zsh   = ["parse"]
+python     = []
+rust       = []
+text       = []
+typescript = []
+bootstrap  = ["parse"]
+serve = ["html", "parse", "dep:serde_json"]   # `quilt notebook --serve`
 ```
 
-The `parse` feature gates everything that needs tree-sitter (the Quilt-source parser, the `Language` providers, `Omni`, `Multi`'s parse path). With `default-features = false` the crate is runtime-only (the `QTerm` builders, `qlift`, `coparse`) and builds for `wasm32-unknown-unknown` — this is how `nanobots-codegen` consumes it.
+No language feature pulls in a grammar crate: the parsers are vendored under `quilt/grammars/<lang>/` and `quilt/build.rs` compiles the C for each enabled feature (the rust and python parsers whenever `parse` is on).
 
-The `Omni` type is built only from features that are enabled, via `#[cfg(feature = "…")]` gates throughout `langs/omni.rs`.
+The `parse` feature gates tree-sitter: the `Language` providers, `Omni`, and `Multi`'s parse path. It does *not* gate the Quilt-source parser, which is hand-written (`quilt/src/node/parse.rs`, issue #254) and so is in the runtime-only build too. `python`, `rust` and `typescript` deliberately do not imply `parse`, because their runtime halves are pure `QTerm` manipulation: with `default-features = false` the crate is runtime-only (the `QTerm` builders, `qlift`, `coparse`) and builds for `wasm32-unknown-unknown` — this is how `nanobots-codegen` and `quilt-wasm` consume it. `bin/check-features` builds each language feature on its own.
+
+The `Omni` type is built only from features that are enabled: `define_omni!` gates every generated field and match arm on the language's feature.
