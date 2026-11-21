@@ -35,7 +35,7 @@ hand-written tables in `lift.rs` used to answer from memory.
 | 2 | [Builder-call emitters](#2-builder-call-emitters-langsops) | `langs/chain/`: one fold, plus a generated fragment table | **Done** — `bin/gen-chain` ([#204](https://github.com/QuiltLang/quilt/issues/204)); the fold turned out to be cloned four times, not three |
 | 3 | [Arity tables from the grammar](#3-arity-tables-from-the-grammar) | 9 hand-written `match tag` allowlists | **Done** — from `REPEAT`, not `children.multiple`; `bin/gen-arity` ([#202](https://github.com/QuiltLang/quilt/issues/202)) |
 | 4 | [String-based emitters](#4-string-based-emitters-nix-lean) | `langs/{nix,lean}/ops.rs`, 331 lines | **Don't** — the output is a string, not a term; Quilt adds nothing |
-| 5 | [`omni.rs` registry](#5-the-omni-registry) | 528 lines, already `macro_rules!` | **Don't** — `macro_rules!` is the right tool; Quilt would be worse |
+| 5 | [`langs/omni.rs` registry](#5-the-omni-registry) | 528 lines, already `macro_rules!` | **Don't** — `macro_rules!` is the right tool; Quilt would be worse |
 | 6 | [`strlift.rs`](#6-strliftrs-and-the-bootstrap-floor) | 200 lines of `format!` | **Can't** — it is the bootstrap's trusted base case |
 | 7 | [Conformance harness / matrix](#7-what-is-not-a-candidate) | `battery.rs`, `matrix.rs` | **Not applicable** — the `format!`s are diagnostics and Markdown, not code |
 
@@ -488,7 +488,11 @@ the derivation, `bin/gen-arity` writes `quilt/src/langs/arity.rs`, and
 
 `nix/ops.rs` and `lean/ops.rs` reconstruct a fragment as a host *string literal*,
 mapping Quilt's unquote onto the host's own interpolation (`${x}` / `{x}`). They
-are near-clones of each other (`diff` = 157 lines of 331).
+are near-clones of each other (`diff` = 157 lines of 331). Bash and zsh have
+since joined them as string-based hosts (`langs/shell/ops.rs`, one
+`ShellMetaLanguage<D>` for both dialects, issue
+[#151](https://github.com/QuiltLang/quilt/issues/151)); the verdict below covers
+that file for the same reason.
 
 **Not a Quilt candidate.** Their output is a string, not a term: there is no
 target-language AST for a quote to be checked against, and the escaping rules
@@ -501,7 +505,7 @@ metaprogramming problem.
 
 ## 5. The Omni registry
 
-`omni.rs` is 528 lines, of which ~330 are one `macro_rules! define_omni` that
+`langs/omni.rs` was 528 lines at the audit, of which ~330 are one `macro_rules! define_omni` that
 generates six registries and three enum-dispatch impls from a ten-line table.
 
 **Leave it.** This is repetition-with-substitution over a *static* table, with
@@ -512,6 +516,13 @@ edge is *computation* during generation (reading files, arithmetic, cross-langua
 output), and there is none here. Worth stating explicitly, because "we have a
 metaprogramming system, so use it for all the metaprogramming" is the obvious
 wrong conclusion to draw from this page.
+
+The registry has since absorbed one more per-language fact the same way: the
+`DO NOT EDIT` header's comment introducer used to be a central `match` on the
+output file's extension; it is now `Comments::HEADER` beside each `Language` impl, resolved by
+`quilt::langs::header_comment` through `define_omni!` and pinned per language by
+the conformance battery ([#194](https://github.com/QuiltLang/quilt/issues/194)).
+Still a macro, still no Quilt.
 
 ---
 
@@ -539,10 +550,13 @@ explicitly so they are not re-audited later:
   language, and a Markdown table is not a tree anyone benefits from typing.
 
 One layering note that is adjacent but not a dogfooding item:
-`qmatch::pattern_var_code` / `pattern_let_code` emit **Rust** source
+`qmatch::pattern_var_code` / `pattern_let_code` emitted **Rust** source
 (`mvar("x")`, `qmatch_n(&p, &v)`) from the language-agnostic core rather than from
-`langs/rust/ops.rs`. That is why pattern matching is Rust-only, and it is a
-plain move-the-function refactor rather than anything Quilt is needed for.
+`langs/rust/ops.rs`. That was a plain move-the-function refactor rather than
+anything Quilt is needed for, and it has been done: both now live in
+`langs/rust/ops.rs` (moved with #204), reached through `MetaLanguage` hooks
+(`pattern_tag`, `pattern_binding`, `pattern_var`, `pattern_let`) whose defaults
+report "no pattern matching". Rust is still the only meta that implements them.
 
 ---
 
@@ -593,18 +607,23 @@ non-classifying target (html, wgsl, bash, zsh) as "always code".
 | Ground-unquote splice bug | fixed — [#197](https://github.com/QuiltLang/quilt/pull/197) |
 | Hole-free variadic nodes build fluently | [#201](https://github.com/QuiltLang/quilt/pull/201) — prerequisite for finding 3 |
 | Derive the arity tables (finding 3) | done — [#202](https://github.com/QuiltLang/quilt/issues/202), `bin/gen-arity` + `bin/check-arity` |
-| Lift shapes match the parsers | mostly fixed by hand — #176, `fed278b`, guarded by `lift_fidelity.rs` |
-| Generate `lift.rs` (finding 1) | [#203](https://github.com/QuiltLang/quilt/issues/203) — stops the shapes re-drifting; two cases still need the #174 call |
-| Generate the `ops.rs` fragments (finding 2) | [#204](https://github.com/QuiltLang/quilt/issues/204) — do last |
+| Lift shapes match the parsers | fixed by hand (#176, `fed278b`), then by generation; guarded by `lift_fidelity.rs` — except the two #174 exemptions below |
+| Generate `lift.rs` (finding 1) | done — [#203](https://github.com/QuiltLang/quilt/issues/203), `bin/gen-lifts` + `bin/check-lifts` |
+| Generate the `ops.rs` fragments (finding 2) | done — [#204](https://github.com/QuiltLang/quilt/issues/204), `bin/gen-chain` + `bin/check-chain` |
+| Pattern-let codegen out of the core | done — moved to `langs/rust/ops.rs` with #204 |
+| Header comment from the registry | done — [#194](https://github.com/QuiltLang/quilt/issues/194), `Comments::HEADER` |
 
-Suggested order from here:
+What is left:
 
 1. **Decide the remaining #174 faithfulness question** — the two cases `fed278b`
    skipped because they move a declared conformance tag (`wgsl::int_literal` →
-   `const_literal`, `python::integer` → `unary_operator` for `-7`).
+   `const_literal`, `python::integer` → `unary_operator` for `-7`). #174 itself
+   is closed, but the call was never made: `mk_lifts.rs.quilt` still `descend`s
+   past both wrappers, and the generated `lift/gen.rs` header still names it as
+   open.
 2. ~~Make the two calls in #202.~~ Done: both went to the grammar, and the
    derivation ships as `bin/gen-arity` / `bin/check-arity`.
-3. **Generate `lift.rs`** (finding 1). Highest value: it removes the largest
-   hand-written table *and* makes a class of #174 bug unrepresentable.
-4. **Generate the `ops.rs` fragment shapes** (finding 2). Last: it is the
-   expander's own output path, so every snapshot is in scope.
+3. ~~Generate `lift.rs`~~ (finding 1). Done in #203 — see
+   [what shipped](#what-shipped).
+4. ~~Generate the `ops.rs` fragment shapes~~ (finding 2). Done in #204 — see
+   [what shipped](#what-shipped-1).

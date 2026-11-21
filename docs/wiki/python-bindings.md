@@ -35,15 +35,13 @@ The Python API mirrors the Rust `QTermBuilder` fluent interface.
 leaf(tag, code)    # childless node with Write(code) command
 sym(s)             # leaf where tag == code
 tb(tag)            # begin a Tuple builder
-qb(tag, i, lang)   # begin a Quote builder
-ub(tag, i, lang)   # begin an Unquote builder
 quote(tag, i, lang, term, cmds)   # construct a Quote QTerm directly
 unquote(tag, i, lang, term, cmds) # construct an Unquote QTerm directly
 ```
 
 ### Builder fluent methods
 
-Called on a builder object returned by `tb/qb/ub`:
+Called on the builder object returned by `tb`:
 
 ```python
 builder.w("text")      # Write
@@ -76,7 +74,7 @@ cmd(strcmd)     # CmdOrHole::Cmd(strcmd)
 ```python
 term.coparse()      # serialize to a string
 str(term)           # the same text — `__str__` is coparse
-term.qlift()        # lift to builder code (like Rust's QLift trait)
+term.reduce()       # `↓` as a method: evaluate the term (see reduce below)
 ```
 
 ### Other functions
@@ -122,10 +120,11 @@ reduce(term)     # the `↓` operator: run the term's code and return the value.
                  # Glyph-aware (expands a still-Quilt fragment via `quilt` first)
                  # and block-aware (runs leading statements, returns the trailing
                  # expression — the block value).
-run(term)        # run a generated stage and return its whole namespace (dict),
-                 # e.g. when you want several bindings, not one value.
-expand(src)      # expand Quilt source text to plain Python by shelling out to
-                 # `quilt expand` (no compilation). run() is expand() + exec.
+run(term, lang="py")    # run a generated stage and return its whole namespace
+                 # (dict), e.g. when you want several bindings, not one value.
+                 # expand() + exec, with the runtime pre-imported.
+expand(src, lang="py")  # expand Quilt source text to plain target source by
+                 # shelling out to `quilt expand --no-prelude` (no compilation).
 reduce_rs(term)  # the `rs↓` operator: evaluate a term as Rust via rust-script.
 ```
 
@@ -158,6 +157,7 @@ replay script machine for `py` — and returns a `Machine` with:
   expressions answer their value's literal (a string, e.g. `"42"`).
 - `m.feed(kind, term)` — an explicit-kind feed (`"item"`, `"stmt"`,
   `"expr"`, `"file"`, `"block"`).
+- `m.lang` — the language the machine speaks.
 - `m.type_of(term)` — the typing judgment, in the language's own spelling
   (`typeof` for sqlite: `"integer"`, `"real"`).
 
@@ -235,10 +235,11 @@ cmd(NL())                                       // quilt-wasm
 
 Expanded code is always right for its own target, since each meta-language
 emits its own runtime's spelling; the cost falls on a human porting a
-metaprogram across hosts. `wasm-bindgen` cannot export a module-scope constant
-at all — `#[wasm_bindgen]` on a `const` is a compile error, and only functions,
-structs, enums and impls reach JS — and a shared singleton would in any case be
-consumed by its first use, because wasm-bindgen *moves* struct values passed in
-arrays. Issue #167 weighed the alternative (a hand-maintained JS entry point
-wrapping wasm-pack's output) and kept the divergence; `quilt-wasm/README.md`
-records the full reasoning.
+metaprogram across hosts. Issue #167 kept the functions because wasm-bindgen
+could neither export a module-scope constant nor share a singleton (it *moved*
+struct values passed in arrays). Since #306/#308 the runtime is plain
+JavaScript (`quilt-wasm/js/runtime.js`) — a term is an ordinary JS object the
+garbage collector owns, with wasm only at the edges (`qlift` of a term) — so
+`NL()`, `POP()` and `HOLE()` now return shared constants, and stay functions
+only because generated code calls them. `quilt-wasm/README.md` records the
+full reasoning.

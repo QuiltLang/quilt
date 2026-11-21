@@ -155,7 +155,8 @@ quilt notebook --serve notes.html.quilt    # a page, its cells pending
 quilt notebook --serve notes.html.quilt --run --open   # …run them, and open it
 ```
 
-A session prints a URL with a token in it and listens on `127.0.0.1`. The
+A session prints a URL with a token in it and listens on `127.0.0.1` (port
+8788 by default; `--port` chooses, `--port 0` takes any free one). The
 window is the editor on the left and the **live page** on the right: write a
 cell, expand it to see the program it becomes, run it, and watch the page
 change. Nothing new happens to a cell — `Notebook::run_cell` is what a file run

@@ -10,7 +10,7 @@ A `.quilt` file is ordinary source code in some *ground language* plus Quilt bra
 | `foo.py.quilt`      | Python                                        |
 | `foo.wgsl.rs.quilt` | Rust (ground), WGSL (default for bare quotes) |
 
-When expanded, the `.quilt` suffix is stripped to produce the output file name.
+When expanded, the `.quilt` suffix is stripped to produce the output file name. The expanded code calls the host's runtime (`tb`, `qlift`, …), so the generated file opens with the host's runtime import — `use quilt::prelude::*;`, `from quilt import *`, a named `import … from "quilt"` — unless the source already has one or uses no glyph at all (issue #275; see [the runtime import](cli.md#the-runtime-import-issue-274)).
 
 ## Operator glyphs
 
@@ -106,6 +106,12 @@ let d = ↖[z]↗;       // Rust
 
 An annotation is a lowercase letter followed by letters or digits — `lean4↖…↗` as well as `lean↖…↗`, since both are registered names for the same language. The leading letter is what keeps a number that happens to abut the glyph as ordinary content: `x = 42↖…↗` is the literal `42` and a *bare* quote, not a quote of some language named `42`. The same shape spells the annotation on `↙…↘` and on `↓`.
 
+A quote need not be a whole program, but it must parse as *something*. Some constructs are valid only inside their parent — in Rust a match arm, an enum variant, a struct field, a parameter or a field pattern; in Lean a constructor, a structure field, a match alternative or a binder — so a quote of one alone is retried inside each of the language's `fragment_wrappers` (`match q { … }`, `inductive Q where …`, …), and the one fragment node is taken back out if it writes back as the quoted text byte for byte (issue #319). Comments and Rust attributes before the fragment are folded into it:
+
+```rust
+let arm = rs↖Some(x) => x + 1,↗;
+```
+
 ### Representations `⟨cst⟩`, `⟨str⟩`, `⟨qt⟩`
 
 A quote is always parsed against its language's grammar, so a malformed fragment is an expansion error wherever it is written. What the expanded code *builds* from it is the quote's **representation**, written between the language and the `↖`:
@@ -195,6 +201,13 @@ prog.push(↖F[1] = {
 // };
 ```
 
+Before that common indent is measured, every line loses the indent of the
+host code the quote sits in — but only as much of it as *every* non-blank line
+carries, so a body written left of the code around it keeps its own relative
+indentation instead of failing to expand. The lines of a multi-line token (a
+string, a block comment) that never carried that indent are written back
+verbatim, not re-indented, so expanding a file does not change its strings.
+
 ## Variadic nodes and emit `←`
 
 Some language nodes accept an arbitrary number of children — `block` and `source_file` in Rust, for example. Inside a variadic quote, `←` (emit) appends a term to the growing list:
@@ -211,6 +224,8 @@ let program = ↖{
 
 The unquote `↙{…}↘` runs a Rust loop at generation time; each iteration emits one `println!` statement into the outer block.
 
+A statement-shaped quote in statement position is emitted even without `.←` — but only inside an unquote that fills a variadic quoted node, the one place an accumulator is bound. Elsewhere, such as a function body's tail, the quote is just a value (`fn f() -> Arc<QTerm> { ↖fn g() {}↗ }` returns it).
+
 ### Into a comma-separated list
 
 A splice into a comma-separated container — an array, an argument list, a parameter list, a Python list or dict — separates the elements it contributes with `, `, whether they come from a `Vec` or a loop of `←`:
@@ -226,7 +241,7 @@ Which containers count is derived from the grammars (`bin/gen-arity`, the `*_COM
 
 So far only the Rust host does this; in a Python host a builder's `.e(…)` takes one term (#293), and a TypeScript host's functional `←` takes the separator as an argument, `↙←(xs, ", ")↘`.
 
-That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)), and TypeScript reads it the same way, written as a call — `↙←(items)↘` (see [TypeScript operators](concrete-languages.md#typescript-operators)):
+That is emit's *imperative* reading — append one term to an accumulator, once around the loop — and it needs a host with statements and a `QTerm` runtime to accumulate into. A pure host has the *functional* reading instead: build the whole list of fragments, then emit it in one go. In Nix, `←` is that join (see [Concrete languages](concrete-languages.md#as-a-host-string-based-meta)), and TypeScript reads it the same way, written as a call — `↙←(items)↘` splices a whole iterable, a newline between items, and `↙←(items, sep)↘` writes `sep` instead (see [TypeScript operators](concrete-languages.md#typescript-operators)):
 
 ```nix
 nix↖[ ↙← (map (s: nix↖"↙s↘"↗) services)↘ ]↗
