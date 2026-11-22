@@ -26,4 +26,6 @@ Each release gets its own page, `docs/wiki/releases/vX.Y.Z.md`, so that it has i
 - `image` must be `/img/releases/vX.Y.Z.png`. The website renders that image (1200×630) from the `card` block at build time ([`scripts/release-cards.mjs`](https://github.com/QuiltLang/quiltlang.github.io/blob/main/docs-site/scripts/release-cards.mjs)), so there is nothing to draw or commit.
 - `card.headline` and `card.highlights` are the text on the image. Quilt's glyph arrows are drawn in their colours.
 
+Copy the **Get vX.Y.Z** section too and change the version in every link. Its links point at that exact version on each registry and at the files attached to the GitHub release, so check the asset names with `gh release view vX.Y.Z` once the release workflow finishes.
+
 Then add a row to the table above. The sidebar lists release pages newest first on its own. To preview a card locally, run `npm run release-cards` in the website's `docs-site/` and open `static/img/releases/vX.Y.Z.png`.
