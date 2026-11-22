@@ -1,6 +1,6 @@
 # Nanobots
 
-**Repo:** `../nanobots` ([QuiltLang/nanobots](https://github.com/QuiltLang/nanobots)) — a sibling repository with its own Cargo workspace · **Demo:** <https://quiltlang.github.io/nanobots/>
+**Repo:** `../nanobots` ([QuiltLang/nanobots](https://github.com/QuiltLang/nanobots)) — a sibling repository with its own Cargo workspace · **Demo:** [quiltlang.github.io/nanobots](https://quiltlang.github.io/nanobots/)
 
 Nanobots is a gas-metered IR toolchain for building resumable, GPU-friendly state machines. It uses Quilt (`html↖…↗`, `wgsl↖…↗`) for code generation in some of its crates.
 
@@ -134,7 +134,7 @@ cargo run -- interpret demos/counter.nb
 bin/build && bin/run                  # wasm-pack + release build → build/index.html, then open it
 ```
 
-The hosted demo is built the same way: the [`quiltlang.github.io`](https://github.com/QuiltLang/quiltlang.github.io) site's deploy CI runs `bin/build` and serves the result at <https://quiltlang.github.io/nanobots/> (the old `/demo/nanobots/` URL redirects there).
+The hosted demo is built the same way: the [`quiltlang.github.io`](https://github.com/QuiltLang/quiltlang.github.io) site's deploy CI runs `bin/build` and serves the result at [quiltlang.github.io/nanobots](https://quiltlang.github.io/nanobots/) (the old `/demo/nanobots/` URL redirects there).
 
 On the quilt side, `bin/check-downstream` (nightly, informational — issue #189) clones nanobots, rewrites its quilt dependency to a path pointing at the current checkout, expands its `.rs.quilt` sources with that expander, and builds the two consuming crates; `bin/check-features` separately proves `quiltlang` builds with `default-features = false` and no tree-sitter.
 
