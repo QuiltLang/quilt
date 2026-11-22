@@ -747,4 +747,62 @@ mod tests {
             "{texts:?}"
         );
     }
+
+    /// Nix and SQL quotes reach the highlighter end to end: a `nix↖…↗` /
+    /// `sql↖…↗` quote in a Rust file projects a fragment (via its adapter)
+    /// and that fragment yields tokens. Before the adapters existed the
+    /// highlighters compiled but no fragment was ever handed to them.
+    #[test]
+    #[cfg(all(feature = "nix", feature = "sql"))]
+    fn nix_and_sql_fragments_are_highlighted() {
+        let type_index: HashMap<&'static str, u32> = TOKEN_TYPES
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (*n, u32::try_from(i).unwrap()))
+            .collect();
+        for (key, src, want) in [
+            (
+                "nix",
+                "fn f() -> String { nix↖let n = ↙a.↑↘; in n↗.coparse() }\n",
+                "let",
+            ),
+            (
+                "sql",
+                "fn f() -> String { sql↖SELECT id FROM t WHERE x = ↙a.↑↘↗.coparse() }\n",
+                "SELECT",
+            ),
+            (
+                "sql",
+                "fn f() -> String { mysql↖SELECT id FROM t↗.coparse() }\n",
+                "FROM",
+            ),
+        ] {
+            let lang = language_adapter(key).unwrap();
+            let frags = project_fragments(src, lang, &["rs"]);
+            assert_eq!(frags.len(), 1, "{key}: {src}");
+            let qi = LineIndex::new(src);
+            let toks = projection_tokens(
+                highlighter(lang.language_id()).unwrap(),
+                &frags[0].proj,
+                src,
+                &qi,
+                Encoding::Utf16,
+                &type_index,
+            );
+            let line: Vec<char> = src.lines().next().unwrap().chars().collect();
+            let texts: Vec<String> = toks
+                .iter()
+                .map(|t| {
+                    line[t.start as usize..(t.start + t.length) as usize]
+                        .iter()
+                        .collect()
+                })
+                .collect();
+            assert!(texts.iter().any(|t| t == want), "{key}: {texts:?}");
+            assert!(
+                !texts.iter().any(|t| t.contains('↙') || t.contains("QUILT")),
+                "{key}: {texts:?}"
+            );
+        }
+    }
 }

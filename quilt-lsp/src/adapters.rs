@@ -69,6 +69,8 @@ pub struct CommentSyntax {
     feature = "bash",
     feature = "zsh",
     feature = "lean",
+    feature = "nix",
+    feature = "sql",
 ))]
 fn line_comment(lang: &str) -> &'static str {
     quilt::langs::line_comment(lang)
@@ -170,6 +172,10 @@ pub fn is_known_lang(key: &str) -> bool {
             | "zsh"
             | "lean"
             | "lean4"
+            | "nix"
+            | "sql"
+            | "mysql"
+            | "mariadb"
     )
 }
 
@@ -226,6 +232,10 @@ pub fn language_adapter(key: &str) -> Option<&'static dyn LanguageAdapter> {
         "zsh" => Some(&ZSH),
         #[cfg(feature = "lean")]
         "lean" | "lean4" => Some(&LEAN),
+        #[cfg(feature = "nix")]
+        "nix" => Some(&NIX),
+        #[cfg(feature = "sql")]
+        "sql" | "mysql" | "mariadb" => Some(&SQL),
         _ => None,
     }
 }
@@ -248,7 +258,7 @@ pub fn meta_adapter(key: &str) -> Option<&'static dyn MetaLanguageAdapter> {
 /// `wgsl↖…↗` quote is a complete shader module sent to wgsl-analyzer), rather
 /// than merged into the ground projection. Host languages (Rust, Python) are
 /// *not* here: their same-language quotes ride the merged ground projection.
-/// Languages with no downstream server (html, bash, zsh) are still listed:
+/// Languages with no downstream server (html, bash, zsh, nix, sql) are still listed:
 /// their fragments are projected so the in-process tree-sitter highlighter
 /// ([`crate::tshl`]) can produce semantic tokens, but nothing is `didOpen`ed.
 ///
@@ -268,6 +278,10 @@ pub fn embedded_adapters() -> Vec<&'static dyn LanguageAdapter> {
         &ZSH,
         #[cfg(feature = "lean")]
         &LEAN,
+        #[cfg(feature = "nix")]
+        &NIX,
+        #[cfg(feature = "sql")]
+        &SQL,
     ];
     adapters.to_vec()
 }
@@ -686,6 +700,53 @@ impl LanguageAdapter for ShellAdapter {
     }
 }
 
+/* ------------------------------- Nix / SQL ------------------------------- */
+
+#[cfg(feature = "nix")]
+static NIX: HighlightOnlyAdapter = HighlightOnlyAdapter { id: "nix" };
+
+#[cfg(feature = "sql")]
+static SQL: HighlightOnlyAdapter = HighlightOnlyAdapter { id: "sql" };
+
+/// The Nix and SQL adapters — target-only and highlight-only, like
+/// [`ShellAdapter`]: `nix↖…↗` / `sql↖…↗` quotes are projected for the
+/// in-process tree-sitter highlighter ([`crate::tshl`]) and dispatched to no
+/// downstream server. Both quote whole expressions/statements, mask holes with
+/// quilt's own `__QUILT_HOLE__` (an identifier in both grammars), and have
+/// `/* … */` block comments, so they share one struct.
+#[cfg(any(feature = "nix", feature = "sql"))]
+pub struct HighlightOnlyAdapter {
+    id: &'static str,
+}
+
+#[cfg(any(feature = "nix", feature = "sql"))]
+impl LanguageAdapter for HighlightOnlyAdapter {
+    fn language_id(&self) -> &'static str {
+        self.id
+    }
+    fn virtual_extension(&self) -> &'static str {
+        self.id
+    }
+    fn server_command(&self) -> Option<(String, Vec<String>)> {
+        None // highlight-only: no downstream server
+    }
+    fn splice_placeholder(&self) -> &'static str {
+        // The same identifier quilt's own Nix/SQL providers fill holes with.
+        "__QUILT_HOLE__"
+    }
+    fn wrap_fragment(&self, _n: usize) -> (String, String) {
+        // A Nix or SQL quote is already a complete expression / statement list.
+        (String::new(), String::new())
+    }
+    fn comment_syntax(&self) -> CommentSyntax {
+        CommentSyntax {
+            line: line_comment(self.id),
+            block_open: "/*",
+            block_close: "*/",
+        }
+    }
+}
+
 /* --------------------------------- Lean --------------------------------- */
 
 #[cfg(feature = "lean")]
@@ -864,6 +925,9 @@ mod tests {
             ("bash", "bash"),
             ("zsh", "zsh"),
             ("lean", "lean"),
+            ("nix", "nix"),
+            ("sql", "sql"),
+            ("mysql", "sql"),
         ] {
             let Some(adapter) = language_adapter(key) else {
                 continue; // this language is not compiled in
@@ -1133,18 +1197,24 @@ mod tests {
     fn shell_and_html_keys_are_known() {
         // `lang_chain` / quote annotations must recognize the highlight-only
         // languages, mirroring quilt's `Omni` registry keys.
-        for key in ["html", "bash", "zsh"] {
+        for key in ["html", "bash", "zsh", "nix", "sql"] {
             assert!(is_known_lang(key), "{key}");
         }
     }
 
     #[test]
-    #[cfg(all(feature = "html", feature = "bash", feature = "zsh"))]
+    #[cfg(all(
+        feature = "html",
+        feature = "bash",
+        feature = "zsh",
+        feature = "nix",
+        feature = "sql"
+    ))]
     fn highlight_only_targets_are_embedded_without_a_server() {
         // html/bash/zsh are per-fragment embedded targets so their quotes get
         // FragmentDoc projections to highlight, but they are never hosts and
         // have no downstream server (`embedded_sync` must skip `didOpen`).
-        for key in ["html", "bash", "zsh"] {
+        for key in ["html", "bash", "zsh", "nix", "sql"] {
             let adapter = language_adapter(key).unwrap_or_else(|| panic!("{key} adapter"));
             assert_eq!(adapter.language_id(), key);
             assert!(adapter.server_command().is_none(), "{key}");
